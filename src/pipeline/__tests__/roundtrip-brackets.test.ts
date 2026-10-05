@@ -304,10 +304,11 @@ describe("a `#` at the start of a line", () => {
 });
 
 // §56m — remark writes a space right before a line ending as `&#x20;`, and the
-// serializer drops that one space instead (a tag followed by a space used to
-// save as `#tag&#x20;`). That used to be a regex over the whole saved string,
-// which also deleted a literal `&#x20;` at a line end in code, math and HTML,
-// and left the backslash of an escaped `\&#x20;` in text dangling.
+// serializer drops that one space where the line ending stays one (a tag
+// followed by a space used to save as `#tag&#x20;`). That used to be a regex
+// over the whole saved string, which also deleted a literal `&#x20;` at a line
+// end in code, math and HTML, and left the backslash of an escaped `\&#x20;` in
+// text dangling. It now runs on the text's own output (`dropLineEndSpaces`).
 describe("a space right before a line ending", () => {
   it("is dropped after a tag", () => {
     const doc = paragraphOf(
@@ -330,5 +331,80 @@ describe("a space right before a line ending", () => {
     ["text, escaped", "a \\&#x20;\n"],
   ])("leaves a literal `&#x20;` in %s alone", (_label, md) => {
     expect(roundtrip(md)).toBe(md);
+  });
+
+  // Built as documents: these texts hold a line ending the loader never puts
+  // there, and they are the shapes a drop decided from the text alone broke.
+  const text = (value: string, marks: string[] = []) => ({
+    marks: marks.map((type) => ({ type })),
+    text: value,
+    type: "text",
+  });
+  it.each([
+    // remark writes the line ending itself as `&#xA;` here, and the space raw.
+    [
+      "a table cell",
+      [
+        {
+          content: [
+            {
+              content: [
+                {
+                  content: [{ content: [text("h")], type: "paragraph" }],
+                  type: "tableHeader",
+                },
+              ],
+              type: "tableRow",
+            },
+            {
+              content: [
+                {
+                  content: [{ content: [text("a \nb")], type: "paragraph" }],
+                  type: "tableCell",
+                },
+              ],
+              type: "tableRow",
+            },
+          ],
+          type: "table",
+        },
+      ],
+    ],
+    [
+      "an ATX heading",
+      [{ attrs: { level: 3 }, content: [text("a \nb")], type: "heading" }],
+    ],
+    // The emphasis writes the line ending at its edge as `&#xA;` after the
+    // text is written.
+    [
+      "the edge of italics",
+      [{ content: [text("a \n", ["italic"]), text("x")], type: "paragraph" }],
+    ],
+    // Dropped, it would empty the item's first line before the item is written.
+    [
+      "a line of its own in a task",
+      [
+        {
+          content: [
+            {
+              attrs: { state: "todo" },
+              content: [{ content: [text(" \nx")], type: "paragraph" }],
+              type: "taskItem",
+            },
+          ],
+          type: "taskList",
+        },
+      ],
+    ],
+  ])("is kept before a line ending it does not end: %s", (_label, content) => {
+    expectSameAfterSave(schema.nodeFromJSON({ content, type: "doc" }));
+  });
+
+  it("keeps the backslash before a dropped space a literal backslash", () => {
+    const doc = paragraphOf(text("a\\ \nb"));
+    expect(prosemirrorToMarkdown(doc)).toBe("a\\\\\nb\n");
+    expect(
+      JSON.stringify(load(prosemirrorToMarkdown(doc)).toJSON()),
+    ).not.toContain("hardBreak");
   });
 });

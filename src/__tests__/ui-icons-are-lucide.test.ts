@@ -171,6 +171,10 @@ const ALLOWED: Record<string, Exemption> = {
     reason: "키 이름 표기(⌘⇧⌥↩⇥⌫…)",
     spellings: "*",
   },
+  "src/pipeline/serializer.ts": {
+    reason: "remark 가 인코딩한 줄 끝 공백을 찾는 직렬화 코드",
+    spellings: ["entity &#x20;"],
+  },
   "src/pipeline/transformers/media-html-tag.ts": {
     reason: "HTML 속성 이스케이프 표",
     spellings: "*",

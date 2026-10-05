@@ -59,9 +59,9 @@ function remarkWikiLink(this: any) {
 
 /**
  * §7.1 Body text — remark's own escaping, except for the characters
- * {@link writtenPositions} decides itself: the `[`, `!` and `#` that start
- * nothing are written as typed, every `$` is written `\$`, and a space right
- * before a line ending is dropped.
+ * {@link writtenPositions} decides itself — the `[`, `!` and `#` that start
+ * nothing are written as typed, and every `$` is written `\$` — and a space
+ * remark encoded before a line ending is dropped ({@link dropLineEndSpaces}).
  *
  * remark escapes every `[` in phrasing (`unsafe.js` in mdast-util-to-markdown,
  * and once more in mdast-util-gfm-footnote) because `[x]` would be a shortcut
@@ -87,7 +87,9 @@ function text(
 ): string {
   const value = node.value;
   const written = writtenPositions(value, state, info);
-  if (written.length === 0) return state.safe(value, info);
+  if (written.length === 0) {
+    return dropLineEndSpaces(state.safe(value, info), info);
+  }
 
   const pieces: string[] = [];
   let start = 0;
@@ -109,7 +111,55 @@ function text(
   if (start < value.length) {
     pieces.push(state.safe(value.slice(start), { ...info, before }));
   }
-  return pieces.join("");
+  return dropLineEndSpaces(pieces.join(""), info);
+}
+
+const ENCODED_SPACE = "&#x20;";
+
+/**
+ * §56m — a space remark encoded as `&#x20;` right before a line ending, dropped
+ * from this text's own output. remark encodes a space next to a line ending so
+ * the line keeps it; a tag followed by a space was saved as `#tag&#x20;`. A pass
+ * over the whole saved string used to take out every `&#x20;` before a line
+ * ending — in code, math and HTML blocks too, and the `&#x20;` of an escaped
+ * `\&#x20;`. This keeps that pass to what the text wrote:
+ * - a literal `&#x20;` comes out of `safe` with its `&` escaped, behind an odd
+ *   run of backslashes, and stays;
+ * - the line ending has to be one the saved string keeps: inside this output
+ *   but not its last character — a container can still rewrite that one (an
+ *   emphasis writes a line ending at its edge as `&#xA;`) — or, at the end of
+ *   the output, the first character of `after`. Where remark writes the line
+ *   ending itself as `&#xA;` (a table cell, an ATX heading) it writes the space
+ *   before it raw, and there is nothing to drop;
+ * - a space alone on its line stays. Dropping it here would empty the line
+ *   before its container writes it, and an empty first line changes what a
+ *   list item writes (`-` on a line of its own, the task check after it).
+ */
+function dropLineEndSpaces(output: string, { after, before }: Info): string {
+  if (!output.includes(ENCODED_SPACE)) return output;
+  let result = "";
+  let start = 0;
+  for (
+    let at = output.indexOf(ENCODED_SPACE);
+    at !== -1;
+    at = output.indexOf(ENCODED_SPACE, at + ENCODED_SPACE.length)
+  ) {
+    let backslashes = 0;
+    while (output[at - 1 - backslashes] === "\\") backslashes++;
+    const end = at + ENCODED_SPACE.length;
+    const lineEnding =
+      end === output.length
+        ? after.charAt(0) === "\n"
+        : output[end] === "\n" && end < output.length - 1;
+    const aloneOnLine =
+      (at === 0 ? before.slice(-1) : output[at - 1]) === "\n" ||
+      (at === 0 && before === "");
+    if (backslashes % 2 === 0 && lineEnding && !aloneOnLine) {
+      result += output.slice(start, at);
+      start = end;
+    }
+  }
+  return result + output.slice(start);
 }
 
 /** remark's `fullPhrasingSpans` (`unsafe.js`): an autolink, a reference, and
@@ -159,12 +209,6 @@ const TAG_CHARACTER = /[\w가-힣]/;
  * the key even when its value is undefined. So `$_GET … $_POST` was written
  * `$\_GET … $\_POST` and read back as inline math, and math opened that way
  * could hide the `]` a raw `[` was paired with below.
- *
- * A space right before a line ending is dropped (§56m). remark writes that
- * space as `&#x20;` — a tag followed by a space saved as `#tag&#x20;` — and a
- * pass over the whole saved string used to take exactly those out, in code,
- * math and HTML blocks too. Only the space next to the line ending goes; spaces
- * before it stay, as they did.
  *
  * Where a `[` stops being literal: the parser stack is `markdown-parser.ts`. The
  * micromark constructs it starts on `[` (code 91 in micromark's `constructs.js`
@@ -223,8 +267,6 @@ function writtenPositions(
     const character = value[index];
     if (character === "$") {
       if (!inSpan) written.push([index, "\\$"]);
-    } else if (character === " ") {
-      if (following(index) === "\n") written.push([index, ""]);
     } else if (character === "#") {
       if (TAG_CHARACTER.test(following(index))) written.push([index, "#"]);
     } else if (character === "[" && bracketsMayBeRaw) {
