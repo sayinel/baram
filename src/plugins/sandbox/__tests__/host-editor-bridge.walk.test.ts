@@ -251,11 +251,10 @@ describe("the walk charge (plan 0117 Ruling 26)", () => {
   });
 
   it("with the budget short, a write with no ref is refused before it walks the user's selection", async () => {
-    // Select all on "alpha omega" (13 positions); `getMarkdown` (13) spends first. The write's
-    // payload (1) is charged, then the check asks for the transaction (16): 13 left is short of
-    // it, 16 is not.
+    // Select all on "alpha omega" (13 positions); `getMarkdown` (13) spends first. The check asks
+    // for the transaction (16) and the payload still due (1): 16 left is short of 17.
     const exhausted = harness("alpha omega\n", ["editor"], {
-      budget: { burst: 13 + 1 + 13, refillPerSecond: 0, writeFloor: floor },
+      budget: { burst: 13 + 16, refillPerSecond: 0, writeFloor: floor },
     });
     await exhausted.handler({ kind: "editor_get_markdown" });
     exhausted.editor.selectAll();
@@ -269,7 +268,7 @@ describe("the walk charge (plan 0117 Ruling 26)", () => {
     expect(exhausted.editor.dispatched).toEqual([]);
 
     const covered = harness("alpha omega\n", ["editor"], {
-      budget: { burst: 13 + 1 + floor, refillPerSecond: 0, writeFloor: floor },
+      budget: { burst: 13 + 17, refillPerSecond: 0, writeFloor: floor },
     });
     await covered.handler({ kind: "editor_get_markdown" });
     covered.editor.selectAll();
@@ -283,29 +282,52 @@ describe("the walk charge (plan 0117 Ruling 26)", () => {
     expect(covered.editor.markdown()).toBe("x\n");
   });
 
-  it("with no ref, the payload is charged before the walk is checked, so it cannot leave the walk unpaid", async () => {
-    // A document as large as the burst (13, floor 8): the transaction and the walk are each the
-    // whole burst. A full bucket covers the check alone; after the payload (1) it does not.
-    const budget = { burst: 13, refillPerSecond: 0, writeFloor: 8 };
-    const paying = harness("alpha omega\n", ["editor"], { budget });
-    paying.editor.selectAll();
-    const none = vi.spyOn(paying.editor.handle.state.doc, "textBetween");
+  it("with no ref, the check counts the payload still due, so the payload cannot leave the walk unpaid", async () => {
+    // Floor 8 under "alpha omega" (13): the transaction and the "all" walk are both 13. The
+    // check runs before the payload is charged; asked for 13 alone it would pass with 13 left,
+    // the payload (1) would leave 12, and the walk's charge (13) would then be refused.
+    const run = (left: number) =>
+      harness("alpha omega\n", ["editor"], {
+        budget: { burst: 13 + left, refillPerSecond: 0, writeFloor: 8 },
+      });
+    const short = run(13);
+    await short.handler({ kind: "editor_get_markdown" });
+    short.editor.selectAll();
+    const none = vi.spyOn(short.editor.handle.state.doc, "textBetween");
     expect(
       await codeOf(
-        paying.handler({ kind: "editor_insert_markdown", markdown: "x" }),
+        short.handler({ kind: "editor_insert_markdown", markdown: "x" }),
       ),
     ).toBe("budget");
     expect(none).not.toHaveBeenCalled();
-    // An empty payload leaves the full bucket for the check: the write walks and lands.
-    const free = harness("alpha omega\n", ["editor"], { budget });
-    free.editor.selectAll();
-    const walks = vi.spyOn(free.editor.handle.state.doc, "textBetween");
+    const enough = run(14);
+    await enough.handler({ kind: "editor_get_markdown" });
+    enough.editor.selectAll();
+    const walks = vi.spyOn(enough.editor.handle.state.doc, "textBetween");
     expect(
       await codeOf(
-        free.handler({ kind: "editor_insert_markdown", markdown: "" }),
+        enough.handler({ kind: "editor_insert_markdown", markdown: "x" }),
       ),
     ).toBe("written");
     expect(walks).toHaveBeenCalled();
+  });
+
+  it("with no ref, a document as large as the burst still takes a write when the refill during the parse covers its payload", async () => {
+    // Burst 13 = the document (floor 8): payload and charge cannot both fit, so the check asks
+    // for a full bucket. The payload (1) is charged before the parse; a second of refill during
+    // it restores the bucket, and the write lands, as it did before the walk was priced.
+    let t = 0;
+    const run = harness("alpha omega\n", ["editor"], {
+      budget: { burst: 13, refillPerSecond: 1, writeFloor: 8 },
+      now: () => t,
+    });
+    run.editor.selectAll();
+    const pending = codeOf(
+      run.handler({ kind: "editor_insert_markdown", markdown: "x" }),
+    );
+    t += 1000;
+    expect(await pending).toBe("written");
+    expect(run.editor.markdown()).toBe("x\n");
   });
 
   it("a write that lands pays its payload and transaction, and nothing for its walk", async () => {

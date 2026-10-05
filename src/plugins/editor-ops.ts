@@ -76,8 +76,9 @@ export function editorRefusalCodeOf(reason: AnchorFailure): EditorRefusalCode {
 
 /**
  * `insertMarkdown` — parse, then place by the §6.2 rules on the ref's range (spec §7.3).
- * `beforeParse` runs after the checks that read no text and before an implicit anchor is
- * issued, so the `beforeWalk` that guards that anchor's walk sees the payload already charged.
+ * `beforeParse` runs once the ref is checked and, with no ref, once the implicit anchor is
+ * issued — so after that anchor's `beforeWalk`, which therefore runs with the payload not yet
+ * charged.
  */
 export async function insertMarkdownAt(
   ctx: EditorOpsContext,
@@ -90,10 +91,10 @@ export async function insertMarkdownAt(
   const method = "insertMarkdown";
   const first = ctx.live(method);
   checkTarget(ctx, first.state, options.ref, method);
-  options.beforeParse?.();
   const walk: Walk = { length: 0, walked: false };
   const ref = options.ref ?? issueImplicit(ctx, first.state, options, walk);
   try {
+    options.beforeParse?.();
     const parsed = await markdownToProsemirrorAsync(
       options.markdown,
       first.schema,
