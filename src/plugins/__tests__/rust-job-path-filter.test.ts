@@ -107,9 +107,9 @@ describe("the rust job runs whenever a file it compiles in changes", () => {
     ).toEqual([]);
   });
 
-  it("still finds the two known escapes, so the scan cannot pass by finding nothing", () => {
+  it("still finds the known escapes, so the scan cannot pass by finding nothing", () => {
     // ‼️ The previous test is satisfied by an EMPTY escape list, which is what a broken
-    // regex or a wrong root would produce. These two are the ones that exist today; if one is
+    // regex or a wrong root would produce. These are the ones that exist today; if one is
     // legitimately removed, delete it here in the same commit.
     const escapes = inclusions
       .filter((i) => !i.target.startsWith("src-tauri/"))
@@ -118,6 +118,7 @@ describe("the rust job runs whenever a file it compiles in changes", () => {
     expect(escapes).toEqual([
       "registry/index.json",
       "src/plugins/revocation-client.ts",
+      "src/utils/editor/wikilink-nav.ts",
     ]);
   });
 });

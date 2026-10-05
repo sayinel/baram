@@ -328,7 +328,13 @@ export interface RenameResult {
    *  only (issue 678): a file holding links (wikilinks, block references)
    *  that cannot spell the new file name — it is in `updatedFiles` too when
    *  its other links were rewritten — and the renamed note itself under its
-   *  NEW path. A block ID rename lists referrers only. */
+   *  NEW path. For both renames (issue 619): a referrer holding a path link
+   *  or path reference that is ambiguous — a root holding the referrer, or a
+   *  second note folding to the same path where case is kept, reads it as
+   *  another note (for a file rename, the respelled text too) — left as
+   *  written. For a file rename, also a link behind the vault's own alias
+   *  when another vault carries that alias too. A block ID rename lists
+   *  referrers only. */
   skippedFiles: string[];
   /** Files rewritten on disk; a clean open surface of each follows the disk. */
   updatedFiles: string[];

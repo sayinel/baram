@@ -1,9 +1,12 @@
 //! §33/§61 Rename with link updates — the result types and the helpers its parts share.
 
 mod block_id;
+mod destination;
 mod file;
 mod namespace;
+mod passes;
 mod referrers;
+mod scope;
 
 pub(crate) use block_id::rename_block_id_inner;
 pub(crate) use file::rename_file_with_links_inner;
@@ -33,13 +36,20 @@ use super::state::Mutation;
 pub struct RenameResult {
     pub updated_files: Vec<String>,
     /// Files the rename cannot vouch for: each MAY still spell the old name.
-    /// A referrer the index named that is unreadable, unwritable, or resolves
-    /// outside the file's contexts; one named but holding nothing to rename
-    /// now (a stale index, issue 668 — the reference may live elsewhere).
+    /// A referrer the index named that is unreadable, unwritable, covered by
+    /// none of the file's contexts, or resolves outside them; one named but
+    /// holding nothing to rename now (a stale index, issue 668 — the
+    /// reference may live elsewhere).
     /// And, for a file rename only (issue 678): a file holding links that
     /// cannot spell the new stem — it may be in `updated_files` too, for the
     /// links that were rewritten — and the renamed note itself, under its
-    /// new path, on the same terms. A block ID rename lists referrers only.
+    /// new path, on the same terms; and a file inside the note's own
+    /// contexts holding a link to it behind an alias two vaults carry — the
+    /// link is left, since it may mean the other vault's note — updated or
+    /// not. A referrer in the other vault is never visited, so not listed. For both renames: a file
+    /// holding a path reference another root reads as a different existing
+    /// note, which is left as written (`judgement::Judgement::Ambiguous`),
+    /// updated or not. A block ID rename lists referrers only.
     pub skipped_files: Vec<String>,
 }
 
@@ -62,15 +72,50 @@ pub struct NamespaceRenameResult {
     pub index_rebuilt: bool,
 }
 
-/// Which of `keys` (containing indexes) cover `path`: a reference file outside
-/// a nested root belongs to the enclosing index alone, and must not be written
-/// into the nested one.
-async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) -> Vec<String> {
-    let covering = keys_of(&owning_contexts(ctx_mgr, path).await);
-    keys.iter()
-        .filter(|k| covering.contains(k))
-        .cloned()
+/// The contexts among `keys` that cover `path`. `rewrite_referrers` passes
+/// the keys of the renamed file's contexts; `queue_rewritten`, through
+/// `keys_covering`, passes `Referrers::holding_keys`, which also include
+/// contexts holding referrers without holding the renamed file. A reference
+/// file outside a nested root belongs to the enclosing index alone, and
+/// must not be written into, or judged under, the nested one.
+async fn contexts_covering(
+    ctx_mgr: &ContextManager,
+    keys: &[String],
+    path: &str,
+) -> Vec<Registered> {
+    owning_contexts(ctx_mgr, path)
+        .await
+        .into_iter()
+        .filter(|c| keys.contains(&c.info.path))
         .collect()
+}
+
+/// Which of the holding keys passed by `queue_rewritten` cover `path`
+/// (`contexts_covering`). Defence in depth: `Mutation::apply_to` already
+/// skips a path its index's root cannot spell.
+async fn keys_covering(ctx_mgr: &ContextManager, keys: &[String], path: &str) -> Vec<String> {
+    keys_of(&contexts_covering(ctx_mgr, keys, path).await)
+}
+
+/// `Err` unless `path` is absolute as the host reads it (`Path::is_absolute`)
+/// and has no `..` component. The renames take the paths the webview's file
+/// tree holds, which are both; a relative one would resolve against the
+/// process's working directory, a place no registered context names, and the
+/// checks that follow read the path lexically as well as canonically — the
+/// path keys (`root_relative_key`) and the same-directory check keep a `..`
+/// as a name, so `/v/sub/../old.md` would key as `sub/../old` and miss every
+/// path link to `/v/old.md`. Refused before anything is read or written.
+fn plain_absolute(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if !p.is_absolute() {
+        Err(format!("{path} is not an absolute path"))
+    } else if p.components().any(|c| c == std::path::Component::ParentDir) {
+        Err(format!(
+            "a rename path may not climb with `..`; {path} does"
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 /// Whether a canonical path lies under one of these directory contexts. The

@@ -270,7 +270,7 @@ pub(crate) async fn backlinks(
     Ok(Envelope {
         vault: Some(vault_info(vault)),
         truncated: false,
-        items: backlink_rows(vault, index.get_backlinks(&target.to_string_lossy())),
+        items: backlink_rows(vault, index.get_backlinks(&target.to_string_lossy(), &[])),
     })
 }
 
@@ -641,6 +641,7 @@ mod tests {
                 link_type: LinkKind::Wikilink,
                 block_id: None,
                 target_vault_alias: None,
+                self_reference: false,
             },
             LinkResolution::Unresolved,
         )

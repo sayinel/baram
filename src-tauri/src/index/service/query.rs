@@ -3,7 +3,9 @@ use crate::index::{BacklinkResult, LinkGraph, LinkIndex};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use super::keys::{active_registration, buildable, keys_of, owning_contexts, owning_registration};
+use super::keys::{
+    active_registration, buildable, keys_of, local_aliases_of, owning_contexts, owning_registration,
+};
 use super::state::{LinkIndexState, Mutation};
 
 /// Whether `file_path` is spelled under `root`: component-wise, so `/x/Vault`
@@ -25,11 +27,14 @@ pub(crate) async fn get_backlinks_inner(
     // each context counts (`with_index_for`): one left by an earlier
     // registration of the same path could describe another directory.
     let contexts = owning_contexts(ctx_mgr, file_path).await;
+    // A link behind one of the file's own vault aliases names it too (§87).
+    let local_aliases = local_aliases_of(ctx_mgr, &contexts).await.local;
     let mut answered: Vec<(String, Vec<BacklinkResult>)> = Vec::new();
     for ctx in &contexts {
         let found = state
             .with_index_for(&ctx.info.path, ctx.incarnation, |idx| {
-                idx.map(|i| i.get_backlinks(file_path)).unwrap_or_default()
+                idx.map(|i| i.get_backlinks(file_path, &local_aliases))
+                    .unwrap_or_default()
             })
             .await;
         if !found.is_empty() {
@@ -46,7 +51,8 @@ pub(crate) async fn get_backlinks_inner(
     // entries as the nested one plus those from outside it — merge, once per
     // (source, line, block), comparing sources canonically because two slots
     // may spell the same file differently; the slot spelled like the query
-    // comes first so its spelling is the one returned. Component-wise
+    // comes first so its spelling is the one returned — then sorted by
+    // source path and line, as a single index's answer is. Component-wise
     // `Path::starts_with`, never a string prefix with a hard-coded separator.
     let mut spelled: Vec<(bool, Vec<BacklinkResult>)> = Vec::new();
     for (key, found) in answered {
@@ -74,6 +80,7 @@ pub(crate) async fn get_backlinks_inner(
             }
         }
     }
+    merged.sort_by(|a, b| (a.source_path.as_str(), a.line).cmp(&(b.source_path.as_str(), b.line)));
     Ok(merged)
 }
 

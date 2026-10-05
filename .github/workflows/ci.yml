@@ -64,6 +64,9 @@ jobs:
               # list maintained by hand is how this happened the first time.
               - 'registry/index.json'
               - 'src/plugins/revocation-client.ts'
+              # §317: `space_names_match_the_frontends` compares its `SPACE_ALIASES` table
+              # with the index's space names.
+              - 'src/utils/editor/wikilink-nav.ts'
               # issue 669: the literal-parity check below runs these, so a PR that
               # edits one must run the job that would notice it broke.
               - 'scripts/literal-parity.sh'

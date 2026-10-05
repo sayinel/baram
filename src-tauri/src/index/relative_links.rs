@@ -82,7 +82,7 @@ fn rewrite_relative_wikilinks_with(
 /// The components of `path`: split on `/` — and on `\` when `windows` —
 /// with empty parts and `.` dropped. A backslash in a Unix file name is a
 /// character, not a separator.
-fn path_components(path: &str, windows: bool) -> Vec<&str> {
+pub(super) fn path_components(path: &str, windows: bool) -> Vec<&str> {
     path.split(|c| c == '/' || (windows && c == '\\'))
         .filter(|part| !part.is_empty() && *part != ".")
         .collect()
@@ -92,7 +92,7 @@ fn path_components(path: &str, windows: bool) -> Vec<&str> {
 /// Windows drive (`C:`) is one, a UNC share (`\\server\share`) is two, a Unix
 /// path has none to keep — `..` above `/` stays at `/`, which an empty
 /// component list already is.
-fn root_components(path: &str, windows: bool) -> usize {
+pub(super) fn root_components(path: &str, windows: bool) -> usize {
     if !windows {
         return 0;
     }
@@ -111,7 +111,7 @@ fn root_components(path: &str, windows: bool) -> usize {
 /// directory `base`, whose first `root` components are the path's root: `..`
 /// steps up, and never above the root — `C:\vault` + `../../x` is `C:\x`, as
 /// it is to Windows.
-fn resolve_components<'a>(
+pub(super) fn resolve_components<'a>(
     base: &[&'a str],
     root: usize,
     relative: &'a str,
@@ -160,7 +160,7 @@ fn resolve_components<'a>(
 /// 675 and is rewritten into the renamed directory after it. Narrowing that
 /// needs an answer from the filesystem, which a pure function over two
 /// strings cannot ask for.
-fn same_component(a: &str, b: &str, windows: bool) -> bool {
+pub(super) fn same_component(a: &str, b: &str, windows: bool) -> bool {
     a == b || (windows && a.eq_ignore_ascii_case(b))
 }
 
@@ -172,7 +172,11 @@ fn is_drive(part: &str) -> bool {
 /// What of `path` lies under the directory `dir`: the components after
 /// `dir`'s — empty when `path` IS the directory — or None when it is not
 /// under it. Component-wise, so `ns` does not claim `ns-old`.
-fn strip_dir_prefix<'a>(dir: &[&str], path: &'a [&'a str], windows: bool) -> Option<&'a [&'a str]> {
+pub(super) fn strip_dir_prefix<'p, 'a>(
+    dir: &[&str],
+    path: &'p [&'a str],
+    windows: bool,
+) -> Option<&'p [&'a str]> {
     if path.len() < dir.len() {
         return None;
     }
@@ -186,7 +190,7 @@ fn strip_dir_prefix<'a>(dir: &[&str], path: &'a [&'a str], windows: bool) -> Opt
 /// The relative wikilink target that leads from the directory `source_dir`
 /// to `target`: `./` when the target lies under it, else `../` per step up,
 /// then the rest — joined with `/`, whatever the platform.
-fn relative_components(source_dir: &[&str], target: &[&str], windows: bool) -> String {
+pub(super) fn relative_components(source_dir: &[&str], target: &[&str], windows: bool) -> String {
     let common = source_dir
         .iter()
         .zip(target)

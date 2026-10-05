@@ -4,43 +4,52 @@
 //       파일 저장 시 해당 파일만 증분 업데이트
 
 mod extractor;
+mod filing;
+mod judgement;
 mod normalizer;
+mod read_back;
 mod relative_links;
+mod resolve;
 mod rewriter;
 pub mod service;
+mod types;
 
 use serde::Serialize;
 use std::collections::HashMap;
 use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
+pub(crate) use extractor::file_stem_from_path;
 pub use extractor::{
     collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
 };
+pub(crate) use filing::{filing_key, keys_for, root_relative_key, FilingKey, LocalAlias};
+pub(crate) use judgement::{root_places, BlockTarget, KnownPaths, RenameTarget, RootNotes};
+pub(crate) use read_back::{index_reads_the_rename_back, reads_a_link_under};
 pub use relative_links::rewrite_relative_wikilinks;
+pub(crate) use rewriter::link_reads_back_as_the_file;
 pub use rewriter::{
-    block_reference_can_spell, block_references_to, index_reads_the_rename_back,
-    own_block_reference_lines, replace_block_id_refs_to, replace_block_reference_target,
-    replace_wikilink_target, wikilink_can_spell, wikilinks_to,
+    block_reference_can_spell, own_block_reference_lines, replace_block_id_refs_to,
+    replace_block_reference_target, replace_wikilink_target, wikilink_can_spell,
 };
+pub(crate) use types::LinkResolution;
+pub use types::{BacklinkResult, IndexStats, LinkEdge, LinkEntry, LinkGraph};
 
 use extractor::{extract_file_tags, extract_links};
-use normalizer::{
-    extract_id_from_stem, file_key, is_id_target, normalize_file_path, normalize_target,
-    resolve_target,
-};
+use normalizer::normalize_file_path;
 
-/// The keys under which references TO `file_path` are filed in `incoming`:
-/// its normalized stem, and the zettel id inside that stem if it has one.
-/// `get_backlinks` reads them; the block-ID rename uses the same keys to
-/// decide which references in a referrer point at this file (issue 594).
-pub(crate) fn backlink_keys(file_path: &str) -> Vec<String> {
-    let stem = normalize_file_path(file_path);
-    let mut keys = vec![stem.clone()];
-    if let Some(id) = extract_id_from_stem(&stem) {
-        keys.push(id);
-    }
-    keys
+#[cfg(test)]
+thread_local! {
+    /// How many note paths `LinkIndex::path_keys_of` has spelled as a
+    /// `Path` key on this thread — what a rename's note sets cost, counted
+    /// rather than timed. Per thread, so tests running side by side do not mix.
+    static PATH_KEYS_SPELLED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// `PATH_KEYS_SPELLED` so far on this thread; a test reads it before and after.
+#[cfg(test)]
+pub(crate) fn path_keys_spelled() -> usize {
+    PATH_KEYS_SPELLED.with(std::cell::Cell::get)
 }
 
 #[derive(Error, Debug)]
@@ -105,7 +114,7 @@ impl LinkKind {
     }
 }
 
-/// The two passes a file rename runs over a referrer (`rename/file.rs`,
+/// The two passes a file rename runs over a referrer (`rename/passes.rs`,
 /// `LinkPasses`) — one per grammar a new stem may or may not be spelled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RewritePass {
@@ -115,86 +124,17 @@ pub enum RewritePass {
     BlockReferences,
 }
 
-/// A single link found in a source file (wikilink, block ref, or block embed)
-#[derive(Debug, Clone, Serialize)]
-pub struct LinkEntry {
-    /// The file containing the link
-    pub source_path: String,
-    /// The target referenced by the link
-    pub target: String,
-    /// Line number (1-based)
-    pub line: u32,
-    /// Context text around the link
-    pub context: String,
-    /// The grammar the link was read with — on the wire, the strings the
-    /// frontend has always seen (`LinkKind` serializes as camelCase)
-    pub link_type: LinkKind,
-    /// Block ID for block refs/embeds (e.g., "abc123" from ^abc123)
-    pub block_id: Option<String>,
-    /// §87 Vault alias for cross-vault links (e.g., "journal" from [[journal::note]])
-    pub target_vault_alias: Option<String>,
-}
-
-/// Backlink entry returned to the frontend
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BacklinkResult {
-    pub source_path: String,
-    pub target_path: String,
-    pub context: String,
-    pub line: u32,
-    pub link_type: LinkKind,
-    pub block_id: Option<String>,
-}
-
-/// §387 How `baram links` reports one outgoing link: resolved by the graph's resolver
-/// (`resolve_target_from_map`), except a cross-vault link, which is reported by alias.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum LinkResolution {
-    /// A file under this index's root, the one `resolve_target_from_map` answers.
-    Resolved(String),
-    /// `[[alias::note]]` — the link names another vault (§87). Not looked up here;
-    /// `get_link_graph` does look it up, and draws it to a local note of that name, or to
-    /// a placeholder path when there is none.
-    OtherVault(String),
-    /// `resolve_target_from_map` finds no file. `get_link_graph` draws such a link to the
-    /// placeholder path `resolve_target` builds.
-    Unresolved,
-}
-
-/// Link graph for the frontend
-#[derive(Debug, Clone, Serialize, Default)]
-pub struct LinkGraph {
-    pub nodes: Vec<String>,
-    pub edges: Vec<LinkEdge>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LinkEdge {
-    pub from: String,
-    pub to: String,
-    /// §87 True when this edge is a cross-vault link
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub cross_vault: bool,
-}
-
-/// Index build statistics
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IndexStats {
-    pub files_indexed: u32,
-    pub links_found: u32,
-    pub duration: u64, // milliseconds
-}
-
 /// The in-memory link index
 #[derive(Debug, Default)]
 pub struct LinkIndex {
     /// source_path → list of links found in that file
     outgoing: HashMap<String, Vec<LinkEntry>>,
-    /// target (normalized filename without .md) → list of backlinks
-    incoming: HashMap<String, Vec<LinkEntry>>,
+    /// The key a link is filed under (`filing_key`: its stem, its path under
+    /// `root_path`, or its vault alias with its target) → the links filed
+    /// there. A file's backlinks are read under `backlink_keys`: `keys_for`
+    /// its path, plus the zettel id in its stem when it has one, bare and
+    /// behind each local alias.
+    incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
     /// Normalized file stem (lowercase, no extension) → list of absolute file paths
@@ -266,11 +206,7 @@ impl LinkIndex {
 
             // Build incoming index
             for entry in &entries {
-                let normalized = normalize_target(&entry.target);
-                self.incoming
-                    .entry(normalized)
-                    .or_default()
-                    .push(entry.clone());
+                self.file_incoming(entry);
             }
 
             self.outgoing.insert(file_path.clone(), entries);
@@ -321,14 +257,128 @@ impl LinkIndex {
         self.file_tags.remove(file_path);
     }
 
+    /// File `entry` in `incoming` under the key `filing_key` gives it.
+    fn file_incoming(&mut self, entry: &LinkEntry) {
+        let key = filing_key(
+            &entry.source_path,
+            &entry.target,
+            entry.target_vault_alias.as_deref(),
+            self.root_path.as_deref(),
+            cfg!(windows),
+        );
+        self.incoming.entry(key).or_default().push(entry.clone());
+    }
+
+    /// The keys a link to `file_path` is filed under in this index
+    /// (`keys_for` under `root_path`): its stem, its path under the root,
+    /// and each of `local_aliases` paired with its stem and its path under
+    /// that alias's own root.
+    pub fn filing_keys_of(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
+        keys_for(
+            file_path,
+            self.root_path.as_deref(),
+            local_aliases,
+            cfg!(windows),
+        )
+    }
+
+    /// The `Path`-key text of every note this index holds under its root,
+    /// with how many of its notes fold to it: `root_relative_key` — the
+    /// function `keys_for` spells a file's path key with, so the shapes
+    /// agree — of each path in `file_map`, which holds each path once. Not
+    /// `relative_map`, whose keys keep the host's separators and hold one
+    /// path per key. Empty with no root. The rename reads it to tell whether
+    /// a path link names an existing note under a root that holds the
+    /// referrer, and whether more than one note there answers to it — on a
+    /// file system that keeps case, `A/note.md` and `a/note.md` both fold
+    /// to `a/note` (`judgement::KnownPaths`).
+    pub fn registered_path_keys(&self) -> HashMap<String, usize> {
+        self.path_keys_of(self.file_map.values().flatten())
+    }
+
+    /// The `Path` keys two or more of this index's notes fold to, with how
+    /// many — `registered_path_keys` without the keys one note alone has,
+    /// for a rename whose only holding root this is (`judgement::RootNotes::Sole`).
+    /// Two notes share a key only when they share its last component
+    /// (`filing::path_key_name`), so the notes are grouped by that first and
+    /// a full key is spelled only for a group of two or more — none, in a
+    /// vault whose note names are all different.
+    pub fn colliding_path_keys(&self) -> HashMap<String, usize> {
+        let mut by_name: HashMap<String, Vec<&String>> = HashMap::new();
+        for path in self.file_map.values().flatten() {
+            by_name
+                .entry(filing::path_key_name(path, cfg!(windows)))
+                .or_default()
+                .push(path);
+        }
+        let mut keys = self.path_keys_of(
+            by_name
+                .into_values()
+                .filter(|group| group.len() > 1)
+                .flatten(),
+        );
+        keys.retain(|_, notes| *notes > 1);
+        keys
+    }
+
+    /// How many of this index's notes fold to the `Path` key `key` — the
+    /// one entry of `registered_path_keys` a file rename needs for its new
+    /// name when this is its only holding root (`judgement::RootNotes::Sole`).
+    /// Spelled only for the notes whose name is the key's last component, as
+    /// `colliding_path_keys` groups them.
+    pub fn path_key_notes(&self, key: &str) -> usize {
+        let name = key.rsplit('/').next().unwrap_or(key);
+        let same_name = self
+            .file_map
+            .values()
+            .flatten()
+            .filter(|path| filing::path_key_name(path, cfg!(windows)) == name);
+        self.path_keys_of(same_name).get(key).copied().unwrap_or(0)
+    }
+
+    /// The `Path` key of each of `paths` under this index's root
+    /// (`root_relative_key`), with how many of them fold to it. Empty with
+    /// no root.
+    fn path_keys_of<'a>(&self, paths: impl Iterator<Item = &'a String>) -> HashMap<String, usize> {
+        let mut keys = HashMap::new();
+        let Some(root) = self.root_path.as_deref() else {
+            return keys;
+        };
+        for path in paths {
+            #[cfg(test)]
+            PATH_KEYS_SPELLED.with(|n| n.set(n.get() + 1));
+            if let Some(key) = filing::root_relative_key(root, path, cfg!(windows)) {
+                *keys.entry(key).or_insert(0) += 1;
+            }
+        }
+        keys
+    }
+
+    /// The keys `get_backlinks` and `block_reference_lines` read for
+    /// `file_path` (`backlink_keys_for` under `root_path`): `filing_keys_of`,
+    /// plus the zettel id inside its stem if it has one, under which a bare
+    /// `[[202607051530]]` is filed, and that id behind each of
+    /// `local_aliases` (`[[Zettel::202607051530]]`).
+    pub fn backlink_keys(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
+        filing::backlink_keys_for(
+            file_path,
+            self.root_path.as_deref(),
+            local_aliases,
+            cfg!(windows),
+        )
+    }
+
     /// The `(source_path, line)` pairs that refer to `file_path`'s block
-    /// `block_id`, for the block-ID rename (issue 594). Unlike
-    /// `get_backlinks`, nothing is deduplicated by `(source, line)` BEFORE the
-    /// block filter — a line holding `[[note]] ((note#^id))` has two entries,
-    /// and the wikilink must not hide the block reference.
+    /// `block_id`, for the block-ID rename (issue 594), read under
+    /// `backlink_keys`. Unlike `get_backlinks`, nothing is deduplicated by
+    /// `(source, line)` BEFORE the block filter — a line holding
+    /// `[[note]] ((note#^id))` has two entries, and the wikilink must not hide
+    /// the block reference. No vault alias: the block reference and embed
+    /// grammars have no alias group (`BLOCK_REF_RE`, `BLOCK_EMBED_RE` in
+    /// extractor.rs).
     pub fn block_reference_lines(&self, file_path: &str, block_id: &str) -> Vec<(String, u32)> {
         let mut out = Vec::new();
-        for key in backlink_keys(file_path) {
+        for key in self.backlink_keys(file_path, &[]) {
             if let Some(entries) = self.incoming.get(&key) {
                 for e in entries {
                     if e.block_id.as_deref() == Some(block_id) {
@@ -342,35 +392,43 @@ impl LinkIndex {
         out
     }
 
-    /// §33 · issue 678: every `(file, line)` filed under this `stem`'s own
-    /// key (`file_key`, not `normalize_target`, which would read a stem
-    /// ending in `.md` as another note's) — wikilink, block reference and
-    /// embed alike. NOT the zettel-id key that `backlink_keys` adds and
-    /// `get_backlinks` also reads: a bare `[[202607051530]]` is filed under
-    /// the id, so a rename neither rewrites nor reports it (as on main,
-    /// whose `get_files_linking_to` read the one key too). A file rename
-    /// rewrites all three kinds, and counts the lines each referrer was
-    /// named for to tell a same-stem note's own references apart from a
+    /// §33 · issue 678: every `(file, line)` filed under the keys a link to
+    /// `file_path` is filed under (`filing_keys_of`: its stem — `file_key`,
+    /// not `normalize_target`, which would read a stem ending in `.md` as
+    /// another note's — and its path under the root) — wikilink, block
+    /// reference and embed alike. NOT the zettel-id keys that `backlink_keys`
+    /// adds and `get_backlinks` also reads: a bare `[[202607051530]]` is
+    /// filed under the id, and `[[Zettel::202607051530]]` under the id behind
+    /// the alias, so a rename neither rewrites nor reports either. A file
+    /// rename rewrites all three kinds, and counts the lines each referrer
+    /// was named for to tell a same-stem note's own references apart from a
     /// stale index.
-    pub fn referring_lines_to(&self, stem: &str) -> Vec<(String, u32)> {
+    pub fn referring_lines_to(
+        &self,
+        file_path: &str,
+        local_aliases: &[LocalAlias],
+    ) -> Vec<(String, u32)> {
         let mut out: Vec<(String, u32)> = self
-            .incoming
-            .get(&file_key(stem))
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| (e.source_path.clone(), e.line))
-                    .collect()
-            })
-            .unwrap_or_default();
+            .filing_keys_of(file_path, local_aliases)
+            .iter()
+            .filter_map(|key| self.incoming.get(key))
+            .flatten()
+            .map(|e| (e.source_path.clone(), e.line))
+            .collect();
         out.sort();
         out.dedup();
         out
     }
 
-    /// Get backlinks for a given file path
-    pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
-        let keys = backlink_keys(file_path);
+    /// Get backlinks for a given file path, read under `backlink_keys`, one
+    /// per `(source, line)`. Sorted by source path, then line, so the order
+    /// does not depend on which key a link was filed under.
+    pub fn get_backlinks(
+        &self,
+        file_path: &str,
+        local_aliases: &[LocalAlias],
+    ) -> Vec<BacklinkResult> {
+        let keys = self.backlink_keys(file_path, local_aliases);
 
         let mut seen = std::collections::HashSet::new();
         let mut results = Vec::new();
@@ -390,218 +448,10 @@ impl LinkIndex {
                 }
             }
         }
+        results.sort_by(|a, b| {
+            (a.source_path.as_str(), a.line).cmp(&(b.source_path.as_str(), b.line))
+        });
         results
-    }
-
-    /// §387 The links `file_path` holds, each with how `baram links` reports it: the file
-    /// the graph's resolver (`resolve_target_from_map`) finds for the target, or, for a
-    /// cross-vault link, its alias.
-    ///
-    /// `None` when `outgoing` holds nothing under that exact string: the file is not
-    /// markdown, the walk skips it, it could not be read, it is a symlink (the walkers do
-    /// not follow one), or the path is spelled under another root string than the one
-    /// `build` received. A note with no links is `Some(vec![])` — `build` files every
-    /// markdown file it reads under `outgoing`, linked or not.
-    ///
-    /// ONE method rather than three exposed pieces, because the ORDER is the contract.
-    /// A cross-vault link is decided first: its `target` is the bare note name, so
-    /// asking the maps would resolve `[[journal::x]]` to a local `x.md`. Then the target
-    /// is normalized, and only then are the maps asked. So for a cross-vault link this
-    /// is NOT what `get_link_graph` does: the graph asks the maps for every entry, alias
-    /// or not, and only marks the edge `cross_vault`.
-    ///
-    /// Otherwise it is the GRAPH's resolution, not the editor's click-through: no
-    /// `[[./x]]` relative to the source, no journal dates, and a path-qualified target
-    /// that misses falls back to its stem.
-    pub(crate) fn outgoing_resolved(
-        &self,
-        file_path: &str,
-    ) -> Option<Vec<(LinkEntry, LinkResolution)>> {
-        let entries = self.outgoing.get(file_path)?;
-        Some(
-            entries
-                .iter()
-                .map(|entry| {
-                    let resolution = match &entry.target_vault_alias {
-                        Some(alias) => LinkResolution::OtherVault(alias.clone()),
-                        None => {
-                            match self.resolve_target_from_map(&normalize_target(&entry.target)) {
-                                Some(path) => LinkResolution::Resolved(path),
-                                None => LinkResolution::Unresolved,
-                            }
-                        }
-                    };
-                    (entry.clone(), resolution)
-                })
-                .collect(),
-        )
-    }
-
-    /// Register a file path in file_map and relative_map for target resolution
-    fn register_file_path(&mut self, file_path: &str, root_path: &str) {
-        let stem = normalize_file_path(file_path);
-        let paths = self.file_map.entry(stem.clone()).or_default();
-        if !paths.contains(&file_path.to_string()) {
-            paths.push(file_path.to_string());
-        }
-
-        // Build relative path mapping (e.g., "notes/architecture" → "/vault/notes/architecture.md")
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel);
-            let rel_normalized = rel
-                .strip_suffix(".md")
-                .or_else(|| rel.strip_suffix(".markdown"))
-                .unwrap_or(rel)
-                .to_lowercase();
-            self.relative_map
-                .insert(rel_normalized, file_path.to_string());
-        }
-
-        // Register id → path for [[ID]] resolution (Zettelkasten)
-        if let Some(id) = extract_id_from_stem(&stem) {
-            self.id_map.insert(id, file_path.to_string());
-        }
-    }
-
-    /// §278 Register a file as a wikilink TARGET only — `name_map` and nothing else.
-    ///
-    /// ‼️ Deliberately NOT `register_file_path`. That one also fills `file_map` (keyed by
-    /// file stem) and `relative_map`, and a PDF landing in `file_map` would put
-    /// `Paper.pdf` under the stem `paper` — the same key its highlight companion note
-    /// uses, since `companionPathFor` derives one name from the other. Whichever
-    /// registered first would then win a bare `[[Paper]]`, silently changing where an
-    /// existing link points. Confining non-markdown files to `name_map` keeps the stem
-    /// and relative lookups exactly as they were: this can only add resolutions.
-    ///
-    /// Both the bare name and the vault-relative path are registered, because
-    /// `normalize_target` strips only markdown extensions — `[[Paper.pdf]]` normalises to
-    /// `paper.pdf` and `[[papers/Paper.pdf]]` to `papers/paper.pdf`, and both forms have
-    /// to find the file.
-    fn register_link_target(&mut self, file_path: &str, root_path: &str) {
-        let mut keys: Vec<String> = Vec::new();
-
-        if let Some(name) = std::path::Path::new(file_path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_lowercase())
-        {
-            keys.push(name);
-        }
-
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel)
-                .to_lowercase();
-            if !keys.contains(&rel) {
-                keys.push(rel);
-            }
-        }
-
-        for key in keys {
-            let paths = self.name_map.entry(key).or_default();
-            if !paths.contains(&file_path.to_string()) {
-                paths.push(file_path.to_string());
-            }
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn id_map_len(&self) -> usize {
-        self.id_map.len()
-    }
-
-    /// Resolve a wikilink target to an actual file path using file maps.
-    /// Falls back to None if no matching file is found.
-    fn resolve_target_from_map(&self, target_normalized: &str) -> Option<String> {
-        // 0) Zettelkasten [[ID]] — bare timestamp id resolves via id_map (subfolder-agnostic)
-        if is_id_target(target_normalized) {
-            if let Some(path) = self.id_map.get(target_normalized) {
-                return Some(path.clone());
-            }
-        }
-
-        // 1) Try relative path match (for [[path/name]] style targets)
-        if let Some(path) = self.relative_map.get(target_normalized) {
-            return Some(path.clone());
-        }
-
-        // 2) Extract stem (last path component) for stem-only lookup
-        let stem = target_normalized
-            .rsplit('/')
-            .next()
-            .unwrap_or(target_normalized);
-
-        // 3) Look up in file_map
-        if let Some(paths) = self.file_map.get(stem) {
-            if !paths.is_empty() {
-                return Some(paths[0].clone());
-            }
-        }
-
-        // 4) §278 Full file name, extension included — `[[Paper.pdf]]`.
-        //
-        // ‼️ LAST, exactly like the frontend resolver. The order is the safety property:
-        // every target that resolves today is decided above, so this step can only add
-        // resolutions, never change one. In particular a bare `[[Paper]]` keeps going to
-        // the markdown note (which, for a PDF, is its highlight companion — they share a
-        // stem because companionPathFor builds one from the other).
-        if let Some(paths) = self.name_map.get(target_normalized) {
-            if !paths.is_empty() {
-                return Some(paths[0].clone());
-            }
-        }
-
-        None
-    }
-
-    /// Get the full link graph
-    pub fn get_link_graph(&self) -> LinkGraph {
-        let mut nodes_set = std::collections::HashSet::new();
-        let mut edges = Vec::new();
-
-        for (source, entries) in &self.outgoing {
-            nodes_set.insert(source.clone());
-            for entry in entries {
-                let target_normalized = normalize_target(&entry.target);
-                if let Some(root) = &self.root_path {
-                    // Use file maps for accurate resolution, fall back to simple path construction
-                    let target_path = self
-                        .resolve_target_from_map(&target_normalized)
-                        .unwrap_or_else(|| resolve_target(root, &target_normalized));
-                    nodes_set.insert(target_path.clone());
-                    edges.push(LinkEdge {
-                        from: source.clone(),
-                        to: target_path,
-                        cross_vault: entry.target_vault_alias.is_some(),
-                    });
-                }
-            }
-        }
-
-        // Add tag virtual nodes and file→tag edges
-        for (file_path, tags) in &self.file_tags {
-            if !nodes_set.contains(file_path) {
-                continue; // skip files not in graph
-            }
-            for tag in tags {
-                let tag_node_id = format!("tag:{}", tag);
-                nodes_set.insert(tag_node_id.clone());
-                edges.push(LinkEdge {
-                    from: file_path.clone(),
-                    to: tag_node_id,
-                    cross_vault: false,
-                });
-            }
-        }
-
-        LinkGraph {
-            nodes: nodes_set.into_iter().collect(),
-            edges,
-        }
     }
 
     /// Update index for a single file using already-read content (sync, no I/O)
@@ -615,11 +465,7 @@ impl LinkIndex {
 
         let entries = extract_links(file_path, content);
         for entry in &entries {
-            let normalized = normalize_target(&entry.target);
-            self.incoming
-                .entry(normalized)
-                .or_default()
-                .push(entry.clone());
+            self.file_incoming(entry);
         }
         self.outgoing.insert(file_path.to_string(), entries);
 
@@ -633,6 +479,7 @@ impl LinkIndex {
 
 #[cfg(test)]
 mod tests {
+    use super::normalizer::file_key;
     use super::*;
 
     #[test]
@@ -648,6 +495,7 @@ mod tests {
             link_type: LinkKind::Wikilink,
             block_id: None,
             target_vault_alias: None,
+            self_reference: false,
         };
         index
             .outgoing
@@ -656,11 +504,11 @@ mod tests {
             .push(entry.clone());
         index
             .incoming
-            .entry("architecture".to_string())
+            .entry(FilingKey::Stem("architecture".to_string()))
             .or_default()
             .push(entry);
 
-        let backlinks = index.get_backlinks("/vault/architecture.md");
+        let backlinks = index.get_backlinks("/vault/architecture.md", &[]);
         assert_eq!(backlinks.len(), 1);
         assert_eq!(backlinks[0].source_path, "/vault/overview.md");
     }
@@ -670,21 +518,38 @@ mod tests {
         // issue 678: the rename needs the referrers AND how many lines the
         // index named each for — one entry per (file, line), for every kind
         // `LinkKind::ALL` lists, each on a line of its own here (a fourth
-        // kind is in this fixture the moment the enum has one); a
-        // path-qualified target filed elsewhere (issue 619) not among them.
+        // kind is in this fixture the moment the enum has one). A
+        // path-qualified target is filed under its path under the root
+        // (issue 619): it is among the lines of `dir/target.md`, and not of
+        // a `target.md` elsewhere.
+        // What fails this: dropping the `Path` key from `keys_for` — the
+        // `((dir/target#^b1))` line leaves the first answer.
         let mut lines: Vec<String> = LinkKind::ALL
             .iter()
             .map(|kind| format!("see {}", kind.spelled("target", "b1")))
             .collect();
         lines.push("((dir/target#^b1))".to_string());
         let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.update_file_from_content("/vault/dir/target.md", "para ^b1");
         index.update_file_from_content("/vault/r.md", &lines.join("\n"));
         index.update_file_from_content("/vault/s.md", "[[other]]");
         let one_per_kind: Vec<(String, u32)> = (1..=LinkKind::ALL.len() as u32)
             .map(|line| ("/vault/r.md".to_string(), line))
             .collect();
-        assert_eq!(index.referring_lines_to("target"), one_per_kind);
-        assert!(index.referring_lines_to("nothing").is_empty());
+        let mut with_the_path = one_per_kind.clone();
+        with_the_path.push(("/vault/r.md".to_string(), LinkKind::ALL.len() as u32 + 1));
+        assert_eq!(
+            index.referring_lines_to("/vault/dir/target.md", &[]),
+            with_the_path
+        );
+        assert_eq!(
+            index.referring_lines_to("/vault/target.md", &[]),
+            one_per_kind
+        );
+        assert!(index
+            .referring_lines_to("/vault/nothing.md", &[])
+            .is_empty());
     }
 
     #[test]
@@ -709,7 +574,9 @@ mod tests {
         //
         // The fixture must hold no self-reference: `((#^id))` is filed under
         // the REFERRER's own stem, so it is not in this bucket and no pass
-        // visits it. A path-qualified reference is filed elsewhere too.
+        // visits it. `((dir/target#^b1))` names another file's path (issue
+        // 619): it is not in this bucket and no pass visits it for
+        // `/vault/target.md` — the sibling test below counts the path bucket.
         let mut content = LinkKind::ALL
             .iter()
             .map(|kind| kind.spelled("target", "b1"))
@@ -721,18 +588,170 @@ mod tests {
         index.update_file_from_content("/vault/r.md", content);
         let filed = index
             .incoming
-            .get(&file_key("target"))
+            .get(&FilingKey::Stem(file_key("target")))
             .map_or(0, |entries| {
                 entries
                     .iter()
                     .filter(|e| e.source_path == "/vault/r.md")
                     .count()
             });
+        let target = RenameTarget {
+            old_path: "/vault/target.md",
+            new_path: "/vault/renamed.md",
+            local_aliases: &[],
+            known_paths: Default::default(),
+            windows: false,
+        };
+        let roots = ["/vault".to_string()];
         assert_eq!(
-            wikilinks_to(content, "target") + block_references_to(content, "/vault/r.md", "target"),
+            replace_wikilink_target(content, "/vault/r.md", &roots, &target).matched
+                + replace_block_reference_target(content, "/vault/r.md", &roots, &target).matched,
             filed,
             "the index files a reference under this stem that neither rewrite pass visits"
         );
+    }
+
+    #[test]
+    fn the_colliding_path_keys_are_every_key_two_notes_share_and_no_other() {
+        // `A/note.md` and `a/note.md` fold to `a/note`. `a/x.txt` — a rename
+        // to `.txt` keeps the file in the index — and `a/x.txt.md` both
+        // fold to `a/x.txt` although their stems, `x` and `x.txt`, differ:
+        // the notes are grouped by the key's own last component, not by
+        // stem. `b/note.md` shares a name with the first pair but not a key.
+        // What fails this: grouping by `file_map`'s stem buckets instead of
+        // `path_key_name` — `a/x.txt` is missed; and keeping the keys only
+        // one note has — `b/note` appears.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        for path in [
+            "/v/A/note.md",
+            "/v/a/note.md",
+            "/v/b/note.md",
+            "/v/a/x.txt",
+            "/v/a/x.txt.md",
+            "/v/c/other.md",
+        ] {
+            index.update_file_from_content(path, "");
+        }
+        let expected: HashMap<String, usize> =
+            [("a/note".to_string(), 2), ("a/x.txt".to_string(), 2)].into();
+        assert_eq!(index.colliding_path_keys(), expected);
+        let all = index.registered_path_keys();
+        assert_eq!(all.len(), 4, "{all:?}");
+        assert_eq!(all.get("b/note"), Some(&1));
+    }
+
+    #[test]
+    fn every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass() {
+        // issue 619: the same count for the path bucket — every kind in
+        // `LinkKind::ALL`, spelled with the target's path from the root and
+        // relative to the referrer's folder, is filed under `Path("dir/target")`
+        // and must be visited by one pass. A link behind a vault alias is
+        // filed as `Foreign`: another vault's while the alias is not this
+        // vault's (visited 0 times), this file's once it is (visited once).
+        // What fails this: dropping the `Path` arm from `RenameTarget::refers`
+        // (the path spellings are filed and not visited), or dropping its
+        // alias check (the `Foreign` line is visited with no local alias).
+        let mut spellings: Vec<String> = Vec::new();
+        for spelled_as in ["dir/target", "./target"] {
+            spellings.extend(
+                LinkKind::ALL
+                    .iter()
+                    .map(|kind| kind.spelled(spelled_as, "b1")),
+            );
+        }
+        spellings.push("[[work::target]]".to_string());
+        let content = spellings.join("\n");
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/dir/target.md", "para ^b1");
+        index.update_file_from_content("/v/dir/r.md", &content);
+        let filed_under = |key: &FilingKey| {
+            index.incoming.get(key).map_or(0, |entries| {
+                entries
+                    .iter()
+                    .filter(|e| e.source_path == "/v/dir/r.md")
+                    .count()
+            })
+        };
+        let filed = filed_under(&FilingKey::Path("dir/target".to_string()));
+        assert_eq!(filed, 2 * LinkKind::ALL.len());
+        assert_eq!(
+            filed_under(&FilingKey::Foreign {
+                alias: "work".to_string(),
+                target: "target".to_string(),
+            }),
+            1
+        );
+        let roots = ["/v".to_string()];
+        let visited = |local_aliases: &[LocalAlias]| {
+            let target = RenameTarget {
+                old_path: "/v/dir/target.md",
+                new_path: "/v/dir/renamed.md",
+                local_aliases,
+                known_paths: Default::default(),
+                windows: false,
+            };
+            replace_wikilink_target(&content, "/v/dir/r.md", &roots, &target).matched
+                + replace_block_reference_target(&content, "/v/dir/r.md", &roots, &target).matched
+        };
+        assert_eq!(
+            visited(&[]),
+            filed,
+            "the index files a reference under this path that neither rewrite pass visits"
+        );
+        let work = LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        };
+        assert_eq!(visited(&[work]), filed + 1);
+    }
+
+    #[test]
+    fn a_path_qualified_reference_is_a_backlink_of_the_file_it_names() {
+        // issue 619: a reference spelled with the target's path under the
+        // root — from the root, or relative to the referrer's folder — is
+        // filed under that path and read back for that file alone, never
+        // for another folder's note of the same stem.
+        // What fails this: dropping the `Path` key from `keys_for`, so
+        // `dir/note.md` reads its stem alone and finds nothing.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/dir/note.md", "para ^b1");
+        index.update_file_from_content("/v/other/note.md", "para ^b1");
+        index.update_file_from_content("/v/dir/note2.markdown", "text");
+        index.update_file_from_content(
+            "/v/r.md",
+            "[[dir/note]]\n((dir/note#^b1))\n{{embed ((dir/note#^b1))}}\n[[dir/note2.markdown]]",
+        );
+        index.update_file_from_content("/v/dir/s.md", "((./note#^b1))\n[[../dir/note|x]]");
+
+        assert_eq!(index.get_backlinks("/v/dir/note.md", &[]).len(), 5);
+        assert!(index.get_backlinks("/v/other/note.md", &[]).is_empty());
+        assert_eq!(index.get_backlinks("/v/dir/note2.markdown", &[]).len(), 1);
+        assert_eq!(
+            index.block_reference_lines("/v/dir/note.md", "b1"),
+            vec![
+                ("/v/dir/s.md".to_string(), 1),
+                ("/v/r.md".to_string(), 2),
+                ("/v/r.md".to_string(), 3),
+            ]
+        );
+        assert_eq!(index.referring_lines_to("/v/dir/note.md", &[]).len(), 5);
+    }
+
+    #[test]
+    fn a_reference_that_escapes_the_root_is_nobodys_backlink() {
+        // A relative target that climbs out of the root keeps its text as
+        // its key, which no file under the root answers to.
+        // What fails this: stopping `..` at the vault root instead of the
+        // filesystem root in `filing_key`, so `../../x` resolves to `/v/x`
+        // and `/v/x.md` claims it.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/x.md", "text");
+        index.update_file_from_content("/v/dir/r.md", "[[../../x]]");
+        assert!(index.get_backlinks("/v/x.md", &[]).is_empty());
     }
 
     #[test]
@@ -761,18 +780,21 @@ mod tests {
 
         let files = |target: &str| -> Vec<String> {
             let mut files: Vec<String> = index
-                .referring_lines_to(target)
+                .referring_lines_to(target, &[])
                 .into_iter()
                 .map(|(file, _)| file)
                 .collect();
             files.dedup();
             files
         };
-        assert_eq!(files("target"), vec!["/vault/a.md", "/vault/b.md"]);
+        assert_eq!(
+            files("/vault/target.md"),
+            vec!["/vault/a.md", "/vault/b.md"]
+        );
         // Case-insensitive
-        assert_eq!(files("Target").len(), 2);
+        assert_eq!(files("/vault/Target.md").len(), 2);
         // No match
-        assert!(files("nonexistent").is_empty());
+        assert!(files("/vault/nonexistent.md").is_empty());
     }
 
     #[test]
@@ -787,6 +809,7 @@ mod tests {
             link_type: LinkKind::Wikilink,
             block_id: None,
             target_vault_alias: None,
+            self_reference: false,
         };
         index
             .outgoing
@@ -795,13 +818,13 @@ mod tests {
             .push(entry.clone());
         index
             .incoming
-            .entry("b".to_string())
+            .entry(FilingKey::Stem("b".to_string()))
             .or_default()
             .push(entry);
 
         index.remove_file("/vault/a.md");
         assert!(!index.outgoing.contains_key("/vault/a.md"));
-        assert!(index.get_backlinks("/vault/b.md").is_empty());
+        assert!(index.get_backlinks("/vault/b.md", &[]).is_empty());
     }
 
     // --- File map target resolution tests ---
@@ -851,98 +874,6 @@ mod tests {
     }
 
     #[test]
-    fn test_name_lookup_runs_after_the_stem_and_relative_lookups() {
-        // ‼️ This fixture is SYNTHETIC on purpose, and it has to be.
-        //
-        // The obvious ordering test — a PDF beside its companion note — cannot fail: the
-        // PDF's name_map keys carry an extension ("attention.pdf") while a bare
-        // `[[attention]]` normalises without one, so the name lookup misses no matter
-        // where it sits. A mutation that hoists it above the stem lookup survived that
-        // test, which is how this gap was found.
-        //
-        // The two orders are only distinguishable when a name_map key equals a target
-        // that the earlier maps also answer. An extension-LESS file does that: it
-        // registers under "notes/architecture", the exact key `relative_map` builds for
-        // "notes/architecture.md" (normalize_target strips the markdown extension).
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_file_path("/vault/notes/architecture.md", "/vault");
-        index.register_link_target("/vault/notes/architecture", "/vault");
-
-        // Markdown wins — hoisting the name lookup returns the extension-less file here.
-        assert_eq!(
-            index.resolve_target_from_map("notes/architecture"),
-            Some("/vault/notes/architecture.md".to_string())
-        );
-        assert_eq!(
-            index.resolve_target_from_map("architecture"),
-            Some("/vault/notes/architecture.md".to_string())
-        );
-    }
-
-    #[test]
-    fn test_resolve_pdf_target_by_full_name() {
-        // §278 `[[Paper.pdf]]` — normalize_target strips only markdown extensions, so the
-        // target stays "paper.pdf" while file_map is keyed by the stem "paper".
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_link_target("/vault/papers/attention.pdf", "/vault");
-
-        assert_eq!(
-            index.resolve_target_from_map("attention.pdf"),
-            Some("/vault/papers/attention.pdf".to_string())
-        );
-    }
-
-    #[test]
-    fn test_resolve_pdf_target_by_relative_path() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_link_target("/vault/papers/attention.pdf", "/vault");
-
-        assert_eq!(
-            index.resolve_target_from_map("papers/attention.pdf"),
-            Some("/vault/papers/attention.pdf".to_string())
-        );
-    }
-
-    #[test]
-    fn test_bare_target_still_resolves_to_the_markdown_note() {
-        // ‼️ THE safety property. A PDF and its highlight companion note share a stem by
-        // construction (companionPathFor). Registering the PDF must not steal `[[x]]`
-        // from the note — non-markdown files go into name_map alone, and the name lookup
-        // runs last.
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_link_target("/vault/papers/attention.pdf", "/vault");
-        index.register_file_path("/vault/highlights/papers/attention.md", "/vault");
-
-        assert_eq!(
-            index.resolve_target_from_map("attention"),
-            Some("/vault/highlights/papers/attention.md".to_string())
-        );
-        // …and the explicit form still reaches the PDF.
-        assert_eq!(
-            index.resolve_target_from_map("attention.pdf"),
-            Some("/vault/papers/attention.pdf".to_string())
-        );
-    }
-
-    #[test]
-    fn test_link_target_registration_is_case_insensitive() {
-        // The real file is "Survey.PDF"; a case-sensitive filesystem will not open a
-        // lower-cased path, so the stored value must be the path as it is on disk.
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_link_target("/vault/papers/Survey.PDF", "/vault");
-
-        assert_eq!(
-            index.resolve_target_from_map("survey.pdf"),
-            Some("/vault/papers/Survey.PDF".to_string())
-        );
-    }
-
-    #[test]
     fn test_removing_a_file_drops_its_link_target_keys() {
         let mut index = LinkIndex::new();
         index.root_path = Some("/vault".to_string());
@@ -951,135 +882,6 @@ mod tests {
 
         index.remove_file("/vault/papers/attention.pdf");
         assert_eq!(index.resolve_target_from_map("attention.pdf"), None);
-    }
-
-    #[test]
-    fn test_resolve_target_stem_only() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_file_path("/vault/notes/architecture.md", "/vault");
-
-        let resolved = index.resolve_target_from_map("architecture");
-        assert_eq!(resolved, Some("/vault/notes/architecture.md".to_string()));
-    }
-
-    #[test]
-    fn test_resolve_target_with_relative_path() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_file_path("/vault/notes/architecture.md", "/vault");
-
-        let resolved = index.resolve_target_from_map("notes/architecture");
-        assert_eq!(resolved, Some("/vault/notes/architecture.md".to_string()));
-    }
-
-    #[test]
-    fn test_resolve_target_not_found() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_file_path("/vault/notes/architecture.md", "/vault");
-
-        let resolved = index.resolve_target_from_map("nonexistent");
-        assert_eq!(resolved, None);
-    }
-
-    #[test]
-    fn test_resolve_target_multiple_same_stem() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_file_path("/vault/a/readme.md", "/vault");
-        index.register_file_path("/vault/b/readme.md", "/vault");
-
-        // Stem-only: returns first registered
-        let resolved = index.resolve_target_from_map("readme");
-        assert!(resolved.is_some());
-
-        // With relative path: resolves to specific one
-        let resolved_a = index.resolve_target_from_map("a/readme");
-        assert_eq!(resolved_a, Some("/vault/a/readme.md".to_string()));
-
-        let resolved_b = index.resolve_target_from_map("b/readme");
-        assert_eq!(resolved_b, Some("/vault/b/readme.md".to_string()));
-    }
-
-    #[test]
-    fn test_resolve_target_case_insensitive() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-        index.register_file_path("/vault/Notes/My Note.md", "/vault");
-
-        // normalize_target lowercases, so lookup should match
-        let resolved = index.resolve_target_from_map("my note");
-        assert_eq!(resolved, Some("/vault/Notes/My Note.md".to_string()));
-    }
-
-    #[test]
-    fn test_link_graph_resolves_across_subdirs() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-
-        // Register files in subdirectories
-        index.register_file_path("/vault/notes/architecture.md", "/vault");
-        index.register_file_path("/vault/daily/2024-01-15.md", "/vault");
-
-        // Daily file links to architecture note via wikilink
-        index.update_file_from_content(
-            "/vault/daily/2024-01-15.md",
-            "Today I worked on [[architecture]].",
-        );
-
-        let graph = index.get_link_graph();
-
-        // The edge should point to the actual file in notes/, not ghost at /vault/architecture.md
-        assert!(
-            graph
-                .edges
-                .iter()
-                .any(|e| e.from == "/vault/daily/2024-01-15.md"
-                    && e.to == "/vault/notes/architecture.md"),
-            "Edge should resolve to actual file path: {:?}",
-            graph.edges
-        );
-
-        // No ghost node at /vault/architecture.md
-        assert!(
-            !graph.nodes.contains(&"/vault/architecture.md".to_string()),
-            "Should not create ghost node at root level"
-        );
-    }
-
-    #[test]
-    fn test_link_graph_chain_daily_note_subnote() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/vault".to_string());
-
-        // Register all files
-        index.register_file_path("/vault/daily/2024-01-15.md", "/vault");
-        index.register_file_path("/vault/notes/project-x.md", "/vault");
-        index.register_file_path("/vault/notes/sub/design.md", "/vault");
-
-        // daily → project-x → design chain
-        index
-            .update_file_from_content("/vault/daily/2024-01-15.md", "Started [[project-x]] today.");
-        index.update_file_from_content("/vault/notes/project-x.md", "See [[design]] for details.");
-
-        let graph = index.get_link_graph();
-
-        // Both edges should resolve to actual files
-        assert!(
-            graph
-                .edges
-                .iter()
-                .any(|e| e.from == "/vault/daily/2024-01-15.md"
-                    && e.to == "/vault/notes/project-x.md")
-        );
-        assert!(
-            graph
-                .edges
-                .iter()
-                .any(|e| e.from == "/vault/notes/project-x.md"
-                    && e.to == "/vault/notes/sub/design.md")
-        );
     }
 
     #[test]
@@ -1120,24 +922,6 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_id_target_across_subfolders() {
-        let mut index = LinkIndex::new();
-        index.root_path = Some("/z".to_string());
-        index.register_file_path("/z/notes/202607051530 원자적 노트.md", "/z");
-        // [[202607051530]] resolves to the id-prefixed file in the subfolder
-        assert_eq!(
-            index.resolve_target_from_map("202607051530"),
-            Some("/z/notes/202607051530 원자적 노트.md".to_string())
-        );
-        // a non-id target is unaffected (existing stem/relative behavior)
-        index.register_file_path("/z/architecture.md", "/z");
-        assert_eq!(
-            index.resolve_target_from_map("architecture"),
-            Some("/z/architecture.md".to_string())
-        );
-    }
-
-    #[test]
     fn test_backlinks_by_id() {
         let mut index = LinkIndex::new();
         index.root_path = Some("/z".to_string());
@@ -1148,7 +932,7 @@ mod tests {
             "/z/notes/202607051600 다른 노트.md",
             "본문 [[202607051530]] 참조",
         );
-        let backlinks = index.get_backlinks("/z/notes/202607051530 원자적 노트.md");
+        let backlinks = index.get_backlinks("/z/notes/202607051530 원자적 노트.md", &[]);
         assert_eq!(backlinks.len(), 1);
         assert_eq!(
             backlinks[0].source_path,
@@ -1167,6 +951,38 @@ mod tests {
         // The new file should be in the file map
         let resolved = index.resolve_target_from_map("new-note");
         assert_eq!(resolved, Some("/vault/notes/new-note.md".to_string()));
+    }
+
+    #[test]
+    fn backlinks_come_in_source_path_order_whatever_key_filed_them() {
+        // Three referrers, each filed under a different key of
+        // `/v/dir/note.md` — its stem, its path, and its path behind the
+        // vault's own alias — registered out of alphabetical order.
+        // What fails this: dropping the sort in `get_backlinks` — the keys
+        // are read Stem first, so `/v/z.md` comes first.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/dir/note.md", "t");
+        index.update_file_from_content("/v/z.md", "x\n[[note]]");
+        index.update_file_from_content("/v/m.md", "[[work::dir/note]]");
+        index.update_file_from_content("/v/a.md", "x\nx\n[[dir/note]]");
+        let aliases = [LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        }];
+        let order: Vec<(String, u32)> = index
+            .get_backlinks("/v/dir/note.md", &aliases)
+            .into_iter()
+            .map(|b| (b.source_path, b.line))
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                ("/v/a.md".to_string(), 3),
+                ("/v/m.md".to_string(), 1),
+                ("/v/z.md".to_string(), 2),
+            ]
+        );
     }
 }
 
@@ -1224,7 +1040,7 @@ mod build_bench {
 
             let probe = d.path().join("d1/f1.md").to_string_lossy().to_string();
             let started = std::time::Instant::now();
-            let backlinks = index.get_backlinks(&probe);
+            let backlinks = index.get_backlinks(&probe, &[]);
             println!(
                 "round {round}: get_backlinks -> {} in {:?}",
                 backlinks.len(),
@@ -1246,200 +1062,5 @@ mod build_bench {
             all.len(),
             started.elapsed()
         );
-    }
-}
-
-#[cfg(test)]
-mod outgoing_tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    async fn index_over(files: &[(&str, &str)]) -> (TempDir, String, LinkIndex) {
-        let dir = TempDir::new().unwrap();
-        for (name, body) in files {
-            let path = dir.path().join(name);
-            tokio::fs::create_dir_all(path.parent().unwrap())
-                .await
-                .unwrap();
-            tokio::fs::write(&path, body).await.unwrap();
-        }
-        let root = dir.path().to_string_lossy().to_string();
-        let mut index = LinkIndex::new();
-        index.build(&root).await.unwrap();
-        (dir, root, index)
-    }
-
-    fn path_in(root: &str, name: &str) -> String {
-        std::path::Path::new(root)
-            .join(name)
-            .to_string_lossy()
-            .to_string()
-    }
-
-    #[tokio::test]
-    async fn outgoing_links_resolve_as_the_graph_resolves_them_except_cross_vault_ones() {
-        let (_dir, root, index) = index_over(&[
-            (
-                "notes/a.md",
-                "[[b]] and [[missing]]\n((b#^x1))\n[[journal::b]]\n[[B]]\n",
-            ),
-            ("notes/b.md", "# B\n"),
-        ])
-        .await;
-        let b = path_in(&root, "notes/b.md");
-
-        let links = index
-            .outgoing_resolved(&path_in(&root, "notes/a.md"))
-            .expect("a.md is indexed");
-        let seen: Vec<(&str, u32, &LinkResolution)> = links
-            .iter()
-            .map(|(entry, resolution)| (entry.target.as_str(), entry.line, resolution))
-            .collect();
-        assert_eq!(
-            seen,
-            vec![
-                ("b", 1, &LinkResolution::Resolved(b.clone())),
-                ("missing", 1, &LinkResolution::Unresolved),
-                ("b", 2, &LinkResolution::Resolved(b.clone())),
-                // The target is the bare name `b`, and a local b.md exists — it must
-                // still not be resolved here: the link names another vault.
-                ("b", 3, &LinkResolution::OtherVault("journal".to_string())),
-                // Written with another case: the target is normalized before the maps
-                // are asked.
-                ("B", 4, &LinkResolution::Resolved(b)),
-            ]
-        );
-    }
-
-    #[tokio::test]
-    async fn a_note_without_links_is_indexed_and_a_file_outside_the_index_is_not() {
-        let (_dir, root, index) =
-            index_over(&[("a.md", "no links\n"), ("data.txt", "[[a]]\n")]).await;
-        // `LinkEntry` has no `PartialEq`, so the three answers are told apart by shape.
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "a.md"))
-            .is_some_and(|links| links.is_empty()));
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "data.txt"))
-            .is_none());
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "nope.md"))
-            .is_none());
-    }
-
-    /// One link per branch of the resolver, each on a line of its own. Two notes share
-    /// the stem `b`, so a lookup by stem alone answers the same file for `[[notes/b]]` and
-    /// `[[x/b]]` whichever the walk met first, and one of the two is wrong; `c` is the
-    /// only note of that stem, so `[[wrong/c]]` can only get there by falling back to it.
-    /// The second half asks `get_link_graph` about the same links: every resolved link
-    /// is the graph's edge, and the two kinds of link this method does not resolve are
-    /// the ones the graph still draws somewhere.
-    #[tokio::test]
-    async fn every_branch_of_the_resolver_is_reached_and_agrees_with_the_graph() {
-        let (_dir, root, index) = index_over(&[
-            (
-                "a.md",
-                "[[notes/b]]\n[[x/b]]\n[[Notes/B]]\n[[wrong/c]]\n[[Paper.pdf]]\n\
-                 [[papers/Paper.pdf]]\n[[202607051530]]\n[[nothing]]\n((#^self1))\n\
-                 [[journal::c]]\n",
-            ),
-            ("notes/b.md", "# B\n"),
-            ("x/b.md", "# other B\n"),
-            ("deep/er/c.md", "# C\n"),
-            ("papers/Paper.pdf", "not markdown\n"),
-            ("z/202607051530 idea.md", "# idea\n"),
-        ])
-        .await;
-        let at = |name: &str| path_in(&root, name);
-        let a = at("a.md");
-
-        let links = index.outgoing_resolved(&a).expect("a.md is indexed");
-        let seen: Vec<(&str, u32, LinkResolution)> = links
-            .iter()
-            .map(|(entry, resolution)| (entry.target.as_str(), entry.line, resolution.clone()))
-            .collect();
-        assert_eq!(
-            seen,
-            vec![
-                // The relative path, then the same with another case.
-                ("notes/b", 1, LinkResolution::Resolved(at("notes/b.md"))),
-                ("x/b", 2, LinkResolution::Resolved(at("x/b.md"))),
-                ("Notes/B", 3, LinkResolution::Resolved(at("notes/b.md"))),
-                // No `wrong/c.md`: the stem is tried next.
-                ("wrong/c", 4, LinkResolution::Resolved(at("deep/er/c.md"))),
-                // A file that is not a note: by its name, and by its relative path.
-                (
-                    "Paper.pdf",
-                    5,
-                    LinkResolution::Resolved(at("papers/Paper.pdf"))
-                ),
-                (
-                    "papers/Paper.pdf",
-                    6,
-                    LinkResolution::Resolved(at("papers/Paper.pdf")),
-                ),
-                // A Zettel id, in a folder of its own.
-                (
-                    "202607051530",
-                    7,
-                    LinkResolution::Resolved(at("z/202607051530 idea.md")),
-                ),
-                ("nothing", 8, LinkResolution::Unresolved),
-                // `((#^id))` names no note: the target the index files is the note's own
-                // file stem.
-                ("a", 9, LinkResolution::Resolved(a.clone())),
-                ("c", 10, LinkResolution::OtherVault("journal".to_string())),
-            ]
-        );
-
-        let graph = index.get_link_graph();
-        let edges: Vec<&LinkEdge> = graph
-            .edges
-            .iter()
-            .filter(|edge| edge.from == a && !edge.to.starts_with("tag:"))
-            .collect();
-        assert_eq!(edges.len(), links.len());
-        for ((entry, resolution), edge) in links.iter().zip(&edges) {
-            match resolution {
-                LinkResolution::Resolved(path) => {
-                    assert_eq!(
-                        (&edge.to, edge.cross_vault),
-                        (path, false),
-                        "{}",
-                        entry.target
-                    )
-                }
-                // The graph asks the maps for it too, and draws it to the local note.
-                LinkResolution::OtherVault(_) => {
-                    assert_eq!(
-                        (edge.to.as_str(), edge.cross_vault),
-                        (at("deep/er/c.md").as_str(), true)
-                    )
-                }
-                LinkResolution::Unresolved => {
-                    assert_eq!(edge.to, format!("{root}/nothing.md"), "{}", entry.target)
-                }
-            }
-        }
-    }
-
-    /// `outgoing` is keyed by the strings the walk produced: the same note under another
-    /// spelling of the root is not found, and neither is a symlink to a note — the
-    /// walkers do not follow one. The first assertion is the control: the note itself.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn only_the_walked_spelling_of_a_note_is_in_the_index() {
-        let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("a.md"), "[[a]]\n").unwrap();
-        std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("link.md")).unwrap();
-        let root = dir.path().to_string_lossy().to_string();
-        let mut index = LinkIndex::new();
-        index.build(&root).await.unwrap();
-
-        assert!(index.outgoing_resolved(&path_in(&root, "a.md")).is_some());
-        assert!(index.outgoing_resolved(&path_in(&root, "./a.md")).is_none());
-        assert!(index
-            .outgoing_resolved(&path_in(&root, "link.md"))
-            .is_none());
     }
 }
