@@ -3,7 +3,7 @@
 // follow a transaction: these rows drive only flows with no DOCUMENT-changing transaction
 // between the read and the write. A selection-only one (`editor.select`) keeps the document
 // node, which is what the anchor table is keyed on (see `editor-bridge-harness.ts`).
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   anchorCount,
@@ -101,6 +101,66 @@ describe("insertMarkdown (§388 spec 0067 §8)", () => {
     await expect(
       handler({ kind: "editor_insert_markdown", markdown: "x" }),
     ).rejects.toMatchObject({ code: "budget" });
+  });
+
+  // Plan 0117 Ruling 24. An "all" ref read on "alpha omega" (13 positions) costs 13; a write's
+  // transaction costs the floor, 16; an empty payload costs nothing. The shadow check walks the
+  // whole document for an "all" ref — `verifyAnchor` calls `textBetween(0, 13)` on the live
+  // document node, which the spy counts — so with 13 + 15 that walk must not run, and with
+  // 13 + 16 it runs and the write lands.
+  const readAllThenWrite = async (
+    burst: number,
+    write:
+      | { kind: "editor_insert_markdown"; markdown: string }
+      | { kind: "editor_insert_text"; text: string },
+  ) => {
+    const run = harness("alpha omega\n", ["editor"], {
+      budget: { ...budget, burst },
+    });
+    run.editor.selectAll();
+    const { ref } = (await run.handler({ kind: "editor_get_selection" })) as {
+      ref: string;
+    };
+    const walk = vi.spyOn(run.editor.handle.state.doc, "textBetween");
+    const outcome = await run.handler({ ...write, replace: ref }).then(
+      () => "written",
+      (err: { code?: string }) => err.code,
+    );
+    return { ...run, outcome, walks: walk.mock.calls.length };
+  };
+
+  it.each([
+    { kind: "editor_insert_markdown", markdown: "" },
+    { kind: "editor_insert_text", text: "" },
+  ] as const)(
+    "$kind that the budget cannot cover is refused before the shadow check walks the document",
+    async (write) => {
+      const short = await readAllThenWrite(13 + floor - 1, write);
+      expect(short.outcome).toBe("budget");
+      expect(short.walks).toBe(0);
+      expect(short.editor.dispatched).toEqual([]);
+      const covered = await readAllThenWrite(13 + floor, write);
+      expect(covered.outcome).toBe("written");
+      expect(covered.walks).toBeGreaterThan(0); // the spy sees the walk the short row lacks
+      expect(covered.editor.dispatched).not.toEqual([]);
+    },
+  );
+
+  it("the early budget check spends nothing, refused or passed", async () => {
+    const write = { kind: "editor_insert_markdown", markdown: "" } as const;
+    // Refused: 13 + 13 leaves 13 after the read, short of 16. `getMarkdown` then costs the
+    // document, 13: it fits only if the refusal took nothing, and a one-position read after it
+    // is refused, so the refusal added nothing either.
+    const refused = await readAllThenWrite(13 + 13, write);
+    expect(refused.outcome).toBe("budget");
+    await refused.handler({ kind: "editor_get_markdown" });
+    refused.editor.select(1, 2);
+    await expect(
+      refused.handler({ kind: "editor_get_selection" }),
+    ).rejects.toMatchObject({ code: "budget" });
+    // Passed: 13 + 16 holds the read and exactly one transaction, so the write lands only if
+    // the check that let it through charged nothing.
+    expect((await readAllThenWrite(13 + floor, write)).outcome).toBe("written");
   });
 
   // Spec §8 — the surface gate comes first, before any charge. The burst is exactly

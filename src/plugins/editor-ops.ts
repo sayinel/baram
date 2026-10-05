@@ -30,6 +30,20 @@ export interface EditorOpsContext {
   owner: string;
 }
 
+/**
+ * Where a tier hooks into an insert's send (`send`). The trusted tier passes neither; the
+ * sandboxed tier prices the transaction in both (`host-editor-bridge.ts`).
+ */
+interface SendHooks {
+  /**
+   * Runs before the shadow check, so a call it refuses has walked nothing (plan 0117 Ruling
+   * 24). It must not charge: `beforeDispatch` stays the charge (spec §7.3-6).
+   */
+  beforeCheck?: () => void;
+  /** Runs after the shadow check passed, right before the first transaction is sent. */
+  beforeDispatch?: () => void;
+}
+
 /** The public code for an anchor failure (spec §10). */
 export function editorRefusalCodeOf(reason: AnchorFailure): EditorRefusalCode {
   return reason === "unknown"
@@ -42,8 +56,7 @@ export function editorRefusalCodeOf(reason: AnchorFailure): EditorRefusalCode {
 /** `insertMarkdown` — parse, then place by the §6.2 rules on the ref's range (spec §7.3). */
 export async function insertMarkdownAt(
   ctx: EditorOpsContext,
-  options: {
-    beforeDispatch?: () => void;
+  options: SendHooks & {
     beforeParse?: () => void;
     markdown: string;
     ref?: string;
@@ -67,7 +80,7 @@ export async function insertMarkdownAt(
     if (target !== first) {
       refuse("ref-other-document", method, reasonText("other-document"));
     }
-    send(target, ctx.owner, ref, method, options.beforeDispatch, {
+    send(target, ctx.owner, ref, method, options, {
       fragment: parsed.content,
       kind: "markdown",
       source: options.markdown,
@@ -81,13 +94,13 @@ export async function insertMarkdownAt(
 /** `insertText` — plain text on the ref's range, through the same checks and send. */
 export function insertTextAt(
   ctx: EditorOpsContext,
-  options: { beforeDispatch?: () => void; ref?: string; text: string },
+  options: SendHooks & { ref?: string; text: string },
 ): void {
   const method = "insertText";
   const instance = ctx.live(method);
   const ref = acquire(ctx, instance.state, options.ref, method);
   try {
-    send(instance, ctx.owner, ref, method, options.beforeDispatch, {
+    send(instance, ctx.owner, ref, method, options, {
       kind: "text",
       text: options.text,
     });
@@ -310,15 +323,19 @@ function reasonText(reason: AnchorFailure): string {
  * D9 — check everything on a shadow state first; only then send the collapse (outside
  * history, so one undo returns to the canonical document — spec §2.2) and rebuild the
  * insert on the live state, sent as its own undo step (`dispatchAsUndoStep`, P1).
+ * `beforeCheck` runs first, ahead of the collapse lookup, its shadow `apply` and the anchor
+ * check (spec §8 prices the collapse inside the transaction charge); `beforeDispatch` runs
+ * once the shadow check has passed, before anything is sent.
  */
 function send(
   target: PluginEditorHandle,
   owner: string,
   ref: string,
   method: string,
-  beforeDispatch: (() => void) | undefined,
+  { beforeCheck, beforeDispatch }: SendHooks,
   input: InsertInput,
 ): void {
+  beforeCheck?.();
   const collapse = collapseFor(target.state, owner, ref, method);
   buildOn(
     collapse ? target.state.apply(collapse) : target.state,

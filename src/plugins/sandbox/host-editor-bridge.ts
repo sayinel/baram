@@ -261,18 +261,24 @@ export function createEditorRequestHandler(
         // document-sized charge. The core calls `beforeParse` after its surface gate and ref
         // check, and `beforeDispatch` right before it sends.
         //
-        // So a write refused AT the transaction charge has already run the shadow check (`send`
-        // calls `beforeDispatch` after it), and for an "all" ref that check walks the whole
-        // document (`verifyAnchor` → `textBetween`) uncharged — spec §7.3-6 orders the
-        // transaction charge last. The payload charge does not bound that walk: it is the
-        // payload's length, zero for `""`, and a refused ref stays usable for the next try. The
-        // frame rate limiter (Rust `RateClass::Transport`, 150 frames/s refill) does.
+        // The shadow check before that charge walks text uncharged — for an "all" ref the
+        // whole document (`verifyAnchor` → `textBetween`) — and the payload charge does not
+        // bound it: it is the payload's length, zero for `""`, and a refused ref stays usable.
+        // So `beforeCheck` refuses `budget` before the shadow check when the meter cannot
+        // cover the transaction (plan 0117 Ruling 24): a plugin whose budget is spent buys no
+        // walk. It spends nothing and the charge still decides on its own. The `setMarkdown`
+        // note below turns down a peek for its TOCTOU — that peek would sit before the async
+        // parse, while other requests can spend — but nothing that spends runs between these
+        // two hooks: `send` calls both in one synchronous pass. What stays uncharged is the
+        // walk of a write the shadow check itself refuses (a changed range, a placement rule)
+        // while the meter still covers the transaction — spec §8 charges no transaction there
+        // — bounded by the frame rate limiter (Rust `RateClass::Transport`, 150 frames/s
+        // refill).
+        const transaction = () =>
+          transactionCost(live("insertMarkdown"), limits);
         await insertMarkdownAt(ops, {
-          beforeDispatch: () =>
-            budget.spend(
-              transactionCost(live("insertMarkdown"), limits),
-              "insertMarkdown",
-            ),
+          beforeCheck: () => budget.afford(transaction(), "insertMarkdown"),
+          beforeDispatch: () => budget.spend(transaction(), "insertMarkdown"),
           beforeParse: () =>
             budget.spend(request.markdown.length, "insertMarkdown"),
           markdown: request.markdown,
@@ -283,13 +289,13 @@ export function createEditorRequestHandler(
       case "editor_insert_text": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");
         // Charged right before the send, after the core's checks: there is no parse, so the
-        // one charge is `insertCost` — the payload or the document it re-renders.
+        // one charge is `insertCost` — the payload or the document it re-renders. Checked
+        // before the shadow check too, for the reason given on `editor_insert_markdown`.
+        const cost = () =>
+          insertCost(request.text.length, live("insertText"), limits);
         insertTextAt(ops, {
-          beforeDispatch: () =>
-            budget.spend(
-              insertCost(request.text.length, live("insertText"), limits),
-              "insertText",
-            ),
+          beforeCheck: () => budget.afford(cost(), "insertText"),
+          beforeDispatch: () => budget.spend(cost(), "insertText"),
           ref: request.replace,
           text: request.text,
         });
@@ -352,30 +358,46 @@ export function createMeter(
 ) {
   let tokens = burst;
   let updated = now();
+  /**
+   * Refill up to now, then refuse unless `cost` fits; returns the charge `cost` takes. Shared
+   * by both methods, so `afford` answers with `spend`'s own arithmetic. Refilling early is not
+   * spending: refilling to a time t1 and then to a later t2 leaves `tokens` where one refill
+   * to t2 would, since the clamp to `burst` only cuts what is above it.
+   */
+  const fit = (cost: number, method: string): number => {
+    const at = now();
+    // `max(0, …)`: a clock that goes backwards must neither mint tokens nor, by rewinding
+    // `updated`, hand the NEXT call a larger elapsed to mint from.
+    const elapsed = Math.max(0, at - updated) / 1000;
+    tokens = Math.min(burst, tokens + elapsed * perSecond);
+    if (at > updated) updated = at;
+    // ‼️ CLAMPED to the burst (§260 Phase 4b security review, Q4). `tokens` can never
+    // exceed `burst`, so an uncapped charge above it would make the call fail FOREVER —
+    // a document larger than the burst would be permanently unreadable, while the error
+    // told the plugin to try less often, which could not possibly help. Reachable: a user
+    // can open a 5 MB note, and Rust stages up to 8 MiB. Clamping costs one full burst
+    // for such a document, i.e. one read per refill cycle, which is a throttle rather
+    // than a wall.
+    const charge = Math.min(cost, burst);
+    if (tokens < charge) {
+      refuse(
+        "budget",
+        method,
+        `this plugin's ${what} is exhausted; slow down and retry.`,
+      );
+    }
+    return charge;
+  };
   return {
+    /**
+     * Refuse exactly when `spend(cost, method)` would, with the same refusal, and spend
+     * nothing — an early answer for work that is charged later (plan 0117 Ruling 24).
+     */
+    afford(cost: number, method: string): void {
+      fit(cost, method);
+    },
     spend(cost: number, method: string): void {
-      const at = now();
-      // `max(0, …)`: a clock that goes backwards must neither mint tokens nor, by rewinding
-      // `updated`, hand the NEXT call a larger elapsed to mint from.
-      const elapsed = Math.max(0, at - updated) / 1000;
-      tokens = Math.min(burst, tokens + elapsed * perSecond);
-      if (at > updated) updated = at;
-      // ‼️ CLAMPED to the burst (§260 Phase 4b security review, Q4). `tokens` can never
-      // exceed `burst`, so an uncapped charge above it would make the call fail FOREVER —
-      // a document larger than the burst would be permanently unreadable, while the error
-      // told the plugin to try less often, which could not possibly help. Reachable: a user
-      // can open a 5 MB note, and Rust stages up to 8 MiB. Clamping costs one full burst
-      // for such a document, i.e. one read per refill cycle, which is a throttle rather
-      // than a wall.
-      const charge = Math.min(cost, burst);
-      if (tokens < charge) {
-        refuse(
-          "budget",
-          method,
-          `this plugin's ${what} is exhausted; slow down and retry.`,
-        );
-      }
-      tokens -= charge;
+      tokens -= fit(cost, method);
     },
   };
 }

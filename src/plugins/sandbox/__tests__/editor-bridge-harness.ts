@@ -5,7 +5,12 @@ import type { PluginEditorHandle } from "../../extension-context";
 import type { SandboxHostRequest } from "../protocol";
 
 import { Schema } from "@tiptap/pm/model";
-import { EditorState, TextSelection, type Transaction } from "@tiptap/pm/state";
+import {
+  AllSelection,
+  EditorState,
+  TextSelection,
+  type Transaction,
+} from "@tiptap/pm/state";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -132,6 +137,10 @@ export function fakeEditor(markdown: string) {
       state = state.apply(
         state.tr.setSelection(TextSelection.create(state.doc, from, to)),
       );
+    },
+    /** Cmd+A, applied like `select`: a selection-only change keeps the document node. */
+    selectAll: () => {
+      state = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
     },
   };
 }

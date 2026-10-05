@@ -207,6 +207,36 @@ describe("editor-ops gates (spec 0067)", () => {
     editor.destroy();
   });
 
+  it("beforeCheck runs before the collapse and the shadow check (plan 0117 Ruling 24)", async () => {
+    const { editor } = realEditor("# He**ad**ing\n");
+    editor.commands.setTextSelection(5); // the end of the bold "ad" → expands
+    const dispatch = vi.spyOn(editor.view, "dispatch");
+    const shadow = vi.spyOn(editor.state, "apply"); // the collapse is applied on this state
+    const refusing = () => {
+      throw new Error("budget"); // a refusing check, as the sandboxed tier's meter throws
+    };
+    // Blocks in a heading: the shadow check would answer cannot-insert-here.
+    await expect(
+      insertMarkdownAt(ctxOf(editor), {
+        beforeCheck: refusing,
+        markdown: "p1\n\np2",
+      }),
+    ).rejects.toThrow("budget");
+    expect(shadow).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+    const calls: string[] = [];
+    await insertMarkdownAt(ctxOf(editor), {
+      beforeCheck: () =>
+        calls.push(`check, applied ${shadow.mock.calls.length}`),
+      beforeDispatch: () =>
+        calls.push(`dispatch, applied ${shadow.mock.calls.length}`),
+      markdown: "X",
+    });
+    expect(calls).toEqual(["check, applied 0", "dispatch, applied 1"]);
+    expect(editor.state.doc.textContent).toBe("HeadXing");
+    editor.destroy();
+  });
+
   it("an implicit anchor is released whether the write lands or is refused (spec §7.3)", async () => {
     const { editor } = realEditor("# He@@ading\n");
     const doc = editor.state.doc;
