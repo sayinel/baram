@@ -92,13 +92,14 @@ WYSIWYG 이 자체 엔진인 반면 이쪽은 `@replit/codemirror-vim` 어댑터
 즉 **여기 없다고 해서 vim 과 무관하다는 뜻이 아니다.** 어떤 페이지가 이름 붙여 설명하는 동작의
 집이 여기 없으면, 그건 빠진 것이다 — 행을 더할 것.
 
-| 파일                                                                                                                           | 무엇                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| [use-source-mode.ts](https://github.com/sayinel/baram/blob/main/src/hooks/use-source-mode.ts)                                  | source mode 복귀 — churn 방어 4번이 사는 곳 (양 브랜치)         |
-| [focus-editor-view.ts](https://github.com/sayinel/baram/blob/main/src/utils/editor/focus-editor-view.ts)                       | editable 게이트 폴백 — non-editable 뷰에서 `focus()` 가 no-op   |
-| [code-block-cm-registry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/code-block-cm-registry.ts)   | leaf 채널 — editable 브로드캐스트 · vim on/off · entry 핸드오프 |
-| [use-atom-block-behavior.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/use-atom-block-behavior.ts) | 모든 atom 블록 뷰의 공유 경계 동작                              |
-| [StatusBar.tsx](https://github.com/sayinel/baram/blob/main/src/components/layout/StatusBar.tsx)                                | 모드 · 명령 · island 라벨 렌더                                  |
+| 파일                                                                                                                           | 무엇                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| [syntax-reveal-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/syntax-reveal-state.ts)             | vim reducer 가 읽는 syntax reveal 태그의 계약 · expand/collapse 의 goal 보존 |
+| [use-source-mode.ts](https://github.com/sayinel/baram/blob/main/src/hooks/use-source-mode.ts)                                  | source mode 복귀 — churn 방어 4번이 사는 곳 (양 브랜치)                      |
+| [focus-editor-view.ts](https://github.com/sayinel/baram/blob/main/src/utils/editor/focus-editor-view.ts)                       | editable 게이트 폴백 — non-editable 뷰에서 `focus()` 가 no-op                |
+| [code-block-cm-registry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/code-block-cm-registry.ts)   | leaf 채널 — editable 브로드캐스트 · vim on/off · entry 핸드오프              |
+| [use-atom-block-behavior.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/use-atom-block-behavior.ts) | 모든 atom 블록 뷰의 공유 경계 동작                                           |
+| [StatusBar.tsx](https://github.com/sayinel/baram/blob/main/src/components/layout/StatusBar.tsx)                                | 모드 · 명령 · island 라벨 렌더                                               |
 
 테스트는 각 모듈 옆 `__tests__/` 에 있다 — vim 테스트는 위 디렉터리들 각각의 `__tests__/` 에
 흩어져 있다(`extensions/plugins/vim/` · `components/editor/` · `extensions/` · `nodes/views/` ·
