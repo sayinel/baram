@@ -998,6 +998,28 @@ describe("ops-R3 pins", () => {
     expect(editor.view.editable).toBe(false);
   });
 
+  it("a dropped change that reports no reason rolls back to normal too", () => {
+    // 2cc above is refused with a reason; a plain cc, cw or cfp whose
+    // transaction the filter drops reports only applied: false.
+    // Fails if: the recovery asks for a reason — the mode stays insert.
+    for (const keys of [
+      ["c", "c"],
+      ["c", "w"],
+      ["c", "f", "p"],
+    ]) {
+      const editor = makeEditor("<p>alpha beta</p>");
+      editor.registerPlugin(
+        new Plugin({ filterTransaction: (tr) => !tr.docChanged }),
+      );
+      editor.commands.setTextSelection(2);
+      enable(editor);
+      for (const k of keys) key(editor, k);
+      expect(editor.state.doc.textContent, keys.join("")).toBe("alpha beta");
+      expect(vim(editor).mode, keys.join("")).toBe("normal");
+      expect(editor.view.editable, keys.join("")).toBe(false);
+    }
+  });
+
   it("2cc on an EMPTY line before an undeletable row stays in insert", () => {
     // The accepted partial change deletes the empty paragraph and recreates
     // it — the final document EQUALS the original, but the transaction

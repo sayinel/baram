@@ -228,11 +228,13 @@ export function createVimPlugin(
             );
             // A CHANGE that did not run must not leave the editor in insert
             // — the core flips the mode before the adapter can veto (ops-R2).
-            // Refused or cancelled alike. A PARTIALLY applied change is
-            // neither: the document already changed and the empty line
-            // awaits input (ops-R3).
-            const notRun =
-              exec.cancelled === true || (!!exec.reason && !exec.applied);
+            // It did not run when its motion cancelled it, or when its
+            // transaction did not land: refused, or dropped by another
+            // plugin's filter (`applied` is false, ops-R4). A change over an
+            // empty range builds no transaction and reports no `applied`; it
+            // enters insert. A PARTIALLY applied change landed: the empty
+            // line awaits input (ops-R3).
+            const notRun = exec.cancelled === true || exec.applied === false;
             if (notRun && isChangeCommand(result.command)) {
               dispatchMeta(view, { mode: "normal", type: "setMode" });
             }
