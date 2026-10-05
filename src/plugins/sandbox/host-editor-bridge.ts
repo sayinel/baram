@@ -261,42 +261,61 @@ export function createEditorRequestHandler(
         // document-sized charge. The core calls `beforeParse` after its surface gate and ref
         // check, and `beforeDispatch` right before it sends.
         //
-        // The shadow check before that charge walks text uncharged — for an "all" ref the
-        // whole document (`verifyAnchor` → `textBetween`) — and the payload charge does not
-        // bound it: it is the payload's length, zero for `""`, and a refused ref stays usable.
-        // So `beforeCheck` refuses `budget` before the shadow check when the meter cannot
-        // cover the transaction (plan 0117 Ruling 24): a plugin whose budget is spent buys no
-        // walk. It spends nothing and the charge still decides on its own. The `setMarkdown`
-        // note below turns down a peek for its TOCTOU — that peek would sit before the async
-        // parse, while other requests can spend — but nothing that spends runs between these
-        // two hooks: `send` calls both in one synchronous pass. What stays uncharged is the
-        // walk of a write the shadow check itself refuses (a changed range, a placement rule)
-        // while the meter still covers the transaction — spec §8 charges no transaction there
-        // — bounded by the frame rate limiter (Rust `RateClass::Transport`, 150 frames/s
-        // refill).
+        // A write also reads its range's text before that charge. The shadow check walks the
+        // ref's range (`verifyAnchor` → `textBetween`; the whole document for an "all" ref), and
+        // a write with no `replace` first walks the user's selection, when `issueAnchor` records
+        // it. The payload charge does not pay for a walk — it is zero for `""` — and a refused
+        // ref stays usable, so the walk is priced on its own (plan 0117 Rulings 24 · 26). The
+        // core calls `beforeWalk` before each walk with the range's `to - from`, the measure
+        // `getSelection` charges for reading it. A write pays one of two charges, never both:
+        // the transaction if it lands, that length (`refusedAfterWalk`) if it is refused after
+        // the walk. So `beforeWalk` refuses `budget` unless the meter covers the larger of the
+        // two — not their sum — and spends nothing. A plugin that cannot afford a walk is refused
+        // before it, and one retrying a stale ref pays the range on every try.
+        //
+        // The `setMarkdown` note below turns down a peek for its TOCTOU: that peek would sit
+        // before the async parse, while other requests can spend. `beforeWalk` decides no charge
+        // — each charge spends for itself — and for a ref the core runs it, the walk and the
+        // charge that follows in one synchronous pass, so a check that passed leaves room for
+        // either charge. A write with no `replace` walks before its parse. Its payload is charged
+        // before that walk's `beforeWalk`, so the payload cannot leave the walk unaffordable, but
+        // spends by other requests during the parse can: such a write is then refused `budget`
+        // with that walk unpaid, and its next try meets `beforeWalk` again.
+        //
+        // Not priced on a refusal: the collapse, when an expansion touches the range. Its shadow
+        // `apply` runs the plugins' state `apply` and `appendTransaction` hooks, and some of them
+        // walk the whole document — measured 2026-10-05 on `createBaramExtensions`:
+        // `buildTaskFieldDecorations` (`task-field-chips.ts`) and, after an image collapse,
+        // `findFoldableListItems` (`fold-ranges.ts`). Spec §8 prices the collapse inside the
+        // transaction, which a refused write does not pay.
         const transaction = () =>
           transactionCost(live("insertMarkdown"), limits);
         await insertMarkdownAt(ops, {
-          beforeCheck: () => budget.afford(transaction(), "insertMarkdown"),
           beforeDispatch: () => budget.spend(transaction(), "insertMarkdown"),
           beforeParse: () =>
             budget.spend(request.markdown.length, "insertMarkdown"),
+          beforeWalk: (walk) =>
+            budget.afford(Math.max(transaction(), walk), "insertMarkdown"),
           markdown: request.markdown,
           ref: request.replace,
+          refusedAfterWalk: (walk) => budget.spend(walk, "insertMarkdown"),
         });
         return undefined;
       }
       case "editor_insert_text": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");
         // Charged right before the send, after the core's checks: there is no parse, so the
-        // one charge is `insertCost` — the payload or the document it re-renders. Checked
-        // before the shadow check too, for the reason given on `editor_insert_markdown`.
+        // charge on success is `insertCost` — the payload or the document it re-renders. Its
+        // walks are priced as on `editor_insert_markdown`, and with no parse the whole write is
+        // one synchronous pass, so a `beforeWalk` that passed leaves room for either charge.
         const cost = () =>
           insertCost(request.text.length, live("insertText"), limits);
         insertTextAt(ops, {
-          beforeCheck: () => budget.afford(cost(), "insertText"),
           beforeDispatch: () => budget.spend(cost(), "insertText"),
+          beforeWalk: (walk) =>
+            budget.afford(Math.max(cost(), walk), "insertText"),
           ref: request.replace,
+          refusedAfterWalk: (walk) => budget.spend(walk, "insertText"),
           text: request.text,
         });
         return undefined;
@@ -361,8 +380,9 @@ export function createMeter(
   /**
    * Refill up to now, then refuse unless `cost` fits; returns the charge `cost` takes. Shared
    * by both methods, so `afford` answers with `spend`'s own arithmetic. Refilling early is not
-   * spending: refilling to a time t1 and then to a later t2 leaves `tokens` where one refill
-   * to t2 would, since the clamp to `burst` only cuts what is above it.
+   * spending: while the refill rate is not negative, a refill never lowers `tokens` — it adds
+   * `elapsed * perSecond` with `elapsed` clamped at 0, and the clamp to `burst` cannot cut below
+   * a `tokens` that is never above it.
    */
   const fit = (cost: number, method: string): number => {
     const at = now();
@@ -391,7 +411,7 @@ export function createMeter(
   return {
     /**
      * Refuse exactly when `spend(cost, method)` would, with the same refusal, and spend
-     * nothing — an early answer for work that is charged later (plan 0117 Ruling 24).
+     * nothing — an early answer for work that is charged later (plan 0117 Rulings 24 · 26).
      */
     afford(cost: number, method: string): void {
       fit(cost, method);

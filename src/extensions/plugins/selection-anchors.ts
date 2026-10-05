@@ -19,6 +19,7 @@ import {
   NodeSelection,
   Plugin,
   PluginKey,
+  type Selection,
   TextSelection,
   type Transaction,
 } from "@tiptap/pm/state";
@@ -86,6 +87,22 @@ export function anchorKindOf(owner: string, ref: string): AnchorKind | null {
   return record && record.owner === owner ? record.kind : null;
 }
 
+/**
+ * The kind of ref `issueAnchor` records for a selection. It reads the selection's class only,
+ * not its text, so a write can refuse a kind before anything is walked (plan 0117 Ruling 26).
+ */
+export function anchorKindOfSelection(sel: Selection): AnchorKind {
+  return sel instanceof AllSelection
+    ? "all"
+    : sel instanceof CellSelection
+      ? "cell"
+      : sel instanceof NodeSelection
+        ? "node"
+        : sel instanceof TextSelection
+          ? "text"
+          : "gap";
+}
+
 /** Test probe (spec §11-9): how many transactions did mapping work. */
 export function anchorMappingPasses(): number {
   return mappingPasses;
@@ -129,16 +146,7 @@ export function issueAnchor(
   const ref = crypto.randomUUID().replace(/-/gu, "");
   if (options.record === false) return ref;
   const sel = state.selection;
-  const kind: AnchorKind =
-    sel instanceof AllSelection
-      ? "all"
-      : sel instanceof CellSelection
-        ? "cell"
-        : sel instanceof NodeSelection
-          ? "node"
-          : sel instanceof TextSelection
-            ? "text"
-            : "gap";
+  const kind = anchorKindOfSelection(sel);
   const canonical = canonicalRangeText(state, sel.from, sel.to);
   const positions = new WeakMap<PmNode, "lost" | AnchorRange>();
   positions.set(state.doc, { from: sel.from, to: sel.to });
@@ -180,11 +188,16 @@ export function releaseAnchor(ref: string): void {
  * Locate the ref and check that what it covers is what was read (spec §7.3 step 4). Call
  * it on a document whose expansion over the range has been collapsed — then the live text
  * there IS the canonical text the hash was taken from.
+ *
+ * `walking` is called once, right before the range's text is read. The checks before that
+ * point read positions only, so an answer given without the call walked no text — a caller that
+ * charges for the walk (plan 0117 Ruling 26) tells the two apart by it.
  */
 export function verifyAnchor(
   owner: string,
   ref: string,
   doc: PmNode,
+  walking?: () => void,
 ): AnchorVerification {
   const at = locateAnchor(owner, ref, doc);
   if (!at.ok) return at;
@@ -204,6 +217,7 @@ export function verifyAnchor(
   ) {
     return changed;
   }
+  walking?.();
   const text = doc.textBetween(from, to, "\n");
   if (text.length !== record.length || fnv1a(text) !== record.hash)
     return changed;

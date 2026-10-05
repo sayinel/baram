@@ -4,6 +4,7 @@
 import type { Editor } from "@tiptap/core";
 
 import { GapCursor } from "@tiptap/pm/gapcursor";
+import { Node as PmNode } from "@tiptap/pm/model";
 import { AllSelection } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -120,16 +121,20 @@ describe("editor-ops gates (spec 0067)", () => {
     expect(editor.state.selection).toBeInstanceOf(GapCursor);
     const count = anchorCount(OWNER);
     const dispatch = vi.spyOn(editor.view, "dispatch");
+    // The kind is read from the selection's class, before an implicit anchor would read its
+    // text (plan 0117 Ruling 26).
+    const reads = vi.spyOn(editor.state.doc, "textBetween");
     await expect(
       insertMarkdownAt(ctxOf(editor), { markdown: "x" }),
     ).rejects.toMatchObject({
       code: "cannot-insert-here",
     });
+    expect(reads).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
     // No recorded ref was added. This cannot see a leaked IMPLICIT anchor (it counts recorded
     // refs only); the mapping-pass probe on the next line is the guard for that.
     expect(anchorCount(OWNER)).toBe(count);
-    expect(mappingPassesOn(editor, 2)).toBe(0); // the implicit anchor was released
+    expect(mappingPassesOn(editor, 2)).toBe(0); // no implicit anchor is left
     const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
       record: true,
     });
@@ -158,12 +163,14 @@ describe("editor-ops gates (spec 0067)", () => {
         CellSelection.create(editor.state.doc, cells[0], cells[1]),
       ),
     );
+    const reads = vi.spyOn(editor.state.doc, "textBetween"); // as in the gap cursor row
     await expect(
       insertMarkdownAt(ctxOf(editor), { markdown: "x" }),
     ).rejects.toMatchObject({
       code: "cannot-insert-here",
     });
-    expect(mappingPassesOn(editor, cells[2] + 2)).toBe(0); // into "c": the implicit anchor is gone
+    expect(reads).not.toHaveBeenCalled();
+    expect(mappingPassesOn(editor, cells[2] + 2)).toBe(0); // into "c": no implicit anchor is left
     const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
       record: true,
     });
@@ -207,32 +214,46 @@ describe("editor-ops gates (spec 0067)", () => {
     editor.destroy();
   });
 
-  it("beforeCheck runs before the collapse and the shadow check (plan 0117 Ruling 24)", async () => {
+  it("beforeWalk runs before any text is read for the collapse or the shadow check, and before the shadow apply (plan 0117 Rulings 24 · 26)", async () => {
     const { editor } = realEditor("# He**ad**ing\n");
     editor.commands.setTextSelection(5); // the end of the bold "ad" → expands
+    // A ref, so `beforeWalk` runs once, in `send`; a write with no ref meets it first at its
+    // implicit anchor, before any of this.
+    const { ref } = readSelectionForPlugin(ctxOf(editor), "getSelection", {
+      record: true,
+    });
     const dispatch = vi.spyOn(editor.view, "dispatch");
     const shadow = vi.spyOn(editor.state, "apply"); // the collapse is applied on this state
+    // Building the collapse reads its delimiters, and the shadow check reads the range.
+    const reads = vi.spyOn(PmNode.prototype, "textBetween");
     const refusing = () => {
       throw new Error("budget"); // a refusing check, as the sandboxed tier's meter throws
     };
     // Blocks in a heading: the shadow check would answer cannot-insert-here.
     await expect(
       insertMarkdownAt(ctxOf(editor), {
-        beforeCheck: refusing,
+        beforeWalk: refusing,
         markdown: "p1\n\np2",
+        ref,
       }),
     ).rejects.toThrow("budget");
+    expect(reads).not.toHaveBeenCalled();
     expect(shadow).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
     const calls: string[] = [];
+    const seen = () =>
+      `read ${reads.mock.calls.length > 0}, applied ${shadow.mock.calls.length}`;
     await insertMarkdownAt(ctxOf(editor), {
-      beforeCheck: () =>
-        calls.push(`check, applied ${shadow.mock.calls.length}`),
-      beforeDispatch: () =>
-        calls.push(`dispatch, applied ${shadow.mock.calls.length}`),
+      beforeDispatch: () => calls.push(`dispatch: ${seen()}`),
+      beforeWalk: (walk) => calls.push(`walk ${walk}: ${seen()}`),
       markdown: "X",
+      ref,
     });
-    expect(calls).toEqual(["check, applied 0", "dispatch, applied 1"]);
+    reads.mockRestore();
+    expect(calls).toEqual([
+      "walk 0: read false, applied 0",
+      "dispatch: read true, applied 1",
+    ]);
     expect(editor.state.doc.textContent).toBe("HeadXing");
     editor.destroy();
   });

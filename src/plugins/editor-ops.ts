@@ -13,6 +13,7 @@ import { Selection } from "@tiptap/pm/state";
 
 import {
   anchorKindOf,
+  anchorKindOfSelection,
   issueAnchor,
   locateAnchor,
   releaseAnchor,
@@ -31,17 +32,37 @@ export interface EditorOpsContext {
 }
 
 /**
- * Where a tier hooks into an insert's send (`send`). The trusted tier passes neither; the
- * sandboxed tier prices the transaction in both (`host-editor-bridge.ts`).
+ * Where a tier hooks into an insert (`insertMarkdownAt` · `insertTextAt`). The trusted tier
+ * passes none; the sandboxed tier prices the write in them (`host-editor-bridge.ts`).
  */
-interface SendHooks {
-  /**
-   * Runs before the shadow check, so a call it refuses has walked nothing (plan 0117 Ruling
-   * 24). It must not charge: `beforeDispatch` stays the charge (spec §7.3-6).
-   */
-  beforeCheck?: () => void;
+interface WriteHooks {
   /** Runs after the shadow check passed, right before the first transaction is sent. */
   beforeDispatch?: () => void;
+  /**
+   * Runs before each walk of the write's range (its text read): before an implicit anchor is
+   * issued, and before the collapse's shadow `apply` and the shadow check. A call it refuses
+   * stops before the walk it guards (plan 0117 Rulings 24 · 26). `walk` is what a refusal after
+   * a walk pays (`refusedAfterWalk`); a write that lands pays `beforeDispatch`'s charge
+   * instead. It must not charge.
+   */
+  beforeWalk?: (walk: number) => void;
+  /**
+   * Runs once when a write is refused after its range was walked and before `beforeDispatch`
+   * passed, with the `walk` that `beforeWalk` was given. It charges; a refusal it throws
+   * replaces the write's.
+   */
+  refusedAfterWalk?: (walk: number) => void;
+}
+
+/**
+ * A write's walk (plan 0117 Ruling 26). `length` is its range's `to - from` in the live
+ * document — the measure `getSelection` charges for reading a range — fixed before the range is
+ * first walked. `walked` is true from that walk until `beforeDispatch` passes: the transaction
+ * charged there pays for the walk too, so only a refusal before it owes the walk.
+ */
+interface Walk {
+  length: number;
+  walked: boolean;
 }
 
 /** The public code for an anchor failure (spec §10). */
@@ -53,10 +74,14 @@ export function editorRefusalCodeOf(reason: AnchorFailure): EditorRefusalCode {
       : "ref-range-changed";
 }
 
-/** `insertMarkdown` — parse, then place by the §6.2 rules on the ref's range (spec §7.3). */
+/**
+ * `insertMarkdown` — parse, then place by the §6.2 rules on the ref's range (spec §7.3).
+ * `beforeParse` runs after the checks that read no text and before an implicit anchor is
+ * issued, so the `beforeWalk` that guards that anchor's walk sees the payload already charged.
+ */
 export async function insertMarkdownAt(
   ctx: EditorOpsContext,
-  options: SendHooks & {
+  options: WriteHooks & {
     beforeParse?: () => void;
     markdown: string;
     ref?: string;
@@ -64,9 +89,11 @@ export async function insertMarkdownAt(
 ): Promise<void> {
   const method = "insertMarkdown";
   const first = ctx.live(method);
-  const ref = acquire(ctx, first.state, options.ref, method);
+  checkTarget(ctx, first.state, options.ref, method);
+  options.beforeParse?.();
+  const walk: Walk = { length: 0, walked: false };
+  const ref = options.ref ?? issueImplicit(ctx, first.state, options, walk);
   try {
-    options.beforeParse?.();
     const parsed = await markdownToProsemirrorAsync(
       options.markdown,
       first.schema,
@@ -80,12 +107,15 @@ export async function insertMarkdownAt(
     if (target !== first) {
       refuse("ref-other-document", method, reasonText("other-document"));
     }
-    send(target, ctx.owner, ref, method, options, {
+    send(target, ctx.owner, ref, method, options, walk, {
       fragment: parsed.content,
       kind: "markdown",
       source: options.markdown,
     });
     releaseAnchor(ref);
+  } catch (err) {
+    if (walk.walked) options.refusedAfterWalk?.(walk.length);
+    throw err;
   } finally {
     if (options.ref === undefined) releaseAnchor(ref);
   }
@@ -94,17 +124,22 @@ export async function insertMarkdownAt(
 /** `insertText` — plain text on the ref's range, through the same checks and send. */
 export function insertTextAt(
   ctx: EditorOpsContext,
-  options: SendHooks & { ref?: string; text: string },
+  options: WriteHooks & { ref?: string; text: string },
 ): void {
   const method = "insertText";
   const instance = ctx.live(method);
-  const ref = acquire(ctx, instance.state, options.ref, method);
+  checkTarget(ctx, instance.state, options.ref, method);
+  const walk: Walk = { length: 0, walked: false };
+  const ref = options.ref ?? issueImplicit(ctx, instance.state, options, walk);
   try {
-    send(instance, ctx.owner, ref, method, options, {
+    send(instance, ctx.owner, ref, method, options, walk, {
       kind: "text",
       text: options.text,
     });
     releaseAnchor(ref);
+  } catch (err) {
+    if (walk.walked) options.refusedAfterWalk?.(walk.length);
+    throw err;
   } finally {
     if (options.ref === undefined) releaseAnchor(ref);
   }
@@ -200,26 +235,41 @@ export async function replaceDocument(
   );
 }
 
-/** A ref for this write: the caller's (checked before any parse), or an implicit one. */
-function acquire(
+/**
+ * Spec §7.3 step 1, before any parse: the caller's ref is this plugin's, and neither it nor —
+ * without one — the user's selection is a kind a write refuses. Reads no text, so these
+ * refusals cost no walk (plan 0117 Ruling 26).
+ */
+function checkTarget(
   ctx: EditorOpsContext,
   state: EditorState,
   ref: string | undefined,
   method: string,
-): string {
-  if (ref === undefined) {
-    const implicit = issueAnchor(ctx.owner, state, { implicit: true });
-    const kind = anchorKindOf(ctx.owner, implicit);
-    if (kind === "cell" || kind === "gap") {
-      releaseAnchor(implicit);
-      refuse("cannot-insert-here", method, UNPLACEABLE[kind]);
-    }
-    return implicit;
-  }
-  const kind = anchorKindOf(ctx.owner, ref);
+): void {
+  const kind =
+    ref === undefined
+      ? anchorKindOfSelection(state.selection)
+      : anchorKindOf(ctx.owner, ref);
   if (kind === null) refuse("ref-unknown", method, reasonText("unknown"));
   if (kind === "cell" || kind === "gap")
     refuse("cannot-insert-here", method, UNPLACEABLE[kind]);
+}
+
+/**
+ * The anchor for a write that passed no ref, on the user's selection. Issuing it reads the
+ * selection's text (`issueAnchor` → `canonicalRangeText`), so `beforeWalk` is asked first, and
+ * from here on a refusal owes the walk.
+ */
+function issueImplicit(
+  ctx: EditorOpsContext,
+  state: EditorState,
+  hooks: WriteHooks,
+  walk: Walk,
+): string {
+  walk.length = state.selection.to - state.selection.from;
+  hooks.beforeWalk?.(walk.length);
+  const ref = issueAnchor(ctx.owner, state, { implicit: true });
+  walk.walked = true;
   return ref;
 }
 
@@ -250,16 +300,20 @@ function dispatchAsUndoStep(target: PluginEditorHandle, tr: Transaction): void {
   target.view.dispatch(closeHistory(target.state.tr));
 }
 
-/** Build the insert on `state`, or refuse (spec §7.3 steps 4–5 and rule 6). */
+/**
+ * Build the insert on `state`, or refuse (spec §7.3 steps 4–5 and rule 6). `walking` is
+ * `verifyAnchor`'s: called right before the range's text is read.
+ */
 function buildOn(
   state: EditorState,
   owner: string,
   ref: string,
   method: string,
   input: InsertInput,
+  walking?: () => void,
 ): Transaction {
   // For "all", `verifyAnchor` has already refused anything but exactly [0, doc.content.size].
-  const target = verifyAnchor(owner, ref, state.doc);
+  const target = verifyAnchor(owner, ref, state.doc, walking);
   if (!target.ok)
     refuse(
       editorRefusalCodeOf(target.reason),
@@ -275,16 +329,15 @@ function buildOn(
   return tr;
 }
 
-/** Spec §7.3 step 3 — the collapse to apply first, or null. Throws for an atom's inside. */
+/**
+ * Spec §7.3 step 3 — the collapse to apply first, or null, for the range `at` where the ref
+ * lies in `state`. Throws for an atom's inside.
+ */
 function collapseFor(
   state: EditorState,
-  owner: string,
-  ref: string,
+  at: { from: number; to: number },
   method: string,
 ): null | Transaction {
-  const at = locateAnchor(owner, ref, state.doc);
-  if (!at.ok)
-    refuse(editorRefusalCodeOf(at.reason), method, reasonText(at.reason));
   const expanded = getSyntaxRevealExpanded(state);
   if (!expanded || at.to < expanded.from || at.from > expanded.to) return null;
   if (expanded.kind === "image" || expanded.kind === "wikilink") {
@@ -323,28 +376,40 @@ function reasonText(reason: AnchorFailure): string {
  * D9 — check everything on a shadow state first; only then send the collapse (outside
  * history, so one undo returns to the canonical document — spec §2.2) and rebuild the
  * insert on the live state, sent as its own undo step (`dispatchAsUndoStep`, P1).
- * `beforeCheck` runs first, ahead of the collapse lookup, its shadow `apply` and the anchor
- * check (spec §8 prices the collapse inside the transaction charge); `beforeDispatch` runs
- * once the shadow check has passed, before anything is sent.
+ *
+ * The ref is located first, which reads no text. Then `beforeWalk` runs, ahead of the
+ * collapse's shadow `apply` (spec §8 prices the collapse inside the transaction charge) and of
+ * the shadow check's walk. A ref's walk is its located range, and a refusal before the shadow
+ * check reads that range owes nothing; a write with no ref walked when its anchor was issued, so
+ * it keeps that length and owes it on any refusal. `beforeDispatch` runs once the shadow check
+ * has passed, before anything is sent, and from then on a refusal owes no walk (plan 0117
+ * Ruling 26).
  */
 function send(
   target: PluginEditorHandle,
   owner: string,
   ref: string,
   method: string,
-  { beforeCheck, beforeDispatch }: SendHooks,
+  hooks: WriteHooks,
+  walk: Walk,
   input: InsertInput,
 ): void {
-  beforeCheck?.();
-  const collapse = collapseFor(target.state, owner, ref, method);
+  const at = locateAnchor(owner, ref, target.state.doc);
+  if (!at.ok)
+    refuse(editorRefusalCodeOf(at.reason), method, reasonText(at.reason));
+  if (!walk.walked) walk.length = at.to - at.from;
+  hooks.beforeWalk?.(walk.length);
+  const collapse = collapseFor(target.state, at, method);
   buildOn(
     collapse ? target.state.apply(collapse) : target.state,
     owner,
     ref,
     method,
     input,
+    () => (walk.walked = true),
   );
-  beforeDispatch?.();
+  hooks.beforeDispatch?.();
+  walk.walked = false;
   if (collapse) {
     collapse.setMeta("addToHistory", false);
     target.view.dispatch(collapse);
