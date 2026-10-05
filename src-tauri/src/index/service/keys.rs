@@ -22,7 +22,7 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
 /// `Zettel` for a zettelkasten one, none for a general vault. No `_` arm, so
 /// a new vault type does not compile until it is given a name or `None`;
 /// `space_names_match_the_frontends` reads the TypeScript table.
-fn space_name(vault_type: &VaultType) -> Option<&'static str> {
+pub(crate) fn space_name(vault_type: &VaultType) -> Option<&'static str> {
     match vault_type {
         VaultType::General => None,
         VaultType::Journal => Some("journal"),
@@ -30,24 +30,42 @@ fn space_name(vault_type: &VaultType) -> Option<&'static str> {
     }
 }
 
-fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
-    info.vault_type.as_ref().and_then(space_name)
+/// One registered context as the alias rule (`own_aliases`) reads it: its id,
+/// its explicit alias as registered, and the space name its vault type
+/// answers to (`space_name`). The app takes these from `ContextManager`
+/// (`local_aliases_of`), the CLI from the contexts the app persists in
+/// config.json (`cli::aliases`).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AliasHolder<'a> {
+    pub id: &'a str,
+    pub alias: Option<&'a str>,
+    pub space: Option<&'static str>,
 }
 
-/// The vault aliases local to `contexts` (§87), lowercase, each with its
-/// registered path as the root the alias resolves paths against. A context
-/// answers to two kinds of name, in the order the frontend's
-/// `findAliasContext` (`src/utils/editor/wikilink-nav.ts`) tries them:
+impl<'a> AliasHolder<'a> {
+    pub(crate) fn of(info: &'a ContextInfo) -> Self {
+        Self {
+            id: &info.id,
+            alias: info.alias.as_deref(),
+            space: info.vault_type.as_ref().and_then(space_name),
+        }
+    }
+}
+
+/// The vault aliases local to `contexts` (§87), lowercase, each with the root
+/// the alias resolves paths against. A context answers to two kinds of name,
+/// in the order the frontend's `findAliasContext`
+/// (`src/utils/editor/wikilink-nav.ts`) tries them:
 ///
-/// 1. Its explicit `info.alias` — local when no OTHER registered context
-///    (`ctx_mgr.list()`) carries the same alias in any case.
+/// 1. Its explicit alias — local when no OTHER of `registered` carries the
+///    same alias in any case.
 /// 2. Its space name by vault type (`space_name`: `journal`, `zettel`) —
 ///    local when NO registered context carries that string as an explicit
 ///    alias (`findAliasContext` returns an explicit match first, whichever
 ///    context it is, so an explicit alias outranks the space name) and no
 ///    OTHER registered context has the same space name.
 ///
-/// These conditions are the whole rule, for three reasons:
+/// These conditions are the whole rule, for two reasons:
 ///
 /// - Uniqueness is the condition the frontend's alias match resolves by.
 ///   `findAliasContext` compares case-insensitively and takes the first
@@ -79,44 +97,46 @@ fn space_name_of(info: &ContextInfo) -> Option<&'static str> {
 /// have none). A space name an explicit alias outranks is in neither list:
 /// the link names that alias's vault.
 ///
-/// The registrations are read when this is called — a rename reads them
-/// once, at its start, and does not see a registration made while it runs.
-/// One read for both lists, so they describe the same registrations.
+/// Each of `contexts` comes with its root in the spelling of the file paths
+/// the reader asks about, because `root_relative_key` compares the root with
+/// such a path component by component, as strings, resolving neither (on
+/// Windows, ASCII case aside): the registered path in the app, the canonical
+/// one in the CLI, whose `paths::locate` canonicalizes the note it is asked
+/// about. `registered` is every context registered, `contexts` among them.
 /// Lowercase because `filing_key` lowercases a `Foreign` key's alias; this is
 /// the one fold on this side (`LocalAlias`). Each list sorted, without
 /// repeats.
-pub(super) async fn local_aliases_of(
-    ctx_mgr: &ContextManager,
-    contexts: &[Registered],
+pub(crate) fn own_aliases(
+    contexts: &[(AliasHolder<'_>, &str)],
+    registered: &[AliasHolder<'_>],
 ) -> OwnAliases {
-    let registered = ctx_mgr.list().await;
-    let explicit = |info: &ContextInfo| info.alias.as_deref().map(str::to_lowercase);
+    let explicit = |holder: &AliasHolder<'_>| holder.alias.map(str::to_lowercase);
     let mut own = OwnAliases {
         local: Vec::new(),
         ambiguous: Vec::new(),
     };
-    for c in contexts {
+    for (c, root) in contexts {
         let name_of_this = |alias: String| LocalAlias {
             alias,
-            root: c.info.path.clone(),
+            root: (*root).to_string(),
         };
-        if let Some(folded) = explicit(&c.info) {
+        if let Some(folded) = explicit(c) {
             let unique = !registered
                 .iter()
-                .any(|other| other.id != c.info.id && explicit(other).as_ref() == Some(&folded));
+                .any(|other| other.id != c.id && explicit(other).as_ref() == Some(&folded));
             if unique {
                 own.local.push(name_of_this(folded));
             } else {
                 own.ambiguous.push(name_of_this(folded));
             }
         }
-        if let Some(name) = space_name_of(&c.info) {
+        if let Some(name) = c.space {
             let outranked = registered
                 .iter()
                 .any(|other| explicit(other).as_deref() == Some(name));
             let shared = registered
                 .iter()
-                .any(|other| other.id != c.info.id && space_name_of(other) == Some(name));
+                .any(|other| other.id != c.id && other.space == Some(name));
             if !outranked && !shared {
                 own.local.push(name_of_this(name.to_string()));
             } else if !outranked {
@@ -131,12 +151,32 @@ pub(super) async fn local_aliases_of(
     own
 }
 
-/// What `local_aliases_of` found for a file's contexts: the names a link
-/// behind which names the file (`local`), and the names it carries that
-/// another registered context carries too (`ambiguous`).
-pub(super) struct OwnAliases {
-    pub(super) local: Vec<LocalAlias>,
-    pub(super) ambiguous: Vec<LocalAlias>,
+/// `own_aliases` for a file's `contexts` against the contexts `ctx_mgr` has
+/// registered, each alias resolving paths against its registered path.
+///
+/// The registrations are read when this is called — a rename reads them
+/// once, at its start, and does not see a registration made while it runs.
+/// One read for both lists, so they describe the same registrations.
+pub(super) async fn local_aliases_of(
+    ctx_mgr: &ContextManager,
+    contexts: &[Registered],
+) -> OwnAliases {
+    let registered = ctx_mgr.list().await;
+    let holders: Vec<AliasHolder<'_>> = registered.iter().map(AliasHolder::of).collect();
+    let own: Vec<(AliasHolder<'_>, &str)> = contexts
+        .iter()
+        .map(|c| (AliasHolder::of(&c.info), c.info.path.as_str()))
+        .collect();
+    own_aliases(&own, &holders)
+}
+
+/// What `own_aliases` found for a file's contexts: the names a link behind
+/// which names the file (`local`), and the names it carries that another
+/// registered context carries at the same tier (`ambiguous`). A space name an
+/// explicit alias outranks is in neither.
+pub(crate) struct OwnAliases {
+    pub(crate) local: Vec<LocalAlias>,
+    pub(crate) ambiguous: Vec<LocalAlias>,
 }
 
 /// The index keys of `contexts`: their registered paths.

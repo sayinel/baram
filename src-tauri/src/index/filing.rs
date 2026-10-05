@@ -80,10 +80,11 @@ pub enum FilingKey {
 
 /// A vault alias local to the file a reader asks about, paired with the root
 /// of the vault it names. `alias` is already lowercase — it is folded once,
-/// where it enters (`service::keys::local_aliases_of`), and every comparison
-/// here assumes so; `filing_key` folds the alias a LINK is written with.
-/// `root` is that vault's registered path: an alias resolves a path against
-/// it, never against the root of the index being read.
+/// where it enters (`service::keys::own_aliases`), and every comparison here
+/// assumes so; `filing_key` folds the alias a LINK is written with. `root` is
+/// that vault's path, spelled as the file paths a reader asks about are — the
+/// registered path in the app, the canonical path in the CLI: an alias
+/// resolves a path against it, never against the root of the index being read.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LocalAlias {
     pub alias: String,

@@ -1,6 +1,7 @@
 // §387 The CLI mode of the app binary — `baram <command>` reads a vault and exits
 // without starting tauri. Spec: dev/design/specs/0066-cli-read-only-design.md.
 
+mod aliases;
 mod app_config;
 mod args;
 mod error;
@@ -236,7 +237,7 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
         }
         Command::Backlinks { path } => {
             let vault = required(resolved)?;
-            let envelope = ops_notes::backlinks(&vault, &path).await?;
+            let envelope = ops_notes::backlinks(&vault, &path, &config).await?;
             output::write_envelope(out, &envelope, cli.json)?;
         }
         Command::Links { path } => {
