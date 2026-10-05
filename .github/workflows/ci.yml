@@ -185,7 +185,7 @@ jobs:
 
       # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
       # the toolchain is selected via the input, not the ref name.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: stable
           components: clippy, rustfmt
@@ -284,7 +284,7 @@ jobs:
 
       # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
       # the toolchain is selected via the input, not the ref name.
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: stable
           components: clippy
