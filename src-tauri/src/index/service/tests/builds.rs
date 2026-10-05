@@ -637,3 +637,41 @@ async fn an_unreadable_but_present_file_leaves_the_index_unchanged() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_suffixed_link_keeps_its_graph_target_across_saves() {
+    // What fails this: one name-or-relative-path `find` in
+    // `spelled_note_name` — `to("s.md")` returns the nested `a/x.md` after the save.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_str().unwrap().to_string();
+    std::fs::create_dir(dir.path().join("a")).unwrap();
+    for (p, c) in [
+        ("x.md", "t\n"),
+        ("a/x.md", "t\n"),
+        ("r.md", "[[x]]\n"),
+        ("s.md", "[[x.md]]\n"),
+    ] {
+        std::fs::write(dir.path().join(p), c).unwrap();
+    }
+    let ctx = ContextManager::new();
+    ctx.add(info("ctx-v", &root, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.set_active("ctx-v").await.unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    // A save moves the saved note to the end of its stem's list.
+    update_file_index_inner(&state, &ctx, &format!("{root}/x.md"))
+        .await
+        .unwrap();
+    let graph = get_link_index_inner(&state, &ctx, None).await.unwrap();
+    let to = |from: &str| {
+        graph
+            .edges
+            .iter()
+            .find(|e| e.from == format!("{root}/{from}"))
+            .map(|e| e.to.clone())
+    };
+    assert_eq!(to("r.md"), Some(format!("{root}/x.md")));
+    assert_eq!(to("s.md"), Some(format!("{root}/x.md")));
+}

@@ -134,12 +134,14 @@ impl LinkIndex {
     /// The frontend's `resolveWikilinkTarget` (`src/utils/editor/wikilink-nav.ts`)
     /// never strips the extension: its stem pass compares the target as written
     /// and its last pass, `resolveByExactFileName`, matches the full name, so the
-    /// spelled name wins there too.
+    /// spelled extension wins there too. For a bare target, that pass picks
+    /// the first matching name in tree order; this index instead prefers the
+    /// root-relative path, so it need not choose the same note.
     ///
     /// The candidates are the notes under the target's stem in `file_map`,
-    /// matched by file name, or by root-relative path when the link spells a
-    /// path — the two keys `register_link_target` gives a file, and the two
-    /// `resolveByExactFileName` compares. Not `name_map` itself: a save
+    /// matched first by the root-relative path as written, then by the first
+    /// matching file name in registration order. These are the two keys
+    /// `register_link_target` gives a file. Not `name_map` itself: a save
     /// (`update_file_from_content`) drops the note from it through
     /// `remove_file` and re-registers it with `register_file_path` alone, so a
     /// saved note would miss there while `file_map` holds it again.
@@ -159,21 +161,29 @@ impl LinkIndex {
             return None;
         }
         let stem = normalized.rsplit('/').next().unwrap_or(normalized);
-        let spelled_as = |path: &&String| {
-            let name = std::path::Path::new(path.as_str())
+        let notes = self.file_map.get(stem)?;
+        let name_of = |path: &String| {
+            std::path::Path::new(path.as_str())
                 .file_name()
-                .map(|n| n.to_string_lossy().to_lowercase());
-            let relative = self.root_path.as_deref().and_then(|root| {
-                let rel = path.strip_prefix(root)?;
-                let rel = rel
-                    .strip_prefix('/')
-                    .or_else(|| rel.strip_prefix('\\'))
-                    .unwrap_or(rel);
-                Some(rel.to_lowercase())
-            });
-            name.as_deref() == Some(full) || relative.as_deref() == Some(full)
+                .map(|n| n.to_string_lossy().to_lowercase())
         };
-        self.file_map.get(stem)?.iter().find(spelled_as).cloned()
+        let relative_of = |path: &String| {
+            let rel = path.strip_prefix(self.root_path.as_deref()?)?;
+            let rel = rel
+                .strip_prefix('/')
+                .or_else(|| rel.strip_prefix('\\'))
+                .unwrap_or(rel);
+            Some(rel.to_lowercase())
+        };
+        notes
+            .iter()
+            .find(|path| relative_of(path).as_deref() == Some(full))
+            .or_else(|| {
+                notes
+                    .iter()
+                    .find(|path| name_of(path).as_deref() == Some(full))
+            })
+            .cloned()
     }
 
     /// Resolve a link's target to an indexed file, preferring its spelled
@@ -383,6 +393,40 @@ mod tests {
                 "{files:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_a_spelled_note_extension_prefers_the_note_at_that_root_relative_path() {
+        // `x.md` at the root and `a/x.md` are both named `x.md`, and `[[x.md]]`
+        // is the root note's path under the root as written.
+        // What fails this: one name-or-relative-path `find` in
+        // `spelled_note_name` — the first graph target is `/vault/a/x.md`.
+        let nested_first = ["/vault/a/x.md", "/vault/x.md", "/vault/r.md"];
+        assert_eq!(
+            graph_targets_of(&nested_first, &[], "[[x.md]]\n[[x]]\n"),
+            vec!["/vault/x.md", "/vault/x.md"]
+        );
+        let root_first = ["/vault/x.md", "/vault/a/x.md", "/vault/r.md"];
+        assert_eq!(
+            graph_targets_of(&root_first, &[], "[[x.md]]\n"),
+            vec!["/vault/x.md"]
+        );
+        // A save moves the saved note to the end of its stem's list.
+        assert_eq!(
+            graph_targets_of(&root_first, &["/vault/x.md"], "[[x.md]]\n"),
+            vec!["/vault/x.md"]
+        );
+        assert_eq!(
+            outgoing_of(&nested_first, "[[x.md]]\n"),
+            vec![LinkResolution::Resolved("/vault/x.md".to_string())]
+        );
+        // No note at that path under the root: the name still finds one, the
+        // first registered, which is what the stem lookup answers for `[[x]]`.
+        let nested_only = ["/vault/a/x.md", "/vault/b/x.md", "/vault/r.md"];
+        assert_eq!(
+            graph_targets_of(&nested_only, &[], "[[x.md]]\n[[x]]\n"),
+            vec!["/vault/a/x.md", "/vault/a/x.md"]
+        );
     }
 
     #[test]
@@ -759,7 +803,8 @@ mod outgoing_tests {
     /// edge count and the graph's destinations for `OtherVault` and `Unresolved`.
     /// Its `Resolved` comparison repeats the shared `resolve_link` answer;
     /// spelled-extension resolution is pinned to explicit paths by
-    /// `test_outgoing_resolved_answers_a_spelled_note_extension_by_its_full_name`.
+    /// `test_outgoing_resolved_answers_a_spelled_note_extension_by_its_full_name`
+    /// and `test_a_spelled_note_extension_prefers_the_note_at_that_root_relative_path`.
     #[tokio::test]
     async fn every_branch_of_the_resolver_is_reached_and_agrees_with_the_graph() {
         let (_dir, root, index) = index_over(&[
