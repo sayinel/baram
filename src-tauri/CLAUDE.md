@@ -12,7 +12,7 @@ commands/     ← IPC 핸들러 (thin layer, 로직은 각 모듈에 위임)
   ↓
 fs/           ← 파일 읽기/쓰기/감시/이름변경 (notify crate)
 search/       ← regex 기반 전문 검색 — 파일 워킹 (§5.11)
-index/        ← 인메모리 링크/블록 인덱스 — HashMap (§29)
+index/        ← 인메모리 링크/블록 인덱스 — HashMap (§29). 이름 · 링크 대상의 키는 `normalizer::fold_name`(NFC→소문자→NFC, §390)을 거친다 — `fold_gate.rs` 가 맨 대소문자 접기를 막는다
 context/      ← 컨텍스트 관리자 — Vault 시스템 (§88)
 approval/     ← vault 경계 승인 저장소 — 웹뷰가 못 건드리는 인가 기록 (§331)
 cli/          ← 명령줄 도구 — `baram <command>`, tauri 를 시작하지 않고 vault 를 읽는다 (§387)
