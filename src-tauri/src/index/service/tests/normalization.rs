@@ -317,3 +317,34 @@ async fn a_block_id_rename_respells_the_references_typed_composed() {
         format!("(({note}#^b2))\n(({folder}/{note}#^b2))\n")
     );
 }
+
+#[tokio::test]
+async fn a_folder_rename_rewrites_the_links_typed_composed_into_it() {
+    // `회의록/` is stored decomposed; `a.md` links into it typed composed.
+    // Renaming the folder rewrites the link.
+    // What fails this: `rewrite_relative_wikilinks` comparing the old
+    // directory byte for byte — `a.md` keeps `[[./회의록/c]]`.
+    let (folder, folder_on_disk) = both_forms("회의록");
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-nfd-folder", true).await;
+    std::fs::create_dir(dir.path().join(&folder_on_disk)).unwrap();
+    std::fs::write(dir.path().join(&folder_on_disk).join("c.md"), "target").unwrap();
+    std::fs::write(dir.path().join("a.md"), format!("see [[./{folder}/c]]")).unwrap();
+    assert!(
+        names_in(dir.path()).contains(&folder_on_disk),
+        "the directory spells the folder as it was written"
+    );
+
+    let committed = commit_namespace_rename(
+        &format!("{root}/{folder_on_disk}"),
+        &format!("{root}/archive"),
+        &root,
+    )
+    .await
+    .unwrap();
+    assert_eq!(committed.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
+        "see [[./archive/c]]"
+    );
+}

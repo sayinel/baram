@@ -4,6 +4,7 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
+use super::normalizer::nfc;
 use crate::md::literal::Literal;
 
 // §61 Relative wikilink regex: [[./path...]] or [[../path...]]
@@ -38,7 +39,10 @@ pub fn rewrite_relative_wikilinks(
 /// `same_component` for what that does and does not promise), and the
 /// wikilink the rewrite writes is joined with `/`: it is markdown, not a
 /// native path. The Rust tests run on Linux, so the Windows shape is tested
-/// by passing `windows = true`, never behind `cfg(windows)`.
+/// by passing `windows = true`, never behind `cfg(windows)`. The old
+/// directory meets the link's components without regard to Unicode
+/// normalization, there and nowhere else (§390), and the text written is in
+/// NFC.
 fn rewrite_relative_wikilinks_with(
     content: &str,
     source_path: &str,
@@ -63,7 +67,15 @@ fn rewrite_relative_wikilinks_with(
             let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
             let resolved = resolve_components(&source_dir, root, rel_target, windows);
-            let Some(inside) = strip_dir_prefix(&old, &resolved, windows) else {
+            // §390 (spec 0069 §3.2): the old directory is spelled as the disk
+            // spells it and the link as it was typed, so this one comparison
+            // reads past Unicode normalization — `[[./회의록/x]]` typed
+            // composed names `회의록/` stored decomposed. Every other
+            // comparison of components stays byte for byte (`same_component`):
+            // widening that one would make a link name another directory.
+            let Some(inside) = strip_dir_prefix_by(&old, &resolved, |d, p| {
+                same_component(d, p, windows) || same_component(&nfc(d), &nfc(p), windows)
+            }) else {
                 return caps[0].to_string();
             };
             if literal
@@ -73,7 +85,10 @@ fn rewrite_relative_wikilinks_with(
                 return caps[0].to_string();
             }
             let new_resolved: Vec<&str> = new.iter().chain(inside).copied().collect();
-            let new_rel = relative_components(&source_dir, &new_resolved, windows);
+            // §390 (spec 0069 D7): written in NFC, after `relative_components`
+            // compared the disk spellings.
+            let new_rel =
+                nfc(&relative_components(&source_dir, &new_resolved, windows)).into_owned();
             format!("[[{new_rel}{rest}]]")
         })
         .to_string()
@@ -177,13 +192,20 @@ pub(super) fn strip_dir_prefix<'p, 'a>(
     path: &'p [&'a str],
     windows: bool,
 ) -> Option<&'p [&'a str]> {
+    strip_dir_prefix_by(dir, path, |d, p| same_component(d, p, windows))
+}
+
+/// `strip_dir_prefix` with the comparison of two components given: the
+/// relative-link rewrite passes one that reads past normalization (§390).
+fn strip_dir_prefix_by<'p, 'a>(
+    dir: &[&str],
+    path: &'p [&'a str],
+    same: impl Fn(&str, &str) -> bool,
+) -> Option<&'p [&'a str]> {
     if path.len() < dir.len() {
         return None;
     }
-    let under = dir
-        .iter()
-        .zip(path)
-        .all(|(d, p)| same_component(d, p, windows));
+    let under = dir.iter().zip(path).all(|(d, p)| same(d, p));
     under.then(|| &path[dir.len()..])
 }
 
@@ -212,6 +234,7 @@ pub(super) fn relative_components(source_dir: &[&str], target: &[&str], windows:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::normalizer::both_forms;
 
     // §61 rewrite_relative_wikilinks tests
     #[test]
@@ -541,5 +564,45 @@ mod tests {
         // Windows on purpose (`same_component`).
         assert!(!same_component("C:", "D:", true));
         assert!(!same_component("É", "é", true));
+    }
+
+    /// §390 The directory is stored decomposed (NFD) — the paths the rename
+    /// is given spell it so — and the link types it composed (NFC).
+    #[test]
+    fn a_folder_rename_follows_a_link_typed_composed_into_a_folder_stored_decomposed() {
+        // The link resolves into the directory and is rewritten, and what is
+        // written is composed — the folder the rename did not change
+        // included. A link into another directory is still left.
+        // `same_component` itself still tells the two spellings apart: it
+        // compares components byte for byte for every other caller, and the
+        // reading past normalization is this rewrite's alone (spec 0069 §3.2).
+        // What fails this: comparing the old directory with the link byte
+        // for byte — the first link stays; writing `relative_components`'
+        // text without NFC — the second gets `상위` decomposed; widening
+        // `same_component` itself — the last two assertions.
+        let (folder, folder_on_disk) = both_forms("회의록");
+        let (parent, parent_on_disk) = both_forms("상위");
+        assert_eq!(
+            rewrite_relative_wikilinks_with(
+                &format!("[[./{folder}/x]] [[./other/x]]"),
+                "/v/a/note.md",
+                &format!("/v/a/{folder_on_disk}"),
+                "/v/a/archive",
+                false,
+            ),
+            "[[./archive/x]] [[./other/x]]"
+        );
+        assert_eq!(
+            rewrite_relative_wikilinks_with(
+                &format!("[[./{parent}/ns/x]]"),
+                "/v/note.md",
+                &format!("/v/{parent_on_disk}/ns"),
+                &format!("/v/{parent_on_disk}/ns2"),
+                false,
+            ),
+            format!("[[./{parent}/ns2/x]]")
+        );
+        assert!(!same_component(&folder, &folder_on_disk, false));
+        assert!(!same_component(&folder, &folder_on_disk, true));
     }
 }
