@@ -11,6 +11,7 @@ import {
   deleteDir,
   deleteFile,
   isFileExistsError,
+  refreshIndex,
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
@@ -63,6 +64,7 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
         }
         removeFileEntry(path);
         useLinkStore.getState().invalidate();
+        if (entry.isDir) rebuildLinkIndex(rootPath);
       } catch (err) {
         logger.error("[FileTree] Delete failed:", err);
       }
@@ -109,6 +111,7 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
         }
       }
       useLinkStore.getState().invalidate();
+      if (hasDir) rebuildLinkIndex(rootPath);
       if (failed.length > 0) {
         await showAlert(`Failed to move to Trash: ${failed.join(", ")}`);
       }
@@ -213,4 +216,18 @@ function findEntryByPath(entries: FileEntry[], path: string): FileEntry | null {
     }
   }
   return null;
+}
+
+/**
+ * §29 Rebuild the link index after deleting a folder. The watcher's
+ * `file:deleted` names the folder alone, and this hook takes it out of the
+ * tree before that event arrives, so `use-link-index-watcher.ts` cannot tell
+ * the path was a directory.
+ */
+function rebuildLinkIndex(rootPath: string): void {
+  refreshIndex(rootPath)
+    .then(() => useLinkStore.getState().invalidate())
+    .catch((err: unknown) =>
+      logger.error("[FileTree] Link index rebuild failed:", err),
+    );
 }

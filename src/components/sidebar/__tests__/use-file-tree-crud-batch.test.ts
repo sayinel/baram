@@ -24,7 +24,7 @@ vi.mock("../../../utils/confirm-dialog", () => ({
   showAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { deleteDir, deleteFile } from "../../../ipc/invoke";
+import { deleteDir, deleteFile, refreshIndex } from "../../../ipc/invoke";
 import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
 
 beforeEach(() => {
@@ -76,5 +76,35 @@ describe("handleDeleteMany", () => {
     const { result } = renderHook(() => useFileTreeCrud());
     await act(() => result.current.handleDeleteMany(["/r/b.md"]));
     expect(vi.mocked(showConfirm).mock.calls[0][0]).toContain('"b.md"');
+  });
+});
+
+// §29 지운 폴더의 노트는 워처가 index 에서 뺄 수 없다(이벤트는 폴더 하나뿐이고 트리에서 이미
+// 빠졌다) — 폴더를 지울 때만 index 를 다시 build 한다(issue 790).
+describe("folder deletion rebuilds the link index", () => {
+  // 이것을 실패시키는 것: `handleDelete` 의 `if (entry.isDir) rebuildLinkIndex(rootPath)` 를 지운다.
+  it("단일 폴더 삭제는 vault 를 한 번 다시 build 한다", async () => {
+    const { result } = renderHook(() => useFileTreeCrud());
+    await act(() => result.current.handleDelete("/r/docs"));
+    expect(refreshIndex).toHaveBeenCalledTimes(1);
+    expect(refreshIndex).toHaveBeenCalledWith("/r");
+  });
+
+  // 이것을 실패시키는 것: 조건을 지워 파일 삭제에서도 `rebuildLinkIndex` 를 부른다.
+  it("파일 삭제는 다시 build 하지 않는다 — 워처가 그 노트 하나를 뺀다", async () => {
+    const { result } = renderHook(() => useFileTreeCrud());
+    await act(() => result.current.handleDelete("/r/b.md"));
+    await act(() =>
+      result.current.handleDeleteMany(["/r/c.md", "/r/docs/a.md"]),
+    );
+    expect(deleteFile).toHaveBeenCalledTimes(3);
+    expect(refreshIndex).not.toHaveBeenCalled();
+  });
+
+  // 이것을 실패시키는 것: `handleDeleteMany` 의 `if (hasDir) rebuildLinkIndex(rootPath)` 를 지운다.
+  it("폴더가 섞인 일괄 삭제는 한 번만 다시 build 한다", async () => {
+    const { result } = renderHook(() => useFileTreeCrud());
+    await act(() => result.current.handleDeleteMany(["/r/b.md", "/r/docs"]));
+    expect(refreshIndex).toHaveBeenCalledTimes(1);
   });
 });

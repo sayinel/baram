@@ -1,5 +1,5 @@
-// §4.2 Editor feature subsystems — the 13 hook calls that wire up skills mode,
-// auto-save/snapshot, journal cursor, file/task watchers, the global capture
+// §4.2 Editor feature subsystems — the 14 hook calls that wire up skills mode,
+// auto-save/snapshot, journal cursor, file/task/link-index watchers, the global capture
 // shortcut, zoom, drag & drop, ghost text, inline AI, settings sync, and the
 // close guard. Order matters: see `use-editor-features-order.test.ts`.
 import type { UseInlineAIReturn } from "./use-inline-ai";
@@ -14,6 +14,7 @@ import { useGhostText } from "./use-ghost-text";
 import { useGlobalCaptureShortcut } from "./use-global-capture-shortcut";
 import { useInlineAI } from "./use-inline-ai";
 import { useJournalInitialCursor } from "./use-journal-initial-cursor";
+import { useLinkIndexWatcher } from "./use-link-index-watcher";
 import { useSettingsEffects } from "./use-settings-effects";
 import { useSkillsMode } from "./use-skills-mode";
 import { useTaskWatcher } from "./use-task-watcher";
@@ -43,6 +44,9 @@ export function useEditorFeatures(
 
   // §304 태스크 캐시 증분 갱신 — file:* 이벤트로 변경된 파일만 재스캔
   useTaskWatcher();
+
+  // §29 링크 index 증분 갱신 — 앱 밖에서 바뀐 노트만 다시 읽는다(Graph 는 읽기만 한다)
+  useLinkIndexWatcher();
 
   // §313 전역 캡처 단축키 — 설정된 조합 하나를 OS에 등록해 둔다. 앱에서 **한 번만**
   // 마운트한다(두 번이면 같은 조합을 두 번 등록하려다 실패 상태가 남는다).
