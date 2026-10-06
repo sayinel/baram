@@ -8,22 +8,19 @@ import type { FileEntry } from "../stores/file/file";
 
 import { useShallow } from "zustand/shallow";
 
+import defaultExcludedDirs from "../../src-tauri/src/fs/default-excluded-dirs.json";
 import { watchDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 
-/** Directories and patterns to ignore (mirrors list_dir skip logic in Rust) */
-const SKIP_DIRS = new Set([
-  ".git",
-  ".next",
-  "__pycache__",
-  "build",
-  "dist",
-  "node_modules",
-  "target",
-]);
+/**
+ * Directories whose events the file tree ignores — the default list `list_dir` skips, read
+ * from the file Rust compiles in, so the two cannot drift (issue 794). A vault's
+ * `.baramignore` does not reach this filter or the tree.
+ */
+const SKIP_DIRS: ReadonlySet<string> = new Set(defaultExcludedDirs);
 
 interface ChangedPayload {
   mtime: number;
