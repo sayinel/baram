@@ -1,8 +1,28 @@
 // §69 Plugin UI registry — plugin-registered status-bar items, sidebar
 // panels, settings tabs, palette commands, and file viewers (runtime only)
-import type { PluginFileViewerContext } from "./types";
+import type { PluginContributions, PluginFileViewerContext } from "./types";
 
 import { create } from "zustand";
+
+/** §391 — a command a plugin declared, as the entry points need it. */
+export interface PluginEntryCommand {
+  id: string;
+  title: string;
+}
+
+/**
+ * §391 spec 0070 §5 — what one plugin's right-click menu items, slash items and shortcut rows
+ * are drawn from: its name, every command it declared (`palette: false` included), and its
+ * `menu` and `slash`. The manifest's own text — each entry point sanitises where it draws
+ * (D16). Up only once the plugin has activated; see `registerEntryContributions`.
+ */
+export interface PluginEntryContributions {
+  commands: PluginEntryCommand[];
+  menu: NonNullable<PluginContributions["menu"]>;
+  name: string;
+  pluginId: string;
+  slash: NonNullable<PluginContributions["slash"]>;
+}
 
 export interface PluginFileViewer {
   /** Normalized: lowercase, no leading dot. */
@@ -61,9 +81,15 @@ export interface PluginStatusBarItem {
 
 interface PluginUIState {
   activePluginPanelId: null | string;
+  /**
+   * §391 — by plugin id. Every write replaces the object (never mutates it), and an unload of
+   * a plugin with no entry keeps it, so a subscriber wakes exactly when the slice changed.
+   */
+  contributions: Record<string, PluginEntryContributions>;
   fileViewers: PluginFileViewer[];
   markPluginCommandsReady: (pluginId: string) => void;
   paletteCommands: PluginPaletteCommand[];
+  registerContributions: (entry: PluginEntryContributions) => void;
   registerFileViewer: (viewer: PluginFileViewer) => void;
   registerPaletteCommand: (cmd: PluginPaletteCommand) => void;
   registerSettingsTab: (tab: PluginSettingsTab) => void;
@@ -99,11 +125,17 @@ export function matchFileViewer(
 
 export const usePluginUIStore = create<PluginUIState>()((set) => ({
   activePluginPanelId: null,
+  contributions: {},
   fileViewers: [],
   paletteCommands: [],
   settingsTabs: [],
   sidebarPanels: [],
   statusBarItems: [],
+
+  registerContributions: (entry) =>
+    set((state) => ({
+      contributions: { ...state.contributions, [entry.pluginId]: entry },
+    })),
 
   registerFileViewer: (viewer) =>
     set((state) => ({ fileViewers: [...state.fileViewers, viewer] })),
@@ -205,6 +237,16 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
         activePluginPanelId: activeBelongsToPlugin
           ? null
           : state.activePluginPanelId,
+        // §391 — the SAME object when this plugin had no entry: `contributions` subscribers
+        // (Settings > Keybindings, `useKeybindings`) are not woken by an unrelated unload.
+        // `Object.hasOwn`, not `in` — `constructor` is a legal plugin id every object inherits.
+        contributions: Object.hasOwn(state.contributions, pluginId)
+          ? Object.fromEntries(
+              Object.entries(state.contributions).filter(
+                ([id]) => id !== pluginId,
+              ),
+            )
+          : state.contributions,
         fileViewers: state.fileViewers.filter((v) => v.pluginId !== pluginId),
         paletteCommands: state.paletteCommands.filter(
           (c) => c.pluginId !== pluginId,

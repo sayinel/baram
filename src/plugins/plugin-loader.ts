@@ -35,6 +35,7 @@ import {
 } from "./extension-context";
 import { validateManifest } from "./manifest";
 import { grantableCapabilities } from "./plugin-consent";
+import { registerEntryContributions } from "./plugin-entry-points";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
@@ -343,6 +344,10 @@ export class PluginLoader {
         }),
       );
       this.wireSandboxContributions(manifest, session, disposables);
+      // §391 spec 0070 §5 — after `start` resolved (activation succeeded) and the handlers
+      // above exist. A throw from here on is rolled back by `rollbackSandboxLoad`, whose
+      // `unregisterPluginUI` takes the entry down again.
+      registerEntryContributions(manifest);
       this.loaded.set(manifest.id, {
         id: manifest.id,
         manifest,
@@ -608,6 +613,10 @@ export class PluginLoader {
       this.unwindAfterActivate(manifest.id, context);
       throw err;
     }
+
+    // §391 spec 0070 §5 — only now: a throwing or timed-out `activate` above is not unwound,
+    // so an entry put up earlier would outlive the failed load.
+    registerEntryContributions(manifest);
 
     // 6. Store loaded plugin
     this.loaded.set(manifest.id, {
