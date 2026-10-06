@@ -68,5 +68,25 @@ describe("built-in manifests (§69)", () => {
       delete (noTrust as { trust?: unknown }).trust;
       expect(validateManifest(noTrust).valid).toBe(false);
     });
+
+    it("applies the §391 entry-point rules to a built-in-shaped manifest", () => {
+      // Built-ins never pass `validateManifest` at runtime (spec 0070 §5); this file is the
+      // only place a new manifest rule reaches them.
+      expect(
+        validateManifest({
+          ...good,
+          contributions: { menu: [{ command: "nope", id: "m" }] },
+        }).valid,
+      ).toBe(false);
+      expect(
+        validateManifest({
+          ...good,
+          contributions: {
+            commands: [{ id: "go", title: "Go" }],
+            menu: [{ command: "go", id: "m" }],
+          },
+        }).valid,
+      ).toBe(true);
+    });
   });
 });

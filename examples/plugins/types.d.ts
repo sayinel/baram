@@ -221,23 +221,40 @@ export interface PluginConsent {
     trust: PluginTrust;
 }
 /**
- * §260 declarative contribution surface for sandboxed plugins. Populated in
- * the manifest; consumed by the sandbox runtime in later phases. Every field
+ * §260 declarative contribution surface: data in the manifest, read by the host. Every field
  * is serializable (crosses the plugin/host boundary as data).
+ *
+ * §391 spec 0070 — `menu` and `slash` each name one of `commands` by its `id` and show that
+ * command's `title` unless they carry their own. No field declares a shortcut: while the plugin
+ * is on, each command in `commands` is listed in Settings > Keybindings for the user to give a
+ * key (a trusted plugin also needs the `commands` capability for that). A trusted plugin also
+ * registers each declared command with `ctx.commands.register` under the same id.
  */
 export interface PluginContributions {
+    /** At most 50 (spec 0070 D11). */
     commands?: Array<{
         id: string;
         palette?: boolean;
         title: string;
     }>;
+    /**
+     * Items under the editor's right-click menu, at most 5. `when: "selection"` shows one only
+     * while text is selected.
+     */
     menu?: Array<{
         command: string;
         id: string;
-        title: string;
-        when?: string;
+        title?: string;
+        when?: "selection";
     }>;
     settings?: PluginSettingField[];
+    /** Items at the end of the slash menu, at most 10. */
+    slash?: Array<{
+        command: string;
+        description?: string;
+        id: string;
+        title?: string;
+    }>;
     statusBar?: Array<{
         command?: string;
         id: string;

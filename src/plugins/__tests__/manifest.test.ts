@@ -486,14 +486,22 @@ describe("validateManifest — trust tier (§260)", () => {
       );
     });
 
-    it("checks menu as an array of objects without freezing its shape", () => {
-      // Still nothing consumes `menu` (4c defers the mapping). Asserting a shape the
-      // loader does not read would freeze an unsettled design; leaving it unchecked would
-      // repeat the very mistake above the moment something reads it.
+    it("refuses a menu entry without an id or a command (§391 — the shape is settled)", () => {
+      // This row used to pin `menu: [{ anything: true }]` as VALID while nothing read `menu`.
+      // §391 reads `menu[].command`, so the 4a CARRY-OVER rule now applies: both are ids, and
+      // the command must be declared (spec 0070 §4).
       expect(fieldsOf(sandboxed({ menu: "nope" }))).toContain(
         "contributions.menu",
       );
-      expect(sandboxed({ menu: [{ anything: true }] }).valid).toBe(true);
+      const loose = fieldsOf(sandboxed({ menu: [{ anything: true }] }));
+      expect(loose).toContain("contributions.menu[0].id");
+      expect(loose).toContain("contributions.menu[0].command");
+      expect(
+        sandboxed({
+          commands: [{ id: "run", title: "Run" }],
+          menu: [{ command: "run", id: "run" }],
+        }).valid,
+      ).toBe(true);
     });
   });
 
