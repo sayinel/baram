@@ -140,17 +140,40 @@ async fn an_active_context_with_no_index_yet_answers_empty_and_a_save_is_a_no_op
         .await
         .unwrap()
         .is_empty());
-    assert!(get_link_index_inner(&state, &ctx, None)
-        .await
-        .unwrap()
-        .edges
-        .is_empty());
     update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
         .await
         .unwrap();
     let key = active_index_key(&ctx).await.unwrap();
     assert!(outgoing_links(&state, &key).await.is_empty());
     assert!(state.with_index(&key, |idx| idx.is_none()).await);
+}
+
+#[tokio::test]
+async fn the_graph_builds_a_missing_index_once_and_then_only_reads_it() {
+    // Issue 790: the graph used to rebuild the whole index before every read,
+    // once per save. Now it reads what the saves keep current.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    // No refresh has run: the first read builds the index rather than
+    // answering an empty graph.
+    // 이것을 실패시키는 것: `get_link_index_inner` 에서 `ensure_indexes` 를 지운다.
+    let first = get_link_index_inner(&state, &ctx, None).await.unwrap();
+    assert!(first.nodes.contains(&format!("{root}/a.md")));
+    assert!(!first.edges.is_empty());
+    // A file written behind the index's back is what a second build would
+    // find. Zero builds per read means the next read does not see it.
+    // 이것을 실패시키는 것: `ensure_indexes` 대신 `refresh_index_inner` 로 매번 build 한다.
+    std::fs::write(dir.path().join("c.md"), "see [[a]]").unwrap();
+    let c = format!("{root}/c.md");
+    for _ in 0..3 {
+        let graph = get_link_index_inner(&state, &ctx, None).await.unwrap();
+        assert!(!graph.nodes.contains(&c));
+    }
+    // A save reaches the graph through the single-file update alone.
+    update_file_index_inner(&state, &ctx, &c).await.unwrap();
+    let saved = get_link_index_inner(&state, &ctx, None).await.unwrap();
+    assert!(saved.edges.iter().any(|e| e.from == c));
 }
 
 #[tokio::test]

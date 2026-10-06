@@ -475,7 +475,7 @@ async fn a_root_symlink_retargeted_after_the_lookup_is_not_scanned() {
 #[tokio::test]
 async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
     let ctx = ContextManager::new();
-    let (_dir, root) = vault_with_a_link(&ctx, "ctx-old", true).await;
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-old", true).await;
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     assert!(!get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
@@ -494,12 +494,17 @@ async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
         .await
         .unwrap()
         .is_empty());
+    assert!(graph_term_for_active(&state, &ctx).await.is_empty());
+    // The graph builds an index for the new registration (issue 790) instead
+    // of reading the old one: with the link gone from disk, the old index
+    // would still answer `a -> b`.
+    std::fs::write(dir.path().join("a.md"), "no link").unwrap();
     assert!(get_link_index_inner(&state, &ctx, None)
         .await
         .unwrap()
         .edges
         .is_empty());
-    assert!(graph_term_for_active(&state, &ctx).await.is_empty());
+    std::fs::write(dir.path().join("a.md"), "see [[b]]").unwrap();
     // Its own refresh makes the index count again.
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     assert!(!get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))

@@ -3,6 +3,7 @@ use crate::index::{BacklinkResult, LinkGraph, LinkIndex};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use super::build::ensure_indexes;
 use super::keys::{
     active_registration, buildable, keys_of, local_aliases_of, owning_contexts, owning_registration,
 };
@@ -95,6 +96,13 @@ pub(crate) async fn get_link_index_inner(
         Some(p) if !p.is_empty() => owning_registration(ctx_mgr, &p).await?,
         _ => active_registration(ctx_mgr).await?,
     };
+    // §30 The graph reads the index the saves keep current and never rebuilds
+    // it per save (issue 790). A context with no index for this registration
+    // yet — the graph opened before the vault-open build published, a space
+    // registered without being opened — is built once here, through the same
+    // gate the renames use: it joins a build already in flight instead of
+    // scanning again, and once published every later read is a pure read.
+    ensure_indexes(state, ctx_mgr, std::slice::from_ref(&registered)).await?;
     Ok(state
         .with_index_for(&registered.info.path, registered.incarnation, |idx| {
             idx.map(LinkIndex::get_link_graph).unwrap_or_default()
