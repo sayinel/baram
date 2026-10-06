@@ -18,7 +18,9 @@ Baram leaves out folders with these names, at any depth below the vault root:
 | `.next` | Next.js build output |
 | `.git` | Git's own data |
 
-Folders whose names start with `.` are left out as well, and so are such files everywhere except search across all files. That rule is separate from the list and cannot be turned off.
+Folders whose names start with `.` are left out as well, and so are such files everywhere except search across all files. That rule is separate from the list, applies before it and before `.baramignore`, and cannot be turned off: `!.next/` has no effect.
+
+Names match exactly, including case: `Build` is not `build`, even on a disk that ignores case.
 
 Only folders **below** the vault root are judged. A vault whose own folder is named `build` opens and indexes like any other; a `build` folder inside it is left out.
 
@@ -34,6 +36,10 @@ A note inside a left-out folder can still be opened with **File > Open File** (`
 - the [command line](/en/docs/command-line/): `files`, `search`, `tags`, `tasks`, `backlinks` and `links`
 
 Saving a note in a left-out folder does not bring it back into any of these.
+
+### Renaming across the boundary is refused
+
+Renaming a folder so that its notes would move from a folder Baram reads into one it leaves out — or the other way round — is refused with an error, and nothing is moved. So is renaming a note to a name `.baramignore` leaves out, or out of one. The links of notes Baram never read could not be checked, and links to notes it stops reading would point nowhere. Change `.baramignore` first, or pick another name.
 
 ## Changing the list for one vault: `.baramignore`
 
@@ -53,7 +59,7 @@ drafts/
 - A file inside a left-out folder cannot be brought back by itself: Baram never looks inside that folder, so `!drafts/keep.md` under `drafts/` has no effect. Bring the folder back instead.
 - Lines starting with `#` are comments.
 
-Baram reads only the `.baramignore` in the vault root. One in a subfolder, or in a folder above the vault, is not read.
+Baram reads only the `.baramignore` in the vault root. One in a subfolder, or in a folder above the vault, is not read — unless that subfolder is also opened as a vault of its own, which then reads its own.
 
 ### Your `.gitignore` is not used
 
@@ -61,7 +67,11 @@ Baram does not read `.gitignore`, `.ignore` or Git's global excludes. Notes you 
 
 ### When a change takes effect
 
-Search, tags and the command line read the file each time they run. The link index — links, backlinks, the graph and renaming — reads it when it is built, when the vault is opened. After editing `.baramignore`, close and reopen the vault to see the change everywhere.
+Search, tags, the Tasks panel, folder renames and the command line read the file each time they run. Links, backlinks, the graph and note renames use what the link index read when it was built — when the vault was opened, or after a folder rename. After editing `.baramignore`, close and reopen the vault to see the change everywhere.
+
+### When the file can't be used
+
+If `.baramignore` can't be read, isn't UTF-8 text, is larger than 64 KiB, has more than 1,000 patterns, or has a line that isn't a valid pattern, Baram does not guess. Search, tags, tasks, folder renames and the command line stop with an error that names the file, and the link index is not rebuilt until the file is fixed or removed.
 
 ## Where `.baramignore` does not reach
 
