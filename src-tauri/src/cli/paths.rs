@@ -72,12 +72,13 @@ pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
 /// itself sits under a dot folder.
 pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let folder = locate(vault, input)?;
-    if walk_skips(vault, &folder) {
+    if walk_skips(vault, &folder, true) {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!(
-                "{input} is a folder the vault walk skips (hidden, or one of: {})",
-                crate::fs::SKIP_DIRS.join(", ")
+                "{input} is a folder the vault walk skips (hidden, one of: {}, or left out by {})",
+                crate::fs::DEFAULT_EXCLUDED_DIRS.join(", "),
+                crate::fs::BARAMIGNORE
             ),
         ));
     }
@@ -144,7 +145,7 @@ pub(crate) fn file_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
 
 /// A `--file` value for a command that reads a NOTE: a file the vault walk would list.
 /// The walk lists `.md` and `.markdown` files by name, case-sensitively, and never
-/// enters a hidden or `SKIP_DIRS` folder, so a file outside that is refused the way
+/// enters a hidden folder or one `walk_skips` leaves out, so a file outside that is refused the way
 /// `folder_arg` refuses a skipped folder — an answer for it would show what the app never
 /// shows (spec 0066 §3.4).
 pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
@@ -159,7 +160,7 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
             format!("{input} is not a markdown note"),
         ));
     }
-    if walk_skips(vault, &file) {
+    if walk_skips(vault, &file, false) {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is where the vault walk does not go"),
@@ -168,21 +169,16 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
     Ok(file)
 }
 
-/// Whether the vault walk never reaches `path`: a component BELOW the vault root is
-/// hidden, or is one of `SKIP_DIRS`. The two `fs` walkers, `collect_md_files` and
-/// `collect_all_files`, skip a hidden ENTRY of either kind and test `SKIP_DIRS` on
-/// directories only; a file named exactly like one of `SKIP_DIRS` is never a note, so for
-/// what the callers ask — a folder, or a markdown file — the answer is the one those two
-/// walkers give. `search`'s own walker skips hidden directories but not hidden files;
-/// `search` reaches this only through `--folder`, and for a folder the two rules agree.
-pub(crate) fn walk_skips(vault: &Vault, path: &Path) -> bool {
-    path.strip_prefix(&vault.root)
-        .unwrap_or(path)
-        .components()
-        .any(|component| {
-            let name = component.as_os_str().to_string_lossy();
-            name.starts_with('.') || crate::fs::SKIP_DIRS.contains(&name.as_ref())
-        })
+/// Whether the vault walk never reaches `path`: `VaultExclusion::walk_skips` under the
+/// vault root — a component BELOW the root is hidden, or the default list or the vault's
+/// `.baramignore` leaves it or a folder above it out. The two `fs` walkers,
+/// `collect_md_files` and `collect_all_files`, skip a hidden ENTRY of either kind and ask
+/// the same matcher of every entry, so for what the callers ask — a folder, or a markdown
+/// file — the answer is the one those two walkers give. `search`'s own walker skips
+/// hidden directories but not hidden files; `search` reaches this only through
+/// `--folder`, and for a folder the two rules agree.
+pub(crate) fn walk_skips(vault: &Vault, path: &Path, is_dir: bool) -> bool {
+    crate::fs::VaultExclusion::load(&vault.root).walk_skips(path, is_dir)
 }
 
 /// `/` between components on every platform.
@@ -361,7 +357,7 @@ mod tests {
 
     /// Each file exists, so the refusal is the note check's and not a missing file's. The
     /// walk lists `.md` and `.markdown` by name, case-sensitively (`A.MD` is not listed),
-    /// and never enters a hidden folder or one of `SKIP_DIRS`, nor lists a hidden file.
+    /// and never enters a hidden folder or one of `DEFAULT_EXCLUDED_DIRS`, nor lists a hidden file.
     #[test]
     fn a_file_the_walk_never_shows_is_refused_with_the_reason() {
         let (_t, base) = tree(&["vault/.hidden", "vault/node_modules", "vault/notes"]);

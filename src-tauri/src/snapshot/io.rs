@@ -105,16 +105,10 @@ fn scan_dir_recursive(
         if name.starts_with('.') {
             continue;
         }
-        // Build/cache dirs excluded from snapshot scan (hidden dirs already filtered above).
-        const SKIP_BUILD_DIRS: &[&str] = &[
-            "node_modules",
-            "target",
-            "build",
-            "dist",
-            "__pycache__",
-            ".next",
-        ];
-        if path.is_dir() && SKIP_BUILD_DIRS.contains(&name.as_str()) {
+        // Build/cache dirs excluded from snapshot scan (hidden dirs already filtered above):
+        // the default list the vault walk starts from (issue 794). Not the vault's
+        // `.baramignore` — leaving a folder out of search does not drop its history.
+        if path.is_dir() && crate::fs::DEFAULT_EXCLUDED_DIRS.contains(&name.as_str()) {
             continue;
         }
 

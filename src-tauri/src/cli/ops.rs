@@ -137,7 +137,10 @@ fn cannot_read_vault(vault: &Vault) -> CliError {
 /// directory became readable or went away in between — and the message stays general.
 pub(crate) async fn walk_failure(vault: &Vault, start: &Path) -> CliError {
     let mut sink = Vec::new();
-    let failed = crate::fs::collect_md_files(start, &mut sink).await.err();
+    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    let failed = crate::fs::collect_md_files(start, &exclusion, &mut sink)
+        .await
+        .err();
     unreadable_directory(vault, failed)
 }
 
@@ -156,12 +159,13 @@ fn unreadable_directory(vault: &Vault, failed: Option<FsError>) -> CliError {
 /// walkers skip the same things, and they are re-run in the order the build ran them.
 pub(crate) async fn index_failure(vault: &Vault) -> CliError {
     let mut sink = Vec::new();
-    let mut failed = crate::fs::collect_md_files(&vault.root, &mut sink)
+    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    let mut failed = crate::fs::collect_md_files(&vault.root, &exclusion, &mut sink)
         .await
         .err();
     if failed.is_none() {
         sink.clear();
-        failed = crate::fs::collect_all_files(&vault.root, &mut sink)
+        failed = crate::fs::collect_all_files(&vault.root, &exclusion, &mut sink)
             .await
             .err();
     }
@@ -199,7 +203,8 @@ pub(crate) async fn files(
         None => vault.root.clone(),
     };
     let mut found = Vec::new();
-    if crate::fs::collect_md_files(&start, &mut found)
+    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    if crate::fs::collect_md_files(&start, &exclusion, &mut found)
         .await
         .is_err()
     {
@@ -294,9 +299,13 @@ pub(crate) async fn search(
         include_glob: None,
         exclude_glob: None,
     };
-    let hits = crate::search::search_files(&start.to_string_lossy(), query.query, &options)
-        .await
-        .map_err(|_| CliError::new(ErrorCode::Io, format!("cannot search {}", start.display())))?;
+    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    let hits =
+        crate::search::search_files(&start.to_string_lossy(), &exclusion, query.query, &options)
+            .await
+            .map_err(|_| {
+                CliError::new(ErrorCode::Io, format!("cannot search {}", start.display()))
+            })?;
     let (truncated, items) = search_rows(vault, hits, query.limit);
     Ok(Envelope {
         vault: Some(vault_info(vault)),

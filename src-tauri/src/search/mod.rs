@@ -51,8 +51,8 @@ impl Default for SearchOptions {
     }
 }
 
-/// Directories to skip during recursive file collection.
-use crate::fs::SKIP_DIRS;
+/// What recursive file collection leaves out.
+use crate::fs::VaultExclusion;
 
 /// Build a regex pattern from the query and options.
 fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, String> {
@@ -158,9 +158,12 @@ fn exclude_matches(name: &str, rel_path: &str, exclude_glob: Option<&str>) -> bo
 }
 
 /// Recursively collect files under root, filtered by include/exclude glob patterns.
-/// Default (no patterns): collects only `.md` files.
+/// Default (no patterns): collects only `.md` files. What `exclusion` leaves out (the
+/// vault walk's default list and `.baramignore`, judged from the vault root even when
+/// `root` is a folder below it) is never entered or collected.
 async fn collect_files(
     root: &Path,
+    exclusion: &VaultExclusion,
     include_glob: Option<&str>,
     exclude_glob: Option<&str>,
 ) -> Vec<String> {
@@ -181,8 +184,11 @@ async fn collect_files(
             };
 
             if let Ok(metadata) = entry.metadata().await {
+                if exclusion.excludes_entry(&path, metadata.is_dir()) {
+                    continue;
+                }
                 if metadata.is_dir() {
-                    if !SKIP_DIRS.contains(&name.as_str()) && !name.starts_with('.') {
+                    if !name.starts_with('.') {
                         stack.push(path);
                     }
                 } else if metadata.is_file() {
@@ -205,9 +211,11 @@ async fn collect_files(
     result
 }
 
-/// Search all .md files under `root` for matches against `query`.
+/// Search all .md files under `root` for matches against `query`, leaving out what
+/// `exclusion` (built from the vault root) leaves out.
 pub async fn search_files(
     root: &str,
+    exclusion: &VaultExclusion,
     query: &str,
     opts: &SearchOptions,
 ) -> Result<Vec<SearchResult>, String> {
@@ -224,6 +232,7 @@ pub async fn search_files(
 
     let files = collect_files(
         root_path,
+        exclusion,
         opts.include_glob.as_deref(),
         opts.exclude_glob.as_deref(),
     )
@@ -366,11 +375,12 @@ mod tests {
         std_fs::create_dir(root.join("sub")).unwrap();
         std_fs::write(root.join("sub/nested.md"), "# Nested").unwrap();
 
-        // Create skip-dir
+        // Create skip-dir. 이것을 실패시키는 것: `collect_files` 의 `excludes_entry` 검사를
+        // 지우는 것 — `node_modules/skip.md` 가 수집된다.
         std_fs::create_dir(root.join("node_modules")).unwrap();
         std_fs::write(root.join("node_modules/skip.md"), "skip").unwrap();
 
-        let files = collect_files(root, None, None).await;
+        let files = collect_files(root, &VaultExclusion::load(root), None, None).await;
         assert_eq!(files.len(), 3);
         assert!(files.iter().any(|f| f.ends_with("file1.md")));
         assert!(files.iter().any(|f| f.ends_with("file2.md")));
@@ -386,9 +396,14 @@ mod tests {
         std_fs::write(root.join("b.md"), "No match here\n").unwrap();
 
         let opts = SearchOptions::default();
-        let results = search_files(root.to_str().unwrap(), "world", &opts)
-            .await
-            .unwrap();
+        let results = search_files(
+            root.to_str().unwrap(),
+            &VaultExclusion::load(root),
+            "world",
+            &opts,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].line, 1);
@@ -407,9 +422,14 @@ mod tests {
             max_results: 10,
             ..Default::default()
         };
-        let results = search_files(root.to_str().unwrap(), "match", &opts)
-            .await
-            .unwrap();
+        let results = search_files(
+            root.to_str().unwrap(),
+            &VaultExclusion::load(root),
+            "match",
+            &opts,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(results.len(), 10);
     }
@@ -417,9 +437,14 @@ mod tests {
     #[tokio::test]
     async fn test_search_files_empty_query() {
         let tmp = TempDir::new().unwrap();
-        let results = search_files(tmp.path().to_str().unwrap(), "", &SearchOptions::default())
-            .await
-            .unwrap();
+        let results = search_files(
+            tmp.path().to_str().unwrap(),
+            &VaultExclusion::default(),
+            "",
+            &SearchOptions::default(),
+        )
+        .await
+        .unwrap();
         assert!(results.is_empty());
     }
 }

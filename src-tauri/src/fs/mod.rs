@@ -2,9 +2,11 @@
 
 pub(crate) mod archive;
 mod copy_dir;
+mod exclusion;
 pub mod media;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
+pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
 
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -51,10 +53,9 @@ pub enum FsError {
     AlreadyExists(String),
 }
 
-/// Directories excluded from markdown file collection.
-pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
-
-/// §278 Recursively collect EVERY file under root, skipping hidden entries and SKIP_DIRS.
+/// §278 Recursively collect EVERY file under `root`, skipping hidden entries and what
+/// `exclusion` leaves out (issue 794: the default list and the vault's `.baramignore`).
+/// `root` may be a folder below the vault root; `exclusion` judges against the vault root.
 ///
 /// The link index scans only markdown for outgoing links, but a wikilink may *point* at
 /// any file — `[[Paper.pdf]]`. Those targets have to be registered somewhere or the link
@@ -66,11 +67,17 @@ pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
 /// quantisation defect in the zoom path was exactly that. A target map entry for a file
 /// nobody links to costs a string; it can only ever be reached by someone writing that
 /// exact name.
-pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
+pub async fn collect_all_files(
+    root: &Path,
+    exclusion: &VaultExclusion,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), FsError> {
     let unreadable = |source: std::io::Error| FsError::ReadDir {
         path: root.to_path_buf(),
         source,
     };
+    #[cfg(test)]
+    self::exclusion::note_folder_read(root);
     let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
     while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -81,23 +88,32 @@ pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<
             Ok(m) => m,
             Err(_) => continue,
         };
+        let path = entry.path();
+        if exclusion.excludes_entry(&path, metadata.is_dir()) {
+            continue;
+        }
         if metadata.is_dir() {
-            if !SKIP_DIRS.contains(&name.as_str()) {
-                Box::pin(collect_all_files(&entry.path(), files)).await?;
-            }
+            Box::pin(collect_all_files(&path, exclusion, files)).await?;
         } else if metadata.is_file() {
-            files.push(entry.path());
+            files.push(path);
         }
     }
     Ok(())
 }
 
-/// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
-pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
+/// Recursively collect all .md file paths under `root`, skipping hidden entries and what
+/// `exclusion` leaves out — the same rule as `collect_all_files`.
+pub async fn collect_md_files(
+    root: &Path,
+    exclusion: &VaultExclusion,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), FsError> {
     let unreadable = |source: std::io::Error| FsError::ReadDir {
         path: root.to_path_buf(),
         source,
     };
+    #[cfg(test)]
+    self::exclusion::note_folder_read(root);
     let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
     while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -112,12 +128,14 @@ pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(
             Err(_) => continue,
         };
 
+        let path = entry.path();
+        if exclusion.excludes_entry(&path, metadata.is_dir()) {
+            continue;
+        }
         if metadata.is_dir() {
-            if !SKIP_DIRS.contains(&name.as_str()) {
-                Box::pin(collect_md_files(&entry.path(), files)).await?;
-            }
+            Box::pin(collect_md_files(&path, exclusion, files)).await?;
         } else if metadata.is_file() && (name.ends_with(".md") || name.ends_with(".markdown")) {
-            files.push(entry.path());
+            files.push(path);
         }
     }
     Ok(())
@@ -371,17 +389,10 @@ async fn list_dir_inner(
             continue;
         }
 
-        // Build/cache dirs excluded from directory listing.
-        const SKIP_HEAVY_DIRS: &[&str] = &[
-            "node_modules",
-            "target",
-            "build",
-            "dist",
-            "__pycache__",
-            ".next",
-            ".git",
-        ];
-        if metadata.is_dir() && SKIP_HEAVY_DIRS.contains(&name.as_str()) {
+        // Build/cache dirs excluded from directory listing — the default list only: a
+        // listing is not told which vault root it is under, so `.baramignore` does not
+        // reach the tree (issue 794).
+        if metadata.is_dir() && DEFAULT_EXCLUDED_DIRS.contains(&name.as_str()) {
             continue;
         }
 
@@ -858,7 +869,9 @@ pub fn start_watching(
                 }
 
                 // Skip internal directories to prevent event floods
-                // (e.g., git operations can generate hundreds of .git/ events)
+                // (e.g., git operations can generate hundreds of .git/ events).
+                // Not `DEFAULT_EXCLUDED_DIRS`: this matches absolute-path substrings, and
+                // `/build/` would drop every event of a vault named `build` (issue 795).
                 if path_str.contains("/.git/")
                     || path_str.contains("/.baram/")
                     || path_str.contains("/node_modules/")
@@ -1148,9 +1161,10 @@ mod tests {
         }
 
         let mut files = Vec::new();
-        let md = collect_md_files(dir.path(), &mut files).await;
+        let exclusion = VaultExclusion::load(dir.path());
+        let md = collect_md_files(dir.path(), &exclusion, &mut files).await;
         let mut files = Vec::new();
-        let all = collect_all_files(dir.path(), &mut files).await;
+        let all = collect_all_files(dir.path(), &exclusion, &mut files).await;
         // Restored before any assertion, so a failure still lets the temp dir be removed.
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
 

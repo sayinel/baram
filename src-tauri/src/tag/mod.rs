@@ -107,9 +107,13 @@ pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> 
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(&root, &mut md_files)
-        .await
-        .map_err(|e| TagError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(
+        &root,
+        &crate::fs::VaultExclusion::load(&root),
+        &mut md_files,
+    )
+    .await
+    .map_err(|e| TagError::Custom(e.to_string()))?;
 
     let mut counts: HashMap<String, u32> = HashMap::new();
 
@@ -161,9 +165,13 @@ pub async fn get_files_by_tag(root_path: &str, tag: &str) -> Result<Vec<String>,
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(&root, &mut md_files)
-        .await
-        .map_err(|e| TagError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(
+        &root,
+        &crate::fs::VaultExclusion::load(&root),
+        &mut md_files,
+    )
+    .await
+    .map_err(|e| TagError::Custom(e.to_string()))?;
 
     let normalized_tag = tag.to_lowercase();
 
@@ -352,9 +360,13 @@ pub async fn rename_tag(
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(&root, &mut md_files)
-        .await
-        .map_err(|e| TagError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(
+        &root,
+        &crate::fs::VaultExclusion::load(&root),
+        &mut md_files,
+    )
+    .await
+    .map_err(|e| TagError::Custom(e.to_string()))?;
 
     // 프론트매터 블록 리스트 항목: `  - old_tag` (줄 전체). 이것만 정규식으로 남는다 —
     // lookaround가 없고 줄 앵커만 쓰기 때문이다.

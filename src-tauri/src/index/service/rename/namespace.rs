@@ -100,9 +100,12 @@ pub(crate) async fn commit_namespace_rename(
     root_path: &str,
 ) -> Result<NamespaceRenameResult, String> {
     // 1. Collect all .md files in the vault
-    let all_files = collect_md_files(root_path)
-        .await
-        .map_err(|e| e.to_string())?;
+    let all_files = collect_md_files(
+        root_path,
+        &crate::fs::VaultExclusion::load(Path::new(root_path)),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
 
     // A file inside the directory being renamed moves with it. issue 595:
     // component-wise, as the crate compares paths everywhere else — a string

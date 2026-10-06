@@ -48,7 +48,8 @@ pub async fn search_files<R: tauri::Runtime>(
         None => SearchOptions::default(),
     };
 
-    search::search_files(&root_path, &query, &opts).await
+    let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root_path));
+    search::search_files(&root_path, &exclusion, &query, &opts).await
 }
 
 #[cfg(test)]
