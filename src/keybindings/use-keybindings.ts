@@ -2,9 +2,10 @@
  * useKeybindings — merge layer between registry defaults and user overrides.
  * §settings: keybinding customization support
  *
- * §391 spec 0070 §8 — plugin commands join as an ARGUMENT (`pluginEntries`), never read from a
- * store here, so the three functions below stay pure. Callers that pass none see the registry
- * alone, as before.
+ * §391 spec 0070 §8 — plugin commands join as an ARGUMENT: `getMergedKeybindings`,
+ * `findCommandByKey` and `findConflict` take `pluginEntries` and read no store, so they stay
+ * pure; callers that pass none see the registry alone, as before. `useKeybindings` subscribes
+ * to the plugin store and passes them.
  */
 
 import { useMemo } from "react";
@@ -79,9 +80,8 @@ export function findConflict(
     if (entry.id === commandId) continue;
     if (entry.activeKey === newKey) return { entry, kind: "entry" };
   }
-  const listed = new Set(merged.map((entry) => entry.id));
   for (const [id, key] of Object.entries(overrides)) {
-    if (key !== newKey || id === commandId || listed.has(id)) continue;
+    if (key !== newKey || id === commandId) continue;
     // A key of another shape is a hand-edited setting, not a plugin command's: ignored.
     const stored = parsePluginKeybindingId(id);
     if (stored) {

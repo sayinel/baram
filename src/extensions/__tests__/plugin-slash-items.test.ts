@@ -144,7 +144,9 @@ describe("buildPluginSlashItems (§7)", () => {
       contributions: {
         "cite-a": plugin("cite-a", "Cite", [{ command: "insert", id: "x" }]),
         // A zero-width space is stripped by pluginSourceLabel: on screen this name is "Cite".
-        "cite-b": plugin("cite-b", "Cite​", [{ command: "insert", id: "x" }]),
+        "cite-b": plugin("cite-b", "Cite\u200b", [
+          { command: "insert", id: "x" },
+        ]),
         other: plugin("other", "Other", [{ command: "insert", id: "x" }]),
       },
       isLive: all,
@@ -159,12 +161,12 @@ describe("buildPluginSlashItems (§7)", () => {
   it("D16 — label, description and category lose bidi and control characters; label and description are capped", () => {
     const [item] = buildPluginSlashItems({
       contributions: {
-        cite: plugin("cite", "‮Cite", [
+        cite: plugin("cite", "\u202eCite", [
           {
             command: "insert",
             description: "d".repeat(130),
             id: "x",
-            title: "a\u0007b⁦c",
+            title: "a\u0007b\u2066c",
           },
         ]),
       },

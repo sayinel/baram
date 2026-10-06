@@ -249,9 +249,12 @@ describe("withPluginMenuItems (§6)", () => {
       BASE,
       caret,
       source({
-        cite: cite([{ command: "insert", id: "m", title: "‮txet\u0007 x" }], {
-          name: "⁦Cite⁩",
-        }),
+        cite: cite(
+          [{ command: "insert", id: "m", title: "\u202etxet\u0007 x" }],
+          {
+            name: "\u2066Cite\u2069",
+          },
+        ),
       }),
     );
     expect(out[2].label).toBe("txet  x");

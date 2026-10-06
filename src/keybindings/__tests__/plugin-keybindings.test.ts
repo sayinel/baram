@@ -80,6 +80,19 @@ describe("pluginKeybindingEntries", () => {
     ]);
   });
 
+  it("keeps a plugin's commands in the order it declared them, not by id", () => {
+    const declared = pluginKeybindingEntries({
+      p: plugin("p", [
+        { id: "pick", title: "Pick" },
+        { id: "insert", title: "Insert" },
+      ]),
+    });
+    expect(declared.map((e) => e.id)).toEqual([
+      "plugin:p.pick",
+      "plugin:p.insert",
+    ]);
+  });
+
   it("is built once per slice object — the global keydown handler asks on every key (P9)", () => {
     expect(pluginKeybindingEntries(CONTRIBUTIONS)).toBe(
       pluginKeybindingEntries(CONTRIBUTIONS),
@@ -91,7 +104,7 @@ describe("pluginKeybindingEntries", () => {
 
   it("D16 — titles and names lose bidi and control characters", () => {
     const [entry] = pluginKeybindingEntries({
-      x: plugin("x", [{ id: "a", title: "‮ab\u0007c" }], "⁦Name"),
+      x: plugin("x", [{ id: "a", title: "\u202eab\u0007c" }], "\u2066Name"),
     });
     expect(entry.label).toBe("ab c");
     expect(entry.pluginName).toBe("Name");
@@ -175,6 +188,11 @@ describe("stored plugin keys", () => {
       commandId: "insert",
       pluginId: "cite",
     });
+    const longest = "a".repeat(64);
+    expect(parsePluginKeybindingId(`plugin:cite.${longest}`)).toEqual({
+      commandId: longest,
+      pluginId: "cite",
+    });
     expect(parsePluginKeybindingId("plugin:my-plugin-2.A_b-9")).toEqual({
       commandId: "A_b-9",
       pluginId: "my-plugin-2",
@@ -189,6 +207,7 @@ describe("stored plugin keys", () => {
     "plugin:Cite.x",
     "plugin:cite.a.b",
     "plugin:cite.a b",
+    `plugin:cite.${"a".repeat(65)}`,
     "file.save",
     "xplugin:cite.x",
   ])("ignore the hand-edited shape %j", (id) => {
@@ -364,6 +383,8 @@ describe("pluginOverlap (§8 — the overlap note on a plugin row)", () => {
       overlap({ "plugin:cite.insert": FREE }, "plugin:cite.insert"),
     ).toBeNull();
     expect(overlap({}, "plugin:cite.insert")).toBeNull();
+    // A later plugin: without the unassigned guard an earlier entry would be its "winner".
+    expect(overlap({}, "plugin:zeta.one")).toBeNull();
     expect(overlap({}, "search.backlinks")).toBeNull();
     expect(overlap({}, "formatting.blockquote")).toBeNull();
   });

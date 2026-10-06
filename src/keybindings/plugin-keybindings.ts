@@ -29,7 +29,7 @@ export type PluginOverlap = "both-run" | "shadowed";
 const STORED_PLUGIN_KEY = /^plugin:([a-z0-9-]+)\.([A-Za-z0-9_-]{1,64})$/;
 
 /** One list per slice object (plan 0118 P9): every change to the slice replaces the object. */
-const entriesBySlice = new WeakMap<object, KeybindingEntry[]>();
+const entriesBySlice = new WeakMap<object, readonly KeybindingEntry[]>();
 
 export function isPluginKeybindingId(id: string): boolean {
   return id.startsWith(PLUGIN_KEYBINDING_PREFIX);
@@ -68,7 +68,7 @@ export function pluginCommandFullId(keybindingId: string): string {
  */
 export function pluginKeybindingEntries(
   contributions: Readonly<Record<string, PluginEntryContributions>>,
-): KeybindingEntry[] {
+): readonly KeybindingEntry[] {
   const cached = entriesBySlice.get(contributions);
   if (cached) return cached;
   const entries: KeybindingEntry[] = [];
