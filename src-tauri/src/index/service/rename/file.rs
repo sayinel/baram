@@ -37,6 +37,28 @@ pub(crate) async fn rename_file_with_links_inner(
     let named_by: Vec<_> = local_aliases.iter().chain(&ambiguous).cloned().collect();
     // Both ends inside the file's contexts, and no move (`check_destination`).
     let source = check_destination(old_path, new_path, &scope.dirs)?;
+    // issue 794: a new name on the other side of what a holding index's build left out
+    // (`.baramignore`'s file patterns, a hidden name) is refused like a namespace rename
+    // across it — judged by each index's own matcher, the one its save will apply.
+    for dir in &scope.dirs {
+        let crosses = state
+            .with_index_for(&dir.info.path, dir.incarnation, |index| {
+                index.is_some_and(|index| {
+                    let exclusion = index.exclusion();
+                    exclusion.walk_skips(std::path::Path::new(old_path), false)
+                        != exclusion.walk_skips(std::path::Path::new(new_path), false)
+                })
+            })
+            .await;
+        if crosses {
+            return Err(format!(
+                "{old_path} -> {new_path} would carry the note across what Baram leaves out \
+                 (hidden names, the default list or {}) in {}",
+                crate::fs::BARAMIGNORE,
+                dir.info.path
+            ));
+        }
+    }
 
     // 1. Get referencing files from every containing index, and what every
     //    root holding the file or a referrer knows of its notes, read before

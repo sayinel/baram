@@ -69,7 +69,12 @@ pub(crate) async fn rename_namespace_inner(
         .collect();
     others.sort();
     others.dedup();
-    let mut committed = commit_namespace_rename(old_dir, new_dir, root_path).await?;
+    // issue 794: what the move judges by is read NOW, not taken from the live index —
+    // the rebuild below loads it the same way, so the rename rewrites by the rules the
+    // index it publishes applies. The build-time matcher would rewrite by the old ones.
+    let exclusion =
+        crate::fs::VaultExclusion::load(Path::new(root_path)).map_err(|e| e.to_string())?;
+    let mut committed = commit_namespace_rename(old_dir, new_dir, root_path, &exclusion).await?;
     // Full rebuild (many files moved), under the same key every lookup derives,
     // never coalesced onto a publication that may predate the move.
     let rebuilt = rebuild_and_publish(state, &target, root_path, false).await;
@@ -98,14 +103,32 @@ pub(crate) async fn commit_namespace_rename(
     old_dir: &str,
     new_dir: &str,
     root_path: &str,
+    exclusion: &crate::fs::VaultExclusion,
 ) -> Result<NamespaceRenameResult, String> {
+    // issue 794: `exclusion` decides both the boundary check and this walk.
+    // A move across the boundary is refused before anything is written: notes moving
+    // OUT of what the walk leaves out were never walked, so their own relative links
+    // would enter the index unchecked; notes moving INTO it would leave every link to
+    // them rewritten to a folder the index no longer reads.
+    let left_out_before = exclusion.walk_skips(Path::new(old_dir), true);
+    if left_out_before != exclusion.walk_skips(Path::new(new_dir), true) {
+        let (from, to) = if left_out_before {
+            ("a folder Baram leaves out", "one it reads")
+        } else {
+            ("a folder Baram reads", "one it leaves out")
+        };
+        return Err(format!(
+            "{old_dir} -> {new_dir} would move notes from {from} to {to} \
+             (hidden names, the default list or {}); change {} first or pick another name",
+            crate::fs::BARAMIGNORE,
+            crate::fs::BARAMIGNORE
+        ));
+    }
+
     // 1. Collect all .md files in the vault
-    let all_files = collect_md_files(
-        root_path,
-        &crate::fs::VaultExclusion::load(Path::new(root_path)),
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let all_files = collect_md_files(root_path, exclusion)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // A file inside the directory being renamed moves with it. issue 595:
     // component-wise, as the crate compares paths everywhere else — a string

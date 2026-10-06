@@ -120,7 +120,9 @@ fn rel_to_root(path: &Path, root: &Path) -> String {
 
 async fn collect(root: &Path, exclude: &[String]) -> Result<Vec<TaskEntry>, TaskError> {
     let mut files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(root, &crate::fs::VaultExclusion::load(root), &mut files)
+    let exclusion =
+        crate::fs::VaultExclusion::load(root).map_err(|e| TaskError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(root, &exclusion, &mut files)
         .await
         .map_err(|e| TaskError::Custom(e.to_string()))?;
 
@@ -162,8 +164,10 @@ pub async fn get_file_tasks(
     exclude: &[String],
 ) -> Result<Vec<TaskEntry>, TaskError> {
     if let Some(root) = root_path {
+        let exclusion = crate::fs::VaultExclusion::load(Path::new(root))
+            .map_err(|e| TaskError::Custom(e.to_string()))?;
         if is_excluded(&rel_to_root(Path::new(path), Path::new(root)), exclude)
-            || crate::fs::VaultExclusion::load(Path::new(root)).walk_skips(Path::new(path), false)
+            || exclusion.walk_skips(Path::new(path), false)
         {
             return Ok(Vec::new());
         }
@@ -336,6 +340,46 @@ mod scan_tests {
             get_file_tasks(&kept, Some(root), &[]).await.unwrap().len(),
             1
         );
+    }
+
+    /// 이슈 794: 루트와 다른 표기(`/var` ↔ `/private/var`)로 온 경로도 같은 판정을 받고,
+    /// 루트 밖의 경로는 vault 의 것이 아니므로 태스크를 내지 않는다. 이것을 실패시키는 것:
+    /// `VaultExclusion::relative` 가 적힌 root 표기만 보는 것(canonical 단계와 resolve 단계를
+    /// 둘 다 지우는 것), 그리고 `walk_skips` 가 root 밖을 "포함" 으로 답하는 것.
+    #[tokio::test]
+    async fn get_file_tasks_judges_another_spelling_and_refuses_outside_the_root() {
+        let d = TempDir::new().unwrap();
+        let other = TempDir::new().unwrap();
+        write(&d, "build/out.md", "- [ ] 빌드 산출물\n").await;
+        let outside = write(&other, "a.md", "- [ ] 밖\n").await;
+        let root = d.path().to_str().unwrap();
+        let canonical = std::fs::canonicalize(d.path()).unwrap();
+        let respelled = canonical
+            .join("build/out.md")
+            .to_string_lossy()
+            .into_owned();
+        write(&d, "notes/a.md", "- [ ] 노트\n").await;
+        let kept = canonical.join("notes/a.md").to_string_lossy().into_owned();
+        assert_eq!(
+            get_file_tasks(&kept, Some(root), &[]).await.unwrap().len(),
+            1
+        );
+
+        assert_eq!(
+            get_file_tasks(&respelled, Some(root), &[])
+                .await
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            get_file_tasks(&outside, Some(root), &[])
+                .await
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(get_file_tasks(&outside, None, &[]).await.unwrap().len(), 1);
     }
 
     #[tokio::test]

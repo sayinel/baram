@@ -137,7 +137,10 @@ fn cannot_read_vault(vault: &Vault) -> CliError {
 /// directory became readable or went away in between — and the message stays general.
 pub(crate) async fn walk_failure(vault: &Vault, start: &Path) -> CliError {
     let mut sink = Vec::new();
-    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    let exclusion = match crate::fs::VaultExclusion::load(&vault.root) {
+        Ok(exclusion) => exclusion,
+        Err(e) => return unreadable_directory(vault, Some(e)),
+    };
     let failed = crate::fs::collect_md_files(start, &exclusion, &mut sink)
         .await
         .err();
@@ -150,6 +153,11 @@ fn unreadable_directory(vault: &Vault, failed: Option<FsError>) -> CliError {
             ErrorCode::Io,
             format!("cannot read directory {}: {source}", path.display()),
         ),
+        // issue 794: the vault's `.baramignore` is there but unusable — every walk refuses.
+        Some(FsError::BaramIgnore { path, reason }) => CliError::new(
+            ErrorCode::Io,
+            format!("cannot use {}: {reason}", path.display()),
+        ),
         _ => cannot_read_vault(vault),
     }
 }
@@ -159,7 +167,10 @@ fn unreadable_directory(vault: &Vault, failed: Option<FsError>) -> CliError {
 /// walkers skip the same things, and they are re-run in the order the build ran them.
 pub(crate) async fn index_failure(vault: &Vault) -> CliError {
     let mut sink = Vec::new();
-    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    let exclusion = match crate::fs::VaultExclusion::load(&vault.root) {
+        Ok(exclusion) => exclusion,
+        Err(e) => return unreadable_directory(vault, Some(e)),
+    };
     let mut failed = crate::fs::collect_md_files(&vault.root, &exclusion, &mut sink)
         .await
         .err();
@@ -203,7 +214,7 @@ pub(crate) async fn files(
         None => vault.root.clone(),
     };
     let mut found = Vec::new();
-    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    let exclusion = paths::exclusion(vault)?;
     if crate::fs::collect_md_files(&start, &exclusion, &mut found)
         .await
         .is_err()
@@ -299,7 +310,7 @@ pub(crate) async fn search(
         include_glob: None,
         exclude_glob: None,
     };
-    let exclusion = crate::fs::VaultExclusion::load(&vault.root);
+    let exclusion = paths::exclusion(vault)?;
     let hits =
         crate::search::search_files(&start.to_string_lossy(), &exclusion, query.query, &options)
             .await

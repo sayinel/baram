@@ -327,7 +327,8 @@ pub async fn find_unlinked_mentions(
         return Ok(Vec::new());
     }
 
-    let exclusion = crate::fs::VaultExclusion::load(Path::new(root_path));
+    let exclusion = crate::fs::VaultExclusion::load(Path::new(root_path))
+        .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
     let md_files = collect_md_files(root_path, &exclusion).await?;
     let mut results = Vec::new();
 

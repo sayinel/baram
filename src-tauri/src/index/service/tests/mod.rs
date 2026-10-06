@@ -14,6 +14,7 @@ mod contexts;
 mod excluded;
 mod file_rename;
 mod namespace;
+mod namespace_exclusion;
 mod nested_roots;
 mod normalization;
 mod same_stem;

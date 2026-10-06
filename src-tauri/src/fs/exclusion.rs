@@ -9,6 +9,16 @@
 // substrings, and `/build/` there would drop every event of a vault whose root is
 // named `build` — issue 795.
 //
+// The hidden rule comes FIRST: every reader above drops an entry whose name starts with
+// `.` before it consults the list or the matcher. So `.next` and `.git` in the list change
+// nothing in Rust — they are there for the frontend filter, which keeps hidden FILES —
+// and a `!.next/` line in `.baramignore` cannot bring a hidden folder back
+// (`a_negation_cannot_bring_back_a_hidden_folder`).
+//
+// Matching is exact-case, on every file system: `GitignoreBuilder`'s default, chosen
+// rather than detected, so `Build/` is walked even where the volume folds case
+// (`matching_is_exact_case`).
+//
 // ‼️ The matcher is `ignore::gitignore::Gitignore` built here, not `ignore::WalkBuilder`.
 // A `WalkBuilder` turns on filters that are not ours by default — `.gitignore`, the
 // global git excludes, `.git/info/exclude`, `.ignore` files and the same files in every
@@ -19,12 +29,21 @@
 // when the `.gitignore`, `.git/info/exclude`, `.ignore` or parent filter is on (not the
 // global excludes, which no fixture can hold).
 
+use super::FsError;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 
 /// The per-vault override file, gitignore syntax, read from the vault root only.
 pub const BARAMIGNORE: &str = ".baramignore";
+
+/// The largest `.baramignore` read, in bytes. Larger is refused, not truncated.
+pub const MAX_BARAMIGNORE_BYTES: u64 = 64 * 1024;
+
+/// The most patterns (lines that are neither blank nor `#` comments) a `.baramignore`
+/// may hold. More is refused.
+pub const MAX_BARAMIGNORE_PATTERNS: usize = 1_000;
 
 /// Folder names the walk does not enter at any depth below a vault root, unless the
 /// vault's `.baramignore` re-includes them (`!build/`).
@@ -36,62 +55,93 @@ pub static DEFAULT_EXCLUDED_DIRS: LazyLock<Vec<&'static str>> = LazyLock::new(||
 /// Which entries below one vault root the walk leaves out. Built once per walk (or per
 /// index build, kept by `LinkIndex` so a save is judged by the matcher its build used).
 ///
-/// Paths are judged RELATIVE to `root`, component-wise — a vault whose root folder is
-/// itself named `build` is walked; a `build` folder below it is not. A path that is not
-/// under `root` as spelled is never excluded: there is nothing to judge it against.
+/// Paths are judged RELATIVE to the root, component-wise — a vault whose root folder is
+/// itself named `build` is walked; a `build` folder below it is not. A path is placed
+/// under the root as spelled, else under the root's canonical spelling, else by
+/// resolving the path itself (`resolve_canonical`, the spelling policy the contexts
+/// already use). A path that is under neither is OUTSIDE the vault and is no member of
+/// it: both checks answer "left out".
 ///
 /// `Default` excludes nothing: what an index that was never built holds.
 #[derive(Debug, Clone, Default)]
 pub struct VaultExclusion {
     root: PathBuf,
+    canonical_root: Option<PathBuf>,
     matcher: Option<Gitignore>,
 }
 
 impl VaultExclusion {
     /// The default names, then `<root>/.baramignore` when there is one. Its lines come
     /// AFTER the defaults so that, gitignore-style, the last matching line wins and
-    /// `!build/` brings `build` folders back. A missing file is the common case; an
-    /// unreadable file or a bad line is logged and the rest still applies — the walk
-    /// never fails over it.
-    pub fn load(root: &Path) -> Self {
+    /// `!build/` brings `build` folders back.
+    ///
+    /// A missing file is the common case and means the defaults alone. A file that is
+    /// there but cannot be used — unreadable, not UTF-8, over `MAX_BARAMIGNORE_BYTES`
+    /// or `MAX_BARAMIGNORE_PATTERNS`, or holding a line that is not a valid pattern — is
+    /// an `Err` naming the file, never the defaults alone: every consumer loads through
+    /// here, so search, tags, tasks, the index build and the CLI all refuse alike
+    /// instead of some showing folders the others leave out.
+    pub fn load(root: &Path) -> Result<Self, FsError> {
         let mut builder = defaults(root);
         let file = root.join(BARAMIGNORE);
-        if let Some(err) = builder.add(&file) {
-            let missing = err
-                .io_error()
-                .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound);
-            if !missing {
-                log::warn!("{BARAMIGNORE} in {}: {err}", root.display());
+        if let Some(text) = read_baramignore(&file)? {
+            let refuse = |reason: String| FsError::BaramIgnore {
+                path: file.clone(),
+                reason,
+            };
+            let mut patterns = 0;
+            for (i, line) in text.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                patterns += 1;
+                if patterns > MAX_BARAMIGNORE_PATTERNS {
+                    return Err(refuse(format!(
+                        "more than {MAX_BARAMIGNORE_PATTERNS} patterns"
+                    )));
+                }
+                builder
+                    .add_line(None, line)
+                    .map_err(|e| refuse(format!("line {}: {}", i + 1, glob_reason(&e))))?;
             }
         }
-        let matcher = builder.build().unwrap_or_else(|err| {
-            log::warn!("{BARAMIGNORE} in {} ignored: {err}", root.display());
-            defaults(root).build().expect("the default names build")
-        });
-        Self {
+        let matcher = builder.build().map_err(|e| FsError::BaramIgnore {
+            path: file.clone(),
+            reason: glob_reason(&e),
+        })?;
+        Ok(Self {
             root: root.to_path_buf(),
+            canonical_root: std::fs::canonicalize(root).ok(),
             matcher: Some(matcher),
-        }
+        })
     }
 
     /// Whether the walk leaves out `path`, an entry of a folder it already entered.
     /// Hidden names are the walkers' own rule and are not judged here.
     pub fn excludes_entry(&self, path: &Path, is_dir: bool) -> bool {
-        let (Some(matcher), Ok(rel)) = (&self.matcher, path.strip_prefix(&self.root)) else {
+        let Some(matcher) = &self.matcher else {
             return false;
         };
-        matcher.matched(rel, is_dir).is_ignore()
+        match self.relative(path) {
+            Some(rel) => matcher.matched(&rel, is_dir).is_ignore(),
+            None => true,
+        }
     }
 
-    /// Whether the vault walk never reaches `path`: some component below the root is
-    /// hidden, or the walk would leave out it or a folder above it. Judged top-down the
-    /// way the walk descends, so a `!keep.md` line under an excluded folder does not let
-    /// a save put back what the walk never sees (`matched_path_or_any_parents` would
-    /// answer bottom-up and let it). What a single-file update asks — the save-time link
-    /// index update, the task update and the CLI's path arguments.
+    /// Whether the vault walk never reaches `path`: it is outside the root, some
+    /// component below the root is hidden, or the walk would leave out it or a folder
+    /// above it. Judged top-down the way the walk descends, so a `!keep.md` line under
+    /// an excluded folder does not let a save put back what the walk never sees
+    /// (`matched_path_or_any_parents` would answer bottom-up and let it). What a
+    /// single-file update asks — the save-time link index update, the task update, the
+    /// two renames' boundary check and the CLI's path arguments.
     pub fn walk_skips(&self, path: &Path, is_dir: bool) -> bool {
-        let (Some(matcher), Ok(rel)) = (&self.matcher, path.strip_prefix(&self.root)) else {
+        let Some(matcher) = &self.matcher else {
             return false;
+        };
+        let Some(rel) = self.relative(path) else {
+            return true;
         };
         let names: Vec<_> = rel
             .components()
@@ -111,6 +161,58 @@ impl VaultExclusion {
         }
         false
     }
+
+    /// `path` below the root: as spelled, under the canonical root, or resolved.
+    fn relative(&self, path: &Path) -> Option<PathBuf> {
+        if let Ok(rel) = path.strip_prefix(&self.root) {
+            return Some(rel.to_path_buf());
+        }
+        let canonical_root = self.canonical_root.as_deref()?;
+        if let Ok(rel) = path.strip_prefix(canonical_root) {
+            return Some(rel.to_path_buf());
+        }
+        let resolved = crate::context::manager::resolve_canonical(&path.to_string_lossy()).ok()?;
+        resolved
+            .strip_prefix(canonical_root)
+            .ok()
+            .map(Path::to_path_buf)
+    }
+}
+
+/// `None` when there is no file. The read itself is the size cap: it stops one byte past
+/// `MAX_BARAMIGNORE_BYTES`, so a file of any size costs at most that much memory, and
+/// one that reaches the extra byte is refused, not truncated.
+fn read_baramignore(file: &Path) -> Result<Option<String>, FsError> {
+    let refuse = |reason: String| FsError::BaramIgnore {
+        path: file.to_path_buf(),
+        reason,
+    };
+    let mut handle = match std::fs::File::open(file) {
+        Ok(handle) => handle,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(refuse(io_reason(&e))),
+    };
+    let mut bytes = Vec::new();
+    (&mut handle)
+        .take(MAX_BARAMIGNORE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| refuse(io_reason(&e)))?;
+    if bytes.len() as u64 > MAX_BARAMIGNORE_BYTES {
+        return Err(refuse(format!("larger than {MAX_BARAMIGNORE_BYTES} bytes")));
+    }
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| refuse("not UTF-8 text".to_string()))
+}
+
+/// The OS's reason without the path, which `FsError::BaramIgnore` carries on its own.
+fn io_reason(e: &std::io::Error) -> String {
+    e.kind().to_string()
+}
+
+/// A glob error's text. `add_line(None, …)` attaches no file path to it.
+fn glob_reason(e: &ignore::Error) -> String {
+    e.to_string()
 }
 
 fn defaults(root: &Path) -> GitignoreBuilder {
@@ -154,7 +256,7 @@ mod tests {
 
     /// Both walkers' markdown, as root-relative `/` paths, sorted.
     async fn walked(root: &Path) -> (Vec<String>, Vec<String>) {
-        let exclusion = VaultExclusion::load(root);
+        let exclusion = VaultExclusion::load(root).unwrap();
         let rel = |found: Vec<PathBuf>| {
             let mut out: Vec<String> = found
                 .iter()
@@ -223,7 +325,7 @@ mod tests {
         let (md, _) = walked(&root).await;
         assert_eq!(md, vec!["a.md", "sub/b.md"]);
 
-        let exclusion = VaultExclusion::load(&root);
+        let exclusion = VaultExclusion::load(&root).unwrap();
         assert!(!exclusion.walk_skips(&root.join("a.md"), false));
         assert!(exclusion.walk_skips(&root.join("build/c.md"), false));
     }
@@ -311,25 +413,187 @@ mod tests {
         let (md, _) = walked(root).await;
         assert_eq!(md, vec!["notes/a.md"]);
 
-        let exclusion = VaultExclusion::load(root);
+        let exclusion = VaultExclusion::load(root).unwrap();
         assert!(exclusion.walk_skips(&root.join("drafts/keep.md"), false));
         assert!(exclusion.walk_skips(&root.join("notes/.hidden/h.md"), false));
         assert!(!exclusion.walk_skips(&root.join("notes/a.md"), false));
-        // Outside the root as spelled: nothing to judge it against.
-        assert!(!exclusion.walk_skips(Path::new("/elsewhere/build/x.md"), false));
     }
 
-    /// A `.baramignore` that cannot be read as lines leaves the defaults in force and the
-    /// walk succeeds. 이것을 실패시키는 것: `builder.add` 의 오류에서 기본 목록을 버리는 것.
-    #[tokio::test]
-    async fn an_unreadable_baramignore_keeps_the_defaults() {
+    /// A `.baramignore` that is there but cannot be read is an error naming it, not the
+    /// defaults alone — every consumer loads through `load`, so all of them refuse alike.
+    /// 이것을 실패시키는 것: `read_baramignore` 가 읽기 오류에서 `Ok(None)` 을 돌려주는 것.
+    #[test]
+    fn an_unreadable_baramignore_is_an_error_not_the_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::create_dir(root.join(BARAMIGNORE)).unwrap();
-        write(root, "a.md", "a");
-        write(root, "build/b.md", "b");
+        match VaultExclusion::load(root) {
+            Err(FsError::BaramIgnore { path, .. }) => assert_eq!(path, root.join(BARAMIGNORE)),
+            other => panic!("expected BaramIgnore, got {other:?}"),
+        }
+        // Missing is not unreadable: the defaults alone.
+        let plain = tempfile::tempdir().unwrap();
+        assert!(VaultExclusion::load(plain.path())
+            .unwrap()
+            .walk_skips(&plain.path().join("build/x.md"), false));
+    }
 
+    /// A line that is not a valid pattern refuses the file — with its line number — rather
+    /// than dropping the line. 이것을 실패시키는 것: `add_line` 의 오류를 무시하는 것.
+    #[test]
+    fn an_invalid_line_is_an_error_naming_it() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), BARAMIGNORE, "drafts/\n{unclosed\n");
+        match VaultExclusion::load(dir.path()) {
+            Err(FsError::BaramIgnore { reason, .. }) => {
+                assert!(reason.starts_with("line 2:"), "{reason}")
+            }
+            other => panic!("expected BaramIgnore, got {other:?}"),
+        }
+    }
+
+    /// The size cap: exactly `MAX_BARAMIGNORE_BYTES` loads, one byte more is refused.
+    /// 이것을 실패시키는 것: 크기 검사를 `>=` 로 바꾸는 것(경계가 거부된다), 또는 지우는 것.
+    #[test]
+    fn a_baramignore_over_the_size_cap_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let at_cap = format!(
+            "drafts/\n{}",
+            "#".repeat(MAX_BARAMIGNORE_BYTES as usize - 8)
+        );
+        assert_eq!(at_cap.len() as u64, MAX_BARAMIGNORE_BYTES);
+        write(dir.path(), BARAMIGNORE, &at_cap);
+        let exclusion = VaultExclusion::load(dir.path()).unwrap();
+        assert!(exclusion.walk_skips(&dir.path().join("drafts/a.md"), false));
+
+        write(dir.path(), BARAMIGNORE, &format!("{at_cap}#"));
+        match VaultExclusion::load(dir.path()) {
+            Err(FsError::BaramIgnore { reason, .. }) => {
+                assert!(reason.contains("larger"), "{reason}")
+            }
+            other => panic!("expected BaramIgnore, got {other:?}"),
+        }
+    }
+
+    /// The pattern cap: `MAX_BARAMIGNORE_PATTERNS` patterns load, one more is refused;
+    /// blank and comment lines do not count. 이것을 실패시키는 것: 개수 검사를 `>=` 로
+    /// 바꾸는 것, 또는 주석 줄도 세는 것.
+    #[test]
+    fn a_baramignore_over_the_pattern_cap_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut at_cap = String::from("# heading\n\n");
+        for i in 0..MAX_BARAMIGNORE_PATTERNS {
+            at_cap.push_str(&format!("d{i}/\n"));
+        }
+        write(dir.path(), BARAMIGNORE, &at_cap);
+        let exclusion = VaultExclusion::load(dir.path()).unwrap();
+        assert!(exclusion.walk_skips(&dir.path().join("d999/a.md"), false));
+
+        write(dir.path(), BARAMIGNORE, &format!("{at_cap}one-more/\n"));
+        match VaultExclusion::load(dir.path()) {
+            Err(FsError::BaramIgnore { reason, .. }) => {
+                assert!(reason.contains("patterns"), "{reason}")
+            }
+            other => panic!("expected BaramIgnore, got {other:?}"),
+        }
+    }
+
+    /// Exact case, chosen: the default `build/` does not leave out `Build`, on any volume.
+    /// 이것을 실패시키는 것: `defaults` 에서 `case_insensitive(true)` 를 켜는 것.
+    #[tokio::test]
+    async fn matching_is_exact_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "Build/a.md", "a");
+        write(root, "build/b.md", "b");
         let (md, _) = walked(root).await;
-        assert_eq!(md, vec!["a.md"]);
+        // A volume that folds case holds one folder; either way `Build` is walked.
+        assert!(md.contains(&"Build/a.md".to_string()), "{md:?}");
+        assert!(!md.contains(&"build/b.md".to_string()), "{md:?}");
+    }
+
+    /// The hidden rule comes before the matcher, so `!.next/` brings nothing back even
+    /// though `.next` is a default name the negation does match.
+    /// 이것을 실패시키는 것: `collect_md_files` 의 숨김 검사를 지우는 것 — `!.next/` 가
+    /// `.next/a.md` 를 되살린다.
+    #[tokio::test]
+    async fn a_negation_cannot_bring_back_a_hidden_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, BARAMIGNORE, "!.next/\n");
+        write(root, ".next/a.md", "a");
+        write(root, "b.md", "b");
+        let (md, _) = walked(root).await;
+        assert_eq!(md, vec!["b.md"]);
+    }
+
+    /// A path is placed under the root by its canonical spelling too: on macOS the temp
+    /// dir is `/var/…`, which resolves to `/private/var/…`. A matcher loaded from one
+    /// spelling judges a path given in the other the same way. 이것을 실패시키는 것:
+    /// `relative` 의 canonical root 단계와 resolve 단계를 지우는 것 — 다른 표기의 `build`
+    /// 노트가 "포함" 으로 답한다(fail open).
+    #[test]
+    fn a_path_in_another_spelling_of_the_root_is_judged_the_same() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "build/x.md", "x");
+        write(dir.path(), "notes/a.md", "a");
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        if canonical == dir.path() {
+            eprintln!("skipped: the temp dir has one spelling here");
+            return;
+        }
+        for (loaded, asked) in [
+            (dir.path(), canonical.as_path()),
+            (canonical.as_path(), dir.path()),
+        ] {
+            let exclusion = VaultExclusion::load(loaded).unwrap();
+            assert!(
+                exclusion.walk_skips(&asked.join("build/x.md"), false),
+                "{asked:?}"
+            );
+            assert!(
+                !exclusion.walk_skips(&asked.join("notes/a.md"), false),
+                "{asked:?}"
+            );
+            assert!(
+                exclusion.excludes_entry(&asked.join("build"), true),
+                "{asked:?}"
+            );
+        }
+    }
+
+    /// The root's canonical spelling is placed LEXICALLY, like the spelled root: a path
+    /// through a link inside the vault that points elsewhere gets the same answer in both
+    /// spellings, not one judged by where the link leads. 이것을 실패시키는 것:
+    /// `relative` 의 canonical root 어휘 단계를 지우는 것 — resolve 단계가 링크를 따라가
+    /// 밖으로 판정한다.
+    #[cfg(unix)]
+    #[test]
+    fn both_spellings_of_the_root_are_placed_lexically() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        write(elsewhere.path(), "a.md", "a");
+        std::os::unix::fs::symlink(elsewhere.path(), dir.path().join("link")).unwrap();
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        if canonical == dir.path() {
+            eprintln!("skipped: the temp dir has one spelling here");
+            return;
+        }
+        let exclusion = VaultExclusion::load(dir.path()).unwrap();
+        assert!(!exclusion.walk_skips(&dir.path().join("link/a.md"), false));
+        assert!(!exclusion.walk_skips(&canonical.join("link/a.md"), false));
+    }
+
+    /// Outside the root in every spelling is no member of the vault: both checks say "left
+    /// out". 이것을 실패시키는 것: `relative` 가 `None` 일 때 `false` 를 돌려주는 것.
+    #[test]
+    fn a_path_outside_the_root_is_left_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        write(other.path(), "a.md", "a");
+        let exclusion = VaultExclusion::load(dir.path()).unwrap();
+        assert!(exclusion.walk_skips(&other.path().join("a.md"), false));
+        assert!(exclusion.excludes_entry(&other.path().join("a.md"), false));
+        assert!(!exclusion.walk_skips(&dir.path().join("a.md"), false));
     }
 }

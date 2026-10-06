@@ -380,7 +380,7 @@ mod tests {
         std_fs::create_dir(root.join("node_modules")).unwrap();
         std_fs::write(root.join("node_modules/skip.md"), "skip").unwrap();
 
-        let files = collect_files(root, &VaultExclusion::load(root), None, None).await;
+        let files = collect_files(root, &VaultExclusion::load(root).unwrap(), None, None).await;
         assert_eq!(files.len(), 3);
         assert!(files.iter().any(|f| f.ends_with("file1.md")));
         assert!(files.iter().any(|f| f.ends_with("file2.md")));
@@ -398,7 +398,7 @@ mod tests {
         let opts = SearchOptions::default();
         let results = search_files(
             root.to_str().unwrap(),
-            &VaultExclusion::load(root),
+            &VaultExclusion::load(root).unwrap(),
             "world",
             &opts,
         )
@@ -424,7 +424,7 @@ mod tests {
         };
         let results = search_files(
             root.to_str().unwrap(),
-            &VaultExclusion::load(root),
+            &VaultExclusion::load(root).unwrap(),
             "match",
             &opts,
         )

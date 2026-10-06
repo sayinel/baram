@@ -44,9 +44,14 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
     let state = LinkIndexState::new();
     let target = prepare_index_build(&state, &ctx, &root).await.unwrap();
     let (key, generation) = (target.key.clone(), target.generation);
-    let committed = commit_namespace_rename(&old_dir, &new_dir, &root)
-        .await
-        .unwrap();
+    let committed = commit_namespace_rename(
+        &old_dir,
+        &new_dir,
+        &root,
+        &crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap(),
+    )
+    .await
+    .unwrap();
 
     let build_lock = state.build_lock(&key).await;
     let old_guard = build_lock.lock().await;
@@ -118,9 +123,14 @@ async fn a_committed_namespace_rename_survives_a_forget_before_its_rebuild_start
     let state = LinkIndexState::new();
     let target = prepare_index_build(&state, &ctx, &root).await.unwrap();
     let key = target.key.clone();
-    let committed = commit_namespace_rename(&old_dir, &new_dir, &root)
-        .await
-        .unwrap();
+    let committed = commit_namespace_rename(
+        &old_dir,
+        &new_dir,
+        &root,
+        &crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap(),
+    )
+    .await
+    .unwrap();
     let old_incarnation = incarnation_of(&ctx, "ctx-namespace").await;
     ctx.remove("ctx-namespace").await.unwrap();
     state.forget(&key, old_incarnation).await;
@@ -143,9 +153,14 @@ async fn a_committed_namespace_rename_reports_the_move_and_drops_an_index_it_cou
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let target = prepare_index_build(&state, &ctx, &root).await.unwrap();
     let key = target.key.clone();
-    let committed = commit_namespace_rename(&old_dir, &new_dir, &root)
-        .await
-        .unwrap();
+    let committed = commit_namespace_rename(
+        &old_dir,
+        &new_dir,
+        &root,
+        &crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap(),
+    )
+    .await
+    .unwrap();
     // A build left pending (models a rebuild failure that is not a removal).
     let (token, _snapshot, _stats) = staged_build(&state, &ctx, &key, &root).await;
     let rebuilt = rebuild_and_publish(&state, &target, &root, false).await;
@@ -180,9 +195,14 @@ async fn a_namespace_rebuild_never_coalesces_onto_a_snapshot_scanned_before_the_
     // reads its version and parks on the build lock.
     let target = prepare_index_build(&state, &ctx, &root).await.unwrap();
 
-    commit_namespace_rename(&old_dir, &new_dir, &root)
-        .await
-        .unwrap();
+    commit_namespace_rename(
+        &old_dir,
+        &new_dir,
+        &root,
+        &crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap(),
+    )
+    .await
+    .unwrap();
     let mut rebuild = Box::pin(rebuild_and_publish(&state, &target, &root, false));
     {
         let mut task = std::task::Context::from_waker(futures::task::noop_waker_ref());

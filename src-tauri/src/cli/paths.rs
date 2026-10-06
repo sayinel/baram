@@ -72,7 +72,7 @@ pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
 /// itself sits under a dot folder.
 pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let folder = locate(vault, input)?;
-    if walk_skips(vault, &folder, true) {
+    if walk_skips(vault, &folder, true)? {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!(
@@ -160,7 +160,7 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
             format!("{input} is not a markdown note"),
         ));
     }
-    if walk_skips(vault, &file, false) {
+    if walk_skips(vault, &file, false)? {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is where the vault walk does not go"),
@@ -177,8 +177,24 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
 /// file — the answer is the one those two walkers give. `search`'s own walker skips
 /// hidden directories but not hidden files; `search` reaches this only through
 /// `--folder`, and for a folder the two rules agree.
-pub(crate) fn walk_skips(vault: &Vault, path: &Path, is_dir: bool) -> bool {
-    crate::fs::VaultExclusion::load(&vault.root).walk_skips(path, is_dir)
+pub(crate) fn walk_skips(vault: &Vault, path: &Path, is_dir: bool) -> Result<bool, CliError> {
+    Ok(exclusion(vault)?.walk_skips(path, is_dir))
+}
+
+/// The vault's `VaultExclusion`; a `.baramignore` that cannot be used is an IO error
+/// naming it, as every other walk reports it.
+pub(crate) fn exclusion(vault: &Vault) -> Result<crate::fs::VaultExclusion, CliError> {
+    crate::fs::VaultExclusion::load(&vault.root).map_err(|e| {
+        CliError::new(
+            ErrorCode::Io,
+            match e {
+                crate::fs::FsError::BaramIgnore { path, reason } => {
+                    format!("cannot use {}: {reason}", path.display())
+                }
+                other => other.to_string(),
+            },
+        )
+    })
 }
 
 /// `/` between components on every platform.

@@ -174,6 +174,8 @@ impl LinkIndex {
     /// Build the full index by scanning all .md files under root_path
     pub async fn build(&mut self, root_path: &str) -> Result<IndexStats, IndexError> {
         let start = std::time::Instant::now();
+        self.exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(root_path))
+            .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
         self.root_path = Some(root_path.to_string());
         self.outgoing.clear();
         self.incoming.clear();
@@ -187,7 +189,6 @@ impl LinkIndex {
         let mut links_found: u32 = 0;
 
         // Collect all .md files
-        self.exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(root_path));
         let md_files = collect_md_files(root_path, &self.exclusion).await?;
 
         // Build file maps for wikilink target resolution
@@ -458,6 +459,12 @@ impl LinkIndex {
             (a.source_path.as_str(), a.line).cmp(&(b.source_path.as_str(), b.line))
         });
         results
+    }
+
+    /// What this index's build left out (issue 794) — the matcher a save, and a file
+    /// rename's boundary check, are judged by.
+    pub(crate) fn exclusion(&self) -> &crate::fs::VaultExclusion {
+        &self.exclusion
     }
 
     /// Update index for a single file using already-read content (sync, no I/O)
@@ -1184,7 +1191,7 @@ mod build_bench {
         }
 
         let started = std::time::Instant::now();
-        let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root));
+        let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap();
         let md = collect_md_files(&root, &exclusion).await.unwrap();
         println!(
             "{label} collect_md_files -> {} in {:?}",

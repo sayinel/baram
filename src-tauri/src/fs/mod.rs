@@ -38,6 +38,11 @@ pub enum FsError {
         #[source]
         source: std::io::Error,
     },
+    /// issue 794 The vault's `.baramignore` is there but cannot be used (unreadable, too
+    /// large, too many patterns, a bad line). `reason` carries no path; the Display embeds
+    /// the file's absolute path the way `ReadDir` does.
+    #[error(".baramignore 사용 불가: {}: {reason}", .path.display())]
+    BaramIgnore { path: PathBuf, reason: String },
     #[error("파일 감시 실패: {0}")]
     WatchError(String),
     #[error("휴지통 이동 실패: {0}")]
@@ -1161,7 +1166,7 @@ mod tests {
         }
 
         let mut files = Vec::new();
-        let exclusion = VaultExclusion::load(dir.path());
+        let exclusion = VaultExclusion::load(dir.path()).unwrap();
         let md = collect_md_files(dir.path(), &exclusion, &mut files).await;
         let mut files = Vec::new();
         let all = collect_all_files(dir.path(), &exclusion, &mut files).await;
