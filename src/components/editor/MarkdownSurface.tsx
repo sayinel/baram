@@ -17,7 +17,10 @@ import type { Editor } from "@tiptap/react";
 
 import { EditorContent } from "@tiptap/react";
 
-import { dispatchClearSearch } from "../../extensions/plugins/find-replace";
+import {
+  dispatchClearSearch,
+  setFindOpen,
+} from "../../extensions/plugins/find-replace";
 import { useTabScrollMemory } from "../../hooks/use-tab-scroll-memory";
 import { InlineAIPrompt } from "../ai/InlineAIPrompt";
 import { BlockHandle } from "../toolbar/BlockHandle";
@@ -103,7 +106,10 @@ export function MarkdownSurface({
   // 상태를 보고 한 곳에서 지운다. 막대의 언마운트 cleanup 에 두지 않는 것은 StrictMode 가
   // 마운트 직후 cleanup 을 한 번 돌려, Global Search 가 막대를 열기 직전에 넣은 검색어를
   // 지우기 때문이다. 이미 비어 있으면 dispatchClearSearch 가 아무것도 하지 않는다.
+  // 캐시된 상태를 통째로 설치하는 길은 transaction 이 없어 이 effect 를 다시 부르지 않는다 —
+  // 그쪽은 여기서 적는 열림 값을 보고 `withoutClosedSearch` 가 지운다.
   useEffect(() => {
+    setFindOpen(findReplaceOpen);
     if (findReplaceOpen || !activeEditor) return;
     dispatchClearSearch(activeEditor.view);
   }, [findReplaceOpen, activeEditor]);

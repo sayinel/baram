@@ -354,6 +354,39 @@ export const FindReplace = Extension.create({
   },
 });
 
+// ── Find 가 닫힌 동안의 상태 설치 (#792) ─────────────────────────────
+
+// Find 막대가 열려 있는가. 앱 창마다 Find 상태는 하나이고(use-find-replace-routing),
+// MarkdownSurface 가 그 값을 여기 적는다.
+let findOpen = false;
+
+export function setFindOpen(open: boolean): void {
+  findOpen = open;
+}
+
+/**
+ * 통째로 설치할 상태가 검색을 들고 있는데 Find 가 닫혀 있으면, 검색을 지운 상태를 돌려준다.
+ *
+ * 탭마다 캐시해 둔 EditorState 는 캐시할 때의 검색을 싣고 있다. A 에서 검색하고 Find 를 연 채
+ * B 로 가서 닫으면 지워지는 것은 B 의 상태뿐이라, A 로 돌아와 캐시를 설치하면 보이지 않는
+ * 검색이 되살아나 편집마다 match 를 다시 구한다. `view.updateState` 는 transaction 을 거치지
+ * 않아 MarkdownSurface 의 닫힘 effect 도 이것을 못 본다. 그래서 설치의 관문인
+ * `replaceEditorStateWithVim` 이 이것을 부른다.
+ */
+export function withoutClosedSearch(state: EditorState): EditorState {
+  if (findOpen) return state;
+  const ps = findReplacePluginKey.getState(state) as
+    FindReplaceState | undefined;
+  if (ps === undefined || ps === EMPTY_STATE) return state;
+  return state.apply(
+    state.tr
+      .setMeta(findReplacePluginKey, {
+        type: "clear",
+      } satisfies FindReplaceMeta)
+      .setMeta("addToHistory", false),
+  );
+}
+
 // ── Helper command dispatchers ────────────────────────────────────────
 // These are convenience functions for use by the UI component.
 

@@ -24,6 +24,7 @@ import {
   abortEditorMutationTasks,
   invalidateEditorMutationTasks,
 } from "../../../utils/editor/mutation-tasks";
+import { withoutClosedSearch } from "../find-replace";
 import { activateEditorForDocument } from "./vim-activation";
 
 export type EditorStateInstallReason =
@@ -38,7 +39,8 @@ export function replaceEditorStateWithVim(
   // this view — outstanding async mutations (AI tokens, image imports)
   // must go dead BEFORE the swap, then get their sources cancelled.
   invalidateEditorMutationTasks(view);
-  view.updateState(reconcilePlugins(view, state));
+  // §5.6 (#792) 캐시된 상태가 닫힌 Find 의 검색을 되살리지 않게 한다.
+  view.updateState(withoutClosedSearch(reconcilePlugins(view, state)));
   abortEditorMutationTasks(view);
   // §298 D2 — the document that is now on screen is a different one, so any
   // half-typed vim command belongs to the document the user left.
