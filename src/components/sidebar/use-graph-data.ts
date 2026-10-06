@@ -7,7 +7,7 @@ import type { GraphScope } from "../../stores/ui/graph-settings";
 import type { GraphSimulation } from "./graph-simulation";
 import type { Core, ElementDefinition, EventObject } from "cytoscape";
 
-import { getLinkIndex, refreshIndex } from "../../ipc/invoke";
+import { getLinkIndex } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
@@ -70,9 +70,8 @@ export function useGraphData(params: {
             graph: LinkGraph;
           }> = [];
 
-          // §87 Fetch existing indices for each vault. Don't call refreshIndex
-          // here — it changes indexVersion which re-triggers this effect and
-          // cancels before completion. Indices are built when vaults are opened.
+          // §87 Read each vault's index. `get_link_index` builds one that does
+          // not exist yet and otherwise only reads (issue 790).
           for (const ctx of vaultFolderContexts) {
             try {
               const g = await getLinkIndex(ctx.path);
@@ -99,9 +98,10 @@ export function useGraphData(params: {
           // Use empty string as rootPath so namespace extraction works per-node
           effectiveRootPath = "";
         } else {
-          // Single-vault: existing behavior
-          await refreshIndex(rootPath);
-          if (cancelled) return;
+          // Single-vault. No rebuild: a save updates its own file in the index
+          // before raising indexVersion, the watcher does the same for edits
+          // made outside the app, and `get_link_index` builds an index that
+          // does not exist yet (issue 790).
           graph = await getLinkIndex();
           if (cancelled) return;
           nodeVaultMapRef = undefined;
