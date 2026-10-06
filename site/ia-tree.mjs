@@ -92,6 +92,7 @@ export const TITLES = {
   "linking/dates-references-and-navigation": "Dates, block references, and navigation",
   "workspace/vaults-and-approval": "Vaults and folder access",
   "workspace/external-files-and-perspectives": "External files and perspectives",
+  "workspace/excluded-folders": "Folders Baram leaves out",
   "tasks/anatomy-and-typing": "Writing a task",
   "tasks/repeat-and-time-tracking": "Repeat rules and time tracking",
   "tasks/panel-and-queries": "The Tasks panel and task queries",
@@ -190,6 +191,7 @@ export const PAGES = [
     "Tab Tear-Off (Separate Window)",
     { h2: "Perspectives" },
     "Built-in Perspectives", "Custom Perspectives", "Applying a Perspective" ] },
+  { slug: "workspace/excluded-folders" },
 
   // ── 태스크
   { slug: "tasks/anatomy-and-typing", src: UG, items: [
