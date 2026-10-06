@@ -121,14 +121,33 @@ export function Backlinks() {
     // filePath/fetch callbacks are read via refs to avoid running on every file change.
   }, [rootPath]);
 
+  // The file the unlinked mentions on screen were searched for, and the
+  // indexVersion the effect below last ran at. A vault switch searches again
+  // in the rootPath effect above.
+  const mentionsForRef = useRef<null | string>(null);
+  const seenVersionRef = useRef(indexVersion);
+
   // Fetch backlinks + unlinked mentions when active file changes or index is updated
   useEffect(() => {
     if (filePath) {
       fetchBacklinks(filePath);
       if (rootPath) {
-        fetchUnlinkedMentions(filePath, rootPath);
+        // §34 The search reads the OTHER notes' bodies for this note's file
+        // name; saving this note changes neither, so its own save does not
+        // search again (issue 791). Any other bump — another note saved, a
+        // rename, an index rebuild — does, and so do two bumps that reached
+        // one render, since `savedPath` names only the later of them.
+        const selfSave =
+          mentionsForRef.current === filePath &&
+          indexVersion === seenVersionRef.current + 1 &&
+          useLinkStore.getState().savedPath === filePath;
+        if (!selfSave) {
+          mentionsForRef.current = filePath;
+          fetchUnlinkedMentions(filePath, rootPath);
+        }
       }
     }
+    seenVersionRef.current = indexVersion;
   }, [filePath, rootPath, indexVersion, fetchBacklinks, fetchUnlinkedMentions]);
 
   // Handle clicking a backlink entry → open that file and scroll to line
