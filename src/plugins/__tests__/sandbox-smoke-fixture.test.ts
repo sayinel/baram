@@ -46,6 +46,29 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     ]);
   });
 
+  it("declares the §391 entry points the README's prompt rows use", () => {
+    // Spec 0070 §10 (수동) — the right-click menu, the slash menu and a shortcut each open the
+    // §385 prompt, so every entry names the `prompt` command. One menu item is
+    // `when: "selection"`, for the browser rows only the app can answer (spec §6).
+    expect(manifest.contributions?.menu).toEqual([
+      { command: "prompt", id: "prompt" },
+      {
+        command: "prompt",
+        id: "prompt-selection",
+        title: "Smoke: prompts on a selection",
+        when: "selection",
+      },
+    ]);
+    expect(manifest.contributions?.slash).toEqual([
+      {
+        command: "prompt",
+        description: "Open the smoke prompts",
+        id: "prompt",
+        title: "Smoke prompts",
+      },
+    ]);
+  });
+
   it("hard-codes no local path at all", () => {
     // §260 3c-3 code review (M1): this fixture once shipped the maintainer's absolute
     // home path to a public repo, as the `VAULT_DIR` a tester had to edit. Phase 4a
