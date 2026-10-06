@@ -77,15 +77,18 @@ fn rewrite_relative_wikilinks_with(
             // spells it and the link as it was typed, so this one comparison
             // reads past Unicode normalization — `[[./회의록/x]]` typed
             // composed names `회의록/` stored decomposed. The other callers
-            // of `same_component` stay byte for byte: widening
-            // `same_component` itself would give all of them this reading.
+            // of `same_component` stay byte for byte (ASCII case on Windows):
+            // widening `same_component` itself would give all of them this
+            // reading.
             //
             // ‼️ Where the file system keeps normalization (spec 0069 §8 gives
-            // Linux and Windows), a directory and a sibling that differ only
-            // by it can both exist, and this reading cannot tell them apart:
-            // renaming one of them also rewrites a link typed for the other,
-            // into the renamed directory. Nothing in the result marks that
-            // link — its file is listed with the updated ones, and
+            // Linux and Windows), two directories whose paths differ only by
+            // it can both exist — siblings, or same-named folders under such
+            // siblings, because this reading covers every component of the
+            // old directory, its ancestors included. It cannot tell them
+            // apart: renaming one of them also rewrites a link typed for the
+            // other, into the renamed directory. Nothing in the result marks
+            // that link — its file is listed with the updated ones, and
             // `skipped_files` is for a referrer that could not be written.
             // Spec 0069 §8 leaves it open: closing it takes the file list
             // from before the move and a new field in `NamespaceRenameResult`

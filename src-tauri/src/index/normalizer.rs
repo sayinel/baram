@@ -2,13 +2,13 @@
 // §390 Every name and link-target key in the link index (`src/index`) goes
 // through `fold_name` — NFC, lowercase, NFC — so a name stored decomposed
 // (NFD) meets the same name typed composed (NFC). `fold_gate.rs` holds the
-// index's case folds to it; it cannot see a comparison of bytes. Only keys
-// are folded: the paths the index holds and reports keep their disk spelling
-// (the graph's placeholder node for a link that resolves to nothing is the
-// one exception — spec 0069 D1). The target that a file or folder rename
-// respells is written in NFC (D7), never folded; an alias prefix, heading,
-// block id or display keeps the text as it was typed, and a block-ID rename
-// writes no name.
+// index's case folds to it, or to a reason on its `ALLOWED` list; it cannot
+// see a comparison of bytes. Only keys are folded: the paths the index holds
+// and reports keep their disk spelling (the graph's placeholder node for a
+// link that resolves to nothing is the one exception — spec 0069 D1). The
+// target that a file or folder rename respells is written in NFC (D7), never
+// folded; an alias prefix, heading, block id or display keeps the text as it
+// was typed, and a block-ID rename writes no name.
 
 use icu_normalizer::ComposingNormalizerBorrowed;
 use std::borrow::Cow;
