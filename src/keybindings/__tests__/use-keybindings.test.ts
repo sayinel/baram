@@ -80,8 +80,10 @@ describe("findConflict", () => {
   it("detects a conflict when another command uses the same key", () => {
     // Assign file.save's default key "Mod+S" to file.new — conflict with file.save
     const conflict = findConflict(CUSTOMIZABLE_ID2, "Mod+S", {});
-    expect(conflict).not.toBeNull();
-    expect(conflict!.id).toBe(CUSTOMIZABLE_ID);
+    expect(conflict).toMatchObject({
+      entry: { id: CUSTOMIZABLE_ID },
+      kind: "entry",
+    });
   });
 
   it("returns null when the key is unique (no conflict)", () => {
@@ -100,7 +102,9 @@ describe("findConflict", () => {
     const conflict = findConflict(CUSTOMIZABLE_ID, "Mod+Z", {
       [CUSTOMIZABLE_ID2]: "Mod+Z",
     });
-    expect(conflict).not.toBeNull();
-    expect(conflict!.id).toBe(CUSTOMIZABLE_ID2);
+    expect(conflict).toMatchObject({
+      entry: { id: CUSTOMIZABLE_ID2 },
+      kind: "entry",
+    });
   });
 });

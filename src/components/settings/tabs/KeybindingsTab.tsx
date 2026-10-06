@@ -13,13 +13,17 @@ import {
   KEYBINDING_CATEGORIES,
 } from "../../../keybindings/keybinding-registry";
 import {
+  conflictCommandId,
   findConflict,
   getMergedKeybindings,
+  isRefusedConflict,
+  type KeybindingConflict,
   type MergedKeybinding,
 } from "../../../keybindings/use-keybindings";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showConfirm } from "../../../utils/confirm-dialog";
 import { SettingsSectionHeader } from "../settings-shared";
+import { KeybindingConflictNote } from "./keybinding-conflict-note";
 
 export function KeybindingsTab() {
   const { t } = useTranslation();
@@ -40,7 +44,7 @@ export function KeybindingsTab() {
   const [filter, setFilter] = useState("");
   const [capturingId, setCapturingId] = useState<null | string>(null);
   const [capturedKey, setCapturedKey] = useState<null | string>(null);
-  const [conflict, setConflict] = useState<MergedKeybinding | null>(null);
+  const [conflict, setConflict] = useState<KeybindingConflict | null>(null);
 
   const isMac = navigator.platform.includes("Mac");
 
@@ -98,10 +102,16 @@ export function KeybindingsTab() {
     return () => window.removeEventListener("keydown", handleCapture, true);
   }, [capturingId, keybindingOverrides, isMac]);
 
+  // D13 — the note shows, but a core command's key cannot be given to a plugin command.
+  const refused =
+    capturingId !== null && isRefusedConflict(capturingId, conflict);
+
   const confirmCapture = () => {
-    if (!capturingId || !capturedKey) return;
+    if (!capturingId || !capturedKey || refused) return;
+    // A swap: the counterpart's stored key goes — plugin ↔ plugin when the target is a plugin
+    // command (`refused` stopped the rest), and as before when the target is a core command.
     if (conflict) {
-      removeKeybindingOverride(conflict.id);
+      removeKeybindingOverride(conflictCommandId(conflict));
     }
     setKeybindingOverride(capturingId, capturedKey);
     setCapturingId(null);
@@ -151,16 +161,16 @@ export function KeybindingsTab() {
                           {formatKeyForDisplay(capturedKey, isMac)}
                         </span>
                         {conflict && (
-                          <span className="keybinding-conflict">
-                            {t("keybindings.conflict").replace(
-                              "{command}",
-                              t(conflict.label),
-                            )}
-                          </span>
+                          <KeybindingConflictNote
+                            conflict={conflict}
+                            refused={refused}
+                            t={t}
+                          />
                         )}
                         <button
                           aria-label={t("keybindings.capture.confirm")}
                           className="keybinding-confirm-btn"
+                          disabled={refused}
                           onClick={confirmCapture}
                           title={t("keybindings.capture.confirm")}
                         >
