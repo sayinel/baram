@@ -29,6 +29,30 @@
   background-color: var(--color-bg-subtle);
 }
 
+/* §391 spec 0070 D5 — a plugin item: its title, then the plugin's name, dimmed. A long title
+   ends in an ellipsis instead of widening the menu. */
+.context-menu-item-with-detail {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  max-width: 360px;
+}
+
+.context-menu-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu-item-detail {
+  flex-shrink: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 .context-menu-separator {
   height: 1px;
   margin: var(--space-1) 0;

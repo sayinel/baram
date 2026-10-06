@@ -43,6 +43,26 @@ export const SLASH_TRIGGER = {
   startOfLine: false,
 };
 
+/**
+ * §4.6 — what choosing an item does: delete the `/query` range, THEN run the item.
+ *
+ * ‼️ The order is a contract (§391 spec 0070 §7): a plugin item's command may insert at the
+ * caret without a `ref`, so the range must already be gone when its action starts. Named and
+ * exported so `plugin-slash-items.test.ts` can pin it without the Suggestion popup.
+ */
+export function runSlashItem({
+  editor,
+  props,
+  range,
+}: {
+  editor: Editor;
+  props: SlashMenuItem;
+  range: { from: number; to: number };
+}): void {
+  editor.chain().focus().deleteRange(range).run();
+  props.action();
+}
+
 const SLASH_MENU_HEIGHT = 320; // approximate max popup height
 
 export const SlashCommands = Extension.create({
@@ -58,18 +78,7 @@ export const SlashCommands = Extension.create({
         // vim Esc arbiter can query popup state without renderer imports.
         pluginKey: slashCommandPluginKey,
         ...SLASH_TRIGGER,
-        command: ({
-          editor: ed,
-          range,
-          props,
-        }: {
-          editor: Editor;
-          props: SlashMenuItem;
-          range: { from: number; to: number };
-        }) => {
-          ed.chain().focus().deleteRange(range).run();
-          props.action();
-        },
+        command: runSlashItem,
         items: ({ query }: { query: string }) => {
           const items = buildSlashItems(editor);
           if (!query) return items;

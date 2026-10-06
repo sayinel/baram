@@ -1,6 +1,6 @@
 ---
 title: "빠르게 시작하기"
-sourceHash: "4f49ca317dc3"
+sourceHash: "e6bacff8015a"
 ---
 
 
@@ -130,11 +130,13 @@ await ctx.editor.setMarkdown(`${before}\n\n---\n`);
 보냅니다. 그래야 시작할 때 불려온 플러그인이 사용자가 탭을 바꿀 때까지 자기가 어디 있는지 모르는
 일이 없습니다.
 
-기여 id(`commands[].id`, `statusBar[].id`, `settings[].key`, 그리고 상태바 항목이 가리키는
-`command`)는 `^[A-Za-z0-9_-]+$`에 맞아야 하고 자기 구역 안에서 유일해야 합니다. 상태바 항목은
-최대 다섯 개, 설정 필드는 열여섯 개까지 선언할 수 있고, 설정의 `default`는 그 필드가 선언한 타입이어야
-합니다. 호스트가 `<pluginId>.<command>`와 `<pluginId>:sb:<item>`으로 이름 공간을 붙이므로,
-뒷부분에 `.`이나 `:`가 있으면 그 id가 모호해집니다.
+기여 id(`commands[].id`, `statusBar[].id`, `menu[].id`, `slash[].id`, `settings[].key`, 그리고
+상태바 · 메뉴 · 슬래시 항목이 가리키는 `command`)는 `^[A-Za-z0-9_-]+$`에 맞아야 하고 자기 구역 안에서
+유일해야 합니다. 명령은 최대 쉰 개, 상태바 항목은 다섯 개, 메뉴 항목은 다섯 개, 슬래시 항목은 열 개,
+설정 필드는 열여섯 개까지 선언할 수 있고, 설정의 `default`는 그 필드가 선언한 타입이어야 합니다. 호스트가
+`<pluginId>.<command>`와 `<pluginId>:sb:<item>`으로 이름 공간을 붙이므로, 뒷부분에 `.`이나 `:`가
+있으면 그 id가 모호해집니다. `menu`와 `slash`는 명령을 에디터의 우클릭 메뉴와 슬래시 메뉴에
+올립니다 — [플러그인 매니페스트](/ko/docs/plugin-dev/manifest/) 참조.
 
 플러그인 프로젝트는 이렇게 생겼습니다.
 

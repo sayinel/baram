@@ -1,6 +1,6 @@
 ---
 title: "플러그인 매니페스트"
-sourceHash: "6e64df4d6765"
+sourceHash: "8e6ef215b031"
 ---
 
 
@@ -45,12 +45,48 @@ sourceHash: "6e64df4d6765"
 
 | 필드               | 타입      | 설명                                                                                                  |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
+| `contributions`    | object    | 앱이 플러그인 대신 그리는 것 — 명령, 상태바 항목, 설정, 우클릭 · 슬래시 항목 — [기여](#기여) 참조 |
 | `dependencies`     | string\[] | 이 플러그인이 의존하는 다른 플러그인 ID                                                               |
 | `tiptapExtensions` | object\[] | 이 플러그인이 내보내는 Tiptap 확장 — [Tiptap 확장 플러그인](/ko/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-확장-플러그인) 참조 |
 | `repository`       | string    | 소스 코드 URL                                                                                         |
 | `homepage`         | string    | 문서 URL                                                                                              |
 | `icon`             | string    | 마켓플레이스·개발 목록용 이모지 아이콘                                                                |
 | `keywords`         | string\[] | 검색 키워드                                                                                           |
+
+## 기여
+
+`contributions`는 데이터입니다. Baram이 매니페스트에서 읽어 직접 그리고, 항목을 화면에 올리려고
+플러그인 코드를 실행하지 않습니다.
+
+| 키          | 각 항목                                 | 최대 |
+| ----------- | --------------------------------------- | ---- |
+| `commands`  | `{ id, title, palette? }`               | 50   |
+| `statusBar` | `{ id, text, tooltip?, command? }`      | 5    |
+| `settings`  | 설정 필드 하나                          | 16   |
+| `menu`      | `{ id, command, title?, when? }`        | 5    |
+| `slash`     | `{ id, command, title?, description? }` | 10   |
+
+`menu`는 에디터의 우클릭 메뉴에, `slash`는 슬래시 메뉴에 항목을 더합니다. 둘 다 `commands`의 명령
+하나를 `id`로 가리키고, 자기 `title`(1–64자)이 없으면 그 명령의 `title`을 보여 줍니다. 슬래시 항목의
+`description`은 1–120자입니다. `when`은 생략하거나 — 그러면 선택과 무관하게 보입니다 — `"selection"`이고, 그러면
+텍스트를 선택한 동안에만 보입니다. 소스 모드에서는 둘 다 나오지 않습니다.
+
+```json
+{
+  "contributions": {
+    "commands": [{ "id": "cite", "title": "Insert citation" }],
+    "menu": [{ "id": "cite", "command": "cite", "when": "selection" }],
+    "slash": [
+      { "id": "cite", "command": "cite", "description": "Insert a citation at the caret" }
+    ]
+  }
+}
+```
+
+단축키를 적는 필드는 없습니다. 플러그인이 켜져 있는 동안 그 명령은 **설정 > 단축키**의 **플러그인**
+분류에 키 없이 나오고, 사용자가 키를 지정합니다. trusted 플러그인은 `commands` capability 도 필요하고
+선언한 명령마다 등록도 합니다 — [명령 팔레트와 Tiptap 확장](/ko/docs/plugin-dev/commands-and-tiptap-extensions/)
+참조.
 
 ## 버전 하한
 

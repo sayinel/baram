@@ -101,11 +101,24 @@ export function MenuList({ items, onClose, toggleRef, x, y }: MenuListProps) {
           <div className="context-menu-separator" key={i} />
         ) : (
           <button
-            className="context-menu-item"
+            className={
+              item.detail === undefined
+                ? "context-menu-item"
+                : "context-menu-item context-menu-item-with-detail"
+            }
             key={i}
             onClick={() => runItem(item)}
           >
-            {item.label}
+            {item.detail === undefined ? (
+              item.label
+            ) : (
+              // §391 D5 — the label, then the plugin's name dimmed. The space keeps the two
+              // words apart in the accessible name; the flex gap does the visual spacing.
+              <>
+                <span className="context-menu-item-label">{item.label}</span>{" "}
+                <span className="context-menu-item-detail">{item.detail}</span>
+              </>
+            )}
             {item.checked && (
               <>
                 {" "}

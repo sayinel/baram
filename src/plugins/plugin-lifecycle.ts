@@ -20,6 +20,7 @@ import {
   emitPluginEvent,
   unregisterPluginUI,
 } from "./extension-context";
+import { registerEntryContributions } from "./plugin-entry-points";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
 import {
@@ -284,6 +285,9 @@ async function activateOne(builtin: BuiltinPlugin): Promise<void> {
   if (activeBuiltins.some((b) => b.id === builtin.manifest.id)) return;
   const context = createExtensionContext(builtin.manifest, "");
   await builtin.module.activate?.(context);
+  // §391 spec 0070 §5 — after `activate` resolved; nothing here unwinds a throw. Built-in
+  // manifests are never run through `validateManifest` at runtime (`builtin-manifests.test.ts` does).
+  registerEntryContributions(builtin.manifest);
   activeBuiltins.push({
     context,
     id: builtin.manifest.id,

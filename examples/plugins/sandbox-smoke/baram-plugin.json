@@ -48,6 +48,26 @@
         "palette": true
       }
     ],
+    "menu": [
+      {
+        "command": "prompt",
+        "id": "prompt"
+      },
+      {
+        "command": "prompt",
+        "id": "prompt-selection",
+        "title": "Smoke: prompts on a selection",
+        "when": "selection"
+      }
+    ],
+    "slash": [
+      {
+        "command": "prompt",
+        "description": "Open the smoke prompts",
+        "id": "prompt",
+        "title": "Smoke prompts"
+      }
+    ],
     "statusBar": [
       {
         "command": "run",

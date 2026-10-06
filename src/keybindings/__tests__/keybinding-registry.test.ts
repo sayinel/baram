@@ -7,7 +7,7 @@ import {
 } from "../keybinding-registry";
 
 describe("KEYBINDING_CATEGORIES", () => {
-  it("contains all 11 expected categories in order", () => {
+  it("contains all 12 expected categories in order", () => {
     expect(KEYBINDING_CATEGORIES).toEqual([
       "file",
       "edit",
@@ -22,6 +22,8 @@ describe("KEYBINDING_CATEGORIES", () => {
       // 앞으로 아젠다·리뷰의 키가 붙을 자리이기도 하다.
       "tasks",
       "formatting",
+      // §391 — plugin commands, last: they are not in this registry (spec 0070 §8).
+      "plugins",
     ]);
   });
 });
@@ -39,6 +41,15 @@ describe("KEYBINDING_REGISTRY", () => {
     const ids = KEYBINDING_REGISTRY.map((e) => e.id);
     const unique = new Set(ids);
     expect(unique.size).toBe(ids.length);
+  });
+
+  it("ids are `<lowercase>.<name>` with no `:`, so a `plugin:` id never collides (§391)", () => {
+    const shape = /^[a-z]+\.[A-Za-z0-9]+$/;
+    for (const entry of KEYBINDING_REGISTRY) {
+      expect(entry.id, entry.id).toMatch(shape);
+    }
+    // The positive half: the shape refuses what a plugin entry looks like.
+    expect("plugin:cite.insert").not.toMatch(shape);
   });
 
   it("all defaultKeys among customizable entries are unique", () => {

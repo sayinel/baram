@@ -49,14 +49,20 @@ const KEYBINDING_CHROME_KEYS = new Set<string>([
   "keybindings.capture.confirm",
   "keybindings.capture.prompt",
   "keybindings.conflict",
+  "keybindings.conflict.absent",
+  "keybindings.conflict.absentRemoves",
+  "keybindings.conflict.core",
   "keybindings.conflict.swap",
   "keybindings.edit",
+  "keybindings.overlap.bothRun",
+  "keybindings.overlap.shadowed",
   "keybindings.readOnly",
   "keybindings.reset",
   "keybindings.resetAll",
   "keybindings.resetAll.confirm",
   "keybindings.search.empty",
   "keybindings.search.placeholder",
+  "keybindings.unassigned",
 ]);
 
 interface SettingDef {

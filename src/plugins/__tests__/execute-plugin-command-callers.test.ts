@@ -1,5 +1,5 @@
 // §385 spec 0061 §5.1 — the reverse invariant. Calling executePluginCommand grants prompt
-// rights, so only a USER gesture may call it. A third caller (a deep link, a timer) would grant
+// rights, so only a USER gesture may call it. Another caller (a deep link, a timer) would grant
 // rights with no gesture; whoever adds one must change this list and answer that question.
 //
 // Corpus for every scan below: production `.ts`/`.tsx` files under `src/`, with any
@@ -31,6 +31,19 @@ function callers(): string[] {
     /\bexecutePluginCommand\(/u.test(
       source.replaceAll("function executePluginCommand(", ""),
     ),
+  );
+}
+
+/**
+ * §391 spec 0070 §9 — every production file that looks a command handler up by id. A host entry
+ * that ran a handler it fetched itself would grant no prompt rights AND stay invisible to the
+ * `executePluginCommand` scan above. `.has(` (the entry points' visibility check) runs nothing
+ * and is not matched. Same corpus and the same blind spot for value-passing as the rest of
+ * this file (`const h = commandHandlers; h.get(…)` is not seen).
+ */
+function handlerLookups(): string[] {
+  return scanProductionFiles((source) =>
+    /\bcommandHandlers\.get\(/u.test(source),
   );
 }
 
@@ -68,10 +81,13 @@ function scanProductionFiles(matches: (source: string) => boolean): string[] {
 }
 
 describe("who may start a plugin command", () => {
-  it("is the command palette and the status bar, and nothing else", () => {
+  it("is the command palette, the status bar and the §391 entry points, and nothing else", () => {
     expect(callers()).toEqual([
       "components/command/CommandPalette.tsx",
       "components/layout/PluginStatusBarItems.tsx",
+      "components/toolbar/context-menu-plugins.ts",
+      "extensions/plugins/slash-command-items-plugins.ts",
+      "hooks/use-global-keyboard.ts",
     ]);
   });
 
@@ -90,5 +106,13 @@ describe("who may start a plugin command", () => {
 
   it("draws a plugin prompt only through prompts-api.ts", () => {
     expect(showPluginPromptCallers()).toEqual(["plugins/prompts-api.ts"]);
+  });
+
+  it("looks a handler up by id only in plugin-host-registry.ts and extension-context.ts", () => {
+    // `executePluginCommand` itself, and a trusted plugin's own `commands.execute`.
+    expect(handlerLookups()).toEqual([
+      "plugins/extension-context.ts",
+      "plugins/plugin-host-registry.ts",
+    ]);
   });
 });

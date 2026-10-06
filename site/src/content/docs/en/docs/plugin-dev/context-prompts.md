@@ -37,8 +37,9 @@ ctx.commands.register("insert-template", async () => {
 ## When a prompt may open
 
 A prompt opens only while **one of your plugin's commands, started by the user, is still
-running** — from the command palette or your status-bar item — and only until the user
-**types, clicks or drops something outside the prompt**.
+running** — from the command palette, your status-bar item, your item in the editor's
+right-click menu or the slash menu, or a shortcut the user gave the command — and only until
+the user **types, clicks or drops something outside the prompt**.
 
 - Ask before the promise your command handler returned settles. Once it settles, and no other
   command of yours is running, requests are refused.
@@ -56,6 +57,8 @@ running** — from the command palette or your status-bar item — and only unti
 - A prompt is refused while another prompt — yours or another plugin's — is open, while focus is inside a frame
   (such as an HTML preview), or when another window covers where it would appear — and that
   last refusal ends the right, like a cancel.
+- While a prompt is open, a plugin shortcut does nothing: the key stays in the prompt, so it
+  cannot start a second command over it.
 
 ## Cancelled or refused
 

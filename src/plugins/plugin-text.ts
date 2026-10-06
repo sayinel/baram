@@ -7,8 +7,22 @@
 // Kept tier-agnostic — the manifest is author-controlled in both tiers — so it must not
 // pull in a store or a bridge.
 
-/** Attribution is a badge, not a sentence. */
-const MAX_SOURCE_CHARS = 32;
+/**
+ * Attribution is a badge, not a sentence: the longest a plugin name or id is drawn as a source
+ * label.
+ */
+export const MAX_SOURCE_CHARS = 32;
+
+/**
+ * §391 spec 0070 D11 · D16 — the longest `menu`/`slash` title a manifest may declare, and the cap
+ * every entry point draws a plugin command's title at (the right-click menu, the slash list,
+ * Settings > Keybindings, the command palette). One number for both, so a title that validates
+ * is drawn whole.
+ */
+export const MAX_ENTRY_TITLE_CHARS = 64;
+
+/** §391 spec 0070 D11 · D16 — the same for a slash item's `description`. */
+export const MAX_ENTRY_DESCRIPTION_CHARS = 120;
 
 /**
  * The plugin's name as a badge (§260 Phase 4a HIGH-1, §385 spec 0061 §8): sanitised and capped,

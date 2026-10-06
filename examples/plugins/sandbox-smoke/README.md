@@ -92,6 +92,11 @@ Also check, by eye:
 Three commands and a status-bar item (**💬 prompt**) exercise `ctx.prompts`. Each run ends in
 one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
 
+Since §391 the **Sandbox Smoke: prompts** command is also in the editor's right-click menu
+(twice — once for any right-click, once only over selected text), in the slash menu as
+**Smoke prompts**, and in **Settings > Keybindings** under **Plugins**, where you can give it a
+key. Checks 10–13 below run the prompt from those three entry points.
+
 1. Type Hangul into the input box and press Enter before the syllable is finished — the
    whole syllable arrives, once (`input=`).
 2. With the caret in the editor, run **Sandbox Smoke: prompts** from the palette — after the
@@ -113,6 +118,27 @@ one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
    dictate a word into the editor within 3 s — no prompt, and `pick=ERR:…`. Not Fn Fn: the
    page never sees a native menu, while a Fn press may reach it as a `keydown` and end the
    right through the key path, which would not test `beforeinput`.
+10. Right-click in the editor with nothing selected. The menu ends in a separator and **Sandbox Smoke: prompts** with
+    a dimmed `Sandbox Smoke` beside it — pick it. The prompt opens; it is not refused as
+    covered (`pick=ERR:… covers …`) even though the menu was on screen a moment before (the
+    menu closes after the item runs).
+11. Type `/smoke` in the editor and pick **Smoke prompts** under **Plugin · Sandbox Smoke**. The
+    `/smoke` text is gone and the prompt opens.
+12. In **Settings > Keybindings**, under **Plugins**, give **Sandbox Smoke: prompts** the key
+    `Ctrl+Alt+K` (`⌘⌥K` on macOS) and confirm. Close Settings, click in the editor and press it:
+    the prompt opens. With the prompt open, press it again — nothing else opens, and the key
+    does not reach the editor. Then hold the key down from the editor. Either outcome is
+    fine: one prompt opens, or the run ends refused (`PROMPT pick=ERR:… input=ERR:…`) — the
+    prompt gate counts an autorepeat keydown as input outside the prompt, so a repeat that
+    lands before the prompt has opened ends the right. Two or more prompts is a failure (the
+    shortcut runs nothing on a repeat). Note which outcome you saw.
+13. **Smoke: prompts on a selection** shows only over a selection; what WebKit does with a
+    right-click is for the app to answer: (a) select a word and right-click inside the
+    selection — the menu shows both plugin items, **Sandbox Smoke: prompts** and
+    **Smoke: prompts on a selection**; (b) with a word selected, right-click elsewhere in the
+    text — note whether the item is there and whether the selection collapsed; (c) with no
+    selection, right-click a word — note whether the item is there (it will be if WebKit
+    selects the word on right-click). Note the results of (b) and (c).
 
 ## Expected noise, not failures
 
@@ -128,6 +154,6 @@ one toast, `PROMPT pick=<id|cancel|ERR:…> input=<text|cancel|ERR:…>`.
 
 ## Still missing (Phase 4c)
 
-Document/selection **transform** contributions, declarative `settings`, `menu` mapping,
-and sidebar panels. A sandboxed plugin can now orient itself, report, and read or change
-the document.
+Document/selection **transform** contributions, declarative `settings`, and sidebar panels.
+(`menu` is mapped since §391 — checks 10 and 13.) A sandboxed plugin can now orient itself,
+report, and read or change the document.

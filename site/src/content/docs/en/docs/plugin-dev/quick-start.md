@@ -139,12 +139,14 @@ When your plugin finishes activating, the host delivers a synthetic `file:open` 
 file that is already open, if any. That way a plugin loaded at startup does not have to
 wait for the user to switch tabs before it knows where it is.
 
-Contribution ids (`commands[].id`, `statusBar[].id`, `settings[].key`, and the `command` a
-status-bar item points at) must match `^[A-Za-z0-9_-]+$` and be unique within their
-section; at most five status-bar items and sixteen settings fields may be declared, and a
-settings `default` must have the type its field declares. The host namespaces them as
-`<pluginId>.<command>` and `<pluginId>:sb:<item>`, so a `.` or `:` in the trailing part
-would make those ids ambiguous.
+Contribution ids (`commands[].id`, `statusBar[].id`, `menu[].id`, `slash[].id`,
+`settings[].key`, and the `command` a status-bar, menu or slash item points at) must match
+`^[A-Za-z0-9_-]+$` and be unique within their section; at most fifty commands, five
+status-bar items, five menu items, ten slash items and sixteen settings fields may be
+declared, and a settings `default` must have the type its field declares. The host namespaces
+them as `<pluginId>.<command>` and `<pluginId>:sb:<item>`, so a `.` or `:` in the trailing
+part would make those ids ambiguous. `menu` and `slash` put your commands in the editor's
+right-click and slash menus — see [The plugin manifest](/en/docs/plugin-dev/manifest/).
 
 A plugin project looks like this:
 

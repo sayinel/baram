@@ -5,6 +5,7 @@ import type {
   PluginSettingType,
 } from "./types";
 
+import { validateEntryPoints } from "./manifest-entry-points";
 import {
   isSafeSettingColor,
   MAX_SETTING_FIELDS,
@@ -46,6 +47,16 @@ export interface ManifestValidationError {
  * items, no plugin code and (before this review) no capability required.
  */
 const MAX_STATUS_BAR_ITEMS = 5;
+
+/**
+ * §391 spec 0070 D11 — how many commands one plugin may declare. Each declared command is a row
+ * in Settings > Keybindings and may back menu and slash items, so an unbounded list could fill
+ * that tab. The repo's own manifests — the `baram-plugin.json` of each of the six
+ * `examples/plugins` directories, the built-in in `src/plugins/builtin` and the entries of
+ * `registry/index.json` — declare at most five (`sandbox-smoke`; the built-in and the registry
+ * entries declare none, 2026-10-06).
+ */
+const MAX_COMMANDS = 50;
 
 /**
  * Ids that stay unambiguous once namespaced. The host builds `${pluginId}.${command}`
@@ -340,6 +351,12 @@ function validateContributions(
   };
 
   const commands = entries("commands");
+  if (commands && commands.length > MAX_COMMANDS) {
+    errors.push({
+      field: "contributions.commands",
+      message: `at most ${MAX_COMMANDS} commands may be declared`,
+    });
+  }
   commands?.forEach((cmd, i) => {
     requireId(cmd.id, `contributions.commands[${i}].id`);
     requireString(cmd.title, `contributions.commands[${i}].title`);
@@ -378,6 +395,25 @@ function validateContributions(
   };
   if (commands) rejectDuplicateIds("commands", commands);
 
+  /**
+   * `value` must be an id that names a command this manifest declares (code review NIT-2).
+   * Otherwise its entry renders as a control whose handler never exists: a permanently dead
+   * control, with nothing anywhere to explain it. One rule for the status bar, the menu and
+   * slash (§391 spec 0070 §4).
+   */
+  const requireDeclaredCommand = (value: unknown, field: string) => {
+    requireId(value, field);
+    if (
+      typeof value === "string" &&
+      !(commands ?? []).some((c) => c.id === value)
+    ) {
+      errors.push({
+        field,
+        message: `no command "${value}" is declared in contributions.commands`,
+      });
+    }
+  };
+
   const statusBar = entries("statusBar");
   if (statusBar) rejectDuplicateIds("statusBar", statusBar);
   if (statusBar && statusBar.length > MAX_STATUS_BAR_ITEMS) {
@@ -393,19 +429,10 @@ function validateContributions(
       optional: true,
     });
     if (item.command !== undefined) {
-      requireId(item.command, `contributions.statusBar[${i}].command`);
-      // …and it must name a command this manifest declares (code review NIT-2).
-      // Otherwise the item renders as a button whose handler never exists: a permanently
-      // dead control, with nothing anywhere to explain it.
-      if (
-        typeof item.command === "string" &&
-        !(commands ?? []).some((c) => c.id === item.command)
-      ) {
-        errors.push({
-          field: `contributions.statusBar[${i}].command`,
-          message: `no command "${item.command}" is declared in contributions.commands`,
-        });
-      }
+      requireDeclaredCommand(
+        item.command,
+        `contributions.statusBar[${i}].command`,
+      );
     }
   });
 
@@ -506,15 +533,19 @@ function validateContributions(
     }
   });
 
-  // `menu` is declared in the Phase-1 schema and still nothing consumes it. Checked only
-  // as an array of objects: asserting a shape the loader does not read would freeze a
-  // design that is not settled, while leaving it unchecked would repeat the mistake this
-  // function exists to fix the moment something reads it.
-  //
-  // ‼️ CARRY-OVER (4a → 4b → 4c): whoever first reads `menu[].command` adds `requireId`
-  // for it in the SAME commit — the host builds `${pluginId}.${command}` from it, exactly
-  // as the status bar does, and `CONTRIBUTION_ID` is what keeps the separator unambiguous.
-  entries("menu");
+  // §391 spec 0070 §4 — `menu` and `slash`, read by the editor's right-click menu and the slash
+  // list. The 4a → 4c CARRY-OVER ("whoever first reads `menu[].command` adds `requireId` for it
+  // in the SAME commit") is discharged in `validateEntryPoints`: ids and commands both go
+  // through `requireId`, and the command through `requireDeclaredCommand` above.
+  validateEntryPoints({
+    entries,
+    rejectDuplicateIds,
+    report: (field, message) => {
+      errors.push({ field, message });
+    },
+    requireDeclaredCommand,
+    requireId,
+  });
   return errors;
 }
 

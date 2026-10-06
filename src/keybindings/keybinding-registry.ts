@@ -14,11 +14,18 @@
 export const TASK_INPUT_COMMAND = "tasks.taskInput";
 
 export interface KeybindingEntry {
-  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "zettelkasten" | "formatting"
+  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "zettelkasten" | "tasks" | "formatting" | "plugins"
   customizable: boolean; // true = global shortcut, false = Tiptap extension
-  defaultKey: string; // Platform-independent: "Mod+S"
-  id: string; // e.g. "file.save"
-  label: string; // i18n key e.g. "keybindings.file.save"
+  defaultKey: string; // Platform-independent: "Mod+S". "" = unassigned — §391 plugin entries only; every registry entry has one (keybinding-registry.test.ts)
+  id: string; // e.g. "file.save"; §391 plugin entries are "plugin:<pluginId>.<commandId>"
+  label: string; // i18n key e.g. "keybindings.file.save" — unless `literalLabel`
+  /**
+   * §391 spec 0070 §8 — `label` is a plugin command's own title, drawn as written: never passed
+   * to `t()`, which would translate a title that happens to be a key.
+   */
+  literalLabel?: boolean;
+  /** §391 — the plugin's drawn name (`pluginSourceLabel`), shown on its row. Plugin entries only. */
+  pluginName?: string;
 }
 
 export const KEYBINDING_CATEGORIES: string[] = [
@@ -33,6 +40,7 @@ export const KEYBINDING_CATEGORIES: string[] = [
   "zettelkasten",
   "tasks",
   "formatting",
+  "plugins",
 ];
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -47,6 +55,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   zettelkasten: "keybindings.category.zettelkasten",
   tasks: "keybindings.category.tasks",
   formatting: "keybindings.category.formatting",
+  plugins: "keybindings.category.plugins",
 };
 
 export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
