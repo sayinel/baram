@@ -671,4 +671,28 @@ mod tests {
             Judgement::Ours(Match::Stem)
         );
     }
+
+    #[test]
+    fn the_new_stem_is_the_new_name_in_nfc() {
+        // §390 (spec 0069 D7) The spellability predicates judge `new_stem()`
+        // and the rename writes the stem in NFC: one string, so they judge
+        // what is written, whatever form `new_path` gives the name. `respell`
+        // composes its finished text as well, so the written stem does not
+        // show this NFC; the spellability verdicts do — `ALIAS_PREFIX_RE`
+        // reads `e\u{301}x::y` as an alias prefix and `\u{e9}x::y` not (the
+        // Kelvin sign goes the other way), so a stem judged in another form
+        // than the one written would refuse a rename it can write, or write
+        // one it refused.
+        // What fails this: `new_stem` answering the stem as `new_path` spells it.
+        let (typed, stored) = crate::index::normalizer::both_forms("새 노트");
+        let new_path = format!("/v/{stored}.md");
+        let target = RenameTarget {
+            old_path: "/v/old.md",
+            new_path: &new_path,
+            local_aliases: &[],
+            known_paths: KnownPaths::default(),
+            windows: false,
+        };
+        assert_eq!(target.new_stem(), typed);
+    }
 }

@@ -207,8 +207,10 @@ async fn a_rename_to_a_name_given_decomposed_writes_it_composed() {
     // A stem link is respelled with the new stem in NFC, whatever form the
     // new path gives it, and the spellability predicates judge that same
     // string (`RenameTarget::new_stem`).
-    // What fails this: `new_stem` answering the stem as `new_path` spells
-    // it — `r.md` gets the name decomposed.
+    // What fails this: dropping both NFCs, `respell`'s on the finished text
+    // and `new_stem`'s, gives `r.md` the name decomposed. Either one alone
+    // still writes it composed. `new_stem`'s is pinned by
+    // `judgement::tests::the_new_stem_is_the_new_name_in_nfc`.
     let (renamed, renamed_on_disk) = both_forms("새 노트");
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-nfd-new-name", true).await;
@@ -234,6 +236,43 @@ async fn a_rename_to_a_name_given_decomposed_writes_it_composed() {
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         format!("[[{renamed}]]\n")
+    );
+}
+
+#[tokio::test]
+async fn a_rename_to_a_name_whose_decomposed_form_reads_as_an_alias_is_judged_composed() {
+    // The new name `éx::y` given decomposed (`e` + U+0301). Decomposed, its
+    // head `e\u{301}x::` reads as a vault alias (`ALIAS_PREFIX_RE`, whose
+    // `\w` takes marks) and no wikilink could spell it; composed, `é` is no
+    // ASCII letter, no alias is read, and `[[éx::y]]` names the file. The
+    // rename writes the composed form, so it must judge that form.
+    // What fails this: `new_stem` answering the stem as `new_path` spells
+    // it — the link is judged unspellable, left as `[[old]]`, and `r.md`
+    // is reported.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-nfd-alias-shape", true).await;
+    std::fs::write(dir.path().join("old.md"), "t\n").unwrap();
+    std::fs::write(dir.path().join("r.md"), "[[old]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/old.md"),
+        &format!("{root}/e\u{301}x::y.md"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "[[\u{e9}x::y]]\n"
     );
 }
 
