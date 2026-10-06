@@ -749,8 +749,8 @@ mod tests {
         // each link is a backlink of the note; the graph draws each to the
         // note and no node beside it; `links` resolves each to it.
         // What fails this: `file_key` lowercasing alone — line 1 of `r.md` is
-        // lost and the graph grows placeholder nodes; `strip_extension_and_fold`
-        // so — lines 2 and 3 and `s.md`'s line are lost.
+        // lost; `strip_extension_and_fold` so — lines 2 and 3 and `s.md`'s
+        // line are lost.
         let (folder, folder_on_disk) = both_forms("회의록");
         let (title, title_on_disk) = both_forms("202610061200 주간 노트");
         let note = format!("/v/{folder_on_disk}/{title_on_disk}.md");

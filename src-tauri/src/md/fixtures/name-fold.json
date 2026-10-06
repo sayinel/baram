@@ -88,10 +88,8 @@
     {
       "input": "\u212a",
       "folded": "k",
-      "checks": [
-        "input-not-nfc"
-      ],
-      "why": "the Kelvin sign is canonically K: NFC makes it K, then lowercase k"
+      "checks": [],
+      "why": "the Kelvin sign: NFC makes it K and lowercase alone makes it k, so the key is k either way"
     },
     {
       "input": "\u0391\u03a3",

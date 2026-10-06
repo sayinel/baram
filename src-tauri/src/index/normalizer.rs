@@ -211,7 +211,10 @@ mod tests {
             for check in &case.checks {
                 kinds.insert(check.as_str());
                 match check.as_str() {
-                    "input-not-nfc" => assert_ne!(nfc(&case.input), case.input, "{}", case.why),
+                    "input-not-nfc" => {
+                        assert_ne!(nfc(&case.input), case.input, "{}", case.why);
+                        assert_ne!(case.input.to_lowercase(), case.folded, "{}", case.why);
+                    }
                     "final-nfc" => {
                         assert_ne!(nfc(&case.input).to_lowercase(), case.folded, "{}", case.why)
                     }
