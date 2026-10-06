@@ -73,6 +73,7 @@ describe("who may start a plugin command", () => {
       "components/command/CommandPalette.tsx",
       "components/layout/PluginStatusBarItems.tsx",
       "components/toolbar/context-menu-plugins.ts",
+      "extensions/plugins/slash-command-items-plugins.ts",
     ]);
   });
 
