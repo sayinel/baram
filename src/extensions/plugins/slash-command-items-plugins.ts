@@ -2,7 +2,8 @@
 // has a handler right now (D7). `buildSlashItems` appends them LAST. Built from data the host
 // holds; no plugin code runs to draw the list.
 //
-// The first production file under `src/extensions/` that imports `src/plugins/` (plan 0118 P6).
+// `slash-command-items.ts` and this file are the first production files under `src/extensions/`
+// that import `src/plugins/` (plan 0118 P6).
 // No cycle: no production file under `src/plugins/` reaches `slash-command*` or
 // `src/extensions/index.ts`, directly or transitively (static value-import edges only — `import
 // type` and test files do not count; measured when this was written).

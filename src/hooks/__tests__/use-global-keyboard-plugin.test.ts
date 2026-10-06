@@ -109,6 +109,7 @@ describe("a plugin shortcut (§391 §8)", () => {
     const { unmount } = renderDispatcher();
     const e = press();
     expect(execute).toHaveBeenCalledWith("cite.insert");
+    expect(execute).toHaveBeenCalledTimes(1);
     expect(e.defaultPrevented).toBe(true);
     unmount();
   });

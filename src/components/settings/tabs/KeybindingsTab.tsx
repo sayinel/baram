@@ -71,6 +71,7 @@ export function KeybindingsTab() {
       (e) =>
         keybindingLabel(e, t).toLowerCase().includes(q) ||
         e.category.toLowerCase().includes(q) ||
+        (e.pluginName ?? "").toLowerCase().includes(q) ||
         formatKeyForDisplay(e.activeKey, isMac).toLowerCase().includes(q),
     );
   }, [merged, filter, t, isMac]);

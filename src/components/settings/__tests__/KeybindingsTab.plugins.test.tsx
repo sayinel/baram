@@ -353,6 +353,52 @@ describe("plugin rows (§391 §8)", () => {
     expect(useSettingsStore.getState().keybindingOverrides).toEqual({});
   });
 
+  it("the filter finds a plugin row by part of its title, and hides another plugin's rows", () => {
+    withPlugins();
+    render(<KeybindingsTab />);
+    fireEvent.change(
+      screen.getByPlaceholderText(en["keybindings.search.placeholder"]),
+      {
+        target: { value: "pick a" },
+      },
+    );
+    expect(row("Pick a source")).toBeTruthy();
+    expect(() => row("Insert citation")).toThrow();
+    expect(() => row("Zeta one")).toThrow();
+  });
+
+  it("the filter finds every row of a plugin by part of its name, and hides another plugin's rows", () => {
+    withPlugins();
+    render(<KeybindingsTab />);
+    // "cite" is in no title: "Insert citation" has "citat", "Pick a source" has none.
+    fireEvent.change(
+      screen.getByPlaceholderText(en["keybindings.search.placeholder"]),
+      {
+        target: { value: "cite" },
+      },
+    );
+    expect(row("Insert citation")).toBeTruthy();
+    expect(row("Pick a source")).toBeTruthy();
+    expect(() => row("Zeta one")).toThrow();
+  });
+
+  it("a stored key of a plugin that is not loaded renders no row — the loaded plugins' rows are exactly theirs", () => {
+    withPlugins();
+    useSettingsStore.setState({
+      keybindingOverrides: { "plugin:gone.cmd": FREE },
+    });
+    render(<KeybindingsTab />);
+    const pluginRows = [...document.querySelectorAll(".keybinding-row")].filter(
+      (r) => r.querySelector(".keybinding-plugin-name"),
+    );
+    expect(pluginRows).toHaveLength(3);
+    expect(
+      [...document.querySelectorAll(".keybinding-row")].filter((r) =>
+        /gone/i.test(r.textContent ?? ""),
+      ),
+    ).toHaveLength(0);
+  });
+
   it("redraws when a plugin comes and goes", () => {
     render(<KeybindingsTab />);
     expect(document.querySelector(".keybinding-plugin-name")).toBeNull();

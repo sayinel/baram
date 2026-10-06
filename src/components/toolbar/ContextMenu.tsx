@@ -216,8 +216,9 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // keyboard-invoked). context-menu-exclusive.ts.
       closeAllContextMenus();
 
-      // §391 spec 0070 §6 — every menu this handler opens ends in the plugin group, read at
-      // this moment: the selection after prosemirror-view's own `contextmenu` handling, and the
+      // §391 spec 0070 §6 — every menu this handler opens passes through `withPluginMenuItems`,
+      // which appends the plugin group when one of its items is visible. It reads at this
+      // moment: the selection after prosemirror-view's own `contextmenu` handling, and the
       // handlers registered now (D7, D15).
       const withPlugins = (built: MenuItem[]) =>
         withPluginMenuItems(
