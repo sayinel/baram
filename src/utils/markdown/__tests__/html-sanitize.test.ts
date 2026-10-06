@@ -59,3 +59,30 @@ describe("sanitizeHtmlBlock — anchor destinations follow the link policy", () 
     expect(out).not.toContain("tracker.example");
   });
 });
+
+// In the HTML block, MathML follows the route isSvgContent picks: content it
+// reads as SVG goes through sanitizeSvg and keeps MathML, and content it routes
+// to the html profile still drops it.
+describe("sanitizeHtmlBlock — MathML follows the SVG route", () => {
+  const MATH = `<math><mi>x</mi></math>`;
+
+  function parse(html: string): Document {
+    return new DOMParser().parseFromString(
+      sanitizeHtmlBlock(html),
+      "text/html",
+    );
+  }
+
+  it("keeps MathML inside an svg block's <foreignObject>", () => {
+    const doc = parse(
+      `<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div>${MATH}</div></foreignObject></svg>`,
+    );
+    expect(doc.querySelector("foreignObject math mi")?.textContent).toBe("x");
+  });
+
+  it("still drops MathML from HTML that takes the html-profile route", () => {
+    const doc = parse(`<div><p>kept</p>${MATH}</div>`);
+    expect(doc.querySelector("p")?.textContent).toBe("kept");
+    expect(doc.querySelector("math")).toBeNull();
+  });
+});

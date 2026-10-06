@@ -62,7 +62,8 @@ export function normalizeMermaidSvgSize(svg: string): string {
  * `foreignobject` as an HTML integration point so those labels survive the
  * namespace check (regressed when §5.5 switched securityLevel "strict" →
  * "antiscript", commit 51044cd), while `<script>`, event handlers, and
- * `javascript:` URLs stay forbidden.
+ * `javascript:` URLs stay forbidden. A `$$…$$` label is KaTeX MathML inside
+ * that same `<foreignObject>`; `sanitizeSvg`'s `mathMl` profile keeps it.
  */
 export function sanitizeMermaidSvg(svg: string): string {
   return sanitizeSvg(svg);

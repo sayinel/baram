@@ -1,6 +1,8 @@
 // §5.1 SVG sanitizer + detection tests. Run in jsdom, which parses SVG/
 // foreignObject namespaces the same way WebKit does, so the namespace decisions
 // here are faithful to the runtime.
+import DOMPurify from "dompurify";
+import katex from "katex";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -64,6 +66,132 @@ describe("sanitizeSvg", () => {
 
   it("returns empty string for non-SVG / empty input", () => {
     expect(sanitizeSvg("")).toBe("");
+  });
+});
+
+// MathML inside <foreignObject>: Mermaid renders a `$$…$$` label as KaTeX
+// MathML there, and an authored SVG can carry the same markup. The sanitized
+// string is inserted with innerHTML, so each test parses it the same way and
+// asserts on the resulting tree.
+describe("sanitizeSvg — MathML inside <foreignObject>", () => {
+  const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
+
+  function liveTree(markup: string): HTMLDivElement {
+    const host = document.createElement("div");
+    host.innerHTML = sanitizeSvg(markup);
+    return host;
+  }
+
+  function inForeignObject(body: string): string {
+    return `<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="120" height="40"><div xmlns="http://www.w3.org/1999/xhtml">${body}</div></foreignObject></svg>`;
+  }
+
+  const katexMathml = katex.renderToString(String.raw`\frac{a}{b} + x^2`, {
+    displayMode: true,
+    output: "mathml",
+    throwOnError: true,
+  });
+
+  it("keeps KaTeX's MathML as MathML elements", () => {
+    const math = liveTree(inForeignObject(katexMathml)).querySelector("math");
+    expect(math).not.toBeNull();
+    expect(math!.namespaceURI).toBe(MATHML_NS);
+    expect(math!.querySelector("mfrac")?.textContent).toBe("ab");
+    expect(math!.querySelector("msup")?.textContent).toBe("x2");
+  });
+
+  it("drops the TeX annotation with its content instead of hoisting the source into <math>", () => {
+    expect(katexMathml).toContain("<annotation");
+    const math = liveTree(inForeignObject(katexMathml)).querySelector("math");
+    expect(math).not.toBeNull();
+    expect(math!.textContent).toBe("ab+x2");
+  });
+
+  it("strips javascript: destinations and event handlers on MathML elements", () => {
+    const host = liveTree(
+      inForeignObject(
+        `<math onmouseover="alert(1)"><mi href="javascript:alert(2)" onclick="bad()">x</mi><mtext xlink:href="javascript:alert(3)">t</mtext></math>`,
+      ),
+    );
+    const math = host.querySelector("math");
+    expect(math?.querySelector("mi")?.textContent).toBe("x");
+    for (const el of host.querySelectorAll("*")) {
+      for (const attr of el.attributes) {
+        expect(attr.name.startsWith("on")).toBe(false);
+        expect(attr.value).not.toMatch(/javascript:/i);
+      }
+    }
+  });
+
+  it("drops links on MathML elements and keeps the SVG <a> beside them", () => {
+    // WebKit follows `href` on any MathML element, while the app's link
+    // handling keys on <a>: export's stripDisallowedLinkHrefs and the link
+    // mark's Cmd/Ctrl-click routing both query for it. A MathML link would sit
+    // outside both, so the sanitizer does not let one through.
+    const host = liveTree(
+      `<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com/a"><text>t</text></a><foreignObject width="120" height="40"><div xmlns="http://www.w3.org/1999/xhtml"><math href="https://example.com/m"><mi href="https://example.com/i" xlink:href="https://example.com/x">x</mi></math></div></foreignObject></svg>`,
+    );
+    expect(host.querySelector("svg a")?.getAttribute("href")).toBe(
+      "https://example.com/a",
+    );
+    expect(host.querySelector("math mi")?.textContent).toBe("x");
+    for (const el of host.querySelectorAll("math, math *")) {
+      expect([...el.attributes].map((a) => a.name)).not.toContainEqual(
+        expect.stringMatching(/href/i),
+      );
+    }
+  });
+
+  it("keeps the MathML link hook off DOMPurify's shared default instance", () => {
+    // What does not go through sanitizeSvg — the non-SVG branches of the
+    // HTML-block and AI-output sanitizers, and mermaid's own label sanitizing —
+    // uses the default instance; the hook lives on the SVG sanitizer's own one.
+    const math = `<math><mi href="https://example.com/i">x</mi></math>`;
+    expect(sanitizeSvg(inForeignObject(math))).not.toContain("example.com/i");
+    expect(DOMPurify.sanitize(math)).toContain('href="https://example.com/i"');
+  });
+
+  it("refuses annotation-xml with its content and maction without it", () => {
+    // An annotation-xml with encoding="text/html" is an HTML integration
+    // point, and DOMPurify drops its content (default FORBID_CONTENTS);
+    // maction is refused but its children are hoisted into the parent. The
+    // annotation-xml carries bare text: an <mi> there would parse as an HTML
+    // element and be dropped even if the content were hoisted.
+    const host = liveTree(
+      inForeignObject(
+        `<math><mi>y</mi><annotation-xml encoding="text/html">AX<img src=x onerror=alert(1)></annotation-xml><maction actiontype="statusline"><mi>s</mi></maction></math>`,
+      ),
+    );
+    const math = host.querySelector("math");
+    expect(math?.querySelector("annotation-xml")).toBeNull();
+    expect(math?.querySelector("maction")).toBeNull();
+    expect(math?.textContent).toBe("ys");
+    expect(host.querySelector("[onerror]")).toBeNull();
+  });
+
+  it("keeps published MathML mutation-XSS payloads inert across a re-parse", () => {
+    // Payloads that once got past DOMPurify through MathML namespace confusion
+    // (the mglyph/style family). The allowlist never lets <img> or on* into
+    // DOMPurify's own tree, so a mutation shows up only when its serialized
+    // output is parsed — here in liveTree, and again after a second round
+    // trip. The <mi>y</mi> beside each payload has to survive, so stripping
+    // MathML wholesale would fail too.
+    const payloads = [
+      `<math><mtext><table><mglyph><style><!--</style><img title="--&gt;&lt;/mglyph&gt;&lt;img&Tab;src=1&Tab;onerror=alert(1)&gt;">`,
+      `<form><math><mtext></form><form><mglyph><style></math><img src onerror=alert(1)>`,
+      `<math><mtext><h1><a><h6></a></h6><mglyph><svg><mtext><style><a title="</style><img src onerror=alert(1)>"></style></h1>`,
+      `<math><mi><mglyph><svg><mtext><textarea><path id="</textarea><img onerror=alert(1) src=1>">`,
+    ];
+    for (const payload of payloads) {
+      const host = liveTree(
+        inForeignObject(`<math><mi>y</mi></math>${payload}`),
+      );
+      expect(host.querySelector("math mi")?.textContent).toBe("y");
+      expect(host.querySelector("[onerror], script")).toBeNull();
+      const reparsed = document.createElement("div");
+      reparsed.innerHTML = host.innerHTML;
+      expect(reparsed.querySelector("[onerror], script")).toBeNull();
+    }
   });
 });
 

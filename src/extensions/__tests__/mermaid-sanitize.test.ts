@@ -5,6 +5,7 @@
 // and was stripped. sanitizeMermaidSvg registers foreignObject as an integration
 // point. These tests run in jsdom, which parses <foreignObject> children into the
 // HTML namespace exactly as WebKit does, so the namespace decision is faithful.
+import katex from "katex";
 import { describe, expect, it } from "vitest";
 
 import { sanitizeMermaidSvg } from "../../utils/markdown/mermaid-utils";
@@ -41,5 +42,23 @@ describe("sanitizeMermaidSvg", () => {
     expect(safe).not.toMatch(/javascript:/i);
     // benign label content is retained
     expect(safe).toMatch(/ok/);
+  });
+
+  it("keeps a $$…$$ label's MathML", () => {
+    // Mermaid renders the label with KaTeX `output: "mathml"` and strips the
+    // annotation before inserting it (renderKatexUnsanitized in mermaid 11).
+    const label = katex
+      .renderToString("x^2", {
+        displayMode: true,
+        output: "mathml",
+        throwOnError: true,
+      })
+      .replace(/\n/g, " ")
+      .replace(/<annotation.*<\/annotation>/g, "");
+    const host = document.createElement("div");
+    host.innerHTML = sanitizeMermaidSvg(
+      `<svg id="m" xmlns="http://www.w3.org/2000/svg"><g class="node"><foreignObject width="80" height="40"><div class="label"><span class="nodeLabel"><p>${label}</p></span></div></foreignObject></g></svg>`,
+    );
+    expect(host.querySelector(".nodeLabel math msup")?.textContent).toBe("x2");
   });
 });
