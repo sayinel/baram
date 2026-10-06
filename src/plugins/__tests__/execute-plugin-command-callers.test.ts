@@ -1,5 +1,5 @@
 // §385 spec 0061 §5.1 — the reverse invariant. Calling executePluginCommand grants prompt
-// rights, so only a USER gesture may call it. A third caller (a deep link, a timer) would grant
+// rights, so only a USER gesture may call it. Another caller (a deep link, a timer) would grant
 // rights with no gesture; whoever adds one must change this list and answer that question.
 //
 // Corpus for every scan below: production `.ts`/`.tsx` files under `src/`, with any
@@ -68,10 +68,11 @@ function scanProductionFiles(matches: (source: string) => boolean): string[] {
 }
 
 describe("who may start a plugin command", () => {
-  it("is the command palette and the status bar, and nothing else", () => {
+  it("is the command palette, the status bar and the §391 entry points, and nothing else", () => {
     expect(callers()).toEqual([
       "components/command/CommandPalette.tsx",
       "components/layout/PluginStatusBarItems.tsx",
+      "components/toolbar/context-menu-plugins.ts",
     ]);
   });
 

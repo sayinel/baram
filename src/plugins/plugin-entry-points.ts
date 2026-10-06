@@ -7,6 +7,7 @@ import type {
 } from "./plugin-ui-store";
 import type { PluginManifest } from "./types";
 
+import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
 import { commandHandlers } from "./plugin-host-registry";
 import { pluginSourceLabel } from "./plugin-text";
@@ -106,6 +107,14 @@ export function registerEntryContributions(manifest: PluginManifest): void {
     pluginId: manifest.id,
     slash: contributions?.slash ?? [],
   });
+}
+
+/**
+ * A command started from an entry point that rejected becomes an error toast — the one the
+ * command palette shows for the same failure.
+ */
+export function reportPluginCommandError(err: unknown): void {
+  useUIStore.getState().showToast(String(err), "error");
 }
 
 /** Code-unit order — plugin ids are `^[a-z0-9-]+$`, so this is dictionary order too. */

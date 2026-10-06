@@ -12,12 +12,14 @@ import {
 // §4.8 Context Menu — right-click with node-type detection
 import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import { useTranslation } from "../../i18n/useTranslation";
+import { livePluginEntrySource } from "../../plugins/plugin-entry-points";
 import { closeAllContextMenus } from "../../utils/editor/context-menu-exclusive";
 import {
   isInNativeSelect,
   isInNativeTextControl,
 } from "../../utils/editor/native-text-control";
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
+import { withPluginMenuItems } from "./context-menu-plugins";
 import { buildTableMenu } from "./context-menu-table";
 import { MenuList } from "./MenuList";
 
@@ -214,8 +216,20 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       // keyboard-invoked). context-menu-exclusive.ts.
       closeAllContextMenus();
 
+      // §391 spec 0070 §6 — every menu this handler opens ends in the plugin group, read at
+      // this moment: the selection after prosemirror-view's own `contextmenu` handling, and the
+      // handlers registered now (D7, D15).
+      const withPlugins = (built: MenuItem[]) =>
+        withPluginMenuItems(
+          built,
+          editor.state.selection,
+          livePluginEntrySource(),
+        );
+
       if (specialType === "mathInline") {
-        setItems(buildMathInlineMenu(editor, e.target as HTMLElement, t));
+        setItems(
+          withPlugins(buildMathInlineMenu(editor, e.target as HTMLElement, t)),
+        );
         setPosition({ x: e.clientX, y: e.clientY });
         return;
       }
@@ -227,9 +241,9 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       if (!pos) return;
 
       if (specialType === "mathBlock") {
-        setItems(buildMathBlockMenu(editor, pos.pos, t));
+        setItems(withPlugins(buildMathBlockMenu(editor, pos.pos, t)));
       } else {
-        setItems(buildMenuItems(pos.pos));
+        setItems(withPlugins(buildMenuItems(pos.pos)));
       }
       setPosition({ x: e.clientX, y: e.clientY });
     };
