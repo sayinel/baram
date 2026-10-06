@@ -11,7 +11,6 @@ import {
   deleteDir,
   deleteFile,
   isFileExistsError,
-  refreshIndex,
   updateFileIndex,
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
@@ -65,7 +64,6 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
         }
         removeFileEntry(path);
         useLinkStore.getState().invalidate();
-        if (entry.isDir) rebuildLinkIndex(rootPath);
       } catch (err) {
         logger.error("[FileTree] Delete failed:", err);
       }
@@ -112,7 +110,6 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
         }
       }
       useLinkStore.getState().invalidate();
-      if (hasDir) rebuildLinkIndex(rootPath);
       if (failed.length > 0) {
         await showAlert(`Failed to move to Trash: ${failed.join(", ")}`);
       }
@@ -175,13 +172,16 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
             path: fullPath,
             isDir: false,
           });
-          // §29 The new note joins the link index here: the watcher skips the
-          // app's own `file:created`, and the graph only reads (issue 790).
-          updateFileIndex(fullPath)
-            .then(() => useLinkStore.getState().invalidate())
-            .catch((err: unknown) =>
-              logger.error("[FileTree] Link index update failed:", err),
-            );
+          // §29 A new note joins the link index now rather than when the
+          // watcher's event arrives (issue 790). Only a note: the index reads
+          // any other file as a link target, which the watcher registers.
+          if (isMarkdownNote(fullPath)) {
+            updateFileIndex(fullPath)
+              .then(() => useLinkStore.getState().invalidate(fullPath))
+              .catch((err: unknown) =>
+                logger.error("[FileTree] Link index update failed:", err),
+              );
+          }
           setFileContent(fullPath, "");
           openTab({
             contextId: "",
@@ -226,16 +226,7 @@ function findEntryByPath(entries: FileEntry[], path: string): FileEntry | null {
   return null;
 }
 
-/**
- * §29 Rebuild the link index after deleting a folder. A folder moved to the
- * Trash reaches the watcher as one `file:deleted` for the folder, and that
- * event can arrive after this hook has taken it out of the tree, when
- * `use-link-index-watcher.ts` can no longer tell the path was a directory.
- */
-function rebuildLinkIndex(rootPath: string): void {
-  refreshIndex(rootPath)
-    .then(() => useLinkStore.getState().invalidate())
-    .catch((err: unknown) =>
-      logger.error("[FileTree] Link index rebuild failed:", err),
-    );
+/** The markdown rule a vault build reads notes by (`fs::collect_md_files`). */
+function isMarkdownNote(path: string): boolean {
+  return path.endsWith(".md") || path.endsWith(".markdown");
 }

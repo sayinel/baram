@@ -99,9 +99,9 @@ export function useGraphData(params: {
           effectiveRootPath = "";
         } else {
           // Single-vault. No rebuild: a save updates its own file in the index
-          // before raising indexVersion, the watcher does the same for edits
-          // made outside the app, and `get_link_index` builds an index that
-          // does not exist yet (issue 790).
+          // before raising indexVersion, the watcher hands every other write
+          // to `sync_watched_paths` (use-link-index-watcher.ts), and
+          // `get_link_index` builds an index that does not exist yet (issue 790).
           graph = await getLinkIndex();
           if (cancelled) return;
           nodeVaultMapRef = undefined;

@@ -1,92 +1,108 @@
-// §29 링크 index 를 앱 밖의 변경에 맞춘다 — file:* 이벤트로 바뀐 노트만 다시 읽는다.
+// §29 링크 index 를 워처가 본 변경에 맞춘다 — 바뀐 경로만 Rust 에 넘긴다.
 import { useEffect } from "react";
 
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import { refreshIndex, updateFileIndex } from "../ipc/invoke";
+import type { FileCreatedPayload, FileWriteOrigin } from "../ipc/types";
+
+import { syncWatchedPaths } from "../ipc/invoke";
 import { useLinkStore } from "../stores/editor/link";
-import { useFileStore } from "../stores/file/file";
-import { findEntryByPath } from "../stores/file/file-tree-ops";
 import { logger } from "../utils/logger";
 
 /** 같은 쓰기가 올리는 이벤트 여럿(FSEvents)과 git checkout 같은 일괄 변경을 한 번에 받는다. */
 const FLUSH_DELAY_MS = 300;
 
 /**
- * 앱 밖에서 만들거나 고치거나 지운 노트를 링크 index 에 반영하고 `indexVersion` 을 한 번 올린다.
+ * 워처가 보고한 경로를 `sync_watched_paths` 로 링크 index 에 반영하고 `indexVersion` 을 올린다.
  *
- * Graph 는 저장마다 index 를 통째로 다시 만들어서 밖의 변경도 다음 저장에 따라왔다(issue 790).
- * 이제 Graph 는 index 를 읽기만 하므로 그 일을 여기서 파일 하나 갱신으로 한다.
+ * Graph 는 저장마다 index 를 통째로 다시 만들어서 다른 쓰기도 다음 저장에 따라왔다(issue 790).
+ * 이제 Graph 는 index 를 읽기만 하므로 그 일을 여기서 한다. 앱 자신의 쓰기도 넘긴다 — 저장은
+ * 스스로 `updateFileIndex` 를 부르지만 Quick Capture · 전역 검색 바꾸기 · journal 처럼 부르지 않는
+ * 쓰기가 있다. 경로가 무엇인지(노트 · 링크 대상 · 디렉터리 · 빌드가 걷지 않는 경로)는 Rust 가
+ * 판정한다.
  *
- * - 앱 자신의 쓰기(`origin === "app"`)는 건너뛴다 — 저장이 이미 `updateFileIndex` 를 불렀다.
- * - 노트(`.md`·`.markdown`, index build 가 읽는 것과 같은 규칙)는 경로마다 `updateFileIndex`
- *   한 번. Rust 가 없는 파일을 제거로, context 밖의 경로를 no-op 으로 다룬다.
- * - 디렉터리가 생기거나 지워지면 vault 를 한 번 다시 build 한다. 옮기거나 휴지통으로 보낸 폴더는
- *   폴더 하나의 이벤트로만 온다. 지워진 경로는 디스크에서 물을 수 없어 파일 트리로 판정하는데,
- *   앱 안의 폴더 삭제는 그 이벤트보다 먼저 트리에서 뺄 수 있어 `use-file-tree-crud.ts` 가 직접
- *   다시 build 한다. 앱이 만든 새 노트도 그 파일이 직접 index 에 넣는다.
- * - 노트가 아닌 파일(§278 의 PDF 같은 링크 대상)은 여기서 반영하지 않는다 — 다음 build 까지
- *   이전 상태로 남는다.
+ * - flush 는 하나씩 돈다 — 다음 flush 는 앞의 것이 끝난 뒤에 시작한다.
+ * - 경로 하나만 담긴 flush 는 `invalidate(path)` 로 그 경로를 알린다 — 보고 있는 노트의 저장
+ *   메아리가 Backlinks 의 mention 검색을 다시 부르지 않게(#791). 그 밖에는 `invalidate()`.
+ * - 반영하지 못한 경로는 다음 flush 에서 한 번만 다시 시도하고, 또 실패하면 버린다.
+ *
+ * 남는 것: 쓰기는 이벤트가 여기를 거쳐 Rust 에 닿은 뒤에야(약 300 ms) index 에 들어간다 — 그
+ * 사이에 rename 이 판정하면 그 쓰기를 모른다. #823 의 후속 sub-issue 가 이 보장을 Rust 로 옮긴다.
  */
 export function useLinkIndexWatcher(): void {
   useEffect(() => {
     const unlistens: UnlistenFn[] = [];
     const pending = new Set<string>();
-    let rebuild = false;
+    const retried = new Set<string>();
     let timer: null | ReturnType<typeof setTimeout> = null;
+    let chain: Promise<void> = Promise.resolve();
     let cancelled = false;
 
     const flush = async (): Promise<void> => {
-      timer = null;
       const paths = [...pending];
-      const full = rebuild;
       pending.clear();
-      rebuild = false;
-      const rootPath = useFileStore.getState().rootPath;
+      if (paths.length === 0) return;
+      let failed: string[];
+      let applied = 0;
       try {
-        if (full && rootPath) await refreshIndex(rootPath);
-        else await Promise.all(paths.map((p) => updateFileIndex(p)));
+        const result = await syncWatchedPaths(paths);
+        failed = result.failed;
+        applied = result.applied;
       } catch (err) {
-        logger.error("§29 useLinkIndexWatcher: index update failed", err);
+        logger.error("§29 useLinkIndexWatcher: sync failed", err);
+        failed = paths;
       }
-      useLinkStore.getState().invalidate();
+      for (const p of paths) if (!failed.includes(p)) retried.delete(p);
+      for (const p of failed) {
+        if (retried.has(p)) {
+          retried.delete(p);
+          logger.error("§29 useLinkIndexWatcher: dropped after a retry", p);
+        } else {
+          retried.add(p);
+          schedule(p);
+        }
+      }
+      if (applied === 0) return;
+      if (paths.length === 1) useLinkStore.getState().invalidate(paths[0]);
+      else useLinkStore.getState().invalidate();
     };
 
-    const schedule = (path: null | string): void => {
-      if (path === null) rebuild = true;
-      else pending.add(path);
-      if (timer === null)
-        timer = setTimeout(() => void flush(), FLUSH_DELAY_MS);
-    };
+    function schedule(path: string): void {
+      pending.add(path);
+      if (timer !== null || cancelled) return;
+      timer = setTimeout(() => {
+        timer = null;
+        chain = chain.then(flush);
+      }, FLUSH_DELAY_MS);
+    }
+
+    const take = (e: { payload: { path: string } }): void =>
+      schedule(e.payload.path);
 
     void (async () => {
-      const fns = await Promise.all([
-        listen<{ origin?: string; path: string }>("file:changed", (e) => {
-          if (e.payload.origin === "app") return;
-          if (isNote(e.payload.path)) schedule(e.payload.path);
-        }),
-        listen<{ isDir?: boolean; origin?: string; path: string }>(
-          "file:created",
-          (e) => {
-            if (e.payload.origin === "app") return;
-            if (e.payload.isDir) schedule(null);
-            else if (isNote(e.payload.path)) schedule(e.payload.path);
-          },
+      const results = await Promise.allSettled([
+        listen<{ mtime: number; origin: FileWriteOrigin; path: string }>(
+          "file:changed",
+          take,
         ),
-        listen<{ path: string }>("file:deleted", (e) => {
-          const p = e.payload.path;
-          if (isNote(p)) schedule(p);
-          else if (findEntryByPath(useFileStore.getState().fileTree, p)?.isDir)
-            schedule(null);
-        }),
+        listen<FileCreatedPayload>("file:created", take),
+        listen<{ path: string }>("file:deleted", take),
       ]);
-      if (cancelled) {
+      const fns = results.flatMap((r) =>
+        r.status === "fulfilled" ? [r.value] : [],
+      );
+      if (cancelled || fns.length < results.length) {
         fns.forEach((f) => f());
+        if (fns.length < results.length) {
+          logger.error("§29 useLinkIndexWatcher: listen failed", results);
+        }
         return;
       }
       unlistens.push(...fns);
-    })();
+    })().catch((err: unknown) =>
+      logger.error("§29 useLinkIndexWatcher: setup failed", err),
+    );
 
     return () => {
       cancelled = true;
@@ -94,8 +110,4 @@ export function useLinkIndexWatcher(): void {
       unlistens.forEach((f) => f());
     };
   }, []);
-}
-
-function isNote(path: string): boolean {
-  return path.endsWith(".md") || path.endsWith(".markdown");
 }

@@ -146,4 +146,13 @@ describe("a new file in the tree never replaces an existing one", () => {
     await createNamed("README.md");
     expect(updateFileIndex).toHaveBeenCalledTimes(1);
   });
+
+  // 이것을 실패시키는 것: `isMarkdownNote(fullPath)` 관문을 지운다 — `update_file_index` 가
+  // `paper.pdf` 를 내용 "" 의 노트로 등록한다.
+  it("does not index a non-markdown file as a note", async () => {
+    vi.mocked(createFile).mockResolvedValue(undefined);
+    await createNamed("paper.pdf");
+    expect(createFile).toHaveBeenCalledWith("/vault/paper.pdf", "");
+    expect(updateFileIndex).not.toHaveBeenCalled();
+  });
 });

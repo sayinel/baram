@@ -79,32 +79,17 @@ describe("handleDeleteMany", () => {
   });
 });
 
-// §29 지운 폴더의 노트는 워처가 index 에서 뺄 수 없다(이벤트는 폴더 하나뿐이고 트리에서 이미
-// 빠졌다) — 폴더를 지울 때만 index 를 다시 build 한다(issue 790).
-describe("folder deletion rebuilds the link index", () => {
-  // 이것을 실패시키는 것: `handleDelete` 의 `if (entry.isDir) rebuildLinkIndex(rootPath)` 를 지운다.
-  it("단일 폴더 삭제는 vault 를 한 번 다시 build 한다", async () => {
+// §29 지운 폴더의 노트를 index 에서 빼는 일은 워처 → `sync_watched_paths` 가 한다 — Rust 가
+// index 에 그 아래 항목이 남았는지로 디렉터리를 판정한다(issue 790). 삭제 핸들러가 따로
+// build 하면 같은 삭제에 전체 build 가 한 번 더 붙는다.
+describe("deletion leaves the link index to the watcher", () => {
+  // 이것을 실패시키는 것: 폴더 삭제 뒤에 `refreshIndex(rootPath)` 를 다시 부른다.
+  it("폴더 · 파일 · 일괄 삭제 모두 vault 를 다시 build 하지 않는다", async () => {
     const { result } = renderHook(() => useFileTreeCrud());
     await act(() => result.current.handleDelete("/r/docs"));
-    expect(refreshIndex).toHaveBeenCalledTimes(1);
-    expect(refreshIndex).toHaveBeenCalledWith("/r");
-  });
-
-  // 이것을 실패시키는 것: 조건을 지워 파일 삭제에서도 `rebuildLinkIndex` 를 부른다.
-  it("파일 삭제는 다시 build 하지 않는다 — 워처가 그 노트 하나를 뺀다", async () => {
-    const { result } = renderHook(() => useFileTreeCrud());
-    await act(() => result.current.handleDelete("/r/b.md"));
-    await act(() =>
-      result.current.handleDeleteMany(["/r/c.md", "/r/docs/a.md"]),
-    );
-    expect(deleteFile).toHaveBeenCalledTimes(3);
+    await act(() => result.current.handleDeleteMany(["/r/b.md", "/r/c.md"]));
+    expect(deleteDir).toHaveBeenCalledTimes(1);
+    expect(deleteFile).toHaveBeenCalledTimes(2);
     expect(refreshIndex).not.toHaveBeenCalled();
-  });
-
-  // 이것을 실패시키는 것: `handleDeleteMany` 의 `if (hasDir) rebuildLinkIndex(rootPath)` 를 지운다.
-  it("폴더가 섞인 일괄 삭제는 한 번만 다시 build 한다", async () => {
-    const { result } = renderHook(() => useFileTreeCrud());
-    await act(() => result.current.handleDeleteMany(["/r/b.md", "/r/docs"]));
-    expect(refreshIndex).toHaveBeenCalledTimes(1);
   });
 });
