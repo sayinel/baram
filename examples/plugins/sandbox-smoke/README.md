@@ -118,7 +118,7 @@ key. Checks 10–13 below run the prompt from those three entry points.
    dictate a word into the editor within 3 s — no prompt, and `pick=ERR:…`. Not Fn Fn: the
    page never sees a native menu, while a Fn press may reach it as a `keydown` and end the
    right through the key path, which would not test `beforeinput`.
-10. Right-click in the editor. The menu ends in a separator and **Sandbox Smoke: prompts** with
+10. Right-click in the editor with nothing selected. The menu ends in a separator and **Sandbox Smoke: prompts** with
     a dimmed `Sandbox Smoke` beside it — pick it. The prompt opens; it is not refused as
     covered (`pick=ERR:… covers …`) even though the menu was on screen a moment before (the
     menu closes after the item runs).
@@ -134,7 +134,8 @@ key. Checks 10–13 below run the prompt from those three entry points.
     shortcut runs nothing on a repeat). Note which outcome you saw.
 13. **Smoke: prompts on a selection** shows only over a selection; what WebKit does with a
     right-click is for the app to answer: (a) select a word and right-click inside the
-    selection — the item is there; (b) with a word selected, right-click elsewhere in the
+    selection — the menu shows both plugin items, **Sandbox Smoke: prompts** and
+    **Smoke: prompts on a selection**; (b) with a word selected, right-click elsewhere in the
     text — note whether the item is there and whether the selection collapsed; (c) with no
     selection, right-click a word — note whether the item is there (it will be if WebKit
     selects the word on right-click). Note the results of (b) and (c).

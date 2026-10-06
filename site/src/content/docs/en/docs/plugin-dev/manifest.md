@@ -68,8 +68,8 @@ runs to put an item on screen.
 `menu` adds items to the editor's right-click menu, and `slash` adds items to the slash menu.
 Each names one of your `commands` by its `id` and shows that command's `title`, unless it has a
 `title` of its own (1–64 characters). A slash item's `description` is 1–120 characters. `when`
-is either left out — the item always shows — or `"selection"`, and then the item shows only
-while text is selected. Neither appears in source mode.
+is either left out — the item shows regardless of the selection — or `"selection"`, and then
+the item shows only while text is selected. Neither appears in source mode.
 
 ```json
 {

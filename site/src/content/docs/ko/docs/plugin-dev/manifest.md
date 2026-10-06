@@ -1,6 +1,6 @@
 ---
 title: "플러그인 매니페스트"
-sourceHash: "13f670536fc3"
+sourceHash: "8e6ef215b031"
 ---
 
 
@@ -68,7 +68,7 @@ sourceHash: "13f670536fc3"
 
 `menu`는 에디터의 우클릭 메뉴에, `slash`는 슬래시 메뉴에 항목을 더합니다. 둘 다 `commands`의 명령
 하나를 `id`로 가리키고, 자기 `title`(1–64자)이 없으면 그 명령의 `title`을 보여 줍니다. 슬래시 항목의
-`description`은 1–120자입니다. `when`은 생략하거나 — 그러면 항상 보입니다 — `"selection"`이고, 그러면
+`description`은 1–120자입니다. `when`은 생략하거나 — 그러면 선택과 무관하게 보입니다 — `"selection"`이고, 그러면
 텍스트를 선택한 동안에만 보입니다. 소스 모드에서는 둘 다 나오지 않습니다.
 
 ```json
