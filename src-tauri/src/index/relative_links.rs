@@ -593,10 +593,14 @@ mod tests {
         // `same_component` itself still tells the two spellings apart — byte
         // for byte, ASCII case folded on Windows. Only this rewrite's
         // comparison also calls it with both sides composed (spec 0069 §3.2).
+        // `strip_dir_prefix`, and so `under_root`, compares bytes still: the
+        // pair the first link is rewritten by is no prefix to it.
         // What fails this: comparing the old directory with the link byte
         // for byte — the first link stays; writing `relative_components`'
         // text without NFC — the second gets `상위` decomposed; widening
-        // `same_component` itself — the last two assertions.
+        // `same_component` itself — the last two assertions; making
+        // `strip_dir_prefix` compare composed — the `strip_dir_prefix`
+        // assertion.
         let (folder, folder_on_disk) = both_forms("회의록");
         let (parent, parent_on_disk) = both_forms("상위");
         assert_eq!(
@@ -618,6 +622,10 @@ mod tests {
                 false,
             ),
             format!("[[./{parent}/ns2/x]]")
+        );
+        assert_eq!(
+            strip_dir_prefix(&[folder_on_disk.as_str()], &[folder.as_str(), "x"], false),
+            None
         );
         assert!(!same_component(&folder, &folder_on_disk, false));
         assert!(!same_component(&folder, &folder_on_disk, true));

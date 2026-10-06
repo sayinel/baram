@@ -239,13 +239,16 @@ async fn a_rename_to_a_name_given_decomposed_writes_it_composed() {
     );
 }
 
+// Not on Windows: `:` is illegal in an NTFS file name, and this note's
+// name is `e\u{301}x::y.md`.
+#[cfg(not(windows))]
 #[tokio::test]
 async fn a_rename_to_a_name_whose_decomposed_form_reads_as_an_alias_is_judged_composed() {
-    // The new name `éx::y` given decomposed (`e` + U+0301). Decomposed, its
-    // head `e\u{301}x::` reads as a vault alias (`ALIAS_PREFIX_RE`, whose
-    // `\w` takes marks) and no wikilink could spell it; composed, `é` is no
-    // ASCII letter, no alias is read, and `[[éx::y]]` names the file. The
-    // rename writes the composed form, so it must judge that form.
+    // The new name `\u{e9}x::y` given decomposed (`e` + U+0301). Decomposed,
+    // its head `e\u{301}x::` reads as a vault alias (`ALIAS_PREFIX_RE`, whose
+    // `\w` takes marks) and no wikilink could spell it; composed, `\u{e9}` is
+    // no ASCII letter, no alias is read, and `[[\u{e9}x::y]]` names the file.
+    // The rename writes the composed form, so it must judge that form.
     // What fails this: `new_stem` answering the stem as `new_path` spells
     // it — the link is judged unspellable, left as `[[old]]`, and `r.md`
     // is reported.
