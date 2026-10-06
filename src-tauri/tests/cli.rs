@@ -1376,6 +1376,85 @@ fn sources(ran: &Ran) -> Vec<String> {
         .collect()
 }
 
+/// A name as typed (NFC) and as some tools store it (NFD), asserted to
+/// differ — both derived, never taken from the literal (spec 0069 §7). The
+/// crate's own `both_forms` is not reachable from an integration test.
+fn both_forms(s: &str) -> (String, String) {
+    let typed = icu_normalizer::ComposingNormalizerBorrowed::new_nfc()
+        .normalize(s)
+        .into_owned();
+    let stored = icu_normalizer::DecomposingNormalizerBorrowed::new_nfd()
+        .normalize(s)
+        .into_owned();
+    assert_ne!(typed, stored, "{s:?} is spelled the same in both forms");
+    (typed, stored)
+}
+
+#[test]
+fn links_and_backlinks_meet_names_stored_decomposed() {
+    // §390 StudyVault's shape (spec 0069 §1): the Korean names are stored
+    // decomposed (NFD), the dashboard's links typed composed (NFC). `links`
+    // resolves both to the note and prints its path as stored; `backlinks`
+    // of the note lists the dashboard's two lines.
+    // What fails this: the link index lowercasing alone — `links` reports
+    // both `unresolved` and `backlinks` lists nothing.
+    let (folder, folder_on_disk) = both_forms("회의록");
+    let (note, note_on_disk) = both_forms("주간 노트");
+    let sb = sandbox();
+    let stored = format!("{folder_on_disk}/{note_on_disk}.md");
+    write(&sb.vault, &stored, "# note\n");
+    write(
+        &sb.vault,
+        "00-Dashboard/MOC.md",
+        &format!("[[{note}]]\n[[{folder}/{note}]]\n"),
+    );
+    let names: Vec<String> = std::fs::read_dir(sb.vault.join(&folder_on_disk))
+        .expect("read_dir")
+        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, [format!("{note_on_disk}.md")], "stored as written");
+
+    let vault = vault_arg(&sb);
+    let links = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "links", "00-Dashboard/MOC.md"],
+    );
+    assert_eq!(links.code, 0, "stderr: {}", links.stderr);
+    let found: Vec<(String, String)> = json(&links.stdout)["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| {
+            (
+                item["resolution"].as_str().expect("resolution").to_string(),
+                item["path"].as_str().unwrap_or("").to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(found, vec![("resolved".to_string(), stored.clone()); 2]);
+
+    let back = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "backlinks", &stored],
+    );
+    assert_eq!(back.code, 0, "stderr: {}", back.stderr);
+    let lines: Vec<(String, u64)> = json(&back.stdout)["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| {
+            (
+                item["path"].as_str().expect("path").to_string(),
+                item["line"].as_u64().expect("line"),
+            )
+        })
+        .collect();
+    let moc = "00-Dashboard/MOC.md".to_string();
+    assert_eq!(lines, vec![(moc.clone(), 1), (moc, 2)]);
+}
+
 #[test]
 fn backlinks_count_the_name_and_the_path_however_the_link_reaches_the_note() {
     // Five ways to write a link to the note without an alias, and two links that do not

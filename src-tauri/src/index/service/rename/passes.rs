@@ -29,9 +29,10 @@ pub(super) struct LinkPasses<'a> {
 
 impl<'a> LinkPasses<'a> {
     pub(super) fn new(target: RenameTarget<'a>) -> Self {
+        let new_stem = target.new_stem();
         Self {
-            wikilinks_spellable: wikilink_can_spell(target.new_stem()),
-            block_references_spellable: block_reference_can_spell(target.new_stem()),
+            wikilinks_spellable: wikilink_can_spell(&new_stem),
+            block_references_spellable: block_reference_can_spell(&new_stem),
             target,
         }
     }

@@ -1,17 +1,59 @@
-// §29 Path normalizer helpers — wikilink target and file path normalization
+// §29 Path normalizer helpers — wikilink target and file path normalization.
+// §390 Every name and link-target key in the link index (`src/index`) goes
+// through `fold_name` — NFC, lowercase, NFC — so a name stored decomposed
+// (NFD) meets the same name typed composed (NFC). `fold_gate.rs` holds the
+// index's case folds to it, or to a reason on its `ALLOWED` list; it cannot
+// see a comparison of bytes. Only keys are folded: the paths the index holds
+// and reports keep their disk spelling (the graph's placeholder node for a
+// link that resolves to nothing is the one exception — spec 0069 D1). The
+// target that a file or folder rename respells is written in NFC (D7), never
+// folded; an alias prefix, heading, block id or display keeps the text as it
+// was typed, and a block-ID rename writes no name.
 
+use icu_normalizer::ComposingNormalizerBorrowed;
+use std::borrow::Cow;
 use std::path::Path;
 
-/// Normalize a wikilink target to a comparable key: trimmed, lowercase, and
-/// without one trailing note extension — `.md`, else `.markdown`, never both
-/// (`x.markdown.md` → `x.markdown`).
+/// `s` in Unicode Normalization Form C, borrowed back when it already is —
+/// the `icu_normalizer` fast path, so text typed on a keyboard costs no copy.
+pub(crate) fn nfc(s: &str) -> Cow<'_, str> {
+    ComposingNormalizerBorrowed::new_nfc().normalize(s)
+}
+
+/// §390 The key a name or a link target is compared by: NFC, then
+/// lowercase, then NFC again (spec 0069 D2). The last NFC composes what
+/// lowercasing leaves apart: `J̌` has no precomposed capital, lowercases to
+/// `j` + caron, and only then composes to the `ǰ` a name typed in lowercase
+/// holds. The first NFC changed no key in the search `name-fold.json`'s
+/// contract records; it is kept so that lowercase reads one form. The cases
+/// are `md/fixtures/name-fold.json`, which this module's tests read and the
+/// frontend's `foldName` tests are to read too (the frontend PR). Strip a
+/// note extension and split a path BEFORE folding, and compare folded
+/// strings of one shape only: Greek capital sigma folds by what
+/// follows it (`ΑΣ` → `ας`, `ΑΣ.md` → `ασ.md`).
+pub(crate) fn fold_name(s: &str) -> String {
+    if s.is_ascii() {
+        // NFC leaves ASCII as it is, and an ASCII letter's lowercase is its
+        // ASCII lowercase: the same key without the two passes.
+        return s.to_ascii_lowercase();
+    }
+    let lower = nfc(s).to_lowercase();
+    if let Cow::Owned(composed) = nfc(&lower) {
+        return composed;
+    }
+    lower
+}
+
+/// Normalize a wikilink target to a comparable key: trimmed, folded
+/// (`fold_name`), and without one trailing note extension — `.md`, else
+/// `.markdown`, never both (`x.markdown.md` → `x.markdown`).
 pub(crate) fn normalize_target(target: &str) -> String {
     strip_extension_and_fold(target.trim())
 }
 
-/// `name` without one trailing `.md` or `.markdown`, lowercase.
+/// `name` without one trailing `.md` or `.markdown`, folded (`fold_name`).
 pub(crate) fn strip_extension_and_fold(name: &str) -> String {
-    strip_note_extension(name).to_lowercase()
+    fold_name(strip_note_extension(name))
 }
 
 /// `name` without one trailing `.md` or `.markdown`, its case kept — the
@@ -36,7 +78,7 @@ pub(crate) fn normalize_file_path(path: &str) -> String {
     file_key(&file_name)
 }
 
-/// The key a FILE is filed under, from its stem: the case folded, nothing
+/// The key a FILE is filed under, from its stem: folded by `fold_name`, nothing
 /// stripped. For a note it is what its links normalize to (`[[Note]]`,
 /// `[[note.md]]` → `note`); for a file whose stem itself ends in `.md`
 /// (`diagram.md.txt` → `diagram.md`) it is not — `normalize_target` would
@@ -44,7 +86,7 @@ pub(crate) fn normalize_file_path(path: &str) -> String {
 /// asks which links name a file must ask by this key, or it claims the
 /// note's links.
 pub(crate) fn file_key(stem: &str) -> String {
-    stem.to_lowercase()
+    fold_name(stem)
 }
 
 /// Resolve a wikilink target to a possible file path
@@ -71,6 +113,20 @@ pub(crate) fn is_id_target(target_normalized: &str) -> bool {
         && target_normalized.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// A name as typed (NFC) and as some tools store it on disk (NFD), asserted
+/// to differ. Both are derived here, never taken from the literal as
+/// written: an editor or a copy may compose or decompose a literal on its
+/// way into a source file (spec 0069 §7).
+#[cfg(test)]
+pub(crate) fn both_forms(s: &str) -> (String, String) {
+    let typed = nfc(s).into_owned();
+    let stored = icu_normalizer::DecomposingNormalizerBorrowed::new_nfd()
+        .normalize(s)
+        .into_owned();
+    assert_ne!(typed, stored, "{s:?} is spelled the same in both forms");
+    (typed, stored)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,6 +140,10 @@ mod tests {
         assert_eq!(normalize_target("Note.markdown"), "note");
         // Only one suffix comes off, `.md` tried first.
         assert_eq!(normalize_target("x.markdown.md"), "x.markdown");
+        // §390 A name stored decomposed folds to the key of the one typed.
+        let (typed, stored) = both_forms("회의록");
+        assert_eq!(normalize_target(&format!("{stored}.md")), typed);
+        assert_eq!(file_key(&stored), typed);
     }
 
     #[test]
@@ -122,5 +182,68 @@ mod tests {
         assert!(!is_id_target("202607051530 원자적 노트")); // has trailing text
         assert!(!is_id_target("architecture"));
         assert!(!is_id_target("2026")); // too short
+    }
+
+    /// One case of `md/fixtures/name-fold.json` — the frontend's `foldName`
+    /// test is to read the same file (the frontend PR, spec 0069 D5).
+    #[derive(serde::Deserialize)]
+    struct FoldCase {
+        input: String,
+        folded: String,
+        checks: Vec<String>,
+        why: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct FoldFixture {
+        cases: Vec<FoldCase>,
+    }
+
+    #[test]
+    fn fold_name_agrees_with_the_shared_fixture() {
+        // §390 (spec 0069 D2, D5). Each case's `checks` are asserted too, so
+        // the fixture cannot lose what it is there to catch, and every kind
+        // of check must still be carried by some case.
+        // What fails this: `fold_name` lowercasing alone — the `input-not-nfc`
+        // cases keep their decomposed letters; dropping the last NFC — the
+        // `final-nfc` cases stay apart (`j` + caron is not `ǰ`).
+        let fixture: FoldFixture =
+            serde_json::from_str(include_str!("../md/fixtures/name-fold.json")).unwrap();
+        let mut kinds = std::collections::BTreeSet::new();
+        for case in &fixture.cases {
+            assert_eq!(fold_name(&case.input), case.folded, "{}", case.why);
+            for check in &case.checks {
+                kinds.insert(check.as_str());
+                match check.as_str() {
+                    "input-not-nfc" => {
+                        assert_ne!(nfc(&case.input), case.input, "{}", case.why);
+                        assert_ne!(case.input.to_lowercase(), case.folded, "{}", case.why);
+                    }
+                    "final-nfc" => {
+                        assert_ne!(nfc(&case.input).to_lowercase(), case.folded, "{}", case.why)
+                    }
+                    other => panic!("unknown check {other:?}: {}", case.why),
+                }
+            }
+        }
+        assert_eq!(
+            kinds.into_iter().collect::<Vec<_>>(),
+            ["final-nfc", "input-not-nfc"]
+        );
+    }
+
+    #[test]
+    fn the_ascii_shortcut_folds_as_the_full_fold_does() {
+        // What fails this: an ASCII shortcut that is not ASCII lowercase
+        // (`to_ascii_uppercase`, or none of `s` lowered) — some byte below
+        // differs from NFC, lowercase, NFC.
+        for byte in 0u8..=0x7f {
+            let s = format!("A{}z", byte as char);
+            assert_eq!(
+                fold_name(&s),
+                nfc(&nfc(&s).to_lowercase()).into_owned(),
+                "{byte:#x}"
+            );
+        }
     }
 }

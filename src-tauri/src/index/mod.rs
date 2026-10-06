@@ -5,6 +5,8 @@
 
 mod extractor;
 mod filing;
+#[cfg(test)]
+mod fold_gate;
 mod judgement;
 mod normalizer;
 mod read_back;
@@ -137,15 +139,15 @@ pub struct LinkIndex {
     incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
-    /// Normalized file stem (lowercase, no extension) → list of absolute file paths
+    /// Normalized file stem (folded by `fold_name`, no extension) → list of absolute file paths
     /// Used to resolve [[name]] style wikilinks to actual file locations in subdirectories
     file_map: HashMap<String, Vec<String>>,
-    /// Normalized relative path (lowercase, no extension) → absolute file path
+    /// Normalized relative path (folded by `fold_name`, no extension) → absolute file path
     /// Used to resolve [[path/name]] style wikilinks (e.g., [[notes/architecture]])
     relative_map: HashMap<String, String>,
     /// Note id (12–14 digit filename prefix) → absolute file path (Zettelkasten `[[ID]]` links)
     id_map: HashMap<String, String>,
-    /// §278 Full lowercased file NAME (extension included) → absolute file paths.
+    /// §278 Full file NAME folded by `fold_name` (extension included) → absolute file paths.
     ///
     /// `file_map` is keyed by `file_stem()`, so `Paper.pdf` lands under `paper` and a
     /// bare `[[Paper.pdf]]` (which `normalize_target` leaves as `paper.pdf`, since it
@@ -479,7 +481,7 @@ impl LinkIndex {
 
 #[cfg(test)]
 mod tests {
-    use super::normalizer::file_key;
+    use super::normalizer::{both_forms, file_key};
     use super::*;
 
     #[test]
@@ -741,6 +743,73 @@ mod tests {
     }
 
     #[test]
+    fn a_note_stored_decomposed_answers_the_links_typed_composed() {
+        // §390 The folder and the note are stored decomposed (NFD), as tools
+        // and imports on macOS can leave Korean names; the links are typed
+        // composed (NFC). By its name, by its path from the root, from the
+        // referrer's own folder, by a block reference and by its zettel id,
+        // each link is a backlink of the note; the graph draws each to the
+        // note and no node beside it; `links` resolves each to it.
+        // What fails this: `file_key` lowercasing alone — line 1 of `r.md` is
+        // lost; `strip_extension_and_fold` so — lines 2 and 3 and `s.md`'s
+        // line are lost.
+        let (folder, folder_on_disk) = both_forms("회의록");
+        let (title, title_on_disk) = both_forms("202610061200 주간 노트");
+        let note = format!("/v/{folder_on_disk}/{title_on_disk}.md");
+        let sibling = format!("/v/{folder_on_disk}/s.md");
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content(&note, "para ^b1");
+        index.update_file_from_content(
+            "/v/r.md",
+            &format!(
+                "[[{title}]]\n[[{folder}/{title}]]\n(({folder}/{title}#^b1))\n[[202610061200]]\n"
+            ),
+        );
+        index.update_file_from_content(&sibling, &format!("[[./{title}]]\n"));
+
+        let lines: Vec<(String, u32)> = index
+            .get_backlinks(&note, &[])
+            .into_iter()
+            .map(|b| (b.source_path, b.line))
+            .collect();
+        let r = "/v/r.md".to_string();
+        assert_eq!(
+            lines,
+            vec![
+                (r.clone(), 1),
+                (r.clone(), 2),
+                (r.clone(), 3),
+                (r.clone(), 4),
+                (sibling.clone(), 1)
+            ]
+        );
+
+        let graph = index.get_link_graph();
+        let ends: Vec<&str> = graph
+            .edges
+            .iter()
+            .filter(|e| e.from != note)
+            .map(|e| e.to.as_str())
+            .collect();
+        assert_eq!(ends, vec![note.as_str(); 5], "{graph:?}");
+        let mut nodes = graph.nodes.clone();
+        nodes.sort();
+        let mut expected = vec![r.clone(), note.clone(), sibling.clone()];
+        expected.sort();
+        assert_eq!(nodes, expected);
+
+        let resolved = index.outgoing_resolved(&r).expect("r.md is indexed");
+        assert_eq!(resolved.len(), 4);
+        assert!(
+            resolved
+                .iter()
+                .all(|(_, res)| *res == LinkResolution::Resolved(note.clone())),
+            "{resolved:?}"
+        );
+    }
+
+    #[test]
     fn a_reference_that_escapes_the_root_is_nobodys_backlink() {
         // A relative target that climbs out of the root keeps its text as
         // its key, which no file under the root answers to.
@@ -999,27 +1068,83 @@ mod tests {
 #[cfg(test)]
 mod build_bench {
     use super::*;
+    use icu_normalizer::DecomposingNormalizerBorrowed;
     use tempfile::TempDir;
 
     #[tokio::test]
     #[ignore]
     async fn build_10k_files_timing() {
+        time_build("ascii", &|i| format!("f{i}"), &|n| format!("d{n}"), false).await;
+        // §390 The same vault with Korean names, stored decomposed (NFD) on
+        // disk and typed composed (NFC) in the links: every key the build
+        // spells is non-ASCII, so the fold (`normalizer::fold_name`) cannot take
+        // its ASCII shortcut, and the keys from files reach it decomposed.
+        time_build(
+            "korean-nfd",
+            &|i| format!("\u{B178}\u{D2B8}{i}"),
+            &|n| format!("\u{D3F4}\u{B354}{n}"),
+            true,
+        )
+        .await;
+    }
+
+    /// The 10,000-note vault: note `i` is `name(i)` in the folder
+    /// `folder(i % 100)` and links to the next note by its name and to a far
+    /// one by its path, with a block reference — the names stored decomposed
+    /// when `decomposed`, the links always as `name` and `folder` spell them.
+    /// Built three times; each build and a backlink query on note 1 are
+    /// timed and printed under `label`.
+    async fn time_build(
+        label: &str,
+        name: &dyn Fn(usize) -> String,
+        folder: &dyn Fn(usize) -> String,
+        decomposed: bool,
+    ) {
         const FILES: usize = 10_000;
+        let stored = |s: String| {
+            if !decomposed {
+                return s;
+            }
+            let d = DecomposingNormalizerBorrowed::new_nfd()
+                .normalize(&s)
+                .into_owned();
+            assert_ne!(d, s, "{s:?} has nothing to decompose");
+            d
+        };
+        let path_of = |i: usize| format!("{}/{}.md", stored(folder(i % 100)), stored(name(i)));
         let d = TempDir::new().unwrap();
         for i in 0..FILES {
             let next = (i + 1) % FILES;
             let far = (i * 7 + 13) % FILES;
             let body = format!(
-                "---\ntags: [t{}]\n---\n# 문서 {i}\n\n[[f{next}]] 과 [[d{}/f{far}|먼 문서]] 를 본다. #tag{}\n\n((f{next}#^blk{next}))\n\n본문 한 줄. ^blk{i}\n\n```md\n[[코드 안의 링크 f{far}]]\n```\n",
+                "---\ntags: [t{}]\n---\n# 문서 {i}\n\n[[{}]] 과 [[{}/{}|먼 문서]] 를 본다. #tag{}\n\n(({}#^blk{next}))\n\n본문 한 줄. ^blk{i}\n\n```md\n[[코드 안의 링크 {}]]\n```\n",
                 i % 50,
-                far % 100,
-                i % 20
+                name(next),
+                folder(far % 100),
+                name(far),
+                i % 20,
+                name(next),
+                name(far),
             );
-            let p = d.path().join(format!("d{}/f{}.md", i % 100, i));
+            let p = d.path().join(path_of(i));
             tokio::fs::create_dir_all(p.parent().unwrap())
                 .await
                 .unwrap();
             tokio::fs::write(&p, body).await.unwrap();
+        }
+        if decomposed {
+            // A volume that composes names would store these notes composed
+            // and this variant would time no decomposed name at all; the
+            // directory has to hold the decomposed spelling.
+            let folder0 = stored(folder(0));
+            let names: Vec<String> = std::fs::read_dir(d.path().join(&folder0))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(
+                names.contains(&format!("{}.md", stored(name(0)))),
+                "the volume did not keep the decomposed names: {names:?}"
+            );
         }
         let root = d.path().to_string_lossy().to_string();
 
@@ -1028,7 +1153,7 @@ mod build_bench {
             let started = std::time::Instant::now();
             let stats = index.build(&root).await.unwrap();
             println!(
-                "round {round}: built index over {} files, {} links, in {:?}",
+                "{label} round {round}: built index over {} files, {} links, in {:?}",
                 stats.files_indexed,
                 stats.links_found,
                 started.elapsed()
@@ -1038,11 +1163,11 @@ mod build_bench {
             // 이 숫자가 4만이면 literal 분석이 돌지 않은 것이다.
             assert_eq!(stats.links_found as usize, FILES * 3);
 
-            let probe = d.path().join("d1/f1.md").to_string_lossy().to_string();
+            let probe = d.path().join(path_of(1)).to_string_lossy().to_string();
             let started = std::time::Instant::now();
             let backlinks = index.get_backlinks(&probe, &[]);
             println!(
-                "round {round}: get_backlinks -> {} in {:?}",
+                "{label} round {round}: get_backlinks -> {} in {:?}",
                 backlinks.len(),
                 started.elapsed()
             );
@@ -1051,14 +1176,14 @@ mod build_bench {
         let started = std::time::Instant::now();
         let md = collect_md_files(&root).await.unwrap();
         println!(
-            "collect_md_files -> {} in {:?}",
+            "{label} collect_md_files -> {} in {:?}",
             md.len(),
             started.elapsed()
         );
         let started = std::time::Instant::now();
         let all = collect_all_files(&root).await.unwrap();
         println!(
-            "collect_all_files -> {} in {:?}",
+            "{label} collect_all_files -> {} in {:?}",
             all.len(),
             started.elapsed()
         );

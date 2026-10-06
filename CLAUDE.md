@@ -224,11 +224,11 @@ baram/
     (`rename/mod.rs` 의 `plain_absolute`) — 상대 경로는 작업 디렉터리 기준으로 resolve 되어 적힌 비교를 빠져나가고, `/v/sub/../old.md` 는 같은 부모 검사를 통과하지만
     경로 키가 `sub/../old` 가 되어 경로 링크를 놓친다. 목적지에 **다른** 디렉터리 항목이 있으면
     거부한다(`another_entry_at`, 이동 직전에 판정). 같은 항목인지는 **마지막 성분을 따라가지 않고** 본다 — Unix 에서는 `symlink_metadata` 의 dev·inode 가 같고 이름이
-    ASCII 대소문자만 다를 때(대소문자를 접는 파일 시스템의 `Note.md` → `note.md`)만 같은 항목이다. **ASCII** 대소문자만 본다 — `Élan.md` → `élan.md` 는 그 파일 시스템에서
-    목적지가 있고 이름 비교에 걸려 거부된다. 같은 inode 에 ASCII 대소문자 이상 다른 이름은 hard link 라 거부한다. 대소문자를 지키는 파일 시스템에서 이름이 ASCII 대소문자만 다른 hard link 는
-    두 읽기로는 case alias 와 구별되지 않아 **통과한다** — 이동은 no-op 이고 `Ok` 를 내며 링크는 respell 된다(내용 손실은 없다). 가르려면 파일 시스템이 대소문자를 접는지 물어야 하고, 아직
-    하지 않았다. resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이 진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 ASCII
-    대소문자만 다르고 두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두 항목이 둘 다 링크이거나 둘 다 아닐 때만 같은
+    한 이름일 때(`same_name` — ASCII 대소문자만 다르거나 둘을 NFC 로 바꾸면 그럴 때: 대소문자를 접는 파일 시스템의 `Note.md` → `note.md`, 정규화를 접는 APFS 에서 분해형(NFD)으로 저장된 `노트.md` → 완성형 `노트.md`, §390)만 같은 항목이다. 대소문자는 **ASCII** 만 본다 — 완성형 `Élan.md` → `élan.md`(U+00C9 → U+00E9)는 대소문자를 접는 파일 시스템에서
+    목적지가 있고 이름 비교에 걸려 거부된다. 같은 inode 에 한 이름이 아닌 이름은 다른 항목으로 보아 거부한다 — hard link 이거나, 파일 시스템은 접지만 `same_name` 은 접지 않는 표기(비ASCII 대소문자, `Élan.md` → `élan.md`)다. 대소문자나 정규화를 지키는 파일 시스템에서 한 이름인 hard link 는
+    두 읽기로는 alias 와 구별되지 않아 **통과한다** — 이동은 no-op 이고 `Ok` 를 내며 링크는 respell 된다(내용 손실은 없다). 가르려면 파일 시스템이 대소문자나 정규화를 접는지 물어야 하고, 아직
+    하지 않았다. resolve 한 경로로 비교하면 `note.md -> x.md` 를 `x.md` 로 바꾸는 rename 이 진짜 `x.md` 를 링크로 덮는다. Windows 에는 inode 비교가 없어 이름이 한 이름이고(`same_name`)
+    두 경로를 `canonicalize` 한 결과가 같고, `canonicalize` 가 링크를 따라가므로 두 항목이 둘 다 링크이거나 둘 다 아닐 때만 같은
     항목이다(`same_entry_by_canonical`) — 대소문자를 구분하는 폴더에 `Note.md` 와 `note.md` 가 함께 있으면 두 경로로 갈려 거부된다. hard link 도 두 이름이 두 canonical
     경로로 갈려 거부될 것으로 본다(std 의 `GetFinalPathNameByHandleW` 사용에서 읽은 것, Windows 호스트 미검증). 그 API 가 두 링크에 이름 하나를 준다면 rename 이 통과해 목적지를
     덮고, 이름 하나가 사라질 뿐 내용 손실은 없다. 목적지의 **dangling symlink** 도 항목이라 거부한다 — 따라가는 `Path::exists` 로 보면 그것을 덮어쓴다.

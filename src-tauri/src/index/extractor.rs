@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use super::normalizer::nfc;
 use super::IndexError;
 use super::{LinkEntry, LinkKind};
 use crate::md::literal::{front_matter_end, source_lines, Literal};
@@ -312,6 +313,7 @@ pub(crate) fn strip_wikilinks(line: &str) -> String {
 
 /// §34 Find unlinked mentions — text occurrences of a file stem in other files,
 /// NOT inside [[wikilink]] brackets. Case-insensitive, word-boundary aware.
+/// The name is matched as typed (NFC) and as stored (§390).
 pub async fn find_unlinked_mentions(
     file_path: &str,
     root_path: &str,
@@ -328,8 +330,18 @@ pub async fn find_unlinked_mentions(
     let md_files = collect_md_files(root_path).await?;
     let mut results = Vec::new();
 
-    // Build a word-boundary regex for the stem (case-insensitive)
-    let escaped = regex::escape(&stem);
+    // Build a word-boundary regex for the stem (case-insensitive). §390 The
+    // file system may store the name decomposed (NFD) while prose typed on
+    // a keyboard spells it composed (NFC): the pattern takes the name both
+    // ways when they differ — as typed, and as stored, which a body written
+    // by the same tool spells and which matched before §390. The regex
+    // crate compares code points and does not normalize.
+    let composed = nfc(&stem);
+    let escaped = if composed == stem.as_str() {
+        regex::escape(&stem)
+    } else {
+        format!("(?:{}|{})", regex::escape(&composed), regex::escape(&stem))
+    };
     let pattern = format!(r"(?i)\b{}\b", escaped);
     let stem_re = Regex::new(&pattern)
         .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
@@ -417,6 +429,7 @@ pub async fn collect_all_files(root: &str) -> Result<Vec<String>, IndexError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::normalizer::both_forms;
     use crate::index::replace_wikilink_target;
 
     #[test]
@@ -740,6 +753,42 @@ mod tests {
         assert_eq!(
             found.iter().map(|m| m.line).collect::<Vec<_>>(),
             [5],
+            "{found:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unlinked_mention_typed_composed_names_a_note_stored_decomposed() {
+        // §390 The note's name is stored decomposed (NFD). Prose typed on a
+        // keyboard spells it composed (NFC, line 1); a body the same tool
+        // wrote may spell it as stored (line 3), which matched before §390
+        // and still does. The link on line 2 is not a mention.
+        // What fails this: building the pattern from the stem as the disk
+        // spells it alone — line 1 is lost; from the composed name alone —
+        // line 3 is lost.
+        let (name, name_on_disk) = both_forms("회의록");
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        let note = format!("{root}/{name_on_disk}.md");
+        tokio::fs::write(&note, "# note\n").await.unwrap();
+        let stored: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(stored.contains(&format!("{name_on_disk}.md")), "{stored:?}");
+        tokio::fs::write(
+            format!("{root}/other.md"),
+            format!("오늘 {name} 정리\n[[{name}]] 는 링크\n어제 {name_on_disk} 도\n"),
+        )
+        .await
+        .unwrap();
+        let found = find_unlinked_mentions(&note, &root).await.unwrap();
+        assert_eq!(
+            found
+                .iter()
+                .map(|m| (m.line, m.match_text.as_str()))
+                .collect::<Vec<_>>(),
+            [(1, name.as_str()), (3, name_on_disk.as_str())],
             "{found:?}"
         );
     }

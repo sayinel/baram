@@ -318,6 +318,7 @@ dependencies = [
  "futures",
  "git2",
  "http-range",
+ "icu_normalizer",
  "image",
  "keyring",
  "log",

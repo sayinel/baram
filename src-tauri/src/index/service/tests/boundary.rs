@@ -264,17 +264,6 @@ fn folds_case(dir: &std::path::Path) -> bool {
     folds
 }
 
-/// The entry names in `dir`, sorted — as the directory spells them, which
-/// `Path::exists` cannot tell apart on a file system that folds case.
-fn names_in(dir: &std::path::Path) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(dir)
-        .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
-        .collect();
-    names.sort();
-    names
-}
-
 #[tokio::test]
 async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system_folds_case() {
     // `Note.md` → `note.md`. Where the file system folds case the two names

@@ -2,7 +2,9 @@
 //! contexts in both views, in the same directory, and not another entry.
 
 use crate::context::manager::{resolve_canonical, Registered};
+use crate::index::normalizer::nfc;
 use crate::index::relative_links::{path_components, same_component};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use super::confined_by;
@@ -97,8 +99,8 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 /// the files they reach: following alone would call a symlinked
 /// `note.md -> x.md`, renamed to `x.md`, the "same" file, and `rename(2)`
 /// would replace the real `x.md` with the link. The destination is the
-/// source's own entry only when the two names differ at most by ASCII case
-/// and:
+/// source's own entry only when the two names are one name (`same_name`:
+/// equal but for ASCII case, as written or once both are in NFC) and:
 ///
 /// | Host or case | The source's own entry when |
 /// | --- | --- |
@@ -106,19 +108,23 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 /// | Windows | both `canonicalize` to one path and are both links or both not (`same_entry_by_canonical`); unverified on a Windows host |
 /// | A dangling link at `new_path` | never: it is another entry, where `Path::exists`, which follows the link, would let the rename replace it |
 ///
-/// On Unix the same inode under a name that differs at most by ASCII case is
-/// a case-only rename (`Note.md` → `note.md`) on a file system that folds
-/// case, where both spellings reach the one entry. Only ASCII case counts:
-/// `Élan.md` → `élan.md` on such a file system finds the destination, fails
-/// the name comparison, and is refused. The same inode under a name that
-/// differs by more than ASCII case is a hard link of the source, and a
-/// rename between hard links is a silent no-op, so it is refused as another
-/// entry. A hard link whose name differs from the source's only by ASCII
-/// case, which a file system that keeps case allows, looks the same as a
-/// case alias from these two reads, so it passes: the move is then a no-op,
-/// the rename answers `Ok`, and links are respelled, with no content lost.
-/// Telling the two apart would mean asking the file system whether it folds
-/// case. Any other inode is another entry.
+/// On Unix the same inode under one name is a rename that changes only how
+/// the name is spelled, on a file system that folds that spelling, where
+/// both reach the one entry: a case-only rename (`Note.md` → `note.md`)
+/// where case folds, or a normalization-only one (`노트.md` stored
+/// decomposed → typed composed, §390) on APFS, which folds normalization.
+/// Case counts in ASCII only: `Élan.md` → `élan.md`, both precomposed
+/// (U+00C9 → U+00E9), on a file system that folds case finds the
+/// destination, fails the name comparison, and is refused. The same inode
+/// under a name that is not one name is refused as another entry: it is a
+/// hard link of the source, where a rename is a silent no-op, or a spelling
+/// the file system folds and `same_name` does not (non-ASCII case, as in
+/// `Élan.md` → `élan.md`). A hard link under one name, which a file system
+/// that keeps case or normalization allows, looks the same as an alias from
+/// these two reads, so it passes: the move is then a no-op, the rename
+/// answers `Ok`, and links are respelled, with no content lost. Telling the
+/// two apart would mean asking the file system whether it folds case or
+/// normalization. Any other inode is another entry.
 ///
 /// On Windows `canonicalize` answers the spelling on disk: in a directory
 /// that folds case, both spellings reach the one entry and canonicalize
@@ -147,14 +153,29 @@ pub(super) fn another_entry_at(old_path: &str, new_path: &str) -> std::io::Resul
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(e),
     };
-    let names_differ_only_by_case = match (
+    let one_name = match (
         Path::new(old_path).file_name(),
         Path::new(new_path).file_name(),
     ) {
-        (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+        (Some(a), Some(b)) => same_name(a, b),
         _ => false,
     };
-    Ok(!(names_differ_only_by_case && same_entry(old_path, new_path, &new_meta)))
+    Ok(!(one_name && same_entry(old_path, new_path, &new_meta)))
+}
+
+/// Whether two file names are one name to `another_entry_at`: equal but
+/// for ASCII case as written, or once both are in NFC (§390, spec 0069 D8)
+/// — a name stored decomposed renamed to the one typed. Non-ASCII case is
+/// not folded: `Élan.md` → `élan.md`, both precomposed, is two names. A name
+/// that is not UTF-8 is compared as written only.
+fn same_name(a: &OsStr, b: &OsStr) -> bool {
+    if a.eq_ignore_ascii_case(b) {
+        return true;
+    }
+    match (a.to_str(), b.to_str()) {
+        (Some(a), Some(b)) => nfc(a).eq_ignore_ascii_case(&nfc(b)),
+        _ => false,
+    }
 }
 
 /// Whether the existing entry at `new_path` (`new_meta`, not followed) is the

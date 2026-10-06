@@ -56,7 +56,8 @@
 //! fixture first.
 
 use super::normalizer::{
-    extract_id_from_stem, normalize_file_path, normalize_target, strip_extension_and_fold,
+    extract_id_from_stem, fold_name, normalize_file_path, normalize_target,
+    strip_extension_and_fold,
 };
 use super::relative_links::{
     path_components, resolve_components, root_components, strip_dir_prefix,
@@ -69,7 +70,7 @@ pub enum FilingKey {
     Stem(String),
     /// A path-qualified target: resolved root-relative when it is relative
     /// (`./`, `../`) and lands under the root, else the written text folded —
-    /// lowercase, one note extension off, and on Windows a non-relative
+    /// `fold_name`, one note extension off, and on Windows a non-relative
     /// target's `\` made `/` (`filing_key`): `[[Dir/Note.md]]` → `dir/note`.
     Path(String),
     /// A target qualified by a vault alias: `[[work::Old]]` files under the
@@ -79,12 +80,13 @@ pub enum FilingKey {
 }
 
 /// A vault alias local to the file a reader asks about, paired with the root
-/// of the vault it names. `alias` is already lowercase — it is folded once,
+/// of the vault it names. `alias` is already folded (`fold_name`) — once,
 /// where it enters (`service::keys::own_aliases`), and every comparison here
-/// assumes so; `filing_key` folds the alias a LINK is written with. `root` is
-/// that vault's path, spelled as the file paths a reader asks about are — the
-/// registered path in the app, the canonical path in the CLI: an alias
-/// resolves a path against it, never against the root of the index being read.
+/// assumes so; `filing_key` folds the alias a LINK is written with the same
+/// way. `root` is that vault's path, spelled as the file paths a reader asks
+/// about are — the registered path in the app, the canonical path in the CLI:
+/// an alias resolves a path against it, never against the root of the index
+/// being read.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LocalAlias {
     pub alias: String,
@@ -102,9 +104,10 @@ fn has_separator(target: &str, windows: bool) -> bool {
 }
 
 /// The last component of the key `root_relative_key` gives `file_path` — its
-/// file name, one `.md` or `.markdown` off, lowercase — without spelling the
-/// rest. Two files whose path keys are equal have equal names here, so
-/// grouping by this finds every collision (`LinkIndex::colliding_path_keys`).
+/// file name, one `.md` or `.markdown` off, folded (`fold_name`) — without
+/// spelling the rest. Two files whose path keys are equal have equal names
+/// here, so grouping by this finds every collision
+/// (`LinkIndex::colliding_path_keys`).
 /// The name is the last of `path_components`, found without collecting them.
 pub fn path_key_name(file_path: &str, windows: bool) -> String {
     let name = file_path
@@ -150,7 +153,7 @@ pub fn filing_key(
             normalized
         };
         return FilingKey::Foreign {
-            alias: alias.to_lowercase(),
+            alias: fold_name(alias),
             target,
         };
     }
@@ -182,8 +185,8 @@ pub fn filing_key(
 }
 
 /// The path of `file_path` under `root` the way a link to it is filed:
-/// components joined with `/`, lowercase, one `.md` or `.markdown` removed.
-/// None when the file is not under `root`.
+/// components joined with `/`, folded (`fold_name`), one `.md` or `.markdown`
+/// removed. None when the file is not under `root`.
 pub fn root_relative_key(root: &str, file_path: &str, windows: bool) -> Option<String> {
     let file = path_components(file_path, windows);
     under_root(&path_components(root, windows), &file, windows)
