@@ -93,6 +93,13 @@ export interface FileChangedPayload {
   path: string;
 }
 
+/** §29 `file:created` — see ipc-registry.json `events`. */
+export interface FileCreatedPayload {
+  isDir: boolean;
+  origin: FileWriteOrigin;
+  path: string;
+}
+
 // §3.2 File System types
 export interface FileEntry {
   isDir: boolean;
@@ -101,6 +108,9 @@ export interface FileEntry {
   path: string;
   size: number;
 }
+
+/** §313 Whose write a watcher event reports: this app's or anyone else's. */
+export type FileWriteOrigin = "app" | "external";
 
 export interface GitAheadBehind {
   ahead: number;
@@ -494,3 +504,11 @@ export interface VaultConfig {
 }
 
 export type VaultType = "general" | "journal" | "zettelkasten";
+
+/** §29 `sync_watched_paths` — see ipc-registry.json. */
+export interface WatchedSync {
+  /** Paths that reached at least one link index. */
+  applied: number;
+  /** Paths that could not be applied — retry them. */
+  failed: string[];
+}

@@ -202,6 +202,19 @@
       "description": "단일 파일 인덱스 갱신 (incremental)"
     },
     {
+      "name": "sync_watched_paths",
+      "input": {
+        "paths": "string[]"
+      },
+      "output": "WatchedSync",
+      "module": "index",
+      "spec": "§29",
+      "phase": 3,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "워처가 보고한 경로를 그것을 담는 링크 인덱스에 반영 (노트·링크 대상·디렉터리 판정은 Rust, 재구축은 coalesce 없음). 반영한 경로 수와 반영하지 못한 경로를 돌려준다 (issue 790)"
+    },
+    {
       "name": "rename_file_with_links",
       "input": {
         "oldPath": "string",
@@ -2097,7 +2110,9 @@
     {
       "name": "file:created",
       "payload": {
-        "path": "string"
+        "path": "string",
+        "isDir": "boolean",
+        "origin": "app|external"
       },
       "module": "fs",
       "spec": "§3.2",

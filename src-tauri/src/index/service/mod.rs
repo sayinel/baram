@@ -100,6 +100,7 @@ mod keys;
 mod query;
 mod rename;
 mod state;
+mod watched;
 
 #[cfg(test)]
 mod tests;
@@ -116,3 +117,4 @@ pub(crate) use query::{get_backlinks_inner, get_link_index_inner, update_file_in
 pub(crate) use rename::{
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner,
 };
+pub(crate) use watched::{sync_watched_paths_inner, WatchedSync};

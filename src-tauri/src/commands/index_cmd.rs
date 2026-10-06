@@ -12,7 +12,8 @@ use crate::context::ContextManager;
 use crate::index::service::{
     get_backlinks_inner, get_link_index_inner, refresh_index_inner, rename_block_id_inner,
     rename_file_with_links_inner, rename_namespace_inner, require_registered_root,
-    update_file_index_inner, LinkIndexState, NamespaceRenameResult, RenameResult,
+    sync_watched_paths_inner, update_file_index_inner, LinkIndexState, NamespaceRenameResult,
+    RenameResult, WatchedSync,
 };
 use crate::index::{
     find_unlinked_mentions, BacklinkResult, IndexStats, LinkGraph, UnlinkedMentionResult,
@@ -53,6 +54,17 @@ pub async fn update_file_index(
     ctx_mgr: State<'_, ContextManager>,
 ) -> Result<(), String> {
     update_file_index_inner(&state, &ctx_mgr, &file_path).await
+}
+
+/// §29 Bring paths the file watcher reported into the link indexes that
+/// contain them (issue 790): how many reached an index, and which failed.
+#[tauri::command]
+pub async fn sync_watched_paths(
+    paths: Vec<String>,
+    state: State<'_, LinkIndexState>,
+    ctx_mgr: State<'_, ContextManager>,
+) -> Result<WatchedSync, String> {
+    Ok(sync_watched_paths_inner(&state, &ctx_mgr, &paths).await)
 }
 
 /// §34 Find unlinked mentions — text occurrences of a file's name in other files
