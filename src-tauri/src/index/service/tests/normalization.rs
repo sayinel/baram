@@ -348,3 +348,207 @@ async fn a_folder_rename_rewrites_the_links_typed_composed_into_it() {
         "see [[./archive/c]]"
     );
 }
+
+/// Whether the file system under `dir` folds Unicode normalization: a file
+/// written under a decomposed name is found again under the composed one.
+/// APFS does; ext4 does not. The probe file is removed.
+fn folds_normalization(dir: &std::path::Path) -> bool {
+    let (typed, stored) = both_forms("프로브");
+    let probe = dir.join(format!("{stored}.md"));
+    std::fs::write(&probe, "").unwrap();
+    let folds = dir.join(format!("{typed}.md")).exists();
+    std::fs::remove_file(&probe).unwrap();
+    folds
+}
+
+#[tokio::test]
+async fn a_normalization_only_rename_renames_the_file_itself_where_normalization_folds() {
+    // `노트.md` stored decomposed → typed composed (spec 0069 D8). Where the
+    // file system folds normalization the two names open one file: the
+    // destination is the note itself, so the rename goes ahead, the
+    // directory spells the composed name, the link written decomposed is
+    // respelled, and the graph holds the composed path. Where it keeps
+    // normalization the composed name is a name of its own: an existing one
+    // is another note, and the rename is refused as onto any existing file.
+    // What fails this: `another_entry_at` comparing the names by ASCII case
+    // alone — where normalization folds, the rename answers "already exists".
+    let (note, note_on_disk) = both_forms("노트");
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-nfc-only", true).await;
+    let folds = folds_normalization(dir.path());
+    std::fs::write(dir.path().join(format!("{note_on_disk}.md")), "see [[b]]\n").unwrap();
+    assert!(
+        names_in(dir.path()).contains(&format!("{note_on_disk}.md")),
+        "the directory spells the note as it was written"
+    );
+    let text = format!("[[{note}]]\n[[{note_on_disk}]]\n");
+    std::fs::write(dir.path().join("r.md"), &text).unwrap();
+    if !folds {
+        std::fs::write(dir.path().join(format!("{note}.md")), "another\n").unwrap();
+    }
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/{note_on_disk}.md"),
+        &format!("{root}/{note}.md"),
+    )
+    .await;
+    if folds {
+        let result = result.unwrap();
+        assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+        assert!(
+            result.skipped_files.is_empty(),
+            "{:?}",
+            result.skipped_files
+        );
+        let names = names_in(dir.path());
+        assert!(names.contains(&format!("{note}.md")), "{names:?}");
+        assert!(!names.contains(&format!("{note_on_disk}.md")), "{names:?}");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+            format!("[[{note}]]\n[[{note}]]\n")
+        );
+        let graph = state
+            .with_index(&root, |idx| idx.unwrap().get_link_graph())
+            .await;
+        assert!(
+            graph.nodes.contains(&format!("{root}/{note}.md")),
+            "{graph:?}"
+        );
+        assert!(
+            !graph.nodes.contains(&format!("{root}/{note_on_disk}.md")),
+            "{graph:?}"
+        );
+    } else {
+        // What fails this: taking any entry at the destination for the file
+        // itself — the rename replaces the composed note, whose text is lost.
+        let err = result.unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(format!("{note}.md"))).unwrap(),
+            "another\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join(format!("{note_on_disk}.md"))).unwrap(),
+            "see [[b]]\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+            text
+        );
+    }
+}
+
+#[tokio::test]
+async fn two_notes_of_one_name_in_two_normalizations_keep_the_path_links_both_answer() {
+    // Where the file system keeps normalization, `a/노트.md` composed and
+    // `a/노트.md` decomposed are two notes with one key, as `A/note.md` and
+    // `a/note.md` are where case is kept: `[[a/노트]]` names neither alone,
+    // so renaming one leaves it and reports the file, and the bare `[[노트]]`
+    // is respelled as a stem link always is (`colliding_path_keys` counts
+    // both, though `relative_map` keeps one). Where the file system folds
+    // normalization the two are one, and this half has nothing to run.
+    // What fails this: the keys lowercasing alone — the composed note alone
+    // answers `[[a/노트]]`, which becomes `[[a/새 노트]]` with nothing reported.
+    let (note, note_on_disk) = both_forms("노트");
+    let (renamed, _) = both_forms("새 노트");
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-nfc-twins", true).await;
+    if folds_normalization(dir.path()) {
+        eprintln!("the file system under {root} folds normalization; the two-note half is not run");
+        return;
+    }
+    std::fs::create_dir_all(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join(format!("a/{note}.md")), "t\n").unwrap();
+    std::fs::write(dir.path().join(format!("a/{note_on_disk}.md")), "t\n").unwrap();
+    let names = names_in(&dir.path().join("a"));
+    assert!(
+        names.contains(&format!("{note}.md")) && names.contains(&format!("{note_on_disk}.md")),
+        "{names:?}"
+    );
+    std::fs::write(
+        dir.path().join("r.md"),
+        format!("[[a/{note}]]\n[[{note}]]\n"),
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/a/{note}.md"),
+        &format!("{root}/a/{renamed}.md"),
+    )
+    .await
+    .unwrap();
+    let referrer = format!("{root}/r.md");
+    assert_eq!(result.updated_files, vec![referrer.clone()]);
+    assert_eq!(result.skipped_files, vec![referrer]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        format!("[[a/{note}]]\n[[{renamed}]]\n")
+    );
+}
+
+#[tokio::test]
+async fn a_rename_that_changes_the_ascii_case_of_a_decomposed_name_still_goes_ahead() {
+    // `Élan.md` written with a combining accent (`E` + U+0301) → `e` +
+    // U+0301: the names differ in ASCII case only, as written. Accepted
+    // before §390 and still (spec 0069 D8) — where case folds, the
+    // destination is the note itself; where it is kept, there is no entry
+    // there.
+    // What fails this: `same_name` comparing the names in NFC alone — NFC
+    // composes them to `Élan` and `élan`, which differ in non-ASCII case,
+    // and where case folds the rename answers "already exists".
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-elan-decomposed", true).await;
+    std::fs::write(dir.path().join("E\u{301}lan.md"), "t\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/E\u{301}lan.md"),
+        &format!("{root}/e\u{301}lan.md"),
+    )
+    .await
+    .unwrap();
+    let names = names_in(dir.path());
+    assert!(names.contains(&"e\u{301}lan.md".to_string()), "{names:?}");
+    assert!(!names.contains(&"E\u{301}lan.md".to_string()), "{names:?}");
+}
+
+#[tokio::test]
+async fn a_rename_that_changes_only_non_ascii_case_is_still_refused_where_case_folds() {
+    // The other side of `same_name` (spec 0069 D8): `Élan.md` → `élan.md`,
+    // both precomposed, differs in non-ASCII case only. Where the file
+    // system folds case the destination is found, the names are two names,
+    // and the rename is refused, as before §390. Where case is kept there is
+    // no entry at the destination and the rename is an ordinary one, not
+    // judged here.
+    // What fails this: `same_name` folding case beyond ASCII (`fold_name`) —
+    // the rename goes ahead.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-elan", true).await;
+    std::fs::write(dir.path().join("\u{C9}lan.md"), "t\n").unwrap();
+    if !dir.path().join("\u{E9}lan.md").exists() {
+        eprintln!("the file system under {root} keeps case; nothing to refuse");
+        return;
+    }
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let err = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &format!("{root}/\u{C9}lan.md"),
+        &format!("{root}/\u{E9}lan.md"),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("already exists"), "{err}");
+    assert!(names_in(dir.path()).contains(&"\u{C9}lan.md".to_string()));
+}
