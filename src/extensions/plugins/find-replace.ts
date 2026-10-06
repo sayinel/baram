@@ -426,6 +426,9 @@ export function dispatchClearSearch(view: {
   dispatch: (tr: Transaction) => void;
   state: EditorState;
 }) {
+  // 이미 비어 있으면 dispatch 하지 않는다 — MarkdownSurface 가 Find 가 닫혀 있는 동안
+  // 편집기가 바뀔 때마다 부른다.
+  if (findReplacePluginKey.getState(view.state) === EMPTY_STATE) return;
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "clear",
   } satisfies FindReplaceMeta);
