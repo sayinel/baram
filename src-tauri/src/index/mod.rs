@@ -999,23 +999,64 @@ mod tests {
 #[cfg(test)]
 mod build_bench {
     use super::*;
+    use icu_normalizer::DecomposingNormalizerBorrowed;
     use tempfile::TempDir;
 
     #[tokio::test]
     #[ignore]
     async fn build_10k_files_timing() {
+        time_build("ascii", &|i| format!("f{i}"), &|n| format!("d{n}"), false).await;
+        // §390 The same vault with Korean names, stored decomposed (NFD) on
+        // disk and typed composed (NFC) in the links: every key the build
+        // spells, from a file or from a link, takes the fold's slow path.
+        time_build(
+            "korean-nfd",
+            &|i| format!("\u{B178}\u{D2B8}{i}"),
+            &|n| format!("\u{D3F4}\u{B354}{n}"),
+            true,
+        )
+        .await;
+    }
+
+    /// The 10,000-note vault: note `i` is `name(i)` in the folder
+    /// `folder(i % 100)` and links to the next note by its name and to a far
+    /// one by its path, with a block reference — the names stored decomposed
+    /// when `decomposed`, the links always as `name` and `folder` spell them.
+    /// Built three times; each build and a backlink query on note 1 are
+    /// timed and printed under `label`.
+    async fn time_build(
+        label: &str,
+        name: &dyn Fn(usize) -> String,
+        folder: &dyn Fn(usize) -> String,
+        decomposed: bool,
+    ) {
         const FILES: usize = 10_000;
+        let stored = |s: String| {
+            if !decomposed {
+                return s;
+            }
+            let d = DecomposingNormalizerBorrowed::new_nfd()
+                .normalize(&s)
+                .into_owned();
+            assert_ne!(d, s, "{s:?} has nothing to decompose");
+            d
+        };
+        let path_of = |i: usize| format!("{}/{}.md", stored(folder(i % 100)), stored(name(i)));
         let d = TempDir::new().unwrap();
         for i in 0..FILES {
             let next = (i + 1) % FILES;
             let far = (i * 7 + 13) % FILES;
             let body = format!(
-                "---\ntags: [t{}]\n---\n# 문서 {i}\n\n[[f{next}]] 과 [[d{}/f{far}|먼 문서]] 를 본다. #tag{}\n\n((f{next}#^blk{next}))\n\n본문 한 줄. ^blk{i}\n\n```md\n[[코드 안의 링크 f{far}]]\n```\n",
+                "---\ntags: [t{}]\n---\n# 문서 {i}\n\n[[{}]] 과 [[{}/{}|먼 문서]] 를 본다. #tag{}\n\n(({}#^blk{next}))\n\n본문 한 줄. ^blk{i}\n\n```md\n[[코드 안의 링크 {}]]\n```\n",
                 i % 50,
-                far % 100,
-                i % 20
+                name(next),
+                folder(far % 100),
+                name(far),
+                i % 20,
+                name(next),
+                name(far),
             );
-            let p = d.path().join(format!("d{}/f{}.md", i % 100, i));
+            let p = d.path().join(path_of(i));
             tokio::fs::create_dir_all(p.parent().unwrap())
                 .await
                 .unwrap();
@@ -1028,7 +1069,7 @@ mod build_bench {
             let started = std::time::Instant::now();
             let stats = index.build(&root).await.unwrap();
             println!(
-                "round {round}: built index over {} files, {} links, in {:?}",
+                "{label} round {round}: built index over {} files, {} links, in {:?}",
                 stats.files_indexed,
                 stats.links_found,
                 started.elapsed()
@@ -1038,11 +1079,11 @@ mod build_bench {
             // 이 숫자가 4만이면 literal 분석이 돌지 않은 것이다.
             assert_eq!(stats.links_found as usize, FILES * 3);
 
-            let probe = d.path().join("d1/f1.md").to_string_lossy().to_string();
+            let probe = d.path().join(path_of(1)).to_string_lossy().to_string();
             let started = std::time::Instant::now();
             let backlinks = index.get_backlinks(&probe, &[]);
             println!(
-                "round {round}: get_backlinks -> {} in {:?}",
+                "{label} round {round}: get_backlinks -> {} in {:?}",
                 backlinks.len(),
                 started.elapsed()
             );
@@ -1051,14 +1092,14 @@ mod build_bench {
         let started = std::time::Instant::now();
         let md = collect_md_files(&root).await.unwrap();
         println!(
-            "collect_md_files -> {} in {:?}",
+            "{label} collect_md_files -> {} in {:?}",
             md.len(),
             started.elapsed()
         );
         let started = std::time::Instant::now();
         let all = collect_all_files(&root).await.unwrap();
         println!(
-            "collect_all_files -> {} in {:?}",
+            "{label} collect_all_files -> {} in {:?}",
             all.len(),
             started.elapsed()
         );

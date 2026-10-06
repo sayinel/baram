@@ -40,6 +40,12 @@ clap = { version = "4", default-features = false, features = ["std", "derive", "
 # is `dirs::data_dir().join(identifier)` (tauri/src/path/desktop.rs). Already in the tree
 # through tauri; this promotes it to a direct dependency.
 dirs = "7"
+# §390 Link names folded to Unicode NFC (`index::normalizer::fold_name`, spec 0069).
+# Already in the tree through url → idna → idna_adapter, at this version and with this
+# one feature; this promotes it to a direct dependency. default-features = false adds no
+# package to the lock: the defaults add `utf8_iter` and `utf16_iter`, and the second pulls
+# crates the lock does not hold. `normalize(&str)` needs neither.
+icu_normalizer = { version = "2.1", default-features = false, features = ["compiled_data"] }
 # §29 (issue 620) — reads which bytes of a note are prose so the link index and its
 # rewriters can leave code, HTML, math and images alone. Structure only: link syntax
 # stays regex on the source. default-features drops the HTML renderer and the CLI.
