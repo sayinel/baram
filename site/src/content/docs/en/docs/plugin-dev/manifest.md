@@ -44,12 +44,49 @@ title: "The plugin manifest"
 
 | Field              | Type      | Description                                                                                           |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
+| `contributions`    | object    | What the app draws for the plugin — commands, status-bar items, settings, right-click and slash items — see [Contributions](#contributions) |
 | `dependencies`     | string\[] | Other plugin IDs this plugin depends on                                                               |
 | `tiptapExtensions` | object\[] | Tiptap extensions exported by this plugin — see [Tiptap Extension plugins](/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins) |
 | `repository`       | string    | Source code URL                                                                                       |
 | `homepage`         | string    | Documentation URL                                                                                     |
 | `icon`             | string    | Emoji icon for the marketplace/dev-list                                                               |
 | `keywords`         | string\[] | Search keywords                                                                                       |
+
+## Contributions
+
+`contributions` is data: Baram reads it from the manifest and draws it itself — no plugin code
+runs to put an item on screen.
+
+| Key         | Each entry                              | At most |
+| ----------- | --------------------------------------- | ------- |
+| `commands`  | `{ id, title, palette? }`               | 50      |
+| `statusBar` | `{ id, text, tooltip?, command? }`      | 5       |
+| `settings`  | a settings field                        | 16      |
+| `menu`      | `{ id, command, title?, when? }`        | 5       |
+| `slash`     | `{ id, command, title?, description? }` | 10      |
+
+`menu` adds items to the editor's right-click menu, and `slash` adds items to the slash menu.
+Each names one of your `commands` by its `id` and shows that command's `title`, unless it has a
+`title` of its own (1–64 characters). A slash item's `description` is 1–120 characters. `when`
+is either left out — the item always shows — or `"selection"`, and then the item shows only
+while text is selected. Neither appears in source mode.
+
+```json
+{
+  "contributions": {
+    "commands": [{ "id": "cite", "title": "Insert citation" }],
+    "menu": [{ "id": "cite", "command": "cite", "when": "selection" }],
+    "slash": [
+      { "id": "cite", "command": "cite", "description": "Insert a citation at the caret" }
+    ]
+  }
+}
+```
+
+There is no field for a keyboard shortcut. While the plugin is on, its commands are listed
+under **Plugins** in **Settings > Keybindings** with no key, for the user to assign one. A
+trusted plugin also needs the `commands` capability and registers each declared command — see
+[Command palette and Tiptap extensions](/en/docs/plugin-dev/commands-and-tiptap-extensions/).
 
 ## Version floor
 

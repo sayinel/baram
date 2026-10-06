@@ -1,6 +1,6 @@
 ---
 title: "명령 팔레트와 Tiptap 확장"
-sourceHash: "06a5ab6e25db"
+sourceHash: "8b4664fd2211"
 ---
 
 ## 명령 팔레트 연동
@@ -18,6 +18,36 @@ context.commands.register("summarize", () => summarize(), {
   paletteVisible: true,
 });
 ```
+
+## 메뉴, 슬래시, 단축키에서 부르기
+
+매니페스트의 `contributions.commands`에 선언한 명령은 세 곳에서 더 부를 수 있습니다. 에디터의 우클릭
+메뉴(`contributions.menu`), 슬래시 메뉴(`contributions.slash`), 그리고 사용자가 키를 지정하는
+**설정 > 단축키**입니다. 앱이 세 곳 모두 매니페스트에서 그리고 —
+[플러그인 매니페스트](/ko/docs/plugin-dev/manifest/) 참조 — 팔레트와 같은 방식으로 명령을 실행하므로,
+어느 곳에서 부른 명령이든 창을 열 수 있습니다.
+
+sandboxed 플러그인이 선언한 명령은 호스트가 연결합니다. trusted 플러그인은 명령을 선언하고 **같은
+`id`로 등록도** 합니다. `commands` capability 가 필요합니다.
+
+```json
+{
+  "capabilities": ["commands"],
+  "contributions": {
+    "commands": [{ "id": "cite", "title": "Insert citation" }],
+    "slash": [{ "id": "cite", "command": "cite" }]
+  }
+}
+```
+
+```typescript
+context.commands.register("cite", () => insertCitation());
+```
+
+항목은 플러그인이 켜져 있고 명령이 등록돼 있는 동안에만 보입니다. `dispose()` 한 명령은 우클릭 메뉴와
+슬래시 메뉴에서 사라지고, 그 단축키는 아무것도 하지 않습니다. 선언하지 않고 등록만 한 명령은 지금처럼
+팔레트에만 나옵니다. trusted 플러그인에 `commands` capability 가 없으면 — 설치 때 거둔 경우도 — 세 곳
+어디에도 나오지 않습니다.
 
 ## Tiptap 확장 플러그인
 

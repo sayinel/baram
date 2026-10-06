@@ -19,6 +19,37 @@ context.commands.register("summarize", () => summarize(), {
 });
 ```
 
+## Commands in menus, slash and shortcuts
+
+A command declared in the manifest's `contributions.commands` can be offered in three more
+places: the editor's right-click menu (`contributions.menu`), the slash menu
+(`contributions.slash`), and **Settings > Keybindings**, where the user can give it a key. The
+app draws all three from the manifest — see [The plugin manifest](/en/docs/plugin-dev/manifest/)
+— and runs the command the way the palette does, so the command may open a prompt from any of
+them.
+
+A sandboxed plugin's declared commands are wired up for it. A trusted plugin declares the
+command **and** registers it under the same `id`, which needs the `commands` capability:
+
+```json
+{
+  "capabilities": ["commands"],
+  "contributions": {
+    "commands": [{ "id": "cite", "title": "Insert citation" }],
+    "slash": [{ "id": "cite", "command": "cite" }]
+  }
+}
+```
+
+```typescript
+context.commands.register("cite", () => insertCitation());
+```
+
+An item shows only while its plugin is on and the command is registered: a command you
+`dispose()` leaves the right-click and slash menus, and its shortcut stops doing anything. A
+command registered without being declared stays palette-only. A trusted plugin without the
+`commands` capability — or with it withheld at install — gets none of the three.
+
 ## Tiptap Extension plugins
 
 Plugins can contribute a ProseMirror plugin to the live editor. Declare it in

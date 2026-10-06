@@ -376,6 +376,17 @@ The vim register is shared app-wide (like the clipboard) and is not written to d
 
 All keyboard shortcuts can be remapped in **Settings > Keybindings**. Search for a shortcut by name or key, click **Edit**, then press the new key combination. Conflicts are detected automatically. Use the ↺ button to reset individual shortcuts, or **Reset All Keybindings** to restore defaults. Vim key sequences (see above) are a separate layer and are not remappable here.
 
+Plugin commands appear under **Plugins**, each with its plugin's name, and start with no key —
+a plugin cannot choose one for you. A key the app already uses can't be given to a plugin
+command, the editor's fixed formatting keys such as `Cmd+B` included: the conflict is shown and
+the confirm button stays disabled. Two plugin commands can trade a key — confirming moves it to
+the command you are editing. A key you gave a plugin command stays in your settings while that
+plugin is off or removed, and works again when it is back; meanwhile it still counts as taken,
+and giving it to another command removes it. **Reset All Keybindings** clears plugin keys too.
+If an app update or an edited settings file leaves a plugin key overlapping another shortcut,
+the plugin's row says what happens: when the other shortcut is a core command or an earlier
+plugin's command, that one runs; when it is an editor formatting key, both run.
+
 ---
 
 See the full [User Guide](/en/docs/getting-started/) for detailed feature descriptions.

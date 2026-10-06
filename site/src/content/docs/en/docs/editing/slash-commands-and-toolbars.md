@@ -31,6 +31,9 @@ Type `/` at the start of a line or after a space to open the slash command menu.
 
 Type to filter the menu items. AI commands are also available from the slash menu (see [AI Features](/en/docs/ai/setup-inline-and-ghost-text/)).
 
+Plugins can add their own items. They come last, grouped under **Plugin · *plugin name***, and
+typing the plugin's name finds them too.
+
 ## Floating Toolbar
 
 When you select text, a floating toolbar appears above the selection with formatting buttons: **Bold**, **Italic**, **Strikethrough**, **Highlight**, **Superscript**, **Subscript**, **Code**, and more.
@@ -49,5 +52,7 @@ Right-click anywhere in the editor for context-aware options:
 - Text operations (cut, copy, paste)
 - Block type conversion
 - Tab management (pin tab, close tab, close other tabs)
+- Items from plugins, below a separator, each with its plugin's name beside it — some appear
+  only when you right-click selected text
 
 ---

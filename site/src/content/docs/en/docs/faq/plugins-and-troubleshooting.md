@@ -54,6 +54,17 @@ those, removing the old copy is all there is to do.
 
 This applies once, to plugins installed before v0.5.0. Anything installed since is unaffected.
 
+### A plugin's menu item, slash item or shortcut doesn't show up
+
+- The plugin must be on and finished starting. Its items appear once it has activated and go
+  away when it is turned off.
+- Some right-click items are only for selected text. Select the text, then right-click inside
+  the selection.
+- A shortcut has to be assigned first: plugin commands start with no key, under **Plugins** in
+  **Settings > Keybindings**.
+- If the plugin's row there says the key overlaps another shortcut, give the command a
+  different key.
+
 ### How do I build a plugin?
 
 See the [Plugin Development Guide](/en/docs/plugin-dev/overview-and-capabilities/). A plugin is a directory with a `baram-plugin.json` manifest and an ESM entry point, using the `ExtensionContext` API to add commands, Tiptap extensions, UI, and more.
