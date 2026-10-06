@@ -479,7 +479,7 @@ impl LinkIndex {
 
 #[cfg(test)]
 mod tests {
-    use super::normalizer::file_key;
+    use super::normalizer::{both_forms, file_key};
     use super::*;
 
     #[test]
@@ -738,6 +738,73 @@ mod tests {
             ]
         );
         assert_eq!(index.referring_lines_to("/v/dir/note.md", &[]).len(), 5);
+    }
+
+    #[test]
+    fn a_note_stored_decomposed_answers_the_links_typed_composed() {
+        // §390 The folder and the note are stored decomposed (NFD), as tools
+        // and imports on macOS can leave Korean names; the links are typed
+        // composed (NFC). By its name, by its path from the root, from the
+        // referrer's own folder, by a block reference and by its zettel id,
+        // each link is a backlink of the note; the graph draws each to the
+        // note and no node beside it; `links` resolves each to it.
+        // What fails this: `file_key` lowercasing alone — line 1 of `r.md` is
+        // lost and the graph grows placeholder nodes; `strip_extension_and_fold`
+        // so — lines 2 and 3 and `s.md`'s line are lost.
+        let (folder, folder_on_disk) = both_forms("회의록");
+        let (title, title_on_disk) = both_forms("202610061200 주간 노트");
+        let note = format!("/v/{folder_on_disk}/{title_on_disk}.md");
+        let sibling = format!("/v/{folder_on_disk}/s.md");
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content(&note, "para ^b1");
+        index.update_file_from_content(
+            "/v/r.md",
+            &format!(
+                "[[{title}]]\n[[{folder}/{title}]]\n(({folder}/{title}#^b1))\n[[202610061200]]\n"
+            ),
+        );
+        index.update_file_from_content(&sibling, &format!("[[./{title}]]\n"));
+
+        let lines: Vec<(String, u32)> = index
+            .get_backlinks(&note, &[])
+            .into_iter()
+            .map(|b| (b.source_path, b.line))
+            .collect();
+        let r = "/v/r.md".to_string();
+        assert_eq!(
+            lines,
+            vec![
+                (r.clone(), 1),
+                (r.clone(), 2),
+                (r.clone(), 3),
+                (r.clone(), 4),
+                (sibling.clone(), 1)
+            ]
+        );
+
+        let graph = index.get_link_graph();
+        let ends: Vec<&str> = graph
+            .edges
+            .iter()
+            .filter(|e| e.from != note)
+            .map(|e| e.to.as_str())
+            .collect();
+        assert_eq!(ends, vec![note.as_str(); 5], "{graph:?}");
+        let mut nodes = graph.nodes.clone();
+        nodes.sort();
+        let mut expected = vec![r.clone(), note.clone(), sibling.clone()];
+        expected.sort();
+        assert_eq!(nodes, expected);
+
+        let resolved = index.outgoing_resolved(&r).expect("r.md is indexed");
+        assert_eq!(resolved.len(), 4);
+        assert!(
+            resolved
+                .iter()
+                .all(|(_, res)| *res == LinkResolution::Resolved(note.clone())),
+            "{resolved:?}"
+        );
     }
 
     #[test]
