@@ -23,8 +23,8 @@
 //!
 //! What this does not give: an index fresh at the moment a rename judges. A
 //! write lands in the index only when the watcher's event has travelled here,
-//! about 300 ms of batching later — #823 의 후속 sub-issue tracks moving that
-//! guarantee into Rust for every writer.
+//! about 300 ms of batching later — #824 tracks moving that guarantee into
+//! Rust for every writer.
 
 use std::collections::HashMap;
 use std::path::{Component, Path};

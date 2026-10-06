@@ -104,7 +104,7 @@ pub(crate) async fn get_link_index_inner(
     // scanning again, and once published every later read is a pure read.
     // Writes that are not saves reach the index through `sync_watched_paths`,
     // a watcher batch later; an index fresh at the moment a rename judges is
-    // #823 의 후속 sub-issue.
+    // #824.
     ensure_indexes(state, ctx_mgr, std::slice::from_ref(&registered)).await?;
     Ok(state
         .with_index_for(&registered.info.path, registered.incarnation, |idx| {

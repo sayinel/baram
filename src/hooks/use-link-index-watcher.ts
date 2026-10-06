@@ -28,7 +28,7 @@ const FLUSH_DELAY_MS = 300;
  * - 반영하지 못한 경로는 다음 flush 에서 한 번만 다시 시도하고, 또 실패하면 버린다.
  *
  * 남는 것: 쓰기는 이벤트가 여기를 거쳐 Rust 에 닿은 뒤에야(약 300 ms) index 에 들어간다 — 그
- * 사이에 rename 이 판정하면 그 쓰기를 모른다. #823 의 후속 sub-issue 가 이 보장을 Rust 로 옮긴다.
+ * 사이에 rename 이 판정하면 그 쓰기를 모른다. #824 가 이 보장을 Rust 로 옮긴다.
  */
 export function useLinkIndexWatcher(): void {
   useEffect(() => {
