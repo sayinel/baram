@@ -149,8 +149,8 @@ describe("pluginGroupsByName (D5 · D6)", () => {
   it("orders by the drawn name, not the id, and by id between equal names", () => {
     const groups = pluginGroupsByName({
       "a-one": entry("a-one", "Zed"),
-      "a-y": entry("a-y", "Same"),
       "b-x": entry("b-x", "Same"),
+      "a-y": entry("a-y", "Same"),
       "z-two": entry("z-two", "Alpha"),
     });
     expect(groups.map((g) => g.entry.pluginId)).toEqual([
@@ -163,7 +163,7 @@ describe("pluginGroupsByName (D5 · D6)", () => {
 
   it("D16 — draws the name through pluginSourceLabel: bidi and control characters gone, the id when blank", () => {
     const groups = pluginGroupsByName({
-      a: entry("a", "‮evil\u0007Name"),
+      a: entry("a", "\u202eevil\u0007Name"),
       b: entry("b", "   "),
     });
     expect(groups.map((g) => g.label)).toEqual(["b", "evil Name"]);

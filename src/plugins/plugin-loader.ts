@@ -609,14 +609,14 @@ export class PluginLoader {
           ),
         );
       }
+      // §391 spec 0070 §5 — only now: a throwing or timed-out `activate` above is not unwound,
+      // so an entry put up earlier would outlive the failed load. Inside this `try`, a throw
+      // from here is unwound with the rest of the stretch.
+      registerEntryContributions(manifest);
     } catch (err) {
       this.unwindAfterActivate(manifest.id, context);
       throw err;
     }
-
-    // §391 spec 0070 §5 — only now: a throwing or timed-out `activate` above is not unwound,
-    // so an entry put up earlier would outlive the failed load.
-    registerEntryContributions(manifest);
 
     // 6. Store loaded plugin
     this.loaded.set(manifest.id, {

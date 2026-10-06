@@ -286,7 +286,7 @@ async function activateOne(builtin: BuiltinPlugin): Promise<void> {
   const context = createExtensionContext(builtin.manifest, "");
   await builtin.module.activate?.(context);
   // §391 spec 0070 §5 — after `activate` resolved; nothing here unwinds a throw. Built-in
-  // manifests never pass `validateManifest` at runtime (`builtin-manifests.test.ts` does).
+  // manifests are never run through `validateManifest` at runtime (`builtin-manifests.test.ts` does).
   registerEntryContributions(builtin.manifest);
   activeBuiltins.push({
     context,
