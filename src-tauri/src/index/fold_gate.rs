@@ -72,9 +72,10 @@ const ALLOWED: &[(&str, &str, &str)] = &[
          spellings (spec 0069 §3.2), `filing_key`'s relative branch aside: it \
          hands `under_root` link-text components once `..` climbs above the \
          root, and keeps today's case boundary there. The rewrite reads past \
-         normalization through a comparison of its own. Widening \
-         same_component lets a folder rename rewrite a link into another \
-         directory",
+         normalization through a comparison of its own, which has a known hole \
+         for normalization-only sibling directories (spec 0069 §8). Widening \
+         same_component would give every caller that reading, and a folder \
+         rename would rewrite a link into another directory",
     ),
     (
         "service/rename/destination.rs",

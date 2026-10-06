@@ -114,15 +114,17 @@ fn entry_path(path: &str) -> Result<std::path::PathBuf, String> {
 /// where case folds, or a normalization-only one (`노트.md` stored
 /// decomposed → typed composed, §390) on APFS, which folds normalization.
 /// Case counts in ASCII only: `Élan.md` → `élan.md`, both precomposed
-/// (U+00C9 → U+00E9), on such a file system finds the destination, fails
-/// the name comparison, and is refused. The same inode under another name
-/// is a hard link of the source, and a rename between hard links is a
-/// silent no-op, so it is refused as another entry. A hard link under one
-/// name, which a file system that keeps case or normalization allows, looks
-/// the same as an alias from these two reads, so it passes: the move is
-/// then a no-op, the rename answers `Ok`, and links are respelled, with no
-/// content lost. Telling the two apart would mean asking the file system
-/// whether it folds case or normalization. Any other inode is another entry.
+/// (U+00C9 → U+00E9), on a file system that folds case finds the
+/// destination, fails the name comparison, and is refused. The same inode
+/// under a name that is not one name is refused as another entry: it is a
+/// hard link of the source, where a rename is a silent no-op, or a spelling
+/// the file system folds and `same_name` does not (non-ASCII case, as in
+/// `Élan.md` → `élan.md`). A hard link under one name, which a file system
+/// that keeps case or normalization allows, looks the same as an alias from
+/// these two reads, so it passes: the move is then a no-op, the rename
+/// answers `Ok`, and links are respelled, with no content lost. Telling the
+/// two apart would mean asking the file system whether it folds case or
+/// normalization. Any other inode is another entry.
 ///
 /// On Windows `canonicalize` answers the spelling on disk: in a directory
 /// that folds case, both spellings reach the one entry and canonicalize

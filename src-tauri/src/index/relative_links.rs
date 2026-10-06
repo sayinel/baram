@@ -39,10 +39,16 @@ pub fn rewrite_relative_wikilinks(
 /// `same_component` for what that does and does not promise), and the
 /// wikilink the rewrite writes is joined with `/`: it is markdown, not a
 /// native path. The Rust tests run on Linux, so the Windows shape is tested
-/// by passing `windows = true`, never behind `cfg(windows)`. The old
-/// directory meets the link's components without regard to Unicode
-/// normalization, there and nowhere else (§390), and the text written is in
-/// NFC.
+/// by passing `windows = true`, never behind `cfg(windows)`.
+///
+/// §390: the old directory meets the link's components without regard to
+/// Unicode normalization. Of the comparisons that run through
+/// `same_component` — `strip_dir_prefix` (so `under_root` and `root_places`),
+/// `relative_components` and `stays_in_its_directory`, the callers in this
+/// crate — this is the only one that also compares the two sides composed,
+/// and it has a known hole (the ‼️ note at the comparison). The link target
+/// the rewrite writes is in NFC; what follows it (`rest`: heading, block id,
+/// display) is written as it was typed.
 fn rewrite_relative_wikilinks_with(
     content: &str,
     source_path: &str,
@@ -70,9 +76,20 @@ fn rewrite_relative_wikilinks_with(
             // §390 (spec 0069 §3.2): the old directory is spelled as the disk
             // spells it and the link as it was typed, so this one comparison
             // reads past Unicode normalization — `[[./회의록/x]]` typed
-            // composed names `회의록/` stored decomposed. Every other
-            // comparison of components stays byte for byte (`same_component`):
-            // widening that one would make a link name another directory.
+            // composed names `회의록/` stored decomposed. The other callers
+            // of `same_component` stay byte for byte: widening
+            // `same_component` itself would give all of them this reading.
+            //
+            // ‼️ Where the file system keeps normalization (spec 0069 §8 gives
+            // Linux and Windows), a directory and a sibling that differ only
+            // by it can both exist, and this reading cannot tell them apart:
+            // renaming one of them also rewrites a link typed for the other,
+            // into the renamed directory. Nothing in the result marks that
+            // link — its file is listed with the updated ones, and
+            // `skipped_files` is for a referrer that could not be written.
+            // Spec 0069 §8 leaves it open: closing it takes the file list
+            // from before the move and a new field in `NamespaceRenameResult`
+            // for what was left alone.
             let Some(inside) = strip_dir_prefix_by(&old, &resolved, |d, p| {
                 same_component(d, p, windows) || same_component(&nfc(d), &nfc(p), windows)
             }) else {
@@ -573,9 +590,9 @@ mod tests {
         // The link resolves into the directory and is rewritten, and what is
         // written is composed — the folder the rename did not change
         // included. A link into another directory is still left.
-        // `same_component` itself still tells the two spellings apart: it
-        // compares components byte for byte for every other caller, and the
-        // reading past normalization is this rewrite's alone (spec 0069 §3.2).
+        // `same_component` itself still tells the two spellings apart — byte
+        // for byte, ASCII case folded on Windows. Only this rewrite's
+        // comparison also calls it with both sides composed (spec 0069 §3.2).
         // What fails this: comparing the old directory with the link byte
         // for byte — the first link stays; writing `relative_components`'
         // text without NFC — the second gets `상위` decomposed; widening
