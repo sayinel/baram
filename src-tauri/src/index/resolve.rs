@@ -1,8 +1,8 @@
 //! The maps a `[[name]]` is resolved through and the graph built on them (§29).
 
 use super::normalizer::{
-    extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
-    strip_extension_and_fold,
+    extract_id_from_stem, fold_name, is_id_target, normalize_file_path, normalize_target,
+    resolve_target, strip_extension_and_fold,
 };
 use super::{LinkEdge, LinkEntry, LinkGraph, LinkIndex, LinkResolution};
 
@@ -51,17 +51,17 @@ impl LinkIndex {
 
         if let Some(name) = std::path::Path::new(file_path)
             .file_name()
-            .map(|n| n.to_string_lossy().to_lowercase())
+            .map(|n| fold_name(&n.to_string_lossy()))
         {
             keys.push(name);
         }
 
         if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel)
-                .to_lowercase();
+            let rel = fold_name(
+                rel.strip_prefix('/')
+                    .or_else(|| rel.strip_prefix('\\'))
+                    .unwrap_or(rel),
+            );
             if !keys.contains(&rel) {
                 keys.push(rel);
             }
@@ -165,7 +165,7 @@ impl LinkIndex {
         let name_of = |path: &String| {
             std::path::Path::new(path.as_str())
                 .file_name()
-                .map(|n| n.to_string_lossy().to_lowercase())
+                .map(|n| fold_name(&n.to_string_lossy()))
         };
         let relative_of = |path: &String| {
             let rel = path.strip_prefix(self.root_path.as_deref()?)?;
@@ -173,7 +173,7 @@ impl LinkIndex {
                 .strip_prefix('/')
                 .or_else(|| rel.strip_prefix('\\'))
                 .unwrap_or(rel);
-            Some(rel.to_lowercase())
+            Some(fold_name(rel))
         };
         notes
             .iter()
@@ -193,7 +193,7 @@ impl LinkIndex {
     /// `outgoing_resolved` asks here only for entries without a vault alias.
     fn resolve_link(&self, raw_target: &str) -> Option<String> {
         let normalized = normalize_target(raw_target);
-        let full = raw_target.trim().to_lowercase();
+        let full = fold_name(raw_target.trim());
         self.spelled_note_name(&full, &normalized)
             .or_else(|| self.resolve_target_from_map(&normalized))
     }
@@ -291,6 +291,7 @@ impl LinkIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::normalizer::both_forms;
 
     #[test]
     fn test_name_lookup_runs_after_the_stem_and_relative_lookups() {
@@ -463,6 +464,79 @@ mod tests {
         assert_eq!(
             graph_targets_of(&files, &[], "[[x.markdown]]\n[[x.md]]\n[[x]]\n"),
             vec!["/vault/x.markdown", "/vault/x.md", "/vault/x.md"]
+        );
+    }
+
+    #[test]
+    fn a_link_spelling_an_extension_finds_a_name_stored_decomposed() {
+        // §390 Names stored decomposed (NFD), links typed composed (NFC) —
+        // and, last, a link typed decomposed against names stored composed:
+        // the fold works both ways. The first case fails when `relative_of`
+        // alone misses the name — `name_of` then answers `a/노트.md`,
+        // registered first; the second and the third each hold a link the
+        // stem chain would answer with another file.
+        // What fails this, one site at a time: `relative_of` lowercasing
+        // alone — `[[노트.md]]` goes to `a/노트.md`, registered first;
+        // `name_of` so — `[[노트.markdown]]` goes to `a/노트.md`; `full` in
+        // `resolve_link` so — one of the two decomposed links goes to the
+        // note registered last under the stem.
+        let (name, name_on_disk) = both_forms("노트");
+        let resolved = |path: &str| LinkResolution::Resolved(path.to_string());
+
+        let owned = [
+            format!("/vault/a/{name_on_disk}.md"),
+            format!("/vault/{name_on_disk}.md"),
+            "/vault/r.md".to_string(),
+        ];
+        let files: Vec<&str> = owned.iter().map(String::as_str).collect();
+        assert_eq!(
+            outgoing_of(&files, &format!("[[{name}.md]]\n")),
+            vec![resolved(files[1])]
+        );
+
+        let owned = [
+            format!("/vault/a/{name_on_disk}.md"),
+            format!("/vault/a/{name_on_disk}.markdown"),
+            "/vault/r.md".to_string(),
+        ];
+        let files: Vec<&str> = owned.iter().map(String::as_str).collect();
+        assert_eq!(
+            outgoing_of(&files, &format!("[[{name}.markdown]]\n")),
+            vec![resolved(files[1])]
+        );
+
+        let markdown = format!("/vault/{name}.markdown");
+        let md = format!("/vault/{name}.md");
+        for order in [[&markdown, &md], [&md, &markdown]] {
+            let files = [order[0].as_str(), order[1].as_str(), "/vault/r.md"];
+            assert_eq!(
+                outgoing_of(
+                    &files,
+                    &format!("[[{name_on_disk}.markdown]]\n[[{name_on_disk}.md]]\n")
+                ),
+                vec![resolved(&markdown), resolved(&md)],
+                "{files:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_stored_decomposed_is_found_by_its_full_name() {
+        // §278 · §390 A PDF's two `name_map` keys — its file name and its
+        // path under the root — are folded: `[[논문.pdf]]` and
+        // `[[자료/논문.pdf]]` typed composed find it stored decomposed.
+        // What fails this: `register_link_target` lowercasing the file name
+        // alone — the bare link is unresolved; the path alone — the path
+        // link is unresolved.
+        let (paper, paper_on_disk) = both_forms("논문");
+        let (folder, folder_on_disk) = both_forms("자료");
+        let pdf = format!("/vault/{folder_on_disk}/{paper_on_disk}.pdf");
+        assert_eq!(
+            outgoing_of(
+                &[pdf.as_str(), "/vault/r.md"],
+                &format!("[[{paper}.pdf]]\n[[{folder}/{paper}.pdf]]\n")
+            ),
+            vec![LinkResolution::Resolved(pdf.clone()); 2]
         );
     }
 
