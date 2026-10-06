@@ -143,3 +143,14 @@ async fn backlink_lines(
     lines.sort_unstable();
     lines
 }
+
+/// The entry names in `dir`, sorted — as the directory spells them, which
+/// `Path::exists` cannot tell apart on a file system that folds case.
+fn names_in(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    names
+}

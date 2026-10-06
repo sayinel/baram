@@ -51,9 +51,9 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// A path link that a root holding the referrer reads as a different note
 /// that exists is ambiguous (`RenameTarget::judge`) and stays too; the pass
 /// counts those (`PassReport::ambiguous`) and the file rename reports the
-/// file. The new text is `RenameTarget::respell`: the new stem, or the new
-/// path, with the `.md` or `.markdown` the link was spelled with when the new
-/// file name ends in one too, and without it otherwise.
+/// file. The new text is `RenameTarget::respell`, in NFC (§390): the new
+/// stem, or the new path, with the `.md` or `.markdown` the link was spelled
+/// with when the new file name ends in one too, and without it otherwise.
 ///
 /// A stem no wikilink can spell (`wikilink_can_spell`) is never written —
 /// a path link's last component is that stem too: the content comes back as
@@ -66,7 +66,7 @@ pub fn replace_wikilink_target(
     covering_roots: &[String],
     target: &RenameTarget,
 ) -> PassReport {
-    let spellable = wikilink_can_spell(target.new_stem());
+    let spellable = wikilink_can_spell(&target.new_stem());
     visit_wikilinks_to(
         content,
         ref_path,
@@ -296,7 +296,7 @@ pub fn replace_block_reference_target(
     covering_roots: &[String],
     target: &RenameTarget,
 ) -> PassReport {
-    let spellable = block_reference_can_spell(target.new_stem());
+    let spellable = block_reference_can_spell(&target.new_stem());
     visit_block_references_to(
         content,
         ref_path,

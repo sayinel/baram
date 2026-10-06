@@ -5,7 +5,7 @@
 use super::filing::{
     filing_key, is_relative, root_relative_key, under_root, FilingKey, LocalAlias,
 };
-use super::normalizer::{file_key, fold_name, strip_note_extension};
+use super::normalizer::{file_key, fold_name, nfc, strip_note_extension};
 use super::relative_links::{path_components, relative_components};
 use std::collections::{HashMap, HashSet};
 
@@ -321,10 +321,11 @@ impl RenameTarget<'_> {
         stem_of(self.old_path, self.windows)
     }
 
-    /// The renamed file's stem after the rename — what a stem link is
-    /// respelled with, and what the spellability predicates judge.
-    pub fn new_stem(&self) -> &str {
-        stem_of(self.new_path, self.windows)
+    /// The renamed file's stem after the rename, in NFC (§390, spec 0069
+    /// D7): what a stem link is respelled with, and what the spellability
+    /// predicates judge — one string, so they judge what is written.
+    pub fn new_stem(&self) -> String {
+        nfc(stem_of(self.new_path, self.windows)).into_owned()
     }
 
     /// Does `raw_target`, written in the referrer at `ref_path` behind
@@ -504,12 +505,13 @@ impl RenameTarget<'_> {
     /// file's components under `root` joined with `/` for `Path`, or, when
     /// `relative`, the way from the referrer's folder (`relative_components`)
     /// — spelled as `new_path` spells them, whatever the link's case or
-    /// separator was. `note_suffix` keeps the lower-case `.md` or `.markdown`
-    /// that `strip_note_extension` removes from the captured target when the
-    /// new file name also has one of those lower-case suffixes. After
-    /// `a/old.md` → `a/old.txt`, `[[a/old.md]]` becomes `[[a/old.txt]]` and
-    /// `[[old.md]]` becomes `[[old]]` — a kept `.md` would spell `a/old.txt.md`,
-    /// which names no file.
+    /// separator was, and the finished text put in NFC (§390): a name stored
+    /// decomposed is written as it is typed. `note_suffix` keeps the
+    /// lower-case `.md` or `.markdown` that `strip_note_extension` removes
+    /// from the captured target when the new file name also has one of those
+    /// lower-case suffixes. After `a/old.md` → `a/old.txt`, `[[a/old.md]]`
+    /// becomes `[[a/old.txt]]` and `[[old.md]]` becomes `[[old]]` — a kept
+    /// `.md` would spell `a/old.txt.md`, which names no file.
     pub fn respell(&self, ref_path: &str, m: &Match, captured_target: &str) -> String {
         let new_name = path_components(self.new_path, self.windows)
             .last()
@@ -523,7 +525,7 @@ impl RenameTarget<'_> {
             note_suffix(captured_target)
         };
         let target = match m {
-            Match::Stem => self.new_stem().to_string(),
+            Match::Stem => self.new_stem(),
             Match::Path { relative: true, .. } => {
                 let mut source_dir = path_components(ref_path, self.windows);
                 source_dir.pop();
@@ -532,10 +534,14 @@ impl RenameTarget<'_> {
             Match::Path { root, .. } => {
                 let new = self.new_components();
                 under_root(&path_components(root, self.windows), &new, self.windows)
-                    .map_or_else(|| self.new_stem().to_string(), |rest| rest.join("/"))
+                    .map_or_else(|| self.new_stem(), |rest| rest.join("/"))
             }
         };
-        format!("{target}{suffix}")
+        // §390 (spec 0069 D7): composed only now, after `under_root` and
+        // `relative_components` compared the disk spellings byte for byte
+        // (`same_component`) — composing the components first would make a
+        // folder stored decomposed another folder to them.
+        nfc(&format!("{target}{suffix}")).into_owned()
     }
 
     /// The key the index files a reference `respell` wrote under, in the
@@ -545,7 +551,7 @@ impl RenameTarget<'_> {
     /// rename in place never makes) falls back to the new stem's key, which
     /// the gate then finds unequal and the file is left and reported.
     pub fn expected_key(&self, m: &Match) -> FilingKey {
-        let stem = file_key(self.new_stem());
+        let stem = file_key(&self.new_stem());
         match m {
             Match::Stem => FilingKey::Stem(stem),
             Match::Path { root, .. } => FilingKey::Path(
