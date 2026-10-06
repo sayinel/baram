@@ -15,10 +15,16 @@ vi.mock("../../../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../ipc/invoke")>()),
   createDir: vi.fn(async () => {}),
   createFile: vi.fn(),
+  updateFileIndex: vi.fn(async () => {}),
   writeFile: vi.fn(async () => {}),
 }));
 
-import { createFile, FileExistsError, writeFile } from "../../../../ipc/invoke";
+import {
+  createFile,
+  FileExistsError,
+  updateFileIndex,
+  writeFile,
+} from "../../../../ipc/invoke";
 import { useEditorStore } from "../../../../stores/editor/editor";
 import { useFileStore } from "../../../../stores/file/file";
 import { findEntryByPath } from "../../../../stores/file/file-tree-ops";
@@ -30,6 +36,7 @@ const showToast = vi.fn();
 beforeEach(() => {
   vi.mocked(createFile).mockReset();
   vi.mocked(writeFile).mockClear();
+  vi.mocked(updateFileIndex).mockClear();
   showToast.mockReset();
   useFileStore.setState({
     fileTree: [{ isDir: false, name: "README.md", path: "/vault/README.md" }],
@@ -122,5 +129,21 @@ describe("a new file in the tree never replaces an existing one", () => {
     ]);
     expect(useFileStore.getState().openFiles.get("/vault/new.md")).toBe("");
     expect(showToast).not.toHaveBeenCalled();
+  });
+
+  // §29 issue 790 — the watcher skips the app's own `file:created` and the
+  // graph no longer rebuilds per save, so the new note joins the index here.
+  // 이것을 실패시키는 것: `handleConfirmCreate` 의 `updateFileIndex(fullPath)` 호출을 지운다.
+  it("indexes the new note once, and an existing name not at all", async () => {
+    vi.mocked(createFile).mockResolvedValue(undefined);
+    await createNamed("new.md");
+    expect(updateFileIndex).toHaveBeenCalledTimes(1);
+    expect(updateFileIndex).toHaveBeenCalledWith("/vault/new.md");
+
+    vi.mocked(createFile).mockRejectedValue(
+      new FileExistsError("/vault/README.md"),
+    );
+    await createNamed("README.md");
+    expect(updateFileIndex).toHaveBeenCalledTimes(1);
   });
 });

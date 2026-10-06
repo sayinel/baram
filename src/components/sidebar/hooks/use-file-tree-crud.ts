@@ -12,6 +12,7 @@ import {
   deleteFile,
   isFileExistsError,
   refreshIndex,
+  updateFileIndex,
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
@@ -174,6 +175,13 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
             path: fullPath,
             isDir: false,
           });
+          // §29 The new note joins the link index here: the watcher skips the
+          // app's own `file:created`, and the graph only reads (issue 790).
+          updateFileIndex(fullPath)
+            .then(() => useLinkStore.getState().invalidate())
+            .catch((err: unknown) =>
+              logger.error("[FileTree] Link index update failed:", err),
+            );
           setFileContent(fullPath, "");
           openTab({
             contextId: "",
@@ -219,10 +227,10 @@ function findEntryByPath(entries: FileEntry[], path: string): FileEntry | null {
 }
 
 /**
- * §29 Rebuild the link index after deleting a folder. The watcher's
- * `file:deleted` names the folder alone, and this hook takes it out of the
- * tree before that event arrives, so `use-link-index-watcher.ts` cannot tell
- * the path was a directory.
+ * §29 Rebuild the link index after deleting a folder. A folder moved to the
+ * Trash reaches the watcher as one `file:deleted` for the folder, and that
+ * event can arrive after this hook has taken it out of the tree, when
+ * `use-link-index-watcher.ts` can no longer tell the path was a directory.
  */
 function rebuildLinkIndex(rootPath: string): void {
   refreshIndex(rootPath)
