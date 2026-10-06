@@ -5,12 +5,16 @@
 // actually feels, and counters do not flake under parallel-suite load.
 
 import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
 import { useUIStore } from "../../../../stores/ui/ui";
 import { createBaramExtensions } from "../../../index";
-import { graphemeIndexSize } from "../adapters/graphemes";
+import { columnAt } from "../adapters/cursor-line-columns";
+import { graphemeIndexSize, releaseGraphemeIndex } from "../adapters/graphemes";
 import { resolveMotion } from "../adapters/motions";
+import { terminalClampTarget } from "../adapters/normal-cursor";
 import { scrollCursorIntoView } from "../adapters/scroll";
 import { vimPluginKey } from "../vim-keys";
 import { setWysiwygVimStatusOwner } from "../vim-status";
@@ -18,6 +22,16 @@ import { setWysiwygVimStatusOwner } from "../vim-status";
 vi.mock("../adapters/scroll", async (importOriginal) => {
   const actual = await importOriginal<object>();
   return { ...actual, scrollCursorIntoView: vi.fn() };
+});
+
+// issue 776 — count goal-column measurements; delegates to the real function.
+vi.mock("../adapters/cursor-line-columns", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../adapters/cursor-line-columns")>();
+  return {
+    ...actual,
+    columnAt: vi.fn(actual.columnAt),
+  };
 });
 
 const editors: Editor[] = [];
@@ -170,7 +184,8 @@ describe("the grapheme index is released when vim stops owning the surface", () 
     const editor = makeEditor("<p>abcdef</p>");
     editor.commands.setTextSelection(4);
     enable(editor);
-    key(editor, "h"); // builds the index for this text node
+    key(editor, "2"); // only a counted walk builds the index
+    key(editor, "h");
     expect(graphemeIndexSize()).toBeGreaterThan(0);
     editor.view.dispatch(
       editor.state.tr.setMeta(vimPluginKey, {
@@ -179,5 +194,264 @@ describe("the grapheme index is released when vim stops owning the surface", () 
       }),
     );
     expect(graphemeIndexSize()).toBe(0);
+  });
+});
+
+// issue 776 — the goal column must cost nothing per keystroke. Counted as
+// calls to columnAt, the one origin-column measurement (wrapped by the mock
+// above, which delegates to the real function) — not as Intl.Segmenter calls,
+// which a grapheme cache or another plugin's segmentation would change without
+// changing what the goal column costs.
+describe("goal column cost (issue 776)", () => {
+  const LINE = "abcdefghij";
+
+  it("a supplied goal skips the origin measurement in the walk", () => {
+    // Fails if: verticalTarget measures the origin column whether or not a
+    // goal was handed in.
+    const editor = makeEditor(`<p>${LINE}</p><p>${LINE}</p>`);
+    const from = 7; // "g"
+    vi.mocked(columnAt).mockClear();
+    resolveMotion(editor.state, from, "lineDown", 1, { goalColumn: 6 });
+    expect(vi.mocked(columnAt)).not.toHaveBeenCalled();
+    resolveMotion(editor.state, from, "lineDown", 1);
+    expect(vi.mocked(columnAt)).toHaveBeenCalledTimes(1);
+  });
+
+  it("a run of j measures the origin column once, not per j", () => {
+    // Fails if: the selection path measures columnAt on every j instead of
+    // only when the core's goal is null, or verticalTarget re-measures the
+    // origin although the goal was handed in.
+    const editor = makeEditor(`<p>${LINE}</p>`.repeat(6));
+    enable(editor);
+    editor.commands.setTextSelection(7);
+    vi.mocked(columnAt).mockClear();
+    key(editor, "j");
+    key(editor, "j");
+    key(editor, "j");
+    expect(vi.mocked(columnAt)).toHaveBeenCalledTimes(1);
+  });
+});
+
+// issue 776 — the plugin state reducer on the typing path.
+describe("an insert-mode keystroke leaves the plugin state object alone", () => {
+  it("a doc change with nothing to map or forget returns the same state", () => {
+    // Fails if: priority 3 drops its equality gate — every keystroke builds a
+    // new plugin state (and wakes everything comparing it by identity).
+    const editor = makeEditor("<p>abc</p>");
+    enable(editor);
+    editor.commands.setTextSelection(2);
+    key(editor, "i");
+    const before = vimPluginKey.getState(editor.state);
+    expect((before as unknown as { mode: string }).mode).toBe("insert");
+    editor.view.dispatch(editor.state.tr.insertText("x"));
+    expect(editor.state.doc.textContent).toBe("axbc");
+    expect(vimPluginKey.getState(editor.state)).toBe(before);
+  });
+});
+
+// issue 776 — the first non-blank (gg, G, :N, ^) is found in ONE traversal.
+describe("first non-blank cost (issue 776)", () => {
+  it("a line of many marked blank text nodes never calls textBetween", () => {
+    // Fails if: lineFirstNonBlank calls textBetween per cursor unit — each
+    // call restarts the range walk at the first child, quadratic here.
+    // Relies on ProseMirror internals (Node.prototype.textBetween): a PM
+    // upgrade that renames or reroutes it can turn this red with no
+    // regression here.
+    const blanks = Array.from({ length: 400 }, (_, i) => ({
+      marks: [{ type: i % 2 === 0 ? "bold" : "italic" }],
+      text: " ",
+      type: "text",
+    }));
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [...blanks, { text: "end", type: "text" }],
+          type: "paragraph",
+        },
+      ],
+      type: "doc",
+    });
+    const spy = vi.spyOn(
+      Object.getPrototypeOf(editor.state.doc),
+      "textBetween",
+    );
+    try {
+      const target = resolveMotion(editor.state, 1, "lineFirstNonBlank", 1);
+      expect(spy).not.toHaveBeenCalled();
+      expect(editor.state.doc.resolve(target).parentOffset).toBe(400); // "end"
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// issue 776 — the normal-mode clamp's early rejection reads no text.
+describe("terminal clamp cost (issue 776)", () => {
+  it("a caret inside a text node is rejected without cutting the node", () => {
+    // Fails if: terminalClampTarget reads $head.nodeAfter before checking
+    // textOffset — for a position inside a text node ProseMirror cuts a copy
+    // of the node's remaining text, on every normal-mode transaction.
+    // Relies on ProseMirror internals (ResolvedPos.nodeAfter cutting through
+    // TextNode.cut): a PM upgrade that changes that can turn this red with
+    // no regression here.
+    const editor = makeEditor(`<p>${"x".repeat(1000)}</p>`);
+    const textNode = editor.state.doc.child(0).child(0);
+    const spy = vi.spyOn(Object.getPrototypeOf(textNode), "cut");
+    try {
+      const state = editor.state.apply(
+        editor.state.tr.setSelection(
+          TextSelection.create(editor.state.doc, 500),
+        ),
+      );
+      spy.mockClear();
+      expect(terminalClampTarget(state)).toBeNull();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+// Counts yielded segments; containing() does not advance the iterator.
+function spyYield(): { restore: () => void; segs: () => number } {
+  const proto = Intl.Segmenter.prototype;
+  const orig = proto.segment;
+  let segs = 0;
+  proto.segment = function (this: Intl.Segmenter, input: string) {
+    const real = orig.call(this, input);
+    return {
+      containing: real.containing.bind(real),
+      [Symbol.iterator]() {
+        const it = real[Symbol.iterator]();
+        return {
+          next() {
+            const r = it.next();
+            if (!r.done) segs++;
+            return r;
+          },
+          [Symbol.iterator]() {
+            return this;
+          },
+        };
+      },
+    } as unknown as Intl.Segments;
+  };
+  return { restore: () => (proto.segment = orig), segs: () => segs };
+}
+
+describe("one unit back does not index the text node (issue 776)", () => {
+  const longMd = Array.from(
+    { length: 300 },
+    (_, i) => `log line ${i} some words here`,
+  ).join("\n");
+
+  function longEditor(): Editor {
+    const editor = makeEditor("<p></p>");
+    editor.commands.setContent(
+      markdownToProsemirror(longMd, editor.schema).toJSON(),
+    );
+    enable(editor);
+    return editor;
+  }
+
+  it("insert Esc after typing in the middle does not index the text node", () => {
+    // Fails if: unitBeforeOnLine uses prevUnitBoundaryIndexed: 8591 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(Math.floor(longMd.length / 2));
+    key(editor, "i");
+    editor.view.dispatch(editor.state.tr.insertText("X"));
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "Escape");
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("a selection at the terminal boundary does not index the text node", () => {
+    // Fails if: terminalClampTarget uses prevUnitBoundaryIndexed: 8590 segments exceed the bound.
+    const editor = longEditor();
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      editor.commands.setTextSelection(1 + longMd.length);
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("three deletions at the line end do not index the text node", () => {
+    // Fails if: terminalClampTarget uses prevUnitBoundaryIndexed: 25770 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(longMd.length);
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "x");
+      key(editor, "x");
+      key(editor, "x");
+      expect(spy.segs()).toBeLessThanOrEqual(12); // Measured: 9 across three x commands.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("a plain h does not index the text node", () => {
+    // Fails if: charLeft takes the indexed step for count 1: 8590 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(Math.floor(longMd.length / 2));
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "h");
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("$ does not index the text node", () => {
+    // Fails if: lineEnd uses prevUnitBoundaryIndexed: 8590 segments exceed the bound.
+    const editor = longEditor();
+    editor.commands.setTextSelection(Math.floor(longMd.length / 2));
+    releaseGraphemeIndex();
+    const spy = spyYield();
+    try {
+      key(editor, "$");
+      expect(spy.segs()).toBeLessThanOrEqual(8); // Measured: 1 yielded segment.
+      expect(graphemeIndexSize()).toBe(0);
+    } finally {
+      spy.restore();
+    }
+  });
+
+  it("a counted leftward walk still builds the index", () => {
+    // Fails if: charLeft takes the lazy step for a counted walk: the index size stays 0.
+    const editor = longEditor();
+    editor.commands.setTextSelection(20);
+    releaseGraphemeIndex();
+    key(editor, "5");
+    key(editor, "h");
+    expect(graphemeIndexSize()).toBeGreaterThan(0);
+  });
+});
+
+describe("external selection state identity (issue 776)", () => {
+  it("a foreign selection with no goal or visual range keeps the state object", () => {
+    // Fails if: priority 4 drops the non-null goal gate: toBe sees a new state object.
+    const editor = makeEditor("<p>abcd</p>");
+    enable(editor);
+    const before = vimPluginKey.getState(editor.state);
+    editor.commands.setTextSelection(2);
+    expect(editor.state.selection.head).toBe(2);
+    expect(vimPluginKey.getState(editor.state)).toBe(before);
   });
 });

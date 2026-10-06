@@ -17,14 +17,14 @@ import type { Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { redo, undo } from "@tiptap/pm/history";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { TextSelection } from "@tiptap/pm/state";
 
 import { getAction } from "../../../../keybindings/keybinding-actions";
 import { asTaskState, nextTaskState } from "../../../../utils/tasks/task-state";
 import { segmentSpanAt } from "./cursor-line-columns";
-import { cursorSelection } from "./cursor-selection";
+import { cursorSelection, vimCursor } from "./cursor-selection";
+import { resolveFindChar } from "./find-char";
 import { nextUnitBoundary } from "./graphemes";
-import { resolveFindChar, wordEndAt } from "./motions";
 import { resolveMotion } from "./motions";
 import {
   changeLines,
@@ -39,12 +39,18 @@ import {
 import { pasteRegister } from "./paste";
 import { readVimRegister, writeVimRegister } from "./register";
 import { scrollCursorIntoView } from "./scroll";
+import { wordEndAt } from "./word-motions";
 
 export interface ExecutionResult {
   /** True when a transaction landed. A PARTIALLY applied change returns a
    *  reason AND applied — rolling such a change back to normal would lie
    *  about a document that already changed (review ops-R3). */
   applied?: boolean;
+  /** The operator's find or vertical motion failed, so nothing ran (vim's
+   *  clearopbeep): no transaction, no register write, nothing to report —
+   *  a cancelled result carries no `reason`. The plugin returns a change to
+   *  normal mode and keeps the goal column (core goalAfterOperator). */
+  cancelled?: boolean;
   /** Refusal message for the status line, when the operation said no. */
   reason?: string;
   /** Routine no-op — consumed like vim, but never worth a toast. */
@@ -57,12 +63,7 @@ export function executeCoreCommand(
   visual: null | VisualState,
 ): ExecutionResult {
   const state = view.state;
-  // A NodeSelection (block atom line) reads as its own position — PM's head
-  // points past the node and would resolve the NEXT line (review S3-R1).
-  const head =
-    state.selection instanceof NodeSelection
-      ? state.selection.from
-      : state.selection.head;
+  const head = vimCursor(state);
 
   switch (command.type) {
     case "changeLine":
@@ -97,54 +98,10 @@ export function executeCoreCommand(
       return {};
     case "exCommand":
       return runExCommand(command.name);
-    case "openLine": {
-      // §9 minimal o/O: a sibling empty paragraph next to the current block;
-      // the segment/container refinements arrive with S3 cursor work.
-      const $head = state.doc.resolve(head);
-      const depth = $head.depth === 0 ? 0 : $head.depth;
-      const blockPos = depth === 0 ? head : $head.before(depth);
-      const node = state.doc.nodeAt(blockPos);
-      const at = command.below ? blockPos + (node?.nodeSize ?? 1) : blockPos;
-      const paragraph = state.schema.nodes.paragraph.create();
-      const tr = state.tr.insert(at, paragraph);
-      tr.setSelection(TextSelection.create(tr.doc, at + 1));
-      return { applied: dispatchLanded(view, tr) };
-    }
-    case "operatorFind": {
-      const match = resolveFindChar(
-        state,
-        head,
-        command.char,
-        command.kind === "f" || command.kind === "t" ? "f" : "F",
-        command.count,
-      );
-      if (match === head) return { reason: "char not found", silent: true };
-      const forward = command.kind === "f" || command.kind === "t";
-      const lo = forward
-        ? head
-        : command.kind === "T"
-          ? nextUnitBoundary(state, match)
-          : match;
-      const hi = forward
-        ? command.kind === "f"
-          ? nextUnitBoundary(state, match)
-          : match
-        : head;
-      // FOUND but an empty range (T with the match right next door): vim
-      // enters insert for c and quietly does nothing for d/y — the register
-      // survives either way (vim-verified, review ops-R3).
-      if (hi <= lo) return {};
-      writeVimRegister({
-        kind: "char",
-        slice: state.doc.slice(lo, hi).toJSON(),
-      });
-      if (command.op !== "y") {
-        const tr = state.tr.delete(lo, hi);
-        tr.setSelection(TextSelection.create(tr.doc, lo));
-        return { applied: dispatchLanded(view, tr) };
-      }
-      return {};
-    }
+    case "openLine":
+      return runOpenLine(view, command, head);
+    case "operatorFind":
+      return runOperatorFind(view, command, head);
     case "operatorMotion":
       return runOperatorMotion(view, command, head);
     case "paste":
@@ -165,32 +122,8 @@ export function executeCoreCommand(
       // Owned by the plugin's selection path (z. moves the cursor, both
       // variants scroll the view) — never reaches the executor.
       return {};
-    case "toggleTask": {
-      // §298 checklist toggle — nearest ancestor taskItem of the vim head
-      // (same ancestor walk as the checkbox click in task-item.ts, so nested
-      // lists flip the INNERMOST item). Off a task line the key is consumed
-      // like vim, silently.
-      //
-      // ‼️ §18.18 M4: this walks the same ring as the checkbox
-      // (`nextTaskState`), so it is a 3-state cycle now, not a flip — the key
-      // and the control must not disagree about what one press means. The
-      // command keeps its `toggleTask` id because that id is what the keymap
-      // and its tests bind; only the step it takes has widened.
-      const $head = state.doc.resolve(head);
-      for (let d = $head.depth; d > 0; d--) {
-        const node = $head.node(d);
-        if (node.type.name === "taskItem") {
-          view.dispatch(
-            state.tr.setNodeMarkup($head.before(d), undefined, {
-              ...node.attrs,
-              state: nextTaskState(asTaskState(node.attrs.state)),
-            }),
-          );
-          return { applied: true };
-        }
-      }
-      return { silent: true };
-    }
+    case "toggleTask":
+      return runToggleTask(view, head);
     case "undo":
       runHistory(view, undo, command.count);
       return {};
@@ -232,8 +165,9 @@ function enterInsert(
   return { applied: dispatchLanded(view, tr.scrollIntoView()) };
 }
 
-/** Motions that make an operator act LINEWISE, like vim (dj deletes two
- *  whole lines, dG to the end of the document). */
+/** Motions that make an operator act LINEWISE: dj deletes the current and
+ *  next line when there is one (it cancels at the last line); dG runs through
+ *  the document end, including when already on its last line. */
 const LINEWISE_MOTIONS = new Set<Motion>([
   "docEnd",
   "docStart",
@@ -260,7 +194,7 @@ function dispatchLanded(view: EditorView, tr: Transaction): boolean {
   // DIRECT call matters: PM's own scroll pipeline bails when the DOM
   // selection sits outside a non-editable view, i.e. vim modal (ops-R8).
   if (view.state !== before) {
-    scrollCursorIntoView(view, vimHeadOf(view.state));
+    scrollCursorIntoView(view, vimCursor(view.state));
     return true;
   }
   return false;
@@ -323,8 +257,70 @@ function runHistory(
   // Only on PROGRESS: u at history's start must not snap a wheel-scrolled
   // viewport back to an unchanged cursor (review ops-R9).
   if (view.state !== start) {
-    scrollCursorIntoView(view, vimHeadOf(view.state));
+    scrollCursorIntoView(view, vimCursor(view.state));
   }
+}
+
+/** o / O: an empty paragraph next to the current block, caret in it. */
+function runOpenLine(
+  view: EditorView,
+  command: Extract<CoreCommand, { type: "openLine" }>,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  // §9 minimal o/O: a sibling empty paragraph next to the current block;
+  // the segment/container refinements arrive with S3 cursor work.
+  const $head = state.doc.resolve(head);
+  const depth = $head.depth === 0 ? 0 : $head.depth;
+  const blockPos = depth === 0 ? head : $head.before(depth);
+  const node = state.doc.nodeAt(blockPos);
+  const at = command.below ? blockPos + (node?.nodeSize ?? 1) : blockPos;
+  const paragraph = state.schema.nodes.paragraph.create();
+  const tr = state.tr.insert(at, paragraph);
+  tr.setSelection(TextSelection.create(tr.doc, at + 1));
+  return { applied: dispatchLanded(view, tr) };
+}
+
+/** dfx / ctx / ytx: an operator over a find-char range in the segment. */
+function runOperatorFind(
+  view: EditorView,
+  command: Extract<CoreCommand, { type: "operatorFind" }>,
+  head: number,
+): ExecutionResult {
+  const state = view.state;
+  const match = resolveFindChar(
+    state,
+    head,
+    command.char,
+    command.kind === "f" || command.kind === "t" ? "f" : "F",
+    command.count,
+  );
+  if (match === head) return { cancelled: true };
+  const forward = command.kind === "f" || command.kind === "t";
+  const lo = forward
+    ? head
+    : command.kind === "T"
+      ? nextUnitBoundary(state, match)
+      : match;
+  const hi = forward
+    ? command.kind === "f"
+      ? nextUnitBoundary(state, match)
+      : match
+    : head;
+  // FOUND but an empty range (T with the match right next door): vim
+  // enters insert for c and quietly does nothing for d/y — the register
+  // survives either way (vim-verified, review ops-R3).
+  if (hi <= lo) return {};
+  writeVimRegister({
+    kind: "char",
+    slice: state.doc.slice(lo, hi).toJSON(),
+  });
+  if (command.op !== "y") {
+    const tr = state.tr.delete(lo, hi);
+    tr.setSelection(TextSelection.create(tr.doc, lo));
+    return { applied: dispatchLanded(view, tr) };
+  }
+  return {};
 }
 
 function runOperatorMotion(
@@ -337,6 +333,14 @@ function runOperatorMotion(
 
   if (LINEWISE_MOTIONS.has(motion)) {
     const target = resolveMotion(state, head, motion, count);
+    // A j or k with no line to reach leaves the cursor where it was, and vim
+    // cancels the operator (clearopbeep). Asked of the MOTION, not of the
+    // span: a list item and its nested child are one line unit (count 1)
+    // although j moves between them. gg and G always have a line to act on,
+    // their own included.
+    if ((motion === "lineDown" || motion === "lineUp") && target === head) {
+      return { cancelled: true };
+    }
     const span = linewiseSpan(state, {
       anchorCursor: head,
       headCursor: target,
@@ -392,9 +396,31 @@ function runOperatorMotion(
   return {};
 }
 
-/** The vim head of a landing selection — a NodeSelection reads as its own
- *  position, like vimCursor in the plugin (review S3-R1). */
-function vimHeadOf(state: EditorView["state"]): number {
-  const sel = state.selection;
-  return sel instanceof NodeSelection ? sel.from : sel.head;
+/** Space: step the nearest task item's state, as the checkbox does. */
+function runToggleTask(view: EditorView, head: number): ExecutionResult {
+  const state = view.state;
+  // §298 checklist toggle — nearest ancestor taskItem of the vim head
+  // (same ancestor walk as the checkbox click in task-item.ts, so nested
+  // lists flip the INNERMOST item). Off a task line the key is consumed
+  // like vim, silently.
+  //
+  // ‼️ §18.18 M4: this walks the same ring as the checkbox
+  // (`nextTaskState`), so it is a 3-state cycle now, not a flip — the key
+  // and the control must not disagree about what one press means. The
+  // command keeps its `toggleTask` id because that id is what the keymap
+  // and its tests bind; only the step it takes has widened.
+  const $head = state.doc.resolve(head);
+  for (let d = $head.depth; d > 0; d--) {
+    const node = $head.node(d);
+    if (node.type.name === "taskItem") {
+      view.dispatch(
+        state.tr.setNodeMarkup($head.before(d), undefined, {
+          ...node.attrs,
+          state: nextTaskState(asTaskState(node.attrs.state)),
+        }),
+      );
+      return { applied: true };
+    }
+  }
+  return { silent: true };
 }

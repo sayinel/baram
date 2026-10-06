@@ -10,6 +10,12 @@
  * command; multi-key sequences (`dd`, `gg`) emit only on completion.
  */
 export type CoreCommand =
+  | {
+      /** Escape forgets the goal column (vim nv_esc); v/V toggling off
+       *  keeps it (issue 776). */
+      reason: "escape" | "toggle";
+      type: "leaveVisual";
+    }
   | { after: boolean; count: number; type: "paste" }
   | { at: InsertAnchor; type: "enterInsert" }
   | { below: boolean; type: "openLine" }
@@ -45,12 +51,19 @@ export type CoreCommand =
   | { name: string; type: "exCommand" }
   | { type: "deleteVisual" }
   | { type: "enterVisual" }
-  | { type: "leaveVisual" }
   | { type: "toggleTask" }
   | { type: "yankVisual" };
 
 /** f/F = to the char, t/T = till just before it; capitals go backward. */
 export type FindKind = "f" | "F" | "t" | "T";
+
+/**
+ * vim's curswant (issue 776): the column j/k try to land on. A unit column,
+ * or "lineEnd" after `$` (vim's MAXCOL), which lands every later j/k on the
+ * target line's last unit. The core only decides keep / forget / "lineEnd"
+ * (core/goal-column.ts); the number itself is measured by the adapters.
+ */
+export type GoalColumn = "lineEnd" | number;
 
 /** Where `i a I A` place the cursor before entering insert. */
 export type InsertAnchor = "afterCursor" | "atCursor" | "lineEnd" | "lineStart";
@@ -102,6 +115,12 @@ export type PendingKey =
 /** `/` = forward, `?` = backward — vim's buffer-local search (§298 tier 3). */
 export type SearchDirection = "backward" | "forward";
 
+/** Context the caller supplies alongside the key. */
+export interface StepContext {
+  /** Where the cursor is right now — needed to anchor visual mode. */
+  cursor: number;
+}
+
 /**
  * The result of feeding one key to the core.
  *
@@ -121,6 +140,8 @@ export interface VimCoreState {
   /** Text typed after `:`, WITHOUT the colon — null when no ex line is open.
    *  An empty string means the user has typed `:` and nothing else. */
   exLine: null | string;
+  /** curswant — null means "measure from the cursor on the next j/k". */
+  goalColumn: GoalColumn | null;
   /** Last f/F/t/T target, for ; and , repeats. */
   lastFind: null | { char: string; kind: FindKind };
   /** Last executed search — `n`/`N` replay it (vim's search register). */
@@ -154,6 +175,7 @@ export function initialCoreState(mode: VimMode = "normal"): VimCoreState {
   return {
     count: null,
     exLine: null,
+    goalColumn: null,
     lastFind: null,
     lastSearch: null,
     mode,

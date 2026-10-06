@@ -5,7 +5,12 @@ import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
-import { nextUnitBoundary, prevUnitBoundary } from "../graphemes";
+import { lineUnitStarts, segmentSpanAt } from "../cursor-line-columns";
+import {
+  nextUnitBoundary,
+  prevUnitBoundary,
+  prevUnitBoundaryIndexed,
+} from "../graphemes";
 
 const editors: Editor[] = [];
 
@@ -25,7 +30,7 @@ function walk(editor: Editor, pos: number, count: number, dir: -1 | 1): number {
   for (let i = 0; i < count; i++) {
     const next =
       dir < 0
-        ? prevUnitBoundary(editor.state, at)
+        ? prevUnitBoundaryIndexed(editor.state, at)
         : nextUnitBoundary(editor.state, at);
     if (next === at) break;
     at = next;
@@ -58,6 +63,49 @@ describe("cursor units are grapheme clusters", () => {
     const end = walk(editor, 1, 400, 1);
     expect(end).toBe(401);
     expect(walk(editor, end, 400, -1)).toBe(1);
+  });
+});
+
+describe("the two cursor-unit definitions agree", () => {
+  // forEachLineUnit (via lineUnitStarts) iterates a line's units; graphemes.ts
+  // steps over them. Nothing else ties the two together. Fails if: either
+  // drifts — e.g. forEachLineUnit iterating code points (the NFD syllable
+  // splits into three) or skipping a non-text inline node (the mention).
+  it("stepping right through a line visits exactly lineUnitStarts", () => {
+    const editor = new Editor({ extensions: createBaramExtensions() });
+    editors.push(editor);
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            { text: "a", type: "text" },
+            {
+              marks: [{ type: "bold" }],
+              text: "b\u1100\u1161\u11a8",
+              type: "text",
+            },
+            { text: "\u{1F468}\u200d\u{1F469} ", type: "text" },
+            { attrs: { id: "s", label: "s" }, type: "mention" },
+            { text: "x", type: "text" },
+          ],
+          type: "paragraph",
+        },
+      ],
+      type: "doc",
+    });
+    const span = segmentSpanAt(editor.state, 1);
+    if (!span) throw new Error("no line");
+    const stepped: number[] = [];
+    for (let at = span.from; at < span.to;) {
+      stepped.push(at);
+      const next = nextUnitBoundary(editor.state, at);
+      if (next === at) break;
+      at = next;
+    }
+    expect(stepped).toHaveLength(7); // a · b · 각 · family · space · @s · x
+    expect(
+      lineUnitStarts(editor.state, { end: span.to, start: span.from }),
+    ).toEqual(stepped);
   });
 });
 
@@ -124,5 +172,34 @@ describe("counted motion segments each text node once", () => {
     }
     expect(landed).toBe(1501); // the walk itself still works
     expect(calls).toBeLessThanOrEqual(2); // the defect cost 500
+  });
+});
+
+describe("one unit back without an index", () => {
+  it("one unit back without the index agrees with the indexed walk at every position", () => {
+    // Fails if: containing(inNode) replaces containing(inNode - 1): "abc" @2 returns 2, not 1.
+    const corpus = [
+      "abc",
+      "한글 text",
+      "한글",
+      "a👨‍👩‍👧‍👦b",
+      "🇰🇷🇯🇵x",
+      "éé",
+      "a\r\nb",
+      "𝒳y",
+    ];
+    for (const text of corpus) {
+      const editor = makeEditor("<p></p>");
+      editor.commands.setContent({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      });
+      for (let pos = 1; pos <= 1 + text.length; pos++) {
+        expect(
+          prevUnitBoundary(editor.state, pos),
+          `${JSON.stringify(text)} @${pos}`,
+        ).toBe(prevUnitBoundaryIndexed(editor.state, pos));
+      }
+    }
   });
 });

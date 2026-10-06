@@ -9,51 +9,64 @@ vim 구현의 **파일 경로가 사는 유일한 페이지**다. 다른 페이�
 
 ## core — 순수 상태기계 (ProseMirror 무의존)
 
-| 파일                                                                                                            | 무엇                                          |
-| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| [state-machine.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/state-machine.ts) | 모달 상태기계 (설계 §14)                      |
-| [types.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/types.ts)                 | core 어휘 — `KeyToken` · `CoreCommand` intent |
-| [keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/keys.ts)                   | 키스트로크 정규화 (물리키 / raw 분리)         |
-| [visual-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-state.ts)   | VisualState 기록 (설계 §6)                    |
-| [hangul.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/hangul.ts)               | 한글 find 타겟 매칭 — 초성 검색 (설계 §5)     |
+| 파일                                                                                                            | 무엇                                                                                      |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [state-machine.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/state-machine.ts) | 모달 상태기계 (설계 §14)                                                                  |
+| [goal-column.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/goal-column.ts)     | goal column(vim curswant) 규칙 — 명령마다 유지 / 잊음 / 줄 끝, find 는 성공했을 때만 잊음 |
+| [step-kit.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/step-kit.ts)           | 상태기계 공용 프리미티브 — 모션 표 · count 산술 · StepResult 생성                         |
+| [normal-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/normal-keys.ts)     | normal 모드 단일 키와 Escape                                                              |
+| [visual-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-keys.ts)     | visual 모드 단일 키                                                                       |
+| [pending-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/pending-keys.ts)   | 대기 중인 시퀀스의 두 번째 키 — 오퍼레이터 · g/z · find 대상                              |
+| [command-lines.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/command-lines.ts) | ex `:` 줄과 `/`·`?` 검색 줄 입력                                                          |
+| [types.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/types.ts)                 | core 어휘 — `KeyToken` · `CoreCommand` intent                                             |
+| [keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/keys.ts)                   | 키스트로크 정규화 (물리키 / raw 분리)                                                     |
+| [visual-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/visual-state.ts)   | VisualState 기록 (설계 §6)                                                                |
+| [hangul.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/core/hangul.ts)               | 한글 find 타겟 매칭 — 초성 검색 (설계 §5)                                                 |
 
 ## adapters — core 의 intent 를 PM 위에서 실행
 
-| 파일                                                                                                                            | 무엇                                                                                        |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| [execute-command.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/execute-command.ts)         | `CoreCommand` 실행 진입점 (설계 §2)                                                         |
-| [motions.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/motions.ts)                         | 모션 해석 — EditorState + 위치 + motion → 목표 위치 (dispatch 는 plugin, 설계 §2)           |
-| [operations.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/operations.ts)                   | 줄·문자 오퍼레이션 d/c/y (설계 §9)                                                          |
-| [line-units.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-units.ts)                   | "줄이란 무엇인가" (설계 §9)                                                                 |
-| [cursor-line-columns.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-line-columns.ts) | 커서 줄의 컬럼 프리미티브                                                                   |
-| [cursor-selection.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-selection.ts)       | normal 모드 커서 위치를 PM selection 으로 바꾸는 **유일한 곳** (visual·편집 후 착지는 따로) |
-| [graphemes.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/graphemes.ts)                     | 커서 단위 — grapheme 경계 (설계 §6)                                                         |
-| [search.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/search.ts)                           | `/` 검색 어댑터 (#372)                                                                      |
-| [register.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/register.ts)                       | vim register (설계 §6)                                                                      |
-| [paste.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/paste.ts)                             | paste — register · 예산 (설계 §6/§9)                                                        |
-| [atom-insert.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/atom-insert.ts)                 | atom 위 insert 진입 프리플라이트                                                            |
-| [insert-entry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/insert-entry.ts)               | PM insert 모드 화살표로 코드블록 island 진입 (#477)                                         |
-| [code-block-landing.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/code-block-landing.ts)   | 코드블록 진입 착지 정책                                                                     |
-| [esc-arbitration.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/esc-arbitration.ts)         | insert-Esc 중재 (설계 §4/§5c)                                                               |
-| [scroll.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/scroll.ts)                           | z 계열 스크롤 + 커서 팔로우                                                                 |
-| [suspension.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/suspension.ts)                   | 입력 섬 판정 + island 라벨 (설계 §4)                                                        |
+| 파일                                                                                                                            | 무엇                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [execute-command.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/execute-command.ts)         | `CoreCommand` 실행 진입점 (설계 §2)                                                                             |
+| [motions.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/motions.ts)                         | 모션 해석 — EditorState + 위치 + motion → 목표 위치 (dispatch 는 plugin, 설계 §2)                               |
+| [line-sequence.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-sequence.ts)             | 커서 줄 목록 — j/k · w/b · gg/G · `:N` 이 걷는 줄 모델 (문서별 캐시)                                            |
+| [vertical-walk.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/vertical-walk.ts)             | 세로 모션 j/k — goal 칼럼 줄 이동과 표 행 이동                                                                  |
+| [word-motions.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/word-motions.ts)               | 단어 모션 w/b 와 cw 의 단어 끝                                                                                  |
+| [find-char.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/find-char.ts)                     | f/F/t/T 문자 찾기 해석                                                                                          |
+| [operations.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/operations.ts)                   | 줄·문자 오퍼레이션 d/c/y (설계 §9)                                                                              |
+| [line-units.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/line-units.ts)                   | "줄이란 무엇인가" (설계 §9)                                                                                     |
+| [cursor-line-columns.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-line-columns.ts) | 커서 줄의 컬럼 프리미티브                                                                                       |
+| [cursor-selection.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/cursor-selection.ts)       | normal 모드 커서 위치를 PM selection 으로 바꾸는 **유일한 곳** (visual·편집 후 착지는 따로) · 그 역 `vimCursor` |
+| [normal-cursor.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/normal-cursor.ts)             | normal 모드 커서를 글자 **위에** 둔다 — insert Esc 의 한 칸 뒤로, 줄 끝 caret 의 clamp                          |
+| [graphemes.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/graphemes.ts)                     | 커서 단위 — grapheme 경계 (설계 §6)                                                                             |
+| [search.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/search.ts)                           | `/` 검색 어댑터 (#372)                                                                                          |
+| [register.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/register.ts)                       | vim register (설계 §6)                                                                                          |
+| [paste.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/paste.ts)                             | paste — register · 예산 (설계 §6/§9)                                                                            |
+| [atom-insert.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/atom-insert.ts)                 | atom 위 insert 진입 프리플라이트                                                                                |
+| [insert-entry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/insert-entry.ts)               | PM insert 모드 화살표로 코드블록 island 진입 (#477)                                                             |
+| [code-block-landing.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/code-block-landing.ts)   | 코드블록 진입 착지 정책                                                                                         |
+| [esc-arbitration.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/esc-arbitration.ts)         | insert-Esc 중재 (설계 §4/§5c)                                                                                   |
+| [scroll.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/scroll.ts)                           | z 계열 스크롤 + 커서 팔로우                                                                                     |
+| [suspension.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/adapters/suspension.ts)                   | 입력 섬 판정 + island 라벨 (설계 §4)                                                                            |
 
 ## 루트와 렌더 — 플러그인 본체 · 배선 · 커서 CSS
 
-| 파일                                                                                                                         | 무엇                                                                             |
-| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| [index.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/index.ts)                                   | 항상 설치되는 Extension — priority 10000 (설계 §2/§7)                            |
-| [vim-plugin.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin.ts)                         | PM Plugin 본체 (설계 §2/§3/§4/§5)                                                |
-| [vim-plugin-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin-state.ts)             | 플러그인 상태 — 무의존 leaf (PR #491 분리)                                       |
-| [vim-island-sync.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-island-sync.ts)               | PluginView 생애주기 (PR #491 분리)                                               |
-| [vim-selection-commands.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-selection-commands.ts) | selection 커맨드 — `dispatchCursor` 의 집 (PR #491 분리)                         |
-| [vim-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-keys.ts)                             | PluginKey · 모달 상태 질의 · 외부편집 태깅 `chainWithVimExternalEdit`            |
-| [vim-status.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-status.ts)                         | 상태 피드 arbitration (설계 §8)                                                  |
-| [vim-lifecycle.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-lifecycle.ts)                   | 설정 토글 배선 (설계 §7)                                                         |
-| [vim-activation.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-activation.ts)                 | 문서 활성화 경계 — 탭 전환 리셋                                                  |
-| [vim-search-line.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-search-line.ts)               | StatusBar input ↔ core 배선 (IME 정공법)                                         |
-| [replace-editor-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/replace-editor-state.ts)     | EditorState 전체 교체의 관문 — 전 호출부가 여기를 지난다(관례이고 게이트는 없다) |
-| [vim.css](https://github.com/sayinel/baram/blob/main/src/styles/vim.css)                                                     | WYSIWYG 블록 커서 렌더 (설계 §10) — normal 모드 데코레이션 · 비활성 창 hollow    |
+| 파일                                                                                                                         | 무엇                                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [index.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/index.ts)                                   | 항상 설치되는 Extension — priority 10000 (설계 §2/§7)                                                   |
+| [vim-plugin.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin.ts)                         | PM Plugin 본체 (설계 §2/§3/§4/§5)                                                                       |
+| [vim-plugin-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin-state.ts)             | 플러그인 상태 — 무의존 leaf (PR #491 분리)                                                              |
+| [vim-plugin-reducer.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-plugin-reducer.ts)         | plugin StateField 의 apply/init — §5b 우선순위 사다리(vim meta → 외부 명령 → untagged 편집 → 외부 선택) |
+| [vim-pointer-goal.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-pointer-goal.ts)             | 포인터 누름이 커서를 실제로 옮겼을 때만 goal 칼럼을 잊게 하는 감시                                      |
+| [vim-island-sync.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-island-sync.ts)               | PluginView 생애주기 (PR #491 분리)                                                                      |
+| [vim-selection-commands.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-selection-commands.ts) | selection 커맨드 — `dispatchCursor` 의 집 (PR #491 분리)                                                |
+| [vim-keys.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-keys.ts)                             | PluginKey · 모달 상태 질의 · 외부편집 태깅 `chainWithVimExternalEdit`                                   |
+| [vim-status.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-status.ts)                         | 상태 피드 arbitration (설계 §8)                                                                         |
+| [vim-lifecycle.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-lifecycle.ts)                   | 설정 토글 배선 (설계 §7)                                                                                |
+| [vim-activation.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-activation.ts)                 | 문서 활성화 경계 — 탭 전환 리셋                                                                         |
+| [vim-search-line.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/vim-search-line.ts)               | StatusBar input ↔ core 배선 (IME 정공법)                                                                |
+| [replace-editor-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/vim/replace-editor-state.ts)     | EditorState 전체 교체의 관문 — 전 호출부가 여기를 지난다(관례이고 게이트는 없다)                        |
+| [vim.css](https://github.com/sayinel/baram/blob/main/src/styles/vim.css)                                                     | WYSIWYG 블록 커서 렌더 (설계 §10) — normal 모드 데코레이션 · 비활성 창 hollow                           |
 
 ## CM 표면 — source mode · 코드블록 island
 
@@ -79,13 +92,14 @@ WYSIWYG 이 자체 엔진인 반면 이쪽은 `@replit/codemirror-vim` 어댑터
 즉 **여기 없다고 해서 vim 과 무관하다는 뜻이 아니다.** 어떤 페이지가 이름 붙여 설명하는 동작의
 집이 여기 없으면, 그건 빠진 것이다 — 행을 더할 것.
 
-| 파일                                                                                                                           | 무엇                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| [use-source-mode.ts](https://github.com/sayinel/baram/blob/main/src/hooks/use-source-mode.ts)                                  | source mode 복귀 — churn 방어 4번이 사는 곳 (양 브랜치)         |
-| [focus-editor-view.ts](https://github.com/sayinel/baram/blob/main/src/utils/editor/focus-editor-view.ts)                       | editable 게이트 폴백 — non-editable 뷰에서 `focus()` 가 no-op   |
-| [code-block-cm-registry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/code-block-cm-registry.ts)   | leaf 채널 — editable 브로드캐스트 · vim on/off · entry 핸드오프 |
-| [use-atom-block-behavior.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/use-atom-block-behavior.ts) | 모든 atom 블록 뷰의 공유 경계 동작                              |
-| [StatusBar.tsx](https://github.com/sayinel/baram/blob/main/src/components/layout/StatusBar.tsx)                                | 모드 · 명령 · island 라벨 렌더                                  |
+| 파일                                                                                                                           | 무엇                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| [syntax-reveal-state.ts](https://github.com/sayinel/baram/blob/main/src/extensions/plugins/syntax-reveal-state.ts)             | vim reducer 가 읽는 syntax reveal 태그의 계약 · expand/collapse 의 goal 보존 |
+| [use-source-mode.ts](https://github.com/sayinel/baram/blob/main/src/hooks/use-source-mode.ts)                                  | source mode 복귀 — churn 방어 4번이 사는 곳 (양 브랜치)                      |
+| [focus-editor-view.ts](https://github.com/sayinel/baram/blob/main/src/utils/editor/focus-editor-view.ts)                       | editable 게이트 폴백 — non-editable 뷰에서 `focus()` 가 no-op                |
+| [code-block-cm-registry.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/code-block-cm-registry.ts)   | leaf 채널 — editable 브로드캐스트 · vim on/off · entry 핸드오프              |
+| [use-atom-block-behavior.ts](https://github.com/sayinel/baram/blob/main/src/extensions/nodes/views/use-atom-block-behavior.ts) | 모든 atom 블록 뷰의 공유 경계 동작                                           |
+| [StatusBar.tsx](https://github.com/sayinel/baram/blob/main/src/components/layout/StatusBar.tsx)                                | 모드 · 명령 · island 라벨 렌더                                               |
 
 테스트는 각 모듈 옆 `__tests__/` 에 있다 — vim 테스트는 위 디렉터리들 각각의 `__tests__/` 에
 흩어져 있다(`extensions/plugins/vim/` · `components/editor/` · `extensions/` · `nodes/views/` ·

@@ -66,6 +66,10 @@ export function activateEditorForDocument(view: EditorView): void {
     core: {
       count: null,
       exLine: null,
+      // The reset may collapse a visual range — re-measure (issue 776). A
+      // clean normal never gets here, so its goal survives a tab switch
+      // together with the selection it belongs to.
+      goalColumn: null,
       lastFind: core.lastFind, // f/; repeats are not transient — vim keeps them
       lastSearch: core.lastSearch, // n/N history survives, like lastFind
       mode: "normal" as const,

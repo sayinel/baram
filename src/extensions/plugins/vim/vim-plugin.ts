@@ -14,18 +14,20 @@
 // extension drops its own while non-editable, and a manual setAttribute
 // would be clobbered by PM's outer-deco patch (design §3b).
 
-import type { CoreCommand, StepResult, VimCoreState } from "./core/types";
-import type { VimMeta, VimPluginState } from "./vim-plugin-state";
+import type { CoreCommand, StepResult } from "./core/types";
+import type { VimPluginState } from "./vim-plugin-state";
 import type { Editor as TiptapEditor } from "@tiptap/core";
+import type { ResolvedPos } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { NodeSelection, Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { planAtomInsert } from "./adapters/atom-insert";
+import { vimCursor } from "./adapters/cursor-selection";
 import { hasAnyEditorTransient } from "./adapters/esc-arbitration";
 import { executeCoreCommand } from "./adapters/execute-command";
-import { nextUnitBoundary, releaseGraphemeIndex } from "./adapters/graphemes";
+import { nextUnitBoundary } from "./adapters/graphemes";
 import { insertArrowEntry } from "./adapters/insert-entry";
 import { scrollCursorIntoView } from "./adapters/scroll";
 import {
@@ -33,19 +35,37 @@ import {
   isSuspendTarget,
   shouldSuspendFor,
 } from "./adapters/suspension";
+import { goalAfterOperator } from "./core/goal-column";
 import { isMacPlatform, toKeyToken } from "./core/keys";
 import { step } from "./core/state-machine";
-import { initialCoreState } from "./core/types";
 import { createIslandSync } from "./vim-island-sync";
-import { isVimExternalEdit, vimPluginKey } from "./vim-keys";
+import { vimPluginKey } from "./vim-keys";
+import {
+  applyVimTransaction,
+  initialVimPluginState,
+} from "./vim-plugin-reducer";
 import { dispatchMeta, isModal, read } from "./vim-plugin-state";
-import { runSelectionCommand, vimCursor } from "./vim-selection-commands";
+import { createPointerGoalWatch } from "./vim-pointer-goal";
+import {
+  appendClampAndGoalReset,
+  escapeInsertCursor,
+  runSelectionCommand,
+} from "./vim-selection-commands";
 import { publishVimRefusal } from "./vim-status";
 
 export function createVimPlugin(
   tiptapEditor: TiptapEditor,
 ): Plugin<VimPluginState> {
+  const pointerGoal = createPointerGoalWatch();
   return new Plugin<VimPluginState>({
+    /** issue 776 — forget the goal column when a pointer press moved the
+     *  cursor (vim-pointer-goal.ts), and keep the normal-mode caret ON a
+     *  unit — in one appended transaction (appendClampAndGoalReset). */
+    appendTransaction: (trs, _old, state) =>
+      appendClampAndGoalReset(state, {
+        forgetGoal: pointerGoal.takeMovedPress(trs, state),
+      }),
+
     key: vimPluginKey as never,
 
     props: {
@@ -70,12 +90,16 @@ export function createVimPlugin(
         const $head = state.doc.resolve(head);
         if (!$head.parent.isTextblock) return null; // atom line — NodeSelection
         const end = nextUnitBoundary(state, head);
-        if (end > head) {
+        // A line-break unit — a YAML newline in frontmatter (where gg lands
+        // on a blank first line) or the hard break after an empty segment —
+        // has no width, so painting it shows nothing: it gets the empty-line
+        // caret too.
+        if (end > head && !isLineBreakUnit($head, end - head)) {
           return DecorationSet.create(state.doc, [
             Decoration.inline(head, end, { class: "vim-cursor" }),
           ]);
         }
-        // Empty line or terminal boundary — a zero-width widget caret.
+        // Empty line, terminal boundary or newline — a zero-width widget caret.
         return DecorationSet.create(state.doc, [
           Decoration.widget(head, eolCursorWidget, { side: 1 }),
         ]);
@@ -86,7 +110,7 @@ export function createVimPlugin(
 
       handleDOMEvents: {
         /** §12-⑩ pointer entry (issue 408) — a click that lands a
-         *  NodeSelection is the ONE selection write that does not go through
+         *  NodeSelection is written by PM's pointer handling, not through
          *  dispatchCursor, so it got no churn suppression: PM's pointer
          *  dispatch wrote the node range, WebKit re-normalised it, and the
          *  late selectionchange deselected the block — closing the edit
@@ -172,6 +196,7 @@ export function createVimPlugin(
 
         /** P3 entry point: the ONLY key path while non-editable. */
         keydown: (view, event) => {
+          pointerGoal.disarm();
           const vim = read(view.state);
           if (!vim.enabled || vim.suspended || !isModal(vim)) return false;
           if (isSuspendTarget(event)) return false; // §4 pre-focus safety
@@ -201,22 +226,52 @@ export function createVimPlugin(
               result.command,
               vim.core.visual,
             );
-            // A refused CHANGE must not leave the editor in insert — the
-            // core flips the mode before the adapter can veto (ops-R2).
-            // A PARTIALLY applied change is not a refusal: the document
-            // already changed and the empty line awaits input (ops-R3).
-            if (
-              exec.reason &&
-              !exec.applied &&
-              isChangeCommand(result.command)
-            ) {
+            // A CHANGE that did not run must not leave the editor in insert
+            // — the core flips the mode before the adapter can veto (ops-R2).
+            // It did not run when its motion cancelled it, or when its
+            // transaction did not land: refused, or dropped by another
+            // plugin's filter (`applied` is false, ops-R4). A change over an
+            // empty range builds no transaction and reports no `applied`; it
+            // enters insert. A PARTIALLY applied change landed: the empty
+            // line awaits input (ops-R3).
+            const notRun = exec.cancelled === true || exec.applied === false;
+            if (notRun && isChangeCommand(result.command)) {
               dispatchMeta(view, { mode: "normal", type: "setMode" });
+            }
+            // Whether an operator ran decides its goal column, and the core
+            // says how (goalAfterOperator). Read after the recovery above,
+            // which forgets the goal on its way back to normal.
+            const core = read(view.state).core;
+            const goalColumn = goalAfterOperator(
+              vim.core.goalColumn,
+              core.goalColumn,
+              exec.cancelled === true,
+            );
+            if (goalColumn !== core.goalColumn) {
+              dispatchMeta(view, {
+                core: { ...core, goalColumn },
+                type: "core",
+              });
             }
             // Routine no-ops stay quiet: the app has ONE toast slot and
             // it also carries save and plugin errors (final review).
             if (exec.reason && !exec.silent) publishVimRefusal(exec.reason);
           }
           return true;
+        },
+
+        /** issue 776 — arm the pointer watch (vim-pointer-goal.ts): the goal
+         *  column is forgotten only if this press moves the cursor. Both
+         *  events, since touch and pen raise pointerdown first. The pointerdown
+         *  listener also reaches NodeViews whose stopEvent rejects mousedown;
+         *  a stationary cursor keeps its goal, and the next key disarms the watch. */
+        mousedown: (view) => {
+          pointerGoal.arm(view);
+          return false;
+        },
+        pointerdown: (view) => {
+          pointerGoal.arm(view);
+          return false;
         },
 
         /** §5: browser-default paste is actively consumed while modal. */
@@ -278,7 +333,14 @@ export function createVimPlugin(
         if (!result.handled) return false;
         event.preventDefault();
         event.stopPropagation();
-        dispatchMeta(view, { core: result.state, type: "core" });
+        // Esc is the only key step() handles in insert mode — a normal
+        // result means insert was just left.
+        const leftInsert = result.state.mode === "normal";
+        if (leftInsert) {
+          escapeInsertCursor(view, result.state);
+        } else {
+          dispatchMeta(view, { core: result.state, type: "core" });
+        }
         if (result.command) {
           executeCoreCommand(view, result.command, vim.core.visual);
         }
@@ -298,63 +360,8 @@ export function createVimPlugin(
     view: (editorView) => createIslandSync(editorView, tiptapEditor),
 
     state: {
-      apply(tr, prev): VimPluginState {
-        // §5b priority 1 — vim's own meta.
-        const meta = tr.getMeta(vimPluginKey) as undefined | VimMeta;
-        if (meta) return reduce(prev, meta);
-
-        if (!prev.enabled) return prev;
-
-        // §5b priority 2 — explicit external command: clear count/pending,
-        // apply the mode matrix (visual collapses to normal). Applies to
-        // selection/meta-only transactions too (v7 pin 4).
-        if (isVimExternalEdit(tr)) {
-          return withCore(prev, {
-            ...prev.core,
-            count: null,
-            mode: prev.core.mode === "visual" ? "normal" : prev.core.mode,
-            pending: null,
-            pendingCount: null,
-            visual: null,
-          });
-        }
-
-        // §5b priority 3 — untagged doc change: reconcile positions.
-        if (tr.docChanged) {
-          const visual = prev.core.visual
-            ? {
-                ...prev.core.visual,
-                anchorCursor: tr.mapping.map(prev.core.visual.anchorCursor),
-                headCursor: tr.mapping.map(prev.core.visual.headCursor),
-              }
-            : null;
-          return withCore(prev, { ...prev.core, visual });
-        }
-
-        // §5b priority 4 — external selection: a foreign selectionSet drops
-        // visual back to normal (the anchor no longer means anything).
-        if (tr.selectionSet && prev.core.mode === "visual") {
-          return withCore(prev, {
-            ...prev.core,
-            mode: "normal",
-            visual: null,
-          });
-        }
-
-        return prev;
-      },
-
-      init(): VimPluginState {
-        return {
-          core: initialCoreState("insert"),
-          enabled: false,
-          exLine: null,
-          island: null,
-          mode: "insert",
-          searchLine: null,
-          suspended: false,
-        };
-      },
+      apply: applyVimTransaction,
+      init: initialVimPluginState,
     },
   });
 }
@@ -367,6 +374,9 @@ function consumeClipboard(view: EditorView, event: Event): boolean {
   event.preventDefault();
   return true;
 }
+
+/** A cursor unit that is a line break: "\n" or the one-grapheme "\r\n". */
+const LINE_BREAK_UNIT = /^\r?\n$/;
 
 function eolCursorWidget(): HTMLElement {
   const el = document.createElement("span");
@@ -382,53 +392,20 @@ function isChangeCommand(command: CoreCommand): boolean {
   );
 }
 
-function reduce(prev: VimPluginState, meta: VimMeta): VimPluginState {
-  switch (meta.type) {
-    case "core":
-      return withCore(prev, meta.core);
-    case "setEnabled":
-      if (!meta.enabled) releaseGraphemeIndex();
-      // §7: enabling lands in normal with a clean slate; disabling returns
-      // the surface to plain editing — and drops the boundary index, which
-      // only vim builds (performance review P3).
-      return {
-        core: initialCoreState(meta.enabled ? "normal" : "insert"),
-        enabled: meta.enabled,
-        exLine: null,
-        island: null,
-        mode: meta.enabled ? "normal" : "insert",
-        searchLine: null,
-        suspended: false,
-      };
-    case "setMode":
-      // issue 478 — a BOUNDARY handoff (mode following the cursor out of a
-      // code block island) needs a clean core: an outer `:`/`/` buffer left
-      // open before entering the island must not resurrect on exit. The
-      // ordinary setMode (change-refusal recovery) keeps them.
-      return withCore(prev, {
-        ...prev.core,
-        count: null,
-        exLine: meta.boundary ? null : prev.core.exLine,
-        mode: meta.mode,
-        pending: null,
-        pendingCount: null,
-        searchLine: meta.boundary ? null : prev.core.searchLine,
-        visual: meta.mode === "visual" ? prev.core.visual : null,
-      });
-    case "setSuspended":
-      // §5b focusLocal: entering an island clears count/pending — an
-      // operator must not survive a trip through an input island.
-      return {
-        ...withCore(prev, {
-          ...prev.core,
-          count: null,
-          pending: null,
-          pendingCount: null,
-        }),
-        island: meta.suspended ? (meta.island ?? null) : null,
-        suspended: meta.suspended,
-      };
-  }
+/** Whether the `size`-long unit at `$head` is a line break: a hard break
+ *  (the cursor sits before one only on an empty segment — the clamp moves it
+ *  off a segment's end), or a newline character read from the text node
+ *  holding it. Not doc.textBetween: that walks from the document's first
+ *  child on every normal-mode state. Not nodeAfter: inside a text node it
+ *  cuts a copy of the rest. Any other non-text unit is not a line break. */
+function isLineBreakUnit($head: ResolvedPos, size: number): boolean {
+  const node = $head.parent.maybeChild($head.index());
+  if (node?.type.name === "hardBreak") return true;
+  // Only a text node has `text`.
+  const text = node?.text;
+  if (text === undefined) return false;
+  const from = $head.textOffset;
+  return LINE_BREAK_UNIT.test(text.slice(from, from + size));
 }
 
 /**
@@ -455,9 +432,15 @@ function runAtomInsert(view: EditorView, result: StepResult): boolean {
   const plan = planAtomInsert(view, command.at);
   switch (plan.kind) {
     case "caret": {
-      const tr = view.state.tr.setSelection(plan.selection);
+      // ONE transaction for the caret and the insert mode (issue 776): a
+      // caret placed while still in normal mode at a line end is a terminal
+      // boundary, and the normal-mode clamp (appendClampAndGoalReset) would
+      // pull it back one unit before insert began — `A` then typed before
+      // the last character.
+      const tr = view.state.tr
+        .setSelection(plan.selection)
+        .setMeta(vimPluginKey, { core: result.state, type: "core" });
       view.dispatch(tr.scrollIntoView());
-      dispatchMeta(view, { core: result.state, type: "core" });
       return true;
     }
     case "island":
@@ -468,20 +451,6 @@ function runAtomInsert(view: EditorView, result: StepResult): boolean {
     case "refuse":
       return true;
   }
-}
-
-function withCore(prev: VimPluginState, core: VimCoreState): VimPluginState {
-  return {
-    ...prev,
-    core,
-    exLine: core.exLine,
-    mode: core.mode,
-    searchLine:
-      core.searchLine === null
-        ? null
-        : (core.searchLine.direction === "forward" ? "/" : "?") +
-          core.searchLine.text,
-  };
 }
 
 declare module "@tiptap/pm/view" {

@@ -62,7 +62,7 @@ describe("mode entry and exit", () => {
     });
 
     const left = step(entered.state, key("Escape"), { cursor: 42 });
-    expect(left.command).toEqual({ type: "leaveVisual" });
+    expect(left.command).toEqual({ reason: "escape", type: "leaveVisual" });
     expect(left.state.mode).toBe("normal");
     expect(left.state.visual).toBeNull();
   });
@@ -172,6 +172,7 @@ describe("visual mode keys", () => {
   const inVisual = (): VimCoreState => ({
     count: null,
     exLine: null,
+    goalColumn: null,
     lastFind: null,
     lastSearch: null,
     mode: "visual",
@@ -195,6 +196,7 @@ describe("visual mode keys", () => {
       type: "yankVisual",
     });
     expect(step(inVisual(), key("v"), { cursor: 9 }).command).toEqual({
+      reason: "toggle",
       type: "leaveVisual",
     });
   });
@@ -331,7 +333,7 @@ describe("V — linewise visual", () => {
     state = step(state, key("V", { shift: true }), { cursor: 3 }).state;
     const r = step(state, key("V", { shift: true }), { cursor: 3 });
     expect(r.state.mode).toBe("normal");
-    expect(r.command).toEqual({ type: "leaveVisual" });
+    expect(r.command).toEqual({ reason: "toggle", type: "leaveVisual" });
   });
 
   it("v inside linewise visual switches back to charwise", () => {

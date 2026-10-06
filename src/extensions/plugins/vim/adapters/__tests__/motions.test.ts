@@ -7,7 +7,9 @@ import { Editor, Node } from "@tiptap/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../../index";
-import { resolveFindChar, resolveMotion } from "../motions";
+import { columnAt } from "../cursor-line-columns";
+import { resolveFindChar } from "../find-char";
+import { resolveMotion } from "../motions";
 
 const editors: Editor[] = [];
 
@@ -296,26 +298,33 @@ describe("impl review S3-R3 pin — counted j/k across a mid rowspan", () => {
 });
 
 describe("impl review S3-R4 pins", () => {
+  /** n single steps carrying the origin's goal column — what the plugin
+   *  does across repeated j/k (issue 776: the goal is remembered, so the
+   *  steps match the counted walk instead of re-measuring a clamped column). */
   function repeated(
     editor: Editor,
     pos: number,
     motion: "lineDown" | "lineUp",
     n: number,
   ): number {
+    const goalColumn = columnAt(editor.state, pos);
     let p = pos;
-    for (let i = 0; i < n; i++) p = resolveMotion(editor.state, p, motion, 1);
+    for (let i = 0; i < n; i++) {
+      p = resolveMotion(editor.state, p, motion, 1, { goalColumn });
+    }
     return p;
   }
 
-  it("counted j equals repeated j through an intermediate CLAMP", () => {
+  it("counted j equals goal-carrying repeated j through an intermediate CLAMP", () => {
     const editor = makeEditor("<p>abcdef</p><p>x</p><p>uvwxyz</p>");
     const deep = posOfText(editor, "f"); // column 5
-    expect(resolveMotion(editor.state, deep, "lineDown", 2)).toBe(
-      repeated(editor, deep, "lineDown", 2),
-    );
+    const counted = resolveMotion(editor.state, deep, "lineDown", 2);
+    expect(counted).toBe(repeated(editor, deep, "lineDown", 2));
+    // vim's curswant: the short line does not lose column 5 (issue 776).
+    expect(counted).toBe(posOfText(editor, "z"));
   });
 
-  it("counted j/k equal repeated steps through the rowspan grid", () => {
+  it("counted j/k equal goal-carrying repeated steps through the rowspan grid", () => {
     const editor = makeEditor(
       "<p>abcdef</p>" +
         "<table>" +
@@ -400,10 +409,10 @@ describe("impl review S3-R5 pin — non-zero column vertical cost", () => {
 });
 
 describe("impl review S3-R6 pins — column semantics of the unit index", () => {
-  it("j from the EOL boundary keeps the FULL column (insert-Esc path)", () => {
+  it("j from the EOL boundary keeps the FULL column (an insert caret)", () => {
     const editor = makeEditor("<p>ab</p><p>cde</p>");
     const $first = editor.state.doc.resolve(1);
-    const eol = $first.start() + 2; // boundary past "b" — head after insert-Esc
+    const eol = $first.start() + 2; // boundary past "b" — an insert caret at the line end
     const target = resolveMotion(editor.state, eol, "lineDown", 1);
     expect(editor.state.doc.resolve(target).parentOffset).toBe(2); // ON "e"
   });
@@ -587,5 +596,220 @@ describe("f/t — find char in the line", () => {
     });
     const start = editor.state.doc.resolve(1).start();
     expect(resolveFindChar(editor.state, start, "가", "f", 1)).toBe(start + 1);
+  });
+});
+
+describe("issue 776 — the goal column survives every kind of line on the way", () => {
+  const LONG = "abcdefghij";
+
+  it("an empty paragraph", () => {
+    // Fails if: the walk lands an empty line at column 0 and carries 0 on.
+    const editor = makeEditor(`<p>${LONG}</p><p></p><p>${LONG}</p>`);
+    const g = posOfText(editor, "g"); // column 6
+    const target = resolveMotion(editor.state, g, "lineDown", 2);
+    expect(editor.state.doc.resolve(target).parentOffset).toBe(6);
+  });
+
+  it("a block atom line", () => {
+    // Fails if: the walk carries column 0 off an atom line.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: LONG, type: "text" }], type: "paragraph" },
+        { attrs: { latex: "x" }, type: "mathBlock" },
+        { content: [{ text: "ABCDEFGHIJ", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const g = posOfText(editor, "g");
+    expect(resolveMotion(editor.state, g, "lineDown", 2)).toBe(
+      posOfText(editor, "G"),
+    );
+  });
+
+  it("a short table row", () => {
+    // Fails if: the table landing carries its clamped column on.
+    const editor = makeEditor(
+      `<p>${LONG}</p><table><tr><td><p>ab</p></td></tr></table><p>ABCDEFGHIJ</p>`,
+    );
+    const g = posOfText(editor, "g");
+    expect(resolveMotion(editor.state, g, "lineDown", 2)).toBe(
+      posOfText(editor, "G"),
+    );
+  });
+
+  it("a short line, with the goal handed in (what the plugin does for j j)", () => {
+    // Fails if: a supplied goalColumn is ignored and the origin re-measured.
+    const editor = makeEditor(`<p>${LONG}</p><p>xy</p><p>ABCDEFGHIJ</p>`);
+    const onY = posOfText(editor, "y"); // column 1 — where the first j landed
+    expect(
+      resolveMotion(editor.state, onY, "lineDown", 1, { goalColumn: 6 }),
+    ).toBe(posOfText(editor, "G"));
+  });
+
+  it('"lineEnd" ($) lands on each line\'s last unit, longer lines included, both ways', () => {
+    // Fails if: "lineEnd" is turned into the origin's numeric end column —
+    // the LONGER line past the short ones tells the two apart.
+    const editor = makeEditor(`<p>pqr</p><p>x</p><p></p><p>${LONG}</p>`);
+    const r = posOfText(editor, "r");
+    expect(
+      resolveMotion(editor.state, r, "lineDown", 3, { goalColumn: "lineEnd" }),
+    ).toBe(posOfText(editor, "j"));
+    const up = makeEditor(`<p>${LONG}</p><p></p><p>x</p><p>pqr</p>`);
+    expect(
+      resolveMotion(up.state, posOfText(up, "r"), "lineUp", 3, {
+        goalColumn: "lineEnd",
+      }),
+    ).toBe(posOfText(up, "j"));
+  });
+
+  it('"lineEnd" enters a code block on its line\'s last character', () => {
+    // Fails if: the code-block landing gets a sentinel it cannot clamp.
+    const editor = makeEditor(
+      "<p>abc</p><pre><code>first line\nsecond</code></pre>",
+    );
+    const target = resolveMotion(
+      editor.state,
+      posOfText(editor, "a"),
+      "lineDown",
+      1,
+      { codeBlockEntry: "directional", goalColumn: "lineEnd" },
+    );
+    expect(editor.state.doc.textBetween(target, target + 1)).toBe("e"); // first lin[e]
+  });
+
+  it("a counted j through a code block keeps the column", () => {
+    // Fails if: a code block landing re-derives the column from where it
+    // landed ("b", column 1) instead of keeping the goal. This also held
+    // before issue 776 (the old walk did not update its carry there).
+    const editor = makeEditor(
+      `<p>${LONG}</p><pre><code>ab</code></pre><p>ABCDEFGHIJ</p>`,
+    );
+    const g = posOfText(editor, "g");
+    expect(
+      resolveMotion(editor.state, g, "lineDown", 2, {
+        codeBlockEntry: "directional",
+      }),
+    ).toBe(posOfText(editor, "G"));
+  });
+});
+
+describe("issue 776 — gg/G land on the line's first non-blank (vim startofline)", () => {
+  function indented(): Editor {
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: ["  top", "middle", "    end"].map((text) => ({
+        content: [{ text, type: "text" }],
+        type: "paragraph",
+      })),
+      type: "doc",
+    });
+    return editor;
+  }
+
+  it("gg and G", () => {
+    // Fails if: lineJumpTarget returns the line start (the leading blanks).
+    const editor = indented();
+    const mid = posOfText(editor, "middle");
+    expect(resolveMotion(editor.state, mid, "docStart", 1)).toBe(
+      posOfText(editor, "top"),
+    );
+    expect(resolveMotion(editor.state, mid, "docEnd", 1)).toBe(
+      posOfText(editor, "end"),
+    );
+  });
+
+  it("a code block keeps its content start", () => {
+    // Fails if: lineJumpTarget drops the code block exclusion — the first
+    // non-blank search runs over the whole source and skips the blank first
+    // line into "foo".
+    const editor = makeEditor("<pre><code>\n  foo</code></pre><p>after</p>");
+    const target = resolveMotion(
+      editor.state,
+      posOfText(editor, "after"),
+      "docStart",
+      1,
+    );
+    expect(editor.state.doc.resolve(target).parentOffset).toBe(0);
+  });
+});
+
+describe("issue 776 — a leading inline atom is the first non-blank", () => {
+  it("^ and gg land on a wikilink that starts the line, not past it", () => {
+    // Fails if: lineFirstNonBlank's leaf placeholder is a space again — the
+    // atom reads as a blank and the landing skips to "tail".
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        {
+          content: [
+            { attrs: { target: "n" }, type: "wikilink" },
+            { text: " tail", type: "text" },
+          ],
+          type: "paragraph",
+        },
+        { content: [{ text: "below", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    const atom = 1; // the paragraph's first inline position
+    expect(editor.state.doc.nodeAt(atom)?.type.name).toBe("wikilink");
+    const tail = posOfText(editor, "tail");
+    expect(resolveMotion(editor.state, tail, "lineFirstNonBlank", 1)).toBe(
+      atom,
+    );
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "below"), "docStart", 1),
+    ).toBe(atom);
+  });
+});
+
+describe("issue 776 — the first non-blank is a whole cursor unit", () => {
+  it("a leading space + combining mark is one unit: gg lands on its start, not inside it", () => {
+    // Fails if: lineFirstNonBlank indexes a regex match into the line text —
+    // `\S` matches U+0301 at offset 1, inside the " ́" grapheme.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { content: [{ text: " ́x", type: "text" }], type: "paragraph" },
+        { content: [{ text: "tail", type: "text" }], type: "paragraph" },
+      ],
+      type: "doc",
+    });
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "tail"), "docStart", 1),
+    ).toBe(1); // the cluster's start
+  });
+});
+
+describe("first non-blank space handling", () => {
+  it.each([
+    ["U+3000", "\u3000"],
+    ["NBSP", "\u00a0"],
+  ])("^ skips a leading %s blank", (_name, blank) => {
+    // Fails if: NON_BLANK becomes /[^ \t]/: the motion lands at 1 instead of 2.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: blank + "abc" }] },
+      ],
+      type: "doc",
+    });
+    expect(resolveMotion(editor.state, 4, "lineFirstNonBlank", 1)).toBe(2);
+  });
+
+  it("gg to an all-blank line falls back to its start", () => {
+    // Fails if: lineFirstNonBlank falls back to span.to - 1: gg lands at 3, not 1.
+    const editor = makeEditor("<p>x</p>");
+    editor.commands.setContent({
+      content: ["   ", "tail"].map((text) => ({
+        content: [{ text, type: "text" }],
+        type: "paragraph",
+      })),
+      type: "doc",
+    });
+    expect(
+      resolveMotion(editor.state, posOfText(editor, "tail"), "docStart", 1),
+    ).toBe(1);
   });
 });
