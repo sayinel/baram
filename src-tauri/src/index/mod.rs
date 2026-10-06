@@ -5,6 +5,8 @@
 
 mod extractor;
 mod filing;
+#[cfg(test)]
+mod fold_gate;
 mod judgement;
 mod normalizer;
 mod read_back;
