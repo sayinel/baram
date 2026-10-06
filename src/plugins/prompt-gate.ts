@@ -95,6 +95,14 @@ function countInput(event: Event): void {
   inputSeq += 1;
 }
 
+/**
+ * §391 spec 0070 D17 — is a plugin prompt open? A plugin shortcut then leaves its key alone, so
+ * a chord pressed in the prompt cannot start a second command over it.
+ */
+export function isPluginPromptOpen(): boolean {
+  return open !== null;
+}
+
 /** The window module's hand-off when a prompt settles. */
 export function markPromptClosed(prompt: OpenPrompt): void {
   if (open === prompt) open = null;

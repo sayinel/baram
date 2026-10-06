@@ -7,6 +7,11 @@ import { useShallow } from "zustand/shallow";
 
 // §4.5 Command Palette — Cmd+P
 import { executePluginCommand } from "../../plugins/extension-context";
+import { reportPluginCommandError } from "../../plugins/plugin-entry-points";
+import {
+  MAX_ENTRY_TITLE_CHARS,
+  sanitizePluginText,
+} from "../../plugins/plugin-text";
 import { usePluginUIStore } from "../../plugins/plugin-ui-store";
 import { useFeatureFlags } from "../../stores/settings/features";
 import { useUIStore } from "../../stores/ui/ui";
@@ -91,13 +96,12 @@ export function CommandPalette({
     );
     const plugin: CommandItem[] = pluginPaletteCommands.map((c) => ({
       action: () => {
-        void executePluginCommand(c.commandId).catch((err) =>
-          useUIStore.getState().showToast(String(err), "error"),
-        );
+        void executePluginCommand(c.commandId).catch(reportPluginCommandError);
       },
       category: "Plugin",
       id: c.commandId,
-      label: c.title,
+      // §391 spec 0070 D16 — the rule every plugin entry point draws a title by.
+      label: sanitizePluginText(c.title, MAX_ENTRY_TITLE_CHARS),
     }));
     return [...base, ...plugin];
   }, [

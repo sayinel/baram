@@ -35,6 +35,19 @@ function callers(): string[] {
 }
 
 /**
+ * §391 spec 0070 §9 — every production file that looks a command handler up by id. A host entry
+ * that ran a handler it fetched itself would grant no prompt rights AND stay invisible to the
+ * `executePluginCommand` scan above. `.has(` (the entry points' visibility check) runs nothing
+ * and is not matched. Same corpus and the same blind spot for value-passing as the rest of
+ * this file (`const h = commandHandlers; h.get(…)` is not seen).
+ */
+function handlerLookups(): string[] {
+  return scanProductionFiles((source) =>
+    /\bcommandHandlers\.get\(/u.test(source),
+  );
+}
+
+/**
  * §385 — `showPluginPrompt` draws the window WITHOUT checking the gate itself (that is
  * `prompts-api.ts`'s job, before it ever calls this). A second caller could draw a prompt with
  * none of the refusal order, the limits or the sanitising in front of it.
@@ -74,6 +87,7 @@ describe("who may start a plugin command", () => {
       "components/layout/PluginStatusBarItems.tsx",
       "components/toolbar/context-menu-plugins.ts",
       "extensions/plugins/slash-command-items-plugins.ts",
+      "hooks/use-global-keyboard.ts",
     ]);
   });
 
@@ -92,5 +106,13 @@ describe("who may start a plugin command", () => {
 
   it("draws a plugin prompt only through prompts-api.ts", () => {
     expect(showPluginPromptCallers()).toEqual(["plugins/prompts-api.ts"]);
+  });
+
+  it("looks a handler up by id only in plugin-host-registry.ts and extension-context.ts", () => {
+    // `executePluginCommand` itself, and a trusted plugin's own `commands.execute`.
+    expect(handlerLookups()).toEqual([
+      "plugins/extension-context.ts",
+      "plugins/plugin-host-registry.ts",
+    ]);
   });
 });

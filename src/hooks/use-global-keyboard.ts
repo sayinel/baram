@@ -7,7 +7,19 @@ import type { Editor } from "@tiptap/core";
 import { chainWithVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
 import { getAction } from "../keybindings/keybinding-actions";
+import {
+  isPluginKeybindingId,
+  pluginCommandFullId,
+  pluginKeybindingEntries,
+} from "../keybindings/plugin-keybindings";
 import { findCommandByKey } from "../keybindings/use-keybindings";
+import {
+  isPluginCommandLive,
+  reportPluginCommandError,
+} from "../plugins/plugin-entry-points";
+import { executePluginCommand } from "../plugins/plugin-host-registry";
+import { usePluginUIStore } from "../plugins/plugin-ui-store";
+import { isPluginPromptOpen } from "../plugins/prompt-gate";
 import { useEditorStore } from "../stores/editor/editor";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
@@ -125,7 +137,12 @@ export function useGlobalKeyboard({
       if (!normalized) return;
 
       const overrides = useSettingsStore.getState().keybindingOverrides;
-      const command = findCommandByKey(normalized, overrides);
+      // §391 spec 0070 §8 — plugin commands after every core one, read on every keydown (the
+      // list is built once per slice object — `pluginKeybindingEntries`).
+      const pluginEntries = pluginKeybindingEntries(
+        usePluginUIStore.getState().contributions,
+      );
+      const command = findCommandByKey(normalized, overrides, pluginEntries);
 
       // §298 vim S3 — the source editor swallows Mod-/ (preventDefault) so
       // vim's Prec.highest handler cannot eat it; the event still bubbles
@@ -156,6 +173,24 @@ export function useGlobalKeyboard({
         e.target.closest(".source-code-editor") !== null &&
         useUIStore.getState().vimStatus?.surface === "source";
       if (isVimSourceEvent) return;
+
+      // §391 spec 0070 §8 — a plugin shortcut, past the same guards as every registry command.
+      // The five steps below run in this order; each comment governs the line under it.
+      if (command && isPluginKeybindingId(command.id)) {
+        // 1. D17 — a §385 prompt is open: the key is the prompt's. Not even preventDefault.
+        if (isPluginPromptOpen()) return;
+        const fullId = pluginCommandFullId(command.id);
+        // 2. No handler — declared but never registered by a trusted plugin, or disposed at
+        //    runtime: not ours to take.
+        if (!isPluginCommandLive(fullId)) return;
+        // 3. Ours from here.
+        e.preventDefault();
+        // 4. D8 — a held key repeats keydown; only the first press runs the command.
+        if (e.repeat) return;
+        // 5. Through the one host entry that grants §385 prompt rights to a user gesture.
+        void executePluginCommand(fullId).catch(reportPluginCommandError);
+        return;
+      }
 
       if (command) {
         const action = getAction(command.id);
