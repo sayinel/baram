@@ -138,7 +138,7 @@ export async function saveDirtyTab(
     useEditorStore.getState().markSourceEdited(tab.id, false);
     if (isMarkdownFile(tab.filePath)) {
       updateFileIndex(tab.filePath)
-        .then(() => useLinkStore.getState().invalidate())
+        .then(() => useLinkStore.getState().invalidate(tab.filePath))
         .catch(() => {});
     }
     return true;
@@ -172,7 +172,7 @@ export async function saveDirtyTab(
   useFileStore.getState().setFileContent(savePath, content);
   if (isMarkdownFile(savePath)) {
     updateFileIndex(savePath)
-      .then(() => useLinkStore.getState().invalidate())
+      .then(() => useLinkStore.getState().invalidate(savePath))
       .catch(() => {});
   }
   return true;

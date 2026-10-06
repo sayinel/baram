@@ -297,6 +297,11 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
 
     await vi.advanceTimersByTimeAsync(2500);
     expect(writeFileSpy).toHaveBeenCalledTimes(1);
+    // §34 The save names itself on the indexVersion bump, so the Backlinks
+    // panel can skip the unlinked-mention search for its own note (issue 791).
+    // 이것을 실패시키는 것: use-auto-save.ts 의 `invalidate(pending.filePath)` 에서 인자를 뺀다.
+    const { useLinkStore } = await import("../../stores/editor/link");
+    expect(useLinkStore.getState().savedPath).toBe(tab.filePath);
 
     editor.destroy();
     useEditorStore.setState({

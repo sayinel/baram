@@ -125,7 +125,7 @@ export function useAutoSave(editor: Editor | null) {
         notifyJournalChanged();
       }
       updateFileIndex(pending.filePath)
-        .then(() => useLinkStore.getState().invalidate())
+        .then(() => useLinkStore.getState().invalidate(pending.filePath))
         .catch(() => {});
       // §71 Mark the auto-snapshot dirty gate — periodic snapshot hook only
       // snapshots when something actually changed since the last snapshot.

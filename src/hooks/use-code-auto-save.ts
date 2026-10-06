@@ -85,7 +85,7 @@ export function useCodeAutoSave({
         // what `handleSave` already avoids on the manual path.
         if (markdownInSourceMode) {
           updateFileIndex(tab.filePath!)
-            .then(() => useLinkStore.getState().invalidate())
+            .then(() => useLinkStore.getState().invalidate(tab.filePath!))
             .catch(() => {});
         }
       } catch {
