@@ -5,6 +5,7 @@
 use super::extractor::extract_links;
 use super::filing::{filing_key, FilingKey};
 use super::judgement::RenameTarget;
+use super::normalizer::fold_name;
 use super::LinkKind;
 
 /// Whether the index reads `after` — a referrer as the two rename passes
@@ -76,7 +77,7 @@ pub fn index_reads_the_rename_back(
                         match (target.expected_key(&m), alias) {
                             (FilingKey::Stem(k) | FilingKey::Path(k), Some(a)) => {
                                 FilingKey::Foreign {
-                                    alias: a.to_lowercase(),
+                                    alias: fold_name(a),
                                     target: k,
                                 }
                             }

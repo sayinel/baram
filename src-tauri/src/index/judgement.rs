@@ -5,7 +5,7 @@
 use super::filing::{
     filing_key, is_relative, root_relative_key, under_root, FilingKey, LocalAlias,
 };
-use super::normalizer::{file_key, strip_note_extension};
+use super::normalizer::{file_key, fold_name, strip_note_extension};
 use super::relative_links::{path_components, relative_components};
 use std::collections::{HashMap, HashSet};
 
@@ -435,7 +435,7 @@ impl RenameTarget<'_> {
         alias: &str,
         raw_target: &str,
     ) -> Option<Match> {
-        let alias = alias.to_lowercase();
+        let alias = fold_name(alias);
         let stem = file_key(self.old_stem());
         let (_, key) = keyed_under(
             ref_path,

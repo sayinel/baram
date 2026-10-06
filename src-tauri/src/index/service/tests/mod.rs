@@ -14,6 +14,7 @@ mod contexts;
 mod file_rename;
 mod namespace;
 mod nested_roots;
+mod normalization;
 mod same_stem;
 mod stem_spelling;
 

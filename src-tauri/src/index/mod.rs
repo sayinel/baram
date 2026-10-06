@@ -137,15 +137,15 @@ pub struct LinkIndex {
     incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
-    /// Normalized file stem (lowercase, no extension) → list of absolute file paths
+    /// Normalized file stem (folded by `fold_name`, no extension) → list of absolute file paths
     /// Used to resolve [[name]] style wikilinks to actual file locations in subdirectories
     file_map: HashMap<String, Vec<String>>,
-    /// Normalized relative path (lowercase, no extension) → absolute file path
+    /// Normalized relative path (folded by `fold_name`, no extension) → absolute file path
     /// Used to resolve [[path/name]] style wikilinks (e.g., [[notes/architecture]])
     relative_map: HashMap<String, String>,
     /// Note id (12–14 digit filename prefix) → absolute file path (Zettelkasten `[[ID]]` links)
     id_map: HashMap<String, String>,
-    /// §278 Full lowercased file NAME (extension included) → absolute file paths.
+    /// §278 Full file NAME folded by `fold_name` (extension included) → absolute file paths.
     ///
     /// `file_map` is keyed by `file_stem()`, so `Paper.pdf` lands under `paper` and a
     /// bare `[[Paper.pdf]]` (which `normalize_target` leaves as `paper.pdf`, since it

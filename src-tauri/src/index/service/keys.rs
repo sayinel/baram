@@ -1,5 +1,6 @@
 use crate::context::manager::Registered;
 use crate::context::{ContextInfo, ContextManager, ContextType, VaultType};
+use crate::index::normalizer::fold_name;
 use crate::index::{LinkGraph, LinkIndex, LocalAlias};
 use std::collections::HashMap;
 
@@ -16,12 +17,12 @@ pub(super) async fn owning_contexts(ctx_mgr: &ContextManager, path: &str) -> Vec
     ctx_mgr.contexts_containing(path).await
 }
 
-/// The canonical space name a vault type answers to (§317), lowercase as
-/// every `LocalAlias` is: the frontend's `SPACE_ALIASES`
-/// (`src/utils/editor/wikilink-nav.ts`) — `Journal` for a journal space,
-/// `Zettel` for a zettelkasten one, none for a general vault. No `_` arm, so
-/// a new vault type does not compile until it is given a name or `None`;
-/// `space_names_match_the_frontends` reads the TypeScript table.
+/// The canonical space name a vault type answers to (§317), folded as every
+/// `LocalAlias` is (an ASCII name folds to its lowercase): the frontend's
+/// `SPACE_ALIASES` (`src/utils/editor/wikilink-nav.ts`) — `Journal` for a
+/// journal space, `Zettel` for a zettelkasten one, none for a general vault.
+/// No `_` arm, so a new vault type does not compile until it is given a name
+/// or `None`; `space_names_match_the_frontends` reads the TypeScript table.
 pub(crate) fn space_name(vault_type: &VaultType) -> Option<&'static str> {
     match vault_type {
         VaultType::General => None,
@@ -52,8 +53,8 @@ impl<'a> AliasHolder<'a> {
     }
 }
 
-/// The vault aliases local to `contexts` (§87), lowercase, each with the root
-/// the alias resolves paths against. A context answers to two kinds of name,
+/// The vault aliases local to `contexts` (§87), folded (`fold_name`), each with
+/// the root the alias resolves paths against. A context answers to two kinds of name,
 /// in the order the frontend's `findAliasContext`
 /// (`src/utils/editor/wikilink-nav.ts`) tries them:
 ///
@@ -103,14 +104,14 @@ impl<'a> AliasHolder<'a> {
 /// Windows, ASCII case aside): the registered path in the app, the canonical
 /// one in the CLI, whose `paths::locate` canonicalizes the note it is asked
 /// about. `registered` is every context registered, `contexts` among them.
-/// Lowercase because `filing_key` lowercases a `Foreign` key's alias; this is
-/// the one fold on this side (`LocalAlias`). Each list sorted, without
-/// repeats.
+/// Folded (`fold_name`) because `filing_key` folds a `Foreign` key's alias the
+/// same way; this is the one fold on this side (`LocalAlias`). Each list
+/// sorted, without repeats.
 pub(crate) fn own_aliases(
     contexts: &[(AliasHolder<'_>, &str)],
     registered: &[AliasHolder<'_>],
 ) -> OwnAliases {
-    let explicit = |holder: &AliasHolder<'_>| holder.alias.map(str::to_lowercase);
+    let explicit = |holder: &AliasHolder<'_>| holder.alias.map(fold_name);
     let mut own = OwnAliases {
         local: Vec::new(),
         ambiguous: Vec::new(),
