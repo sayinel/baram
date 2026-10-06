@@ -309,4 +309,78 @@ describe("§5.6 extractTextWithPositions — linear in document size (#792)", ()
     expect(small.text.length).toBeGreaterThan(20_000);
     expect(large.chars / small.chars).toBeLessThan(2.2);
   });
+
+  // 배열에 한 일을 센다: push 한 원소, spread·Array.from 이 iterator 로 읽은 원소, concat·slice 가
+  // 복사한 원소. 덧붙이기만 하면 그 합은 posMap 길이(= 글자 수) + 조각 수라 글자 수의 2배를 넘지
+  // 않는다. 위 join 시험은 문자열만 보므로, 배열을 매번 새로 만드는 회귀는 여기서 잡는다.
+  // 이것을 실패시키는 것: `posMap.push(pos + i)` 를 `posMap = [...posMap, pos + i]` 로,
+  // 또는 `parts.push(node.text)` 를 `parts = parts.concat(node.text)` 로 바꾸면 원소를 매번
+  // 다시 복사해 `2 * 글자 수` 상한이 깨진다.
+  function arrayWork(fn: () => void): number {
+    let work = 0;
+    const proto = Array.prototype;
+    const { concat, push, slice } = proto;
+    const iterator = proto[Symbol.iterator];
+    proto.push = function (this: unknown[], ...items: unknown[]) {
+      work += items.length;
+      return push.apply(this, items);
+    };
+    proto.concat = function (this: unknown[], ...args: unknown[]) {
+      const out = concat.apply(this, args);
+      work += out.length;
+      return out;
+    };
+    proto.slice = function (this: unknown[], start?: number, end?: number) {
+      const out = slice.call(this, start, end);
+      work += out.length;
+      return out;
+    };
+    proto[Symbol.iterator] = function (this: unknown[]) {
+      const it = iterator.call(this);
+      return {
+        next() {
+          work++;
+          return it.next();
+        },
+        [Symbol.iterator]() {
+          return this;
+        },
+      } as ArrayIterator<unknown>;
+    };
+    try {
+      fn();
+    } finally {
+      proto.push = push;
+      proto.concat = concat;
+      proto.slice = slice;
+      proto[Symbol.iterator] = iterator;
+    }
+    return work;
+  }
+
+  test("appends to its arrays instead of copying them", () => {
+    // 긍정 짝 — 세는 장치가 spread 를 실제로 본다.
+    expect(
+      arrayWork(() => {
+        let a: number[] = [];
+        for (let i = 0; i < 10; i++) a = [...a, i];
+      }),
+    ).toBeGreaterThanOrEqual(45);
+
+    const small = bigDoc(1_000);
+    const large = bigDoc(2_000);
+    let smallText = "";
+    let largeText = "";
+    const smallWork = arrayWork(() => {
+      smallText = extractTextWithPositions(small).text;
+    });
+    const largeWork = arrayWork(() => {
+      largeText = extractTextWithPositions(large).text;
+    });
+
+    expect(smallWork).toBeLessThanOrEqual(2 * smallText.length);
+    expect(largeWork).toBeLessThanOrEqual(2 * largeText.length);
+    expect(smallWork).toBeGreaterThanOrEqual(smallText.length);
+    expect(largeWork / smallWork).toBeLessThan(2.2);
+  });
 });
