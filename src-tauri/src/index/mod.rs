@@ -1008,7 +1008,8 @@ mod build_bench {
         time_build("ascii", &|i| format!("f{i}"), &|n| format!("d{n}"), false).await;
         // §390 The same vault with Korean names, stored decomposed (NFD) on
         // disk and typed composed (NFC) in the links: every key the build
-        // spells, from a file or from a link, takes the fold's slow path.
+        // spells is non-ASCII, so the fold (`normalizer::fold_name`) cannot take
+        // its ASCII shortcut, and the keys from files reach it decomposed.
         time_build(
             "korean-nfd",
             &|i| format!("\u{B178}\u{D2B8}{i}"),
@@ -1061,6 +1062,20 @@ mod build_bench {
                 .await
                 .unwrap();
             tokio::fs::write(&p, body).await.unwrap();
+        }
+        if decomposed {
+            // A volume that composes names would store these notes composed
+            // and this variant would time no decomposed name at all; the
+            // directory has to hold the decomposed spelling.
+            let folder0 = stored(folder(0));
+            let names: Vec<String> = std::fs::read_dir(d.path().join(&folder0))
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            assert!(
+                names.contains(&format!("{}.md", stored(name(0)))),
+                "the volume did not keep the decomposed names: {names:?}"
+            );
         }
         let root = d.path().to_string_lossy().to_string();
 
