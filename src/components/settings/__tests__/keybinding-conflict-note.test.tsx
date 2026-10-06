@@ -1,6 +1,6 @@
+// §391 plan 0118 P13 — the conflict note puts a plugin's title into the message template as text.
 import type { MergedKeybinding } from "../../../keybindings/use-keybindings";
 
-// §391 plan 0118 P13 — the conflict note puts a plugin's title into the message template as text.
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 

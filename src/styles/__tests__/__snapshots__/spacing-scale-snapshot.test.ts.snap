@@ -1560,6 +1560,7 @@ exports[`간격·모서리 선언의 계산값이 그대로다 1`] = `
   "src/styles/settings/keybindings.css|.keybinding-edit-btn, .keybinding-reset-btn|padding|2px 8px",
   "src/styles/settings/keybindings.css|.keybinding-kbd|border-radius|2px",
   "src/styles/settings/keybindings.css|.keybinding-kbd|padding|2px 6px",
+  "src/styles/settings/keybindings.css|.keybinding-plugin-name|margin-left|8px",
   "src/styles/settings/keybindings.css|.keybinding-reset-all|margin-top|16px",
   "src/styles/settings/keybindings.css|.keybinding-row|gap|12px",
   "src/styles/settings/keybindings.css|.keybinding-row|padding|6px 0",

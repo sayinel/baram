@@ -83,7 +83,8 @@ interface PluginUIState {
   activePluginPanelId: null | string;
   /**
    * §391 — by plugin id. Every write replaces the object (never mutates it), and an unload of
-   * a plugin with no entry keeps it, so a subscriber wakes exactly when the slice changed.
+   * a plugin with no entry keeps it, so a subscriber (Settings > Keybindings,
+   * `useKeybindings`) wakes exactly when the slice changed.
    * A plain object, and `constructor` is a legal plugin id: look an id up with
    * `Object.hasOwn`, since `contributions[id]` can return the inherited `Object`.
    */

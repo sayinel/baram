@@ -117,6 +117,32 @@
   color: var(--color-status-warning);
 }
 
+/* §391 spec 0070 §8 — a plugin command's row: the plugin's name, an overlap note, and the
+   "not assigned" placeholder where a key would be. */
+.keybinding-plugin-name {
+  margin-left: var(--space-2);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.keybinding-overlap {
+  display: block;
+  font-size: 11px;
+  color: var(--color-status-warning);
+}
+
+.keybinding-unassigned {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+/* D13 — a core command's key offered to a plugin command: the confirm stays, disabled. */
+.keybinding-confirm-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .keybinding-reset-all {
   margin-top: var(--space-4);
   text-align: center;

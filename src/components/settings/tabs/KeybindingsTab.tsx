@@ -13,17 +13,29 @@ import {
   KEYBINDING_CATEGORIES,
 } from "../../../keybindings/keybinding-registry";
 import {
+  keybindingLabel,
+  pluginKeybindingEntries,
+  pluginOverlap,
+} from "../../../keybindings/plugin-keybindings";
+import {
   conflictCommandId,
   findConflict,
-  getMergedKeybindings,
   isRefusedConflict,
   type KeybindingConflict,
   type MergedKeybinding,
+  useKeybindings,
 } from "../../../keybindings/use-keybindings";
+import { usePluginUIStore } from "../../../plugins/plugin-ui-store";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showConfirm } from "../../../utils/confirm-dialog";
 import { SettingsSectionHeader } from "../settings-shared";
 import { KeybindingConflictNote } from "./keybinding-conflict-note";
+
+/** §391 spec 0070 §8 — the note each overlap kind draws on a plugin row. */
+const OVERLAP_KEYS = {
+  "both-run": "keybindings.overlap.bothRun",
+  shadowed: "keybindings.overlap.shadowed",
+} as const;
 
 export function KeybindingsTab() {
   const { t } = useTranslation();
@@ -40,7 +52,11 @@ export function KeybindingsTab() {
       resetAllKeybindings: s.resetAllKeybindings,
     })),
   );
-  const merged = getMergedKeybindings(keybindingOverrides);
+  // §391 spec 0070 §8 — subscribed: a plugin coming or going redraws the list. The entries are
+  // cached per slice object by `pluginKeybindingEntries`, so no memo here.
+  const contributions = usePluginUIStore(useShallow((s) => s.contributions));
+  const pluginEntries = pluginKeybindingEntries(contributions);
+  const merged = useKeybindings();
   const [filter, setFilter] = useState("");
   const [capturingId, setCapturingId] = useState<null | string>(null);
   const [capturedKey, setCapturedKey] = useState<null | string>(null);
@@ -53,7 +69,7 @@ export function KeybindingsTab() {
     const q = filter.toLowerCase();
     return merged.filter(
       (e) =>
-        t(e.label).toLowerCase().includes(q) ||
+        keybindingLabel(e, t).toLowerCase().includes(q) ||
         e.category.toLowerCase().includes(q) ||
         formatKeyForDisplay(e.activeKey, isMac).toLowerCase().includes(q),
     );
@@ -94,13 +110,14 @@ export function KeybindingsTab() {
         capturingId,
         normalized,
         keybindingOverrides,
+        pluginEntries,
       );
       setConflict(conflicting);
     };
 
     window.addEventListener("keydown", handleCapture, true);
     return () => window.removeEventListener("keydown", handleCapture, true);
-  }, [capturingId, keybindingOverrides, isMac]);
+  }, [capturingId, keybindingOverrides, isMac, pluginEntries]);
 
   // D13 — the note shows, but a core command's key cannot be given to a plugin command.
   const refused =
@@ -146,74 +163,101 @@ export function KeybindingsTab() {
       {KEYBINDING_CATEGORIES.filter((cat) => grouped.has(cat)).map((cat) => (
         <div key={cat}>
           <SettingsSectionHeader title={t(CATEGORY_LABELS[cat])} />
-          {grouped.get(cat)!.map((entry) => (
-            <div
-              className={`keybinding-row ${entry.isOverridden ? "keybinding-overridden" : ""} ${!entry.customizable ? "keybinding-readonly-row" : ""}`}
-              key={entry.id}
-            >
-              <span className="keybinding-label">{t(entry.label)}</span>
-              <span className="keybinding-key">
-                {capturingId === entry.id ? (
-                  <span className="keybinding-capture">
-                    {capturedKey ? (
-                      <>
-                        <span className="keybinding-capture-key">
-                          {formatKeyForDisplay(capturedKey, isMac)}
-                        </span>
-                        {conflict && (
-                          <KeybindingConflictNote
-                            conflict={conflict}
-                            refused={refused}
-                            t={t}
-                          />
-                        )}
-                        <button
-                          aria-label={t("keybindings.capture.confirm")}
-                          className="keybinding-confirm-btn"
-                          disabled={refused}
-                          onClick={confirmCapture}
-                          title={t("keybindings.capture.confirm")}
-                        >
-                          <CornerDownLeft className="icon-inline" size="1em" />
-                        </button>
-                      </>
-                    ) : (
-                      <span className="keybinding-capture-prompt">
-                        {t("keybindings.capture.prompt")}
+          {grouped.get(cat)!.map((entry) => {
+            // §391 — a plugin row whose key another entry also has says which one runs.
+            const overlap = pluginOverlap(entry, merged);
+            return (
+              <div
+                className={`keybinding-row ${entry.isOverridden ? "keybinding-overridden" : ""} ${!entry.customizable ? "keybinding-readonly-row" : ""}`}
+                key={entry.id}
+              >
+                <span className="keybinding-label">
+                  {keybindingLabel(entry, t)}
+                  {entry.pluginName !== undefined && (
+                    <>
+                      {" "}
+                      <span className="keybinding-plugin-name">
+                        {entry.pluginName}
                       </span>
-                    )}
-                  </span>
-                ) : (
-                  <kbd className="keybinding-kbd">
-                    {formatKeyForDisplay(entry.activeKey, isMac)}
-                  </kbd>
-                )}
-              </span>
-              <span className="keybinding-actions">
-                {entry.customizable ? (
-                  <>
-                    {entry.isOverridden && (
+                    </>
+                  )}
+                  {overlap && (
+                    <span className="keybinding-overlap">
+                      {t(OVERLAP_KEYS[overlap])}
+                    </span>
+                  )}
+                </span>
+                <span className="keybinding-key">
+                  {capturingId === entry.id ? (
+                    <span className="keybinding-capture">
+                      {capturedKey ? (
+                        <>
+                          <span className="keybinding-capture-key">
+                            {formatKeyForDisplay(capturedKey, isMac)}
+                          </span>
+                          {conflict && (
+                            <KeybindingConflictNote
+                              conflict={conflict}
+                              refused={refused}
+                              t={t}
+                            />
+                          )}
+                          <button
+                            aria-label={t("keybindings.capture.confirm")}
+                            className="keybinding-confirm-btn"
+                            disabled={refused}
+                            onClick={confirmCapture}
+                            title={t("keybindings.capture.confirm")}
+                          >
+                            <CornerDownLeft
+                              className="icon-inline"
+                              size="1em"
+                            />
+                          </button>
+                        </>
+                      ) : (
+                        <span className="keybinding-capture-prompt">
+                          {t("keybindings.capture.prompt")}
+                        </span>
+                      )}
+                    </span>
+                  ) : entry.activeKey === "" ? (
+                    // §391 D3 — a plugin command starts with no key; the user gives it one.
+                    <span className="keybinding-unassigned">
+                      {t("keybindings.unassigned")}
+                    </span>
+                  ) : (
+                    <kbd className="keybinding-kbd">
+                      {formatKeyForDisplay(entry.activeKey, isMac)}
+                    </kbd>
+                  )}
+                </span>
+                <span className="keybinding-actions">
+                  {entry.customizable ? (
+                    <>
+                      {entry.isOverridden && (
+                        <button
+                          className="keybinding-reset-btn"
+                          onClick={() => removeKeybindingOverride(entry.id)}
+                          title={t("keybindings.reset")}
+                        >
+                          <RotateCcw className="icon-inline" size="1em" />
+                        </button>
+                      )}
                       <button
-                        className="keybinding-reset-btn"
-                        onClick={() => removeKeybindingOverride(entry.id)}
-                        title={t("keybindings.reset")}
+                        className="keybinding-edit-btn"
+                        onClick={() => startCapture(entry.id)}
                       >
-                        <RotateCcw className="icon-inline" size="1em" />
+                        {t("keybindings.edit")}
                       </button>
-                    )}
-                    <button
-                      className="keybinding-edit-btn"
-                      onClick={() => startCapture(entry.id)}
-                    >
-                      {t("keybindings.edit")}
-                    </button>
-                  </>
-                ) : (
-                  <span className="keybinding-readonly-badge" />
-                )}
-              </span>
-            </div>
-          ))}
+                    </>
+                  ) : (
+                    <span className="keybinding-readonly-badge" />
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ))}
 
