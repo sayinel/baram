@@ -34,7 +34,7 @@ import { isMarkdownHref } from "../../utils/editor/local-link-nav";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { isEphemeralOnlyUpdate } from "../../utils/editor/syntax-reveal-ephemeral";
 import { logger } from "../../utils/logger";
-import { dirname } from "../../utils/path-utils";
+import { containingFolder } from "../../utils/path-utils";
 import { MergeView } from "../editor/MergeView";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
@@ -187,7 +187,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     let unlisten: undefined | UnlistenFn;
     // §3.2 The file's folder only, held while this effect lives (#797). Rust also gives
     // it back when the window is destroyed.
-    const dir = dirname(filePath);
+    const dir = containingFolder(filePath);
     const lease = dir
       ? watchDir(dir, { focus: filePath, recursive: false }).catch(
           () => undefined,

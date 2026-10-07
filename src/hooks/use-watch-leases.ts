@@ -6,8 +6,18 @@ import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
+import {
+  containingFolder,
+  hasDriveLetter,
+  isUnderRoot,
+} from "../utils/path-utils";
 
 /** A lease being taken: resolves to its id, or `undefined` if the watch failed. */
+type Leases = Map<string, Pending>;
+
+/** How many times a watch is asked for before the entry is dropped (1 s, 2 s apart). */
+const ACQUIRE_ATTEMPTS = 3;
+
 type Pending = Promise<number | undefined>;
 
 /**
@@ -38,9 +48,8 @@ export function useWatchLeases(
   // registered before the watch that would drop their events starts (#795).
   useEffect(() => {
     if (!rootPath || roots.current.has(rootPath)) return;
-    roots.current.set(
-      rootPath,
-      registerOpenFiles(currentOpenFilePaths()).then(() => take(rootPath, {})),
+    hold(roots.current, rootPath, rootPath, {}, () =>
+      registerOpenFiles(currentOpenFilePaths()),
     );
   }, [rootPath]);
 
@@ -71,7 +80,10 @@ export function useWatchLeases(
   useEffect(() => {
     const wanted = new Set(
       openFilePaths.filter(
-        (p) => !rootPath || (p !== rootPath && !p.startsWith(rootPath + "/")),
+        (p) =>
+          !rootPath ||
+          (p !== rootPath &&
+            !isUnderRoot(p, rootPath, hasDriveLetter(rootPath))),
       ),
     );
     for (const [file, pending] of files.current) {
@@ -80,9 +92,9 @@ export function useWatchLeases(
       give(pending);
     }
     for (const file of wanted) {
-      const dir = parentDir(file);
-      if (files.current.has(file) || !dir || dir === file) continue;
-      files.current.set(file, take(dir, { focus: file, recursive: false }));
+      const dir = containingFolder(file);
+      if (files.current.has(file) || !dir) continue;
+      hold(files.current, file, dir, { focus: file, recursive: false });
     }
   }, [openFilePaths, rootPath]);
 
@@ -121,11 +133,6 @@ function give(pending: Pending): void {
   });
 }
 
-function parentDir(path: string): string {
-  const idx = path.lastIndexOf("/");
-  return idx > 0 ? path.substring(0, idx) : path;
-}
-
 /**
  * §3.2 `setOpenFiles`. The watch starts either way. A refused call leaves the watcher
  * with no known open set, which makes it filter nothing (watch_filter.rs, issue 795):
@@ -151,15 +158,36 @@ async function registerOpenFiles(paths: string[]): Promise<void> {
   }
 }
 
-function take(
+/**
+ * Take a lease on `path` into `leases` under `key`, after `before`. A failed attempt is
+ * tried again with growing waits while the entry is still wanted; after the last one
+ * the entry goes, so the next change that still wants it asks again.
+ */
+function hold(
+  leases: Leases,
+  key: string,
   path: string,
   options: { focus?: string; recursive?: boolean },
-): Pending {
-  return watchDir(path, options).then(
-    (lease) => (typeof lease === "number" ? lease : undefined),
-    (err: unknown) => {
-      logger.warn("useWatchLeases: watchDir failed", path, err);
-      return undefined;
-    },
-  );
+  before: () => Promise<void> = () => Promise.resolve(),
+): void {
+  // The entry is compared with itself; the holder is filled before the first await.
+  const self: { pending?: Pending } = {};
+  const pending: Pending = (async () => {
+    await before();
+    for (let attempt = 1; ; attempt++) {
+      if (leases.get(key) !== self.pending) return undefined;
+      try {
+        const lease = await watchDir(path, options);
+        return typeof lease === "number" ? lease : undefined;
+      } catch (err) {
+        logger.warn("useWatchLeases: watchDir failed", path, err);
+        if (attempt >= ACQUIRE_ATTEMPTS) break;
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+      }
+    }
+    if (leases.get(key) === self.pending) leases.delete(key);
+    return undefined;
+  })();
+  self.pending = pending;
+  leases.set(key, pending);
 }

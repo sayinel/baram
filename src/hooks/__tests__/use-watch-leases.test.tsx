@@ -18,11 +18,12 @@ const watchDir = vi.fn(
 const unwatchDir = vi.fn(async (id: number) => {
   live.delete(id);
 });
+const setOpenFiles = vi.fn(async () => {});
 vi.mock("../../ipc/invoke", () => ({
   // tauri-storage(store 영속화)가 ipc/invoke 재export 로 부른다
   getConfig: vi.fn(async () => null),
   setConfig: vi.fn(async () => {}),
-  setOpenFiles: vi.fn(async () => {}),
+  setOpenFiles: () => setOpenFiles(),
   unwatchDir: (id: number) => unwatchDir(id),
   watchDir: (path: string, options?: Record<string, unknown>) =>
     watchDir(path, options),
@@ -53,8 +54,17 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   live.clear();
   nextLease = 1;
-  watchDir.mockClear();
+  watchDir
+    .mockReset()
+    .mockImplementation(
+      async (path: string, options: Record<string, unknown> = {}) => {
+        const id = nextLease++;
+        live.set(id, [path, options]);
+        return id;
+      },
+    );
   unwatchDir.mockClear();
+  setOpenFiles.mockClear();
   useContextStore.setState({ contexts: [context("/a"), context("/b")] });
 });
 
@@ -138,10 +148,87 @@ describe("useWatchLeases", () => {
       </StrictMode>,
     );
     await settle();
-    // The effects did run twice — the count below is not a single mount's.
-    expect(watchDir).toHaveBeenCalledTimes(4);
-    expect(unwatchDir).toHaveBeenCalledTimes(2);
+    // The effects did run twice (two registrations per mount) — and the first
+    // mount's leases, no longer wanted once its cleanup ran, were never taken.
+    expect(setOpenFiles).toHaveBeenCalledTimes(4);
+    expect(watchDir).toHaveBeenCalledTimes(2);
     expect(livePaths()).toEqual(["/a", "/out"]);
     view.unmount();
+  });
+
+  // 이것을 실패시키는 것: `hold` 가 실패한 시도를 다시 하지 않는다.
+  it("asks again for a watch that failed, while the file is still open", async () => {
+    vi.useFakeTimers();
+    try {
+      watchDir
+        .mockRejectedValueOnce(new Error("busy"))
+        .mockRejectedValueOnce(new Error("busy"));
+      const hook = renderHook(() => useWatchLeases(null, OPEN_ONE));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(watchDir).toHaveBeenCalledTimes(3);
+      expect(livePaths()).toEqual(["/out"]);
+      hook.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // 이것을 실패시키는 것: 마지막 시도가 실패해도 항목을 남겨, 다음 변경이 다시 묻지 않는다.
+  it("drops a watch that kept failing, so the next change asks again", async () => {
+    vi.useFakeTimers();
+    try {
+      watchDir.mockRejectedValue(new Error("refused"));
+      const hook = renderHook(
+        ({ open }: { open: string[] }) => useWatchLeases(null, open),
+        { initialProps: { open: ["/out/x.md"] } },
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(watchDir).toHaveBeenCalledTimes(3);
+      watchDir.mockImplementation(
+        async (path: string, options: Record<string, unknown> = {}) => {
+          const id = nextLease++;
+          live.set(id, [path, options]);
+          return id;
+        },
+      );
+      hook.rerender({ open: ["/out/x.md"] });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(livePaths()).toEqual(["/out"]);
+      hook.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // On Windows a path's folders are split by `\`, and a drive path compares without
+  // case. 이것을 실패시키는 것: 폴더를 `/` 로만 나눈다(`parentDir`) — 또는 root 아래를
+  // `startsWith(root + "/")` 로 판정한다.
+  it("watches the folder of a drive or UNC file, and not a file under the active root", async () => {
+    const hook = renderHook(() =>
+      useWatchLeases("C:\\Vault", [
+        "D:\\Notes\\a.md",
+        "\\\\server\\share\\b.md",
+        "c:\\vault\\inside.md",
+      ]),
+    );
+    await settle();
+    expect(watchDir).toHaveBeenCalledWith("D:\\Notes", {
+      focus: "D:\\Notes\\a.md",
+      recursive: false,
+    });
+    expect(watchDir).toHaveBeenCalledWith("\\\\server\\share", {
+      focus: "\\\\server\\share\\b.md",
+      recursive: false,
+    });
+    expect(
+      watchDir.mock.calls.some(([, o]) => o?.focus === "c:\\vault\\inside.md"),
+    ).toBe(false);
+    hook.unmount();
   });
 });
