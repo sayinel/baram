@@ -97,6 +97,9 @@ export function useCodeAutoSave({
           .tabs.some((t) => t.id === tab.id && t.filePath === path);
         if (stillShown) {
           useFileStore.getState().updateLastSaveMtime(path, Date.now());
+        }
+        // §3.5 쓰는 사이 버퍼가 더 바뀌었으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다(#798).
+        if (stillShown && getSourceBuffer(tab.id) === content) {
           setFileContent(path, content);
           markDirty(tab.id, false);
           useEditorStore.getState().markSourceEdited(tab.id, false);

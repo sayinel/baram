@@ -21,6 +21,7 @@ import {
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
+import { editorStillHolds } from "../utils/editor/save-still-current";
 import {
   serializeDetachedDoc,
   serializeLiveDoc,
@@ -103,6 +104,7 @@ export function useAutoSave(editor: Editor | null) {
     }
 
     try {
+      const docAtWrite = editor.state.doc;
       const markdown = serializeLiveDoc(editor);
       await writeFile(filePath, markdown);
       // §3.5 쓰는 사이 탭이 닫혔거나 다른 경로로 옮겨졌으면 저장 결과를 탭의 기록에 남기지 않는다
@@ -112,6 +114,15 @@ export function useAutoSave(editor: Editor | null) {
         .getState()
         .tabs.some((t) => t.id === pending.id && t.filePath === filePath);
       if (stillShown) {
+        // Phase 4: record save time so future mtime comparisons have a baseline — this
+        // write is ours whatever happened to the document since.
+        useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+      }
+      // §3.5 쓰는 사이 사용자가 더 고쳤으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다.
+      if (
+        stillShown &&
+        editorStillHolds(editor, pending.id, docAtWrite, markdown)
+      ) {
         // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
         // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
         // 쓰는 자동 리로드의 갈라짐 판정(use-file-operations.ts의 `syncSourceBuffers`)이
@@ -120,10 +131,8 @@ export function useAutoSave(editor: Editor | null) {
         // 그 캐시를 읽는 읽기 전용 패널들(PropertiesPanel·Skill 미리보기)도 함께 낫는다.
         useFileStore.getState().setFileContent(filePath, markdown);
         markDirty(pending.id, false);
-        // After save, current doc becomes the new baseline for dirty detection
-        updateOriginalDoc(pending.id, editor.state.doc);
-        // Phase 4: record save time so future mtime comparisons have a baseline
-        useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+        // The written doc becomes the new baseline for dirty detection.
+        updateOriginalDoc(pending.id, docAtWrite);
       }
       // §56 If a journal entry's content changed, refresh the journal sidebars
       // (Memories One Line/Full) in real time instead of only on remount.
