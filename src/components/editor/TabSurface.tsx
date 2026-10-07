@@ -26,9 +26,9 @@ import type {
 } from "./tab-surface-renderers";
 
 import { useTabScrollMemory } from "../../hooks/use-tab-scroll-memory";
-import { reloadWindow } from "../../services/app-exit";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { reloadFromErrorScreen } from "../../utils/recovery-reload";
 import { ErrorBoundary } from "../ErrorBoundary";
 import { TabSurfaceError } from "./TabSurfaceError";
 
@@ -164,7 +164,7 @@ export function TabSurface({
               // ‼️ 자기 `entry.tabId`를 닫는다 — `activeTabId`가 아니다(§288 규칙 2).
               // 숨은 표면이 실패한 뒤 활성 탭에서 이 버튼을 누르면 남의 탭이 닫힌다.
               onClose={() => useEditorStore.getState().closeTab(entry.tabId)}
-              onReload={() => void reloadWindow()}
+              onReload={() => void reloadFromErrorScreen()}
               onRetry={retry}
             />
           )}

@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-import { reloadWindow } from "../services/app-exit";
 import { logger } from "../utils/logger";
+import { reloadFromErrorScreen } from "../utils/recovery-reload";
 
 interface Props {
   children: ReactNode;
@@ -87,7 +87,7 @@ export class ErrorBoundary extends Component<Props, State> {
             Retry
           </button>
           <button
-            onClick={() => void reloadWindow()}
+            onClick={() => void reloadFromErrorScreen()}
             style={{
               marginTop: "1rem",
               padding: "0.5rem 1rem",
