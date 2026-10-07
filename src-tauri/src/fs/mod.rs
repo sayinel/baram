@@ -820,6 +820,11 @@ pub(crate) fn start_watching<R: tauri::Runtime>(
     // tx is dropped, rx becomes disconnected, and this thread exits on its own.
     // §3.2 Which events reach the webview is `watch_filter`'s call (issue 795): the
     // vault walk's exclusion, judged relative to this root, before any metadata read.
+    // ‼️ Events go to every window (`AppHandle::emit`), as they did before leases
+    // (#797): a vault's watcher already reported to file windows, which keep only their
+    // own file's events. A file window's lease served by a vault's watcher therefore
+    // sees nothing it did not before — `watch_filter_tests.rs` pins that the host
+    // reports no path its vault's own watch would not.
     let mut filter = watch_filter::WatchFilter::for_watch(
         Path::new(&path),
         spec.recursive,

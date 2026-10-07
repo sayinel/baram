@@ -602,3 +602,59 @@ fn a_focus_file_reported_in_the_hosts_other_spelling_still_passes_an_excluded_fo
     std::fs::write(real_root.join("build/other.md"), "x").unwrap();
     assert!(route_all(&mut f, &[written(&other)[1].clone()], &probe).is_empty());
 }
+
+#[cfg(unix)]
+#[test]
+fn a_host_serving_a_file_window_reports_nothing_beyond_its_vault() {
+    // #797: a file window's folder inside a vault is served by the vault's watcher.
+    // Events reach every window, as the vault's own watcher's always did, so what the
+    // host reports must be what the vault alone would report — the file window's folder
+    // adds a spelling of those files, never another file.
+    // 이것을 실패시키는 것: `respell` 이 폴더가 event 를 담는지 보지 않고 spelling 마다 낸다.
+    let real = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(real.path()).unwrap();
+    std::fs::create_dir(root.join("sub")).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let sub_alias = links.path().join("sub");
+    std::os::unix::fs::symlink(root.join("sub"), &sub_alias).unwrap();
+    let vault_only: Spellings = Arc::new(RwLock::new(vec![(root.clone(), root.clone())]));
+    let hosting: Spellings = Arc::new(RwLock::new(vec![
+        (root.clone(), root.clone()),
+        (root.join("sub"), sub_alias.clone()),
+    ]));
+    let focus: Focus = Arc::new(RwLock::new(
+        [sub_alias.join("a.md"), root.join("sub/a.md")]
+            .into_iter()
+            .collect(),
+    ));
+    let mut alone = WatchFilter::with_open_files(&root, true, known(&[]), Focus::default());
+    alone.spellings = vault_only;
+    let mut host = WatchFilter::with_open_files(&root, true, known(&[]), focus);
+    host.spellings = hosting;
+    let probe = CountingProbe::default();
+    let files = [
+        root.join("top.md"),
+        root.join("sub/a.md"),
+        root.join("sub/b.md"),
+    ];
+    for f in &files {
+        std::fs::write(f, "x").unwrap();
+    }
+    let canonical = |emits: Vec<Emit>| -> std::collections::BTreeSet<PathBuf> {
+        emits
+            .iter()
+            .map(|e| {
+                let p = PathBuf::from(e.path());
+                p.strip_prefix(&sub_alias)
+                    .map(|r| root.join("sub").join(r))
+                    .unwrap_or(p)
+            })
+            .collect()
+    };
+    for f in &files {
+        let event = [written(f)[1].clone()];
+        let by_host = canonical(route_all(&mut host, &event, &probe));
+        let by_vault = canonical(route_all(&mut alone, &event, &probe));
+        assert_eq!(by_host, by_vault, "{}", f.display());
+    }
+}
