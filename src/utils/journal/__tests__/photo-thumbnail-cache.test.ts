@@ -44,6 +44,19 @@ describe("thumbnail session cache", () => {
     expect(_thumbCacheSizes().resolved).toBe(1);
   });
 
+  /** A caller that knows no revision (the editor's image previews) and one that does (the
+   *  lightbox) use the same path and tier without pushing each other out.
+   *  이것을 실패시키는 것: key 에서 revision 을 빼는 것 — 둘이 번갈아 서로를 지운다. */
+  test("revision-aware and revision-less callers keep separate entries", async () => {
+    await resolveThumbUrl("/v/a.jpg", 2048, "");
+    await resolveThumbUrl("/v/a.jpg", 2048, "1:10");
+    expect(cachedThumbUrl("/v/a.jpg", 2048, "")).not.toBeNull();
+    expect(cachedThumbUrl("/v/a.jpg", 2048, "1:10")).not.toBeNull();
+    await resolveThumbUrl("/v/a.jpg", 2048, "");
+    await resolveThumbUrl("/v/a.jpg", 2048, "1:10");
+    expect(photoThumbnail).toHaveBeenCalledTimes(2);
+  });
+
   /** 이것을 실패시키는 것: `remember` 의 축출 loop 를 지우는 것(크기가 상한을 넘는다), 또는
    *  `cachedThumbUrl` 이 맞힌 항목을 뒤로 옮기지 않는 것(방금 쓴 항목이 쫓겨난다). */
   test("holds at most MAX_RESOLVED_THUMBS, evicting the least recently used", async () => {
@@ -62,6 +75,15 @@ describe("thumbnail session cache", () => {
     expect(cachedThumbUrl("/v/1.jpg", 320)).toBeNull();
     expect(cachedThumbUrl("/v/2.jpg", 320)).toBeNull();
     expect(cachedThumbUrl("/v/3.jpg", 320)).not.toBeNull();
+  });
+
+  /** 이것을 실패시키는 것: `latestRevision` 을 자르는 loop 를 지우는 것. */
+  test("the revision index is bounded with the cache", async () => {
+    for (let i = 0; i < MAX_RESOLVED_THUMBS + 5; i++) {
+      await resolveThumbUrl(`/v/${i}.jpg`, 320, "1:1");
+    }
+    expect(_thumbCacheSizes().resolved).toBe(MAX_RESOLVED_THUMBS);
+    expect(_thumbCacheSizes().revisions).toBe(MAX_RESOLVED_THUMBS);
   });
 
   /** 이것을 실패시키는 것: 실패 기록을 자르지 않는 것. */

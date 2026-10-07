@@ -74,12 +74,15 @@ export const MAX_RESOLVED_THUMBS = 2048;
 export const MAX_THUMB_FAILURES = 100;
 
 /**
- * absolutePath|maxPx → the result for one revision of that file. 세션 내 재요청은 IPC를 타지
- * 않는다 — 같은 revision 일 때만. 같은 경로의 파일이 바뀌면(`sourceRevision`) 옛 결과는
- * 맞지 않으므로 miss 이고, 새 결과가 그 자리를 덮는다: 한 경로·계층에 항목은 하나다.
+ * absolutePath|maxPx|revision → 결과. 세션 내 재요청은 IPC를 타지 않는다. revision 이 key 의
+ * 일부라, revision 을 아는 호출자(갤러리 · 라이트박스 · `journal-photos` 블록)와 모르는
+ * 호출자(에디터 이미지 프리뷰, revision "")가 같은 경로·계층에서 서로의 항목을 밀어내지 않는다.
+ * 같은 파일의 새 revision 이 오면 그 경로·계층의 옛 revision 항목은 지운다(`latestRevision`).
  * Map 의 순서가 최근 사용 순서다(맨 앞이 가장 오래 쓰지 않은 것).
  */
-const resolved = new Map<string, { result: ThumbUrl; revision: string }>();
+const resolved = new Map<string, ThumbUrl>();
+/** absolutePath|maxPx → the last non-empty revision stored under it. */
+const latestRevision = new Map<string, string>();
 /** 같은 사진을 그리드와 라이트박스가 동시에 요청할 수 있어 진행 중인 약속을 공유한다. */
 const inFlight = new Map<string, Promise<ThumbUrl>>();
 
@@ -92,13 +95,22 @@ const failures: { error: string; path: string }[] = [];
 /** 테스트 격리용 — 모듈 캐시를 비운다. */
 export function _resetThumbCache(): void {
   resolved.clear();
+  latestRevision.clear();
   inFlight.clear();
   failures.length = 0;
 }
 
 /** 테스트용 — 지금 들고 있는 항목 수. */
-export function _thumbCacheSizes(): { failures: number; resolved: number } {
-  return { failures: failures.length, resolved: resolved.size };
+export function _thumbCacheSizes(): {
+  failures: number;
+  resolved: number;
+  revisions: number;
+} {
+  return {
+    failures: failures.length,
+    resolved: resolved.size,
+    revisions: latestRevision.size,
+  };
 }
 
 /**
@@ -121,7 +133,7 @@ function thumbStats(): {
 } {
   const values = [...resolved.values()];
   return {
-    fromCache: values.filter((v) => !v.result.isOriginal).length,
+    fromCache: values.filter((v) => !v.isOriginal).length,
     failed: failures.length,
     sampleErrors: [...new Set(failures.map((f) => f.error))].slice(0, 3),
   };
@@ -139,13 +151,13 @@ export function cachedThumbUrl(
   maxPx: number = GALLERY_THUMB_PX,
   revision = "",
 ): null | ThumbUrl {
-  const key = cacheKey(absolutePath, maxPx);
+  const key = cacheKey(absolutePath, maxPx, revision);
   const hit = resolved.get(key);
-  if (!hit || hit.revision !== revision) return null;
+  if (!hit) return null;
   // Most recently used goes to the back.
   resolved.delete(key);
   resolved.set(key, hit);
-  return hit.result;
+  return hit;
 }
 
 export async function resolveThumbUrl(
@@ -156,7 +168,7 @@ export async function resolveThumbUrl(
   const hit = cachedThumbUrl(absolutePath, maxPx, revision);
   if (hit) return hit;
 
-  const flightKey = `${cacheKey(absolutePath, maxPx)}|${revision}`;
+  const flightKey = cacheKey(absolutePath, maxPx, revision);
   const pending = inFlight.get(flightKey);
   if (pending) return pending;
 
@@ -178,7 +190,7 @@ export async function resolveThumbUrl(
       return { url: convertFileSrc(absolutePath), isOriginal: true };
     })
     .then((result) => {
-      remember(cacheKey(absolutePath, maxPx), { result, revision });
+      remember(absolutePath, maxPx, revision, result);
       inFlight.delete(flightKey);
       return result;
     });
@@ -187,20 +199,45 @@ export async function resolveThumbUrl(
   return request;
 }
 
-function cacheKey(absolutePath: string, maxPx: number): string {
-  return `${absolutePath}|${maxPx}`;
+function cacheKey(
+  absolutePath: string,
+  maxPx: number,
+  revision: string,
+): string {
+  return `${absolutePath}|${maxPx}|${revision}`;
 }
 
-/** Store as most recently used, evicting the least recently used past the bound. */
+/**
+ * Store as most recently used, evicting the least recently used past the bound. A new
+ * revision of a file drops the one stored before it under the same path and tier.
+ */
 function remember(
-  key: string,
-  entry: { result: ThumbUrl; revision: string },
+  absolutePath: string,
+  maxPx: number,
+  revision: string,
+  result: ThumbUrl,
 ): void {
+  const key = cacheKey(absolutePath, maxPx, revision);
+  if (revision !== "") {
+    const slot = `${absolutePath}|${maxPx}`;
+    const previous = latestRevision.get(slot);
+    if (previous !== undefined && previous !== revision) {
+      resolved.delete(cacheKey(absolutePath, maxPx, previous));
+    }
+    latestRevision.set(slot, revision);
+  }
   resolved.delete(key);
-  resolved.set(key, entry);
+  resolved.set(key, result);
   while (resolved.size > MAX_RESOLVED_THUMBS) {
     const oldest = resolved.keys().next().value;
     if (oldest === undefined) break;
     resolved.delete(oldest);
+  }
+  // `latestRevision` holds one short string per slot; it is cut with the cache so it
+  // cannot outgrow it.
+  while (latestRevision.size > MAX_RESOLVED_THUMBS) {
+    const oldest = latestRevision.keys().next().value;
+    if (oldest === undefined) break;
+    latestRevision.delete(oldest);
   }
 }

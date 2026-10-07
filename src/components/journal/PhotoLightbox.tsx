@@ -18,7 +18,10 @@ import type { PhotoGalleryEntry } from "../../utils/journal/journal-photo";
 
 import { INTL_LOCALES } from "../../i18n";
 import { useTranslation } from "../../i18n/useTranslation";
-import { cachedThumbUrl } from "../../utils/journal/photo-thumbnail";
+import {
+  cachedThumbUrl,
+  GALLERY_THUMB_PX,
+} from "../../utils/journal/photo-thumbnail";
 import { ImageOriginalView } from "../editor/ImageOriginalView";
 import { usePhotoPreview } from "./use-photo-thumb";
 
@@ -40,7 +43,9 @@ export function PhotoLightbox({
     isVideo ? null : photo.absolutePath,
     photo.revision,
   );
-  const placeholder = isVideo ? null : cachedThumbUrl(photo.absolutePath);
+  const placeholder = isVideo
+    ? null
+    : cachedThumbUrl(photo.absolutePath, GALLERY_THUMB_PX, photo.revision);
   const [viewingOriginal, setViewingOriginal] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
