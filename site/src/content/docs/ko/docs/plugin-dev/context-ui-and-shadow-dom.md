@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: UI 와 Shadow DOM 격리"
-sourceHash: "192f8709a1a2"
+sourceHash: "468ef6b06f3b"
 ---
 
 ## `context.ui`
@@ -24,9 +24,11 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 // PluginFileViewerOptions = { id: string; extensions: string[];
 //   onMount(el: HTMLElement, ctx: PluginFileViewerContext): void;
 //   onUpdate?(el: HTMLElement, ctx: PluginFileViewerContext): void;
-//   onUnmount?(el: HTMLElement): void }
+//   onUnmount?(el: HTMLElement): void;
+//   editable?: boolean; getText?(el: HTMLElement): string }
 // PluginFileViewerContext = { assetUrl: string; filePath: string;
-//   refreshKey: number; zoomLevel: number }
+//   refreshKey: number; zoomLevel: number; edit?: PluginFileViewerEdit }
+// PluginFileViewerEdit = { tabId: string; text: string; markChanged(): void }
 ```
 
 `context.ui` 자체는 매니페스트가 `sidebar`·`statusbar`·`settings`·`viewer` 중 하나라도 선언하면
@@ -37,7 +39,7 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 | `showStatusBarItem`  | `statusbar`                                            |
 | `addSidebarPanel`    | `sidebar`                                              |
 | `addSettingsTab`     | `settings`                                             |
-| `registerFileViewer` | `viewer`                                               |
+| `registerFileViewer` | `viewer` (`editable: true` 면 `files` 도)              |
 | `showNotification`   | `sidebar` / `statusbar` / `settings` / `viewer` 중 하나 |
 | `addStyle`           | `sidebar` / `statusbar` / `settings` / `viewer` 중 하나 |
 
@@ -63,6 +65,8 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
   미리보기 쪽을, CodeMirror가 소스 쪽을 렌더합니다. **바이너리** 확장자는 뷰어 전용이고, 앱의
   바이너리 가드(UTF-8 읽기 금지, 텍스트 저장 금지)는 그 플러그인이 켜져 있든 아니든 적용됩니다.
   내장 `media-viewer` 플러그인(`src/plugins/builtin/media-viewer.ts`)이 참조 구현입니다.
+  뷰어가 보여 주는 파일을 고칠 수도 있습니다 — [편집 가능한 파일 뷰어](/ko/docs/plugin-dev/editable-file-viewers/)를
+  보십시오.
 
 ## Shadow DOM UI 격리
 

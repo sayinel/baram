@@ -119,6 +119,7 @@ export const TITLES = {
   "plugin-dev/entry-point-and-types": "Entry point and public types",
   "plugin-dev/context-commands-editor-files-events": "Context: commands, editor, files, events",
   "plugin-dev/context-ui-and-shadow-dom": "Context: UI and Shadow-DOM isolation",
+  "plugin-dev/editable-file-viewers": "Editable file viewers",
   "plugin-dev/context-prompts": "Context: prompts",
   "plugin-dev/context-ai-network-storage-settings": "Context: AI, network, storage, settings",
   "plugin-dev/commands-and-tiptap-extensions": "Command palette and Tiptap extensions",
@@ -276,6 +277,8 @@ export const PAGES = [
     "context.files (requires files or files:readonly)", "context.events (requires events)" ] },
   { slug: "plugin-dev/context-ui-and-shadow-dom", src: PD, items: [
     "context.ui", "Shadow-DOM UI isolation" ] },
+  // §392 스펙 0071 §11 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
+  { slug: "plugin-dev/editable-file-viewers" },
   { slug: "plugin-dev/context-prompts" },
   { slug: "plugin-dev/context-ai-network-storage-settings", src: PD, items: [
     "context.ai (requires ai)", "context.network (requires network)",
