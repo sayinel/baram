@@ -224,7 +224,7 @@ function App() {
 
   // §82 Auto-save for whatever the source buffer owns: code files, and markdown
   // while source mode is showing it.
-  useCodeAutoSave({
+  const { rearmForViewerEdit } = useCodeAutoSave({
     bufferVersion,
     getSourceBuffer,
     isEditableTextFile,
@@ -325,6 +325,19 @@ function App() {
     toggleSourceMode,
   });
 
+  // §392 What an editable viewer's mount reads and re-arms (spec 0071 §6). A new object on every
+  // buffer write, because `hasSourceBuffer` follows `bufferVersion` — the write that fills the
+  // tab's buffer is how the host learns it can mount. The host is in the tree only while a tab a
+  // plugin viewer draws is active, so typing in a code tab never re-renders it.
+  const viewerEdit = useMemo(
+    () => ({
+      getSourceBuffer,
+      hasSourceBuffer,
+      rearmAutoSave: rearmForViewerEdit,
+    }),
+    [getSourceBuffer, hasSourceBuffer, rearmForViewerEdit],
+  );
+
   // §5.1 HTML·플러그인 프리뷰 파일의 프리뷰 ↔ 원본 토글 버튼. 활성 표면 안에 겹쳐 그린다
   // (TabSurface의 `overlay` prop 주석 참조 — `.editor-area-scroll`의 CSS zoom 때문이다).
   const previewToggleButton =
@@ -417,6 +430,7 @@ function App() {
             sourceEditorRef,
             surfaceKind,
             tabSurfaceRenderers,
+            viewerEdit,
           }}
         />
         <PromptLintPanel editor={activeEditor} />
