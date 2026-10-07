@@ -30,6 +30,11 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
 const ZETTEL = noteIdentity("/v/notes/202607051530 원자적 노트.md");
 const PLAIN = noteIdentity("/v/프로젝트.md");
 
+// §390 같은 이름의 두 표기 — 키보드로 친 완성형(NFC)과 일부 macOS 도구가 디스크에
+// 저장하는 분해형(NFD).
+const PROJECT = "프로젝트";
+const PROJECT_NFD = PROJECT.normalize("NFD");
+
 describe("noteIdentity", () => {
   it("Zettel 노트에서 ID와 stem을 함께 뽑는다", () => {
     expect(ZETTEL.id).toBe("202607051530");
@@ -92,6 +97,42 @@ describe("tasksForNote — 무엇이 이 노트의 것인가", () => {
   it("파일명 대조는 대소문자를 가리지 않는다", () => {
     const t = task({ links: ["PROJECT"] });
     expect(tasksForNote([t], noteIdentity("/v/project.md"))).toEqual([t]);
+  });
+
+  it("§390 두 표기가 다르다", () => {
+    // 아래 두 시험이 분해형을 정말 분해형으로 쓰는지 먼저 못 박는다 — 같은 문자열이면
+    // 두 시험은 정규화와 무관하게 통과한다.
+    expect(PROJECT_NFD).not.toBe(PROJECT);
+  });
+
+  it("§390 분해형으로 저장된 노트는 완성형으로 적은 링크로 걸린다", () => {
+    // What fails this: `foldName(target) === foldName(note.stem)` 을
+    // `target.toLowerCase() === note.stem.toLowerCase()` 로 바꾸는 것(둘 다 못 접는다) ·
+    // 링크 쪽만 접는 `foldName(target) === note.stem.toLowerCase()` — 이 시험의 링크는
+    // 이미 완성형이라 접히는 것은 노트 쪽 stem 이다.
+    const note = noteIdentity(`/v/${PROJECT_NFD}.md`);
+    const t = task({ links: [PROJECT] });
+    expect(tasksForNote([t], note)).toEqual([t]);
+  });
+
+  it("§390 완성형으로 저장된 노트는 분해형으로 적은 링크로도 걸린다", () => {
+    // What fails this: `foldName(target) === foldName(note.stem)` 을
+    // `target.toLowerCase() === note.stem.toLowerCase()` 로 바꾸는 것 · 노트 쪽만 접는
+    // `target.toLowerCase() === foldName(note.stem)` — 이 시험의 stem 은 이미 완성형이라
+    // 접혀야 하는 것은 링크 쪽이다. 위 시험과 짝이어서 한쪽만 접는 변이는 둘 중 하나에서 죽는다.
+    const note = noteIdentity(`/v/${PROJECT}.md`);
+    const t = task({ links: [PROJECT_NFD] });
+    expect(tasksForNote([t], note)).toEqual([t]);
+  });
+
+  it("§390 다른 이름의 링크는 분해형 노트의 것이 아니다", () => {
+    // What fails this: 비교를 항상 참으로 만드는 `return true` · 접은 뒤 접두로 맞추는
+    // `foldName(target).startsWith(foldName(note.stem))`. 같은 목록의 `hit` 이 "접어서
+    // 맞는" 것을, `miss` 가 "접어도 다른" 것을 단언해 부정 단언이 혼자 서지 않는다.
+    const note = noteIdentity(`/v/${PROJECT_NFD}.md`);
+    const hit = task({ line: 1, links: [PROJECT] });
+    const miss = task({ line: 2, links: ["프로젝트 계획"] });
+    expect(tasksForNote([hit, miss], note)).toEqual([hit]);
   });
 
   it("‼️ 대상이 빈 링크는 어떤 노트도 가리키지 않는다", () => {
