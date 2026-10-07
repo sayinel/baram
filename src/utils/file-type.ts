@@ -145,3 +145,18 @@ export function isSvgFile(filePath: string | undefined): boolean {
   if (!filePath) return false;
   return filePath.split(".").pop()?.toLowerCase() === "svg";
 }
+
+/**
+ * §392 spec 0071 §5 condition 3 — a file an editable plugin viewer may change: text the host
+ * can write back as UTF-8, of a type no other surface owns. Markdown (untitled included) is
+ * the WYSIWYG editor's; an image or a PDF is binary (`isBinaryViewerFile` — the host writes
+ * text only); HTML is drawn by the retained `HtmlPreview` at the same time a viewer would be.
+ * Asked of a path, not of the active tab: a mount knows its own file.
+ */
+export function isViewerEditableFile(filePath: string | undefined): boolean {
+  return (
+    !isMarkdownFile(filePath) &&
+    !isBinaryViewerFile(filePath) &&
+    !isHtmlFile(filePath)
+  );
+}
