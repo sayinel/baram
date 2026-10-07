@@ -15,7 +15,14 @@
 // The fonts are therefore inlined as data URIs. ~296KB of woff2 becomes ~395KB
 // of base64 in the exported file, and the same bytes join the export chunk —
 // which App.tsx already loads lazily (`lazy(() => import("./components/export/
-// ExportDialog"))`), so nothing reaches the app's startup path.
+// ExportDialog"))`), so nothing reaches the app's startup path. ‼️ Neither
+// half of that held (issue 799). A codeSplitting group in vite.config.ts that
+// claims these files moves them into its chunk — `vendor-katex` did, and
+// math-inline-edit.ts loads that one at startup. And `lazy()` starts its import
+// when the component first RENDERS, and AppDialogs renders ExportDialog
+// unconditionally, so the export chunk loads at startup too. This module is
+// therefore reached only through `import()` at export time (`export.ts`), and
+// nothing imports it statically — pinned by src/__tests__/katex-fonts-chunk.test.ts.
 //
 // Only woff2 is embedded. The woff and TrueType alternates in KaTeX's src lists
 // exist for browsers that predate woff2; the only two engines that ever open a
@@ -42,6 +49,7 @@ import size2Regular from "katex/dist/fonts/KaTeX_Size2-Regular.woff2?inline";
 import size3Regular from "katex/dist/fonts/KaTeX_Size3-Regular.woff2?inline";
 import size4Regular from "katex/dist/fonts/KaTeX_Size4-Regular.woff2?inline";
 import typewriterRegular from "katex/dist/fonts/KaTeX_Typewriter-Regular.woff2?inline";
+import katexCSS from "katex/dist/katex.min.css?raw";
 
 /** file stem → data URI, keyed exactly as katex.min.css spells it. */
 const FONT_DATA_URIS: Record<string, string> = {
@@ -92,4 +100,9 @@ export function inlineKatexFonts(css: string): string {
       const uri = FONT_DATA_URIS[name];
       return uri ? `url("${uri}")` : whole;
     });
+}
+
+/** KaTeX's own stylesheet with every face embedded — what an export with math ships. */
+export function exportedKatexCSS(): string {
+  return inlineKatexFonts(katexCSS);
 }

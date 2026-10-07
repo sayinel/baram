@@ -18,7 +18,11 @@ import { bundledFont } from "../font/bundled-fonts";
 import { helpDocUrl } from "../help-urls";
 import { logger } from "../logger";
 import { buildFontFaceCSS } from "./export-font-embed";
-import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
+import {
+  captureEditorHTML,
+  generateStandaloneHTML,
+  needsKatexStylesheet,
+} from "./export-html";
 import { stripDisallowedMarkdownLinks } from "./export-markdown-links";
 import { themeTokensBlock } from "./export-theme-tokens";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
@@ -140,6 +144,17 @@ function resolveThemeTokens(
 }
 
 /**
+ * §5.12 KaTeX's stylesheet with its fonts embedded, for a document that has
+ * math — loaded here, at export time, through `import()`: the 20 fonts must not
+ * be read before an export needs them (issue 799).
+ */
+async function katexCSSFor(editorHTML: string): Promise<string | undefined> {
+  if (!needsKatexStylesheet(editorHTML)) return undefined;
+  const { exportedKatexCSS } = await import("./export-katex-fonts");
+  return exportedKatexCSS();
+}
+
+/**
  * Export editor content as a standalone HTML file.
  * Opens native save dialog, then writes via Rust atomic write.
  */
@@ -162,17 +177,15 @@ export async function exportAsHTML(
     options?.activeTheme,
     options?.activeThemeMode,
   );
+  const editorHTML = await captureEditorHTML(editor);
   const htmlOptions: ExportHTMLOptions = {
     bodyFont,
     codeFont,
     fontFaceCSS,
+    katexCSS: await katexCSSFor(editorHTML),
     themeTokens,
   };
-  const html = generateStandaloneHTML(
-    await captureEditorHTML(editor),
-    title,
-    htmlOptions,
-  );
+  const html = generateStandaloneHTML(editorHTML, title, htmlOptions);
 
   const path = await save({
     filters: [{ name: "HTML", extensions: ["html"] }],
@@ -213,19 +226,17 @@ export async function exportAsPDF(
     activeTheme,
     activeThemeMode,
   );
+  // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it
+  // with a link instead of leaving an inert `<video>`.
+  const editorHTML = await captureEditorHTML(editor, { forPdf: true });
   const htmlOptions: ExportHTMLOptions = {
     bodyFont,
     codeFont,
     fontFaceCSS,
+    katexCSS: await katexCSSFor(editorHTML),
     themeTokens,
   };
-  const html = generateStandaloneHTML(
-    // §301 fix (I4): PDF can never play video — captureEditorHTML replaces it
-    // with a link instead of leaving an inert `<video>`.
-    await captureEditorHTML(editor, { forPdf: true }),
-    title,
-    htmlOptions,
-  );
+  const html = generateStandaloneHTML(editorHTML, title, htmlOptions);
 
   const path = await save({
     filters: [{ name: "PDF", extensions: ["pdf"] }],
