@@ -104,7 +104,6 @@ interface EditorState {
   /** §38 Close all unpinned tabs except the given one */
   closeOtherTabs: (tabId: string) => void;
   closeTab: (tabId: string) => void;
-  /** §38 Close unpinned tabs to the right of the given tab */
   /**
    * §38 Close exactly `ids` (pinned ones are skipped); if the active tab is among them,
    * `anchorId` becomes active. `closeOtherTabs` and `closeTabsToRight` delegate here, and the
@@ -123,6 +122,7 @@ interface EditorState {
    * the outcome no longer depends on how many contexts happened to be open.
    */
   closeTabsForContexts: (contextIds: ReadonlySet<string>) => void;
+  /** §38 Close unpinned tabs to the right of the given tab */
   closeTabsToRight: (tabId: string) => void;
   /** §72 Bumped when external code (e.g. PropertiesPanel) updates file content in store */
   contentRefreshKey: number;
@@ -292,12 +292,6 @@ export function contextSwitchNeeded(contextId: string): boolean {
   return !(tabCtx && activeCtx && tabCtx.path === activeCtx.path);
 }
 
-/**
- * A type predicate, not just a boolean: callers that pass the result as a gate — "return
- * unless this is a file tab" — then get `filePath` narrowed for free, which is what makes
- * the inverted guards (`if (!isFileTab(tab)) return;`) readable instead of needing a second
- * `tab &&` beside them.
- */
 /** §38 The tabs "Close Others" closes: every unpinned tab but `tabId`. */
 export function otherTabIds(
   tabs: readonly EditorTab[],
@@ -306,11 +300,17 @@ export function otherTabIds(
   return tabs.filter((t) => !t.isPinned && t.id !== tabId).map((t) => t.id);
 }
 
-/** §38 The tabs "Close Tabs to the Right" closes: unpinned tabs after `tabId`. */
+/**
+ * A type predicate, not just a boolean: callers that pass the result as a gate — "return
+ * unless this is a file tab" — then get `filePath` narrowed for free, which is what makes
+ * the inverted guards (`if (!isFileTab(tab)) return;`) readable instead of needing a second
+ * `tab &&` beside them.
+ */
 export function isFileTab(tab: EditorTab | undefined): tab is EditorTab {
   return !!tab && (!tab.type || tab.type === "file");
 }
 
+/** §38 The tabs "Close Tabs to the Right" closes: unpinned tabs after `tabId`. */
 export function tabIdsToRight(
   tabs: readonly EditorTab[],
   tabId: string,
