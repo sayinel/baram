@@ -680,3 +680,44 @@ async fn a_suffixed_link_keeps_its_graph_target_across_saves() {
     assert_eq!(to("r.md"), Some(format!("{root}/x.md")));
     assert_eq!(to("s.md"), Some(format!("{root}/x.md")));
 }
+
+/// Issue 796: a refresh dropped mid-walk leaves its build lease behind — it can neither
+/// publish nor abort once its future is gone. The next refresh holds the build lock, so
+/// that lease has no owner, and it is replaced: the refresh publishes instead of failing
+/// with `INDEX_BUILD_PENDING` for as long as the app runs.
+/// 이것을 실패시키는 것: `rebuild_and_publish` 가 `begin_build_holding_lock` 대신 남은 lease 를
+/// 거절하는 `begin_build` 를 부르는 것.
+#[tokio::test]
+async fn a_refresh_dropped_mid_build_does_not_block_the_next_one() {
+    use std::future::Future;
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-drop", true).await;
+    for i in 0..200 {
+        std::fs::write(dir.path().join(format!("n{i}.md")), "x").unwrap();
+    }
+    let state = LinkIndexState::new();
+    let key = active_index_key(&ctx).await.unwrap();
+    {
+        let mut refresh = Box::pin(refresh_index_inner(&state, &ctx, &root));
+        let mut task = std::task::Context::from_waker(futures::task::noop_waker_ref());
+        let mut polls = 0;
+        while !state.has_pending(&key).await {
+            assert!(
+                refresh.as_mut().poll(&mut task).is_pending(),
+                "finished before its lease was seen"
+            );
+            polls += 1;
+            assert!(polls < 1_000, "the refresh never began a build");
+            tokio::task::yield_now().await;
+        }
+    }
+    // Dropped with its lease pending.
+    assert!(state.has_pending(&key).await);
+
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    assert!(!state.has_pending(&key).await);
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+        .await
+        .unwrap();
+    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+}

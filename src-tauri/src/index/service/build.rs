@@ -171,7 +171,7 @@ pub(super) async fn rebuild_and_publish(
         return Err(IndexBuildError::Invalidated);
     }
     let lock = state.build_lock(key).await;
-    let _building = lock.lock().await;
+    let building = lock.lock().await;
     if coalesce {
         if let Some(stats) = state
             .published_since(key, &requested, target.incarnation)
@@ -186,7 +186,7 @@ pub(super) async fn rebuild_and_publish(
     // unrelated tree under this vault's key.
     still_the_registered_directory(root_path, target)?;
     let token = state
-        .begin_build(key, &requested, root_path, target.incarnation)
+        .begin_build_holding_lock(key, &requested, root_path, target.incarnation, &building)
         .await?;
     let mut new_index = LinkIndex::new();
     let stats = match new_index.build(root_path).await {
