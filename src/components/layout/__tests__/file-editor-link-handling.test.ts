@@ -88,16 +88,17 @@ describe("§384 (C) FileEditorLayout's dirty listener gates on isEphemeralOnlyUp
   });
 });
 
-// §3.2 #797 — same reasoning: the window watches its file's folder non-recursively for
-// that file, and gives the watch back when the effect ends. Rust also gives back a
-// destroyed window's leases (watch_registry.rs); this pins the window's own release.
+// §3.2 #797 — same reasoning: the window's folder watch is `useFileWindowWatch`'s
+// (pinned on its own), asked for only after the window's file context is registered —
+// the very promise the load awaits, not a second `ensureFileContext` racing it.
 describe("§3.2 standalone window's folder watch", () => {
-  // 이것을 실패시키는 것: 창이 폴더를 재귀로(옵션 없이) 건다 — 또는 정리에서 `unwatchDir` 를 부르지 않는다.
-  it("takes a non-recursive lease for its file and gives it back in the cleanup", () => {
-    const takes = SOURCE.match(/(?<!un)watchDir\([^)]*\)/g) ?? [];
-    expect(takes).toHaveLength(1);
-    expect(takes[0]).toMatch(/focus: filePath/);
-    expect(takes[0]).toMatch(/recursive: false/);
-    expect(SOURCE.match(/unwatchDir\(id\)/g) ?? []).toHaveLength(1);
+  // 이것을 실패시키는 것: 창이 `watchDir` 를 직접 부른다 — 또는 watch 와 load 가 서로 다른 등록을 기다린다.
+  it("waits on the load's own registration before watching", () => {
+    expect(SOURCE.match(/watchDir\(/g) ?? []).toHaveLength(0);
+    expect(
+      SOURCE.match(/useFileWindowWatch\(filePath, registered\)/g) ?? [],
+    ).toHaveLength(1);
+    expect(SOURCE.match(/await registered\(\)/g) ?? []).toHaveLength(1);
+    expect(SOURCE.match(/ensureFileContext\(/g) ?? []).toHaveLength(1);
   });
 });

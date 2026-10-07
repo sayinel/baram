@@ -19,6 +19,20 @@ const unwatchDir = vi.fn(async (id: number) => {
   live.delete(id);
 });
 const setOpenFiles = vi.fn(async () => {});
+// The watch service asks through `ipc/fs`; refusals are read the real way.
+vi.mock("../../ipc/fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../ipc/fs")>()),
+  unwatchDir: (id: number) => unwatchDir(id),
+  watchDir: (path: string, options?: Record<string, unknown>) =>
+    watchDir(path, options),
+}));
+const handlers = new Map<string, () => void>();
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (event: string, handler: () => void) => {
+    handlers.set(event, handler);
+    return () => handlers.delete(event);
+  }),
+}));
 vi.mock("../../ipc/invoke", () => ({
   // tauri-storage(store 영속화)가 ipc/invoke 재export 로 부른다
   getConfig: vi.fn(async () => null),
@@ -31,6 +45,7 @@ vi.mock("../../ipc/invoke", () => ({
 
 import type { ContextInfo } from "../../ipc/types";
 
+import { useWatchStatusStore } from "../../services/watch-leases";
 import { useContextStore } from "../../stores/context/context";
 import { useWatchLeases } from "../use-watch-leases";
 
@@ -69,7 +84,7 @@ beforeEach(() => {
 });
 
 describe("useWatchLeases", () => {
-  // 이것을 실패시키는 것: 바깥 파일 탭이 닫혀도 그 lease 를 `give` 하지 않는다 — 또는 unmount 에서 돌려주지 않는다.
+  // 이것을 실패시키는 것: 바깥 파일 탭이 닫혀도 그 watch 를 `release` 하지 않는다 — 또는 unmount 에서 돌려주지 않는다.
   it("holds nothing after a hundred rounds of opening and closing", async () => {
     const hook = renderHook(
       ({ root, open }: { open: string[]; root: null | string }) =>
@@ -148,62 +163,32 @@ describe("useWatchLeases", () => {
       </StrictMode>,
     );
     await settle();
-    // The effects did run twice (two registrations per mount) — and the first
-    // mount's leases, no longer wanted once its cleanup ran, were never taken.
-    expect(setOpenFiles).toHaveBeenCalledTimes(4);
+    // The effects did run twice (the open set sent per mount, plus the second mount's
+    // root watch registering it first) — and the first mount's watches, released
+    // before they were asked for, were never taken.
+    expect(setOpenFiles).toHaveBeenCalledTimes(3);
     expect(watchDir).toHaveBeenCalledTimes(2);
     expect(livePaths()).toEqual(["/a", "/out"]);
     view.unmount();
   });
 
-  // 이것을 실패시키는 것: `hold` 가 실패한 시도를 다시 하지 않는다.
-  it("asks again for a watch that failed, while the file is still open", async () => {
-    vi.useFakeTimers();
-    try {
-      watchDir
-        .mockRejectedValueOnce(new Error("busy"))
-        .mockRejectedValueOnce(new Error("busy"));
-      const hook = renderHook(() => useWatchLeases(null, OPEN_ONE));
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(5_000);
-      });
-      expect(watchDir).toHaveBeenCalledTimes(3);
-      expect(livePaths()).toEqual(["/out"]);
-      hook.unmount();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  // 이것을 실패시키는 것: 마지막 시도가 실패해도 항목을 남겨, 다음 변경이 다시 묻지 않는다.
-  it("drops a watch that kept failing, so the next change asks again", async () => {
-    vi.useFakeTimers();
-    try {
-      watchDir.mockRejectedValue(new Error("refused"));
-      const hook = renderHook(
-        ({ open }: { open: string[] }) => useWatchLeases(null, open),
-        { initialProps: { open: ["/out/x.md"] } },
-      );
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(5_000);
-      });
-      expect(watchDir).toHaveBeenCalledTimes(3);
-      watchDir.mockImplementation(
-        async (path: string, options: Record<string, unknown> = {}) => {
-          const id = nextLease++;
-          live.set(id, [path, options]);
-          return id;
-        },
-      );
-      hook.rerender({ open: ["/out/x.md"] });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(0);
-      });
-      expect(livePaths()).toEqual(["/out"]);
-      hook.unmount();
-    } finally {
-      vi.useRealTimers();
-    }
+  // A refused watch stays wanted and shown until Rust says it may succeed (#797).
+  // 이것을 실패시키는 것: 거부된 watch 를 버린다 — 또는 `watch:retry` 에 다시 묻지 않는다.
+  it("keeps a watch refused at the cap queued and shown, and takes it on retry", async () => {
+    watchDir.mockRejectedValueOnce(
+      "watch-capacity: 128 folders are already watched",
+    );
+    const hook = renderHook(() => useWatchLeases(null, OPEN_ONE));
+    await settle();
+    expect(livePaths()).toEqual([]);
+    expect(useWatchStatusStore.getState().queued.capacity).toBe(1);
+    await act(async () => {
+      handlers.get("watch:retry")?.();
+    });
+    await settle();
+    expect(livePaths()).toEqual(["/out"]);
+    expect(useWatchStatusStore.getState().queued.capacity).toBe(0);
+    hook.unmount();
   });
 
   // On Windows a path's folders are split by `\`, and a drive path compares without

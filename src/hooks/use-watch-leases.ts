@@ -1,7 +1,10 @@
 // §3.2 The directory watches the main window holds, and when it gives them back (#797).
 import { useEffect, useRef } from "react";
 
-import { setOpenFiles, unwatchDir, watchDir } from "../ipc/invoke";
+import type { WatchHandle } from "../services/watch-leases";
+
+import { setOpenFiles } from "../ipc/invoke";
+import { want } from "../services/watch-leases";
 import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { useUIStore } from "../stores/ui/ui";
@@ -11,14 +14,6 @@ import {
   hasDriveLetter,
   isUnderRoot,
 } from "../utils/path-utils";
-
-/** A lease being taken: resolves to its id, or `undefined` if the watch failed. */
-type Leases = Map<string, Pending>;
-
-/** How many times a watch is asked for before the entry is dropped (1 s, 2 s apart). */
-const ACQUIRE_ATTEMPTS = 3;
-
-type Pending = Promise<number | undefined>;
 
 /**
  * The main window's watches.
@@ -32,15 +27,16 @@ type Pending = Promise<number | undefined>;
  * - **Out-of-vault tabs.** One non-recursive lease per open file outside the active
  *   root, on its folder, with that file as `focus` — released when the tab closes.
  *
- * Every lease is given back on unmount; Rust also gives back a window's leases when the
- * window is destroyed.
+ * Every watch is wanted through `services/watch-leases`, which keeps one Rust refused or
+ * ended queued and shown until it is held. Every lease is given back on unmount; Rust also
+ * gives back a window's leases when the window is destroyed.
  */
 export function useWatchLeases(
   rootPath: null | string,
   openFilePaths: string[],
 ): void {
-  const roots = useRef(new Map<string, Pending>());
-  const files = useRef(new Map<string, Pending>());
+  const roots = useRef(new Map<string, WatchHandle>());
+  const files = useRef(new Map<string, WatchHandle>());
   const contexts = useContextStore((s) => s.contexts);
   const seenInContexts = useRef(new Set<string>());
 
@@ -48,8 +44,9 @@ export function useWatchLeases(
   // registered before the watch that would drop their events starts (#795).
   useEffect(() => {
     if (!rootPath || roots.current.has(rootPath)) return;
-    hold(roots.current, rootPath, rootPath, {}, () =>
-      registerOpenFiles(currentOpenFilePaths()),
+    roots.current.set(
+      rootPath,
+      want(rootPath, {}, () => registerOpenFiles(currentOpenFilePaths())),
     );
   }, [rootPath]);
 
@@ -60,11 +57,11 @@ export function useWatchLeases(
       contexts.filter((c) => c.contextType !== "file").map((c) => c.path),
     );
     for (const path of listed) seenInContexts.current.add(path);
-    for (const [path, pending] of roots.current) {
+    for (const [path, handle] of roots.current) {
       if (seenInContexts.current.has(path) && !listed.has(path)) {
         roots.current.delete(path);
         seenInContexts.current.delete(path);
-        give(pending);
+        handle.release();
       }
     }
   }, [contexts]);
@@ -86,15 +83,15 @@ export function useWatchLeases(
             !isUnderRoot(p, rootPath, hasDriveLetter(rootPath))),
       ),
     );
-    for (const [file, pending] of files.current) {
+    for (const [file, handle] of files.current) {
       if (wanted.has(file)) continue;
       files.current.delete(file);
-      give(pending);
+      handle.release();
     }
     for (const file of wanted) {
       const dir = containingFolder(file);
       if (files.current.has(file) || !dir) continue;
-      hold(files.current, file, dir, { focus: file, recursive: false });
+      files.current.set(file, want(dir, { focus: file, recursive: false }));
     }
   }, [openFilePaths, rootPath]);
 
@@ -105,8 +102,8 @@ export function useWatchLeases(
     const fileLeases = files.current;
     const seen = seenInContexts.current;
     return () => {
-      for (const pending of [...rootLeases.values(), ...fileLeases.values()]) {
-        give(pending);
+      for (const handle of [...rootLeases.values(), ...fileLeases.values()]) {
+        handle.release();
       }
       rootLeases.clear();
       fileLeases.clear();
@@ -121,16 +118,6 @@ function currentOpenFilePaths(): string[] {
     .getState()
     .tabs.map((t) => t.filePath)
     .filter((p) => p.length > 0);
-}
-
-/** Give a lease back once it is known; a watch that never started has none. */
-function give(pending: Pending): void {
-  void pending.then((lease) => {
-    if (lease === undefined) return;
-    unwatchDir(lease).catch((err) =>
-      logger.warn("useWatchLeases: unwatchDir failed", err),
-    );
-  });
 }
 
 /**
@@ -156,38 +143,4 @@ async function registerOpenFiles(paths: string[]): Promise<void> {
         );
     }
   }
-}
-
-/**
- * Take a lease on `path` into `leases` under `key`, after `before`. A failed attempt is
- * tried again with growing waits while the entry is still wanted; after the last one
- * the entry goes, so the next change that still wants it asks again.
- */
-function hold(
-  leases: Leases,
-  key: string,
-  path: string,
-  options: { focus?: string; recursive?: boolean },
-  before: () => Promise<void> = () => Promise.resolve(),
-): void {
-  // The entry is compared with itself; the holder is filled before the first await.
-  const self: { pending?: Pending } = {};
-  const pending: Pending = (async () => {
-    await before();
-    for (let attempt = 1; ; attempt++) {
-      if (leases.get(key) !== self.pending) return undefined;
-      try {
-        const lease = await watchDir(path, options);
-        return typeof lease === "number" ? lease : undefined;
-      } catch (err) {
-        logger.warn("useWatchLeases: watchDir failed", path, err);
-        if (attempt >= ACQUIRE_ATTEMPTS) break;
-        await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
-      }
-    }
-    if (leases.get(key) === self.pending) leases.delete(key);
-    return undefined;
-  })();
-  self.pending = pending;
-  leases.set(key, pending);
 }

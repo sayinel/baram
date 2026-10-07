@@ -20,6 +20,10 @@ const setOpenFiles = vi.fn();
 const watchDir = vi.fn();
 vi.mock("../../ipc/invoke", () => ({
   setOpenFiles: (...a: unknown[]) => setOpenFiles(...a),
+}));
+// The watch service asks through `ipc/fs` (#797).
+vi.mock("../../ipc/fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../ipc/fs")>()),
   unwatchDir: vi.fn(async () => {}),
   watchDir: (...a: unknown[]) => watchDir(...a),
 }));

@@ -69,3 +69,12 @@
 .toast-action:hover {
   background-color: var(--color-bg-hover);
 }
+
+/* §3.2 A wanted watch that is not held (#797) — stays until it is. */
+.watch-warning {
+  padding: var(--space-0-5) var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-default);
+  background: var(--color-bg-subtle);
+  border-left: 3px solid var(--color-status-warning);
+}

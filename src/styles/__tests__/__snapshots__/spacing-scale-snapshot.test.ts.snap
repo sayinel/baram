@@ -335,6 +335,7 @@ exports[`간격·모서리 선언의 계산값이 그대로다 1`] = `
   "src/styles/dialogs/toast.css|.toast-source|padding|1px 6px",
   "src/styles/dialogs/toast.css|.toast|border-radius|8px",
   "src/styles/dialogs/toast.css|.toast|padding|8px 16px",
+  "src/styles/dialogs/toast.css|.watch-warning|padding|2px 8px",
   "src/styles/editor/base.css|.fold-ellipsis|border-radius|2px",
   "src/styles/editor/base.css|.fold-ellipsis|margin-left|4px",
   "src/styles/editor/base.css|.fold-ellipsis|padding|0 6px",
