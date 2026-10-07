@@ -13,6 +13,7 @@ import {
   isPdfFile,
   isTextFile,
 } from "../../utils/file-type";
+import { foldName } from "../../utils/name-fold";
 import {
   extractLeadingId,
   parseNoteTitle,
@@ -68,6 +69,12 @@ export interface WikilinkSuggestionItem {
  * `searchText` is the note title (from the zettel index, falling back to
  * parsing the filename), so fuzzy search matches by title. Regular
  * (non-zettel) files are unchanged: `target` is the filename, no `searchText`.
+ *
+ * §390 D7 — `label`, `target` and `searchText` are built composed (NFC): the
+ * link a row inserts is `target`, and Tab completes from `label`, so the text
+ * the menu writes into a note is composed, as typed text is. A name some tool
+ * stored decomposed (NFD) is written composed and still resolves (`foldName`).
+ * `path` stays as stored.
  */
 export function buildFileSuggestionItem(
   file: { name: string; path: string },
@@ -85,7 +92,9 @@ export function buildFileSuggestionItem(
     ? extractLeadingId(file.name)
     : null;
   if (zettelId) {
-    const title = titleForId(zettelId) ?? parseNoteTitle(file.name, "");
+    const title = (
+      titleForId(zettelId) ?? parseNoteTitle(file.name, "")
+    ).normalize("NFC");
     return {
       id,
       ext,
@@ -95,7 +104,7 @@ export function buildFileSuggestionItem(
       searchText: title,
     };
   }
-  const stem = fileNameWithoutExtension(file.name);
+  const stem = fileNameWithoutExtension(file.name).normalize("NFC");
   return {
     id,
     ext,
@@ -129,7 +138,7 @@ export function completionCandidates(
   items: WikilinkSuggestionItem[],
   query: string,
 ): string[] {
-  const queryLower = query.toLowerCase();
+  const key = foldName(query);
   return items
     .filter(
       (i) =>
@@ -138,13 +147,14 @@ export function completionCandidates(
     .map((i) =>
       i.kind === "heading" ? `${searchKey(i)}#${i.heading}` : i.label,
     )
-    .filter((t) => t.toLowerCase().startsWith(queryLower));
+    .filter((t) => foldName(t).startsWith(key));
 }
 
 /**
  * §87 One row for a file in another vault. `label` is the stem for the same
  * reason it is everywhere else — it is what the menu draws — and `target` is the
- * stem because that is what `alias::target` resolution expects.
+ * stem because that is what `alias::target` resolution expects. Both are built
+ * composed (NFC), as `buildFileSuggestionItem` builds its rows (§390 D7).
  */
 export function crossVaultItem(
   file: { name: string; path: string },
@@ -152,7 +162,7 @@ export function crossVaultItem(
   alias: string,
   folder?: string,
 ): WikilinkSuggestionItem {
-  const stem = fileNameWithoutExtension(file.name);
+  const stem = fileNameWithoutExtension(file.name).normalize("NFC");
   return {
     id,
     target: stem,
@@ -295,25 +305,44 @@ export async function loadFileHeadings(
   }
 }
 
-/** Longest common prefix of strings (case-insensitive compare, first item's casing preserved). */
+/**
+ * Longest common prefix of `strings`, compared one code point at a time under
+ * `foldName` and cut from the first string, whose casing it keeps.
+ *
+ * ‼️ The cut is measured on the first string itself (§390). Folding changes
+ * length — NFC joins a decomposed syllable into one code unit, lowercasing
+ * `İ` gives two — so an index found on folded copies cuts the original in the
+ * wrong place. Code points that fold together only as a sequence (a
+ * decomposed syllable against a composed one) do not match here, which stops
+ * a completion short and never cuts it in the wrong place. The menu's file
+ * rows are composed (`buildFileSuggestionItem`); a heading row's text comes
+ * from the note's body, which §390 leaves as written (spec 0069 §8).
+ */
 export function longestCommonPrefix(strings: string[]): string {
   if (strings.length === 0) return "";
   if (strings.length === 1) return strings[0];
 
   const first = strings[0];
-  const lowered = strings.map((s) => s.toLowerCase());
-  let len = first.length;
-  for (let i = 1; i < lowered.length; i++) {
-    len = Math.min(len, lowered[i].length);
-    for (let j = 0; j < len; j++) {
-      if (lowered[0][j] !== lowered[i][j]) {
-        len = j;
-        break;
-      }
-    }
-    if (len === 0) return "";
+  let end = first.length;
+  for (let i = 1; i < strings.length; i++) {
+    end = Math.min(end, commonPrefixEnd(first, strings[i]));
+    if (end === 0) return "";
   }
-  return first.slice(0, len);
+  return first.slice(0, end);
+}
+
+/** Where `a`'s common prefix with `b` ends, in `a`'s code units (`longestCommonPrefix`). */
+function commonPrefixEnd(a: string, b: string): number {
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    const ca = String.fromCodePoint(a.codePointAt(i)!);
+    const cb = String.fromCodePoint(b.codePointAt(j)!);
+    if (foldName(ca) !== foldName(cb)) break;
+    i += ca.length;
+    j += cb.length;
+  }
+  return i;
 }
 
 /**
@@ -336,8 +365,13 @@ export function namespaceItems(
   targetDir: string,
   dirPrefix: string,
 ): WikilinkSuggestionItem[] {
+  // §390 `targetDir` joins the open note's folder as stored with the folders
+  // typed, so the two folders compare under foldName.
+  const dirKey = foldName(targetDir);
   return files
-    .filter((f) => f.path.substring(0, f.path.lastIndexOf("/")) === targetDir)
+    .filter(
+      (f) => foldName(f.path.substring(0, f.path.lastIndexOf("/"))) === dirKey,
+    )
     .map((f) => ({
       ...f,
       label: `${dirPrefix}${f.label}`,

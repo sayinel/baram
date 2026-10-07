@@ -1,9 +1,10 @@
 // §31 The suggest menu's "create" row never overwrites a file.
 //
-// The row is offered because no listed name matched the typed text. A note whose
-// name is stored decomposed (NFD) is not matched by the composed (NFC) text the
-// keyboard types, yet on APFS both spellings open the same file — so writing the
-// new note with `writeFile` emptied that note to its heading line.
+// The row is offered because no listed name matched the typed text — the menu lists
+// the file tree, not the disk. Before §390 a note whose name was stored decomposed
+// (NFD) was not matched by the composed (NFC) text the keyboard types, yet on APFS
+// both spellings open the same file — so writing the new note with `writeFile`
+// emptied that note to its heading line.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createFile, listDir, refreshIndex, writeFile } = vi.hoisted(() => ({
