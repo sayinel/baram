@@ -36,7 +36,10 @@ export function PhotoLightbox({
   const { locale, t } = useTranslation();
   // `insertMediaAtPos`(drop-handler.ts)·NodeView와 같은 판정 — image가 아니면 동영상.
   const isVideo = photo.kind !== "image";
-  const preview = usePhotoPreview(isVideo ? null : photo.absolutePath);
+  const preview = usePhotoPreview(
+    isVideo ? null : photo.absolutePath,
+    photo.revision,
+  );
   const placeholder = isVideo ? null : cachedThumbUrl(photo.absolutePath);
   const [viewingOriginal, setViewingOriginal] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);

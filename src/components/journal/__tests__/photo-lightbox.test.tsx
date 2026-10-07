@@ -39,6 +39,7 @@ const PHOTO: PhotoGalleryEntry = {
   journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
   kind: "image",
   relativePath: "assets/20260805-101500-a.jpg",
+  revision: "1:1",
 };
 
 const CLIP: PhotoGalleryEntry = {
@@ -50,6 +51,7 @@ const CLIP: PhotoGalleryEntry = {
   journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
   kind: "video-file",
   relativePath: "assets/20260805-102000-c.mp4",
+  revision: "1:1",
 };
 
 function renderLightbox(

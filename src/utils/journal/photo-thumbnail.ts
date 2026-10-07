@@ -62,14 +62,30 @@ export function formatClipDuration(seconds: number): null | string {
     : `${minutes}:${ss}`;
 }
 
-/** absolutePath|maxPx → 결과. 세션 내 재요청은 IPC를 타지 않는다. */
-const resolved = new Map<string, ThumbUrl>();
+/**
+ * How many resolved thumbnails the session keeps (issue 793). Each entry is a URL, so the
+ * bound is about the map not growing for the life of the process — every tier and every
+ * photo ever shown would otherwise stay. An evicted photo asks Rust again, which answers
+ * from its disk cache without decoding.
+ */
+export const MAX_RESOLVED_THUMBS = 2048;
+
+/** How many recent failures `__baramThumbStats()` keeps. */
+export const MAX_THUMB_FAILURES = 100;
+
+/**
+ * absolutePath|maxPx → the result for one revision of that file. 세션 내 재요청은 IPC를 타지
+ * 않는다 — 같은 revision 일 때만. 같은 경로의 파일이 바뀌면(`sourceRevision`) 옛 결과는
+ * 맞지 않으므로 miss 이고, 새 결과가 그 자리를 덮는다: 한 경로·계층에 항목은 하나다.
+ * Map 의 순서가 최근 사용 순서다(맨 앞이 가장 오래 쓰지 않은 것).
+ */
+const resolved = new Map<string, { result: ThumbUrl; revision: string }>();
 /** 같은 사진을 그리드와 라이트박스가 동시에 요청할 수 있어 진행 중인 약속을 공유한다. */
 const inFlight = new Map<string, Promise<ThumbUrl>>();
 
 /**
- * 폴백으로 떨어진 사진들. 개발자 콘솔에서 `__baramThumbStats()`로 읽는다 — 갤러리가 여전히
- * 느릴 때 "썸네일이 안 만들어지고 있다"와 "썸네일은 되는데 다른 게 느리다"를 가르는 값이다.
+ * 폴백으로 떨어진 최근 사진들. 개발자 콘솔에서 `__baramThumbStats()`로 읽는다 — 갤러리가
+ * 여전히 느릴 때 "썸네일이 안 만들어지고 있다"와 "썸네일은 되는데 다른 게 느리다"를 가르는 값이다.
  */
 const failures: { error: string; path: string }[] = [];
 
@@ -80,6 +96,23 @@ export function _resetThumbCache(): void {
   failures.length = 0;
 }
 
+/** 테스트용 — 지금 들고 있는 항목 수. */
+export function _thumbCacheSizes(): { failures: number; resolved: number } {
+  return { failures: failures.length, resolved: resolved.size };
+}
+
+/**
+ * A file's revision for the thumbnail caches: its modification time and size, the two
+ * facts the Rust cache key also reads. A photo replaced at the same path gets a new
+ * revision, so the session asks Rust again and Rust makes a new thumbnail.
+ */
+export function sourceRevision(file: {
+  modifiedAt: number;
+  size: number;
+}): string {
+  return `${file.modifiedAt}:${file.size}`;
+}
+
 /** 지금까지의 썸네일 성적. 개발자 콘솔에서 `__baramThumbStats()`로 부른다. */
 function thumbStats(): {
   failed: number;
@@ -88,7 +121,7 @@ function thumbStats(): {
 } {
   const values = [...resolved.values()];
   return {
-    fromCache: values.filter((v) => !v.isOriginal).length,
+    fromCache: values.filter((v) => !v.result.isOriginal).length,
     failed: failures.length,
     sampleErrors: [...new Set(failures.map((f) => f.error))].slice(0, 3),
   };
@@ -104,19 +137,27 @@ if (typeof window !== "undefined") {
 export function cachedThumbUrl(
   absolutePath: string,
   maxPx: number = GALLERY_THUMB_PX,
+  revision = "",
 ): null | ThumbUrl {
-  return resolved.get(cacheKey(absolutePath, maxPx)) ?? null;
+  const key = cacheKey(absolutePath, maxPx);
+  const hit = resolved.get(key);
+  if (!hit || hit.revision !== revision) return null;
+  // Most recently used goes to the back.
+  resolved.delete(key);
+  resolved.set(key, hit);
+  return hit.result;
 }
 
 export async function resolveThumbUrl(
   absolutePath: string,
   maxPx: number = GALLERY_THUMB_PX,
+  revision = "",
 ): Promise<ThumbUrl> {
-  const key = cacheKey(absolutePath, maxPx);
-  const hit = resolved.get(key);
+  const hit = cachedThumbUrl(absolutePath, maxPx, revision);
   if (hit) return hit;
 
-  const pending = inFlight.get(key);
+  const flightKey = `${cacheKey(absolutePath, maxPx)}|${revision}`;
+  const pending = inFlight.get(flightKey);
   if (pending) return pending;
 
   const request = photoThumbnail(absolutePath, maxPx)
@@ -129,6 +170,7 @@ export async function resolveThumbUrl(
       // 거는 것이 바로 그 버그였다). 조용히 넘어가면 "고쳤는데 그대로다"와 "고친 코드가
       // 애초에 안 돌았다"를 화면만 보고는 구분할 수 없다.
       failures.push({ error: String(e), path: absolutePath });
+      if (failures.length > MAX_THUMB_FAILURES) failures.shift();
       console.warn(
         `[§56d] 썸네일 생성 실패 — 원본으로 폴백합니다(느립니다): ${absolutePath}`,
         e,
@@ -136,15 +178,29 @@ export async function resolveThumbUrl(
       return { url: convertFileSrc(absolutePath), isOriginal: true };
     })
     .then((result) => {
-      resolved.set(key, result);
-      inFlight.delete(key);
+      remember(cacheKey(absolutePath, maxPx), { result, revision });
+      inFlight.delete(flightKey);
       return result;
     });
 
-  inFlight.set(key, request);
+  inFlight.set(flightKey, request);
   return request;
 }
 
 function cacheKey(absolutePath: string, maxPx: number): string {
   return `${absolutePath}|${maxPx}`;
+}
+
+/** Store as most recently used, evicting the least recently used past the bound. */
+function remember(
+  key: string,
+  entry: { result: ThumbUrl; revision: string },
+): void {
+  resolved.delete(key);
+  resolved.set(key, entry);
+  while (resolved.size > MAX_RESOLVED_THUMBS) {
+    const oldest = resolved.keys().next().value;
+    if (oldest === undefined) break;
+    resolved.delete(oldest);
+  }
 }

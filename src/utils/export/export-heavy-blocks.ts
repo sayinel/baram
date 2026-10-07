@@ -1,7 +1,7 @@
 // §5.12 export — wake every lazily-mounted heavy block and wait for it to land.
 //
-// Code blocks, math (inline and block) and Mermaid diagrams all defer their real
-// content until they near the viewport (extensions/nodes/views/lazy-visible.ts).
+// Code blocks, math (inline and block), Mermaid diagrams and journal-photos cells all
+// defer their real content until they near the viewport (extensions/nodes/views/lazy-visible.ts).
 // An export reads the WHOLE document from a viewport that never moves, so
 // without this the capture cloned whatever placeholder each unvisited block
 // happened to be showing.
@@ -85,6 +85,7 @@ export function pendingHeavyBlocks(root: ParentNode): PendingBlock[] {
   check(".math-block", "math-block", mathBlockSettled);
   check(".math-inline", "math-inline", mathInlineSettled);
   check(".mermaid-block", "mermaid", mermaidSettled);
+  check(".journal-photos-cell", "journal-photo", journalPhotoSettled);
   return pending;
 }
 
@@ -190,6 +191,16 @@ function mathBlockSettled(el: Element): boolean {
 function mathInlineSettled(el: Element): boolean {
   if (el.getAttribute("data-empty") === "true") return true;
   return el.childNodes.length > 0 && el.textContent !== "";
+}
+
+/**
+ * A `journal-photos` cell (issue 793) mounts its image only once a thumbnail exists, and
+ * asks for one only when it nears the viewport — so a cell the reader never scrolled to
+ * has no image at all. Waking it (`flushPendingVisibility`) makes it ask; it is settled
+ * once the image is there, the thumbnail or, when none can be made, the original.
+ */
+function journalPhotoSettled(el: Element): boolean {
+  return el.querySelector("img") !== null;
 }
 
 /**

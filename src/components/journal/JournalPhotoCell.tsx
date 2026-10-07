@@ -11,15 +11,18 @@ export const JournalPhotoCell = memo(function JournalPhotoCell({
   absolutePath,
   alt,
   maxPx,
+  revision,
   title,
 }: {
   absolutePath: string;
   alt: string;
   maxPx: number;
+  /** `sourceRevision` of the file as listed — a photo replaced in place is asked for again. */
+  revision: string;
   title: string;
 }) {
   const holderRef = useRef<HTMLDivElement | null>(null);
-  const thumb = useVisibleThumb(holderRef, absolutePath, maxPx);
+  const thumb = useVisibleThumb(holderRef, absolutePath, maxPx, revision);
 
   return (
     <div className="journal-photos-cell" ref={holderRef} title={title}>

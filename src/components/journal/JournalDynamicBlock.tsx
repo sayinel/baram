@@ -10,6 +10,7 @@ import { useSettingsStore } from "../../stores/settings/store";
 import {
   GALLERY_THUMB_PX,
   JOURNAL_GRID_THUMB_PX,
+  sourceRevision,
 } from "../../utils/journal/photo-thumbnail";
 import { basename } from "../../utils/path-utils";
 import { JournalPhotoCell } from "./JournalPhotoCell";
@@ -36,6 +37,7 @@ interface PhotoEntry {
   absolutePath: string;
   date: string;
   filename: string;
+  revision: string;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -249,6 +251,7 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
               filename: file.name,
               absolutePath: `${dirPath}/${file.name}`,
               date: fileDate,
+              revision: sourceRevision(file),
             });
           }
         }
@@ -289,6 +292,7 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
           alt={photo.filename}
           key={photo.absolutePath}
           maxPx={layout === "strip" ? GALLERY_THUMB_PX : JOURNAL_GRID_THUMB_PX}
+          revision={photo.revision}
           title={`${photo.date} — ${photo.filename}`}
         />
       ))}

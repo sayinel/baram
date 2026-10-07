@@ -20,7 +20,9 @@ vi.mock("../../../ipc/thumbnail", () => ({
 }));
 vi.mock("../../../ipc/invoke", () => ({
   listDir: (path: string) => listDir(path) as Promise<unknown>,
+  getConfig: vi.fn().mockResolvedValue(null),
   readFile: vi.fn().mockResolvedValue(""),
+  setConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { JournalDynamicBlock } = await import("../JournalDynamicBlock");
@@ -29,6 +31,8 @@ const { _resetForTest } =
 const { _resetThumbCache } =
   await import("../../../utils/journal/photo-thumbnail");
 const { useFileStore } = await import("../../../stores/file/file");
+const { pendingHeavyBlocks, settleHeavyBlocks } =
+  await import("../../../utils/export/export-heavy-blocks");
 const { useSettingsStore } = await import("../../../stores/settings/store");
 
 declare const MockIntersectionObserver: {
@@ -42,6 +46,8 @@ declare const MockIntersectionObserver: {
 const MONTH = "/vault/journal/assets/2026-08";
 const NAMES = ["20260801-a.jpg", "20260802-b.jpg", "20260803-c.jpg"];
 const ORIGINALS = NAMES.map((n) => `${MONTH}/${n}`);
+/** Per-file modification time the mocked listing reports. */
+let revisions: Record<string, number> = {};
 
 /** Every src any <img> in `root` was given, from now on. */
 function recordSrcs(root: HTMLElement): string[] {
@@ -112,11 +118,17 @@ describe("journal-photos block", () => {
     photoThumbnail.mockImplementation((path: string, maxPx: number) =>
       Promise.resolve(`/cache/${maxPx}/${path.split("/").at(-1)}`),
     );
+    revisions = {};
     listDir.mockReset();
     listDir.mockImplementation((path: string) =>
       Promise.resolve(
         path === MONTH
-          ? NAMES.map((name) => ({ isDir: false, name }))
+          ? NAMES.map((name) => ({
+              isDir: false,
+              modifiedAt: revisions[name] ?? 1,
+              name,
+              size: 100,
+            }))
           : [{ isDir: true, name: "2026-08" }],
       ),
     );
@@ -224,5 +236,47 @@ describe("journal-photos block", () => {
     const img = container.querySelector("img")!;
     expect(img.getAttribute("src")).toBe(`asset://localhost/${ORIGINALS[0]}`);
     expect(img.dataset.thumbSource).toBe("original");
+  });
+
+  /** An export settles every cell before the clone, visible or not: each one asks for its
+   *  thumbnail and counts as settled only once its image exists.
+   *  이것을 실패시키는 것: `pendingHeavyBlocks` 에서 `.journal-photos-cell` 검사를 지우는 것 —
+   *  settle 이 곧바로 끝나고 칸이 빈 채로 복제된다. */
+  test("an export settles cells the reader never scrolled to", async () => {
+    const { container } = await renderBlock("grid");
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+    expect(pendingHeavyBlocks(container)).toHaveLength(3);
+
+    // Not inside `act`: the loop polls the DOM between renders, as it does in the app.
+    const unsettled = await settleHeavyBlocks(container, {
+      ceilingMs: 5_000,
+      pollMs: 5,
+      stallMs: 1_000,
+    });
+
+    expect(unsettled).toEqual([]);
+    const imgs = [...container.querySelectorAll("img")];
+    expect(imgs).toHaveLength(3);
+    expect(imgs.every((img) => img.dataset.thumbSource === "cache")).toBe(true);
+    expect(photoThumbnail.mock.calls.map(([, maxPx]) => maxPx)).toEqual([
+      640, 640, 640,
+    ]);
+  });
+
+  /** A photo replaced at the same path (new modification time) is asked for again; the
+   *  others still render from the session cache. 이것을 실패시키는 것: 칸이 `revision` 을
+   *  `useVisibleThumb` 에 넘기지 않는 것. */
+  test("a photo replaced in place is asked for again", async () => {
+    const first = await renderBlock("grid");
+    await scrollIntoView();
+    await waitFor(() => expect(photoThumbnail).toHaveBeenCalledTimes(3));
+    first.unmount();
+
+    revisions = { [NAMES[1]]: 2 };
+    const { container } = await renderBlock("grid");
+    expect(container.querySelectorAll("img")).toHaveLength(2);
+    await scrollIntoView();
+    await waitFor(() => expect(photoThumbnail).toHaveBeenCalledTimes(4));
+    expect(photoThumbnail.mock.calls[3]).toEqual([ORIGINALS[1], 640]);
   });
 });
