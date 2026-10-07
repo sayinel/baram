@@ -128,8 +128,12 @@ export function isRightPanelMode(value: unknown): value is RightPanelMode {
  *  menu's Close and Close Others, Settings > Vault's remove), which answers only for
  *  the dirty tabs inside those contexts — saving the rest would write files the user
  *  never asked to touch. It carries a LIST because Close Others closes N at once and
- *  must ask once, not N times. */
+ *  must ask once, not N times.
+ *  `closeTabs` = §38 the tab context menu's Close Others and Close Tabs to the Right (#798):
+ *  the exact tabs listed, the same list the guard asked about, so a tab opened while the
+ *  modal is up is neither saved nor closed by it. */
 export type UnsavedModalRequest =
+  | { anchorTabId: string; intent: "closeTabs"; tabIds: string[] }
   | { contextIds: string[]; intent: "closeContext" }
   | { intent: "closeTab"; tabId: string }
   | { intent: "closeWorkspace" }

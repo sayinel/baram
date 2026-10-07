@@ -104,6 +104,13 @@ interface EditorState {
   /** §38 Close all unpinned tabs except the given one */
   closeOtherTabs: (tabId: string) => void;
   closeTab: (tabId: string) => void;
+  /** §38 Close unpinned tabs to the right of the given tab */
+  /**
+   * §38 Close exactly `ids` (pinned ones are skipped); if the active tab is among them,
+   * `anchorId` becomes active. `closeOtherTabs` and `closeTabsToRight` delegate here, and the
+   * unsaved-changes guard closes the same list it asked about (#798).
+   */
+  closeTabsById: (ids: readonly string[], anchorId: string) => void;
   /**
    * §82 Close every tab belonging to these contexts — PINNED ONES INCLUDED.
    *
@@ -116,7 +123,6 @@ interface EditorState {
    * the outcome no longer depends on how many contexts happened to be open.
    */
   closeTabsForContexts: (contextIds: ReadonlySet<string>) => void;
-  /** §38 Close unpinned tabs to the right of the given tab */
   closeTabsToRight: (tabId: string) => void;
   /** §72 Bumped when external code (e.g. PropertiesPanel) updates file content in store */
   contentRefreshKey: number;
@@ -292,8 +298,26 @@ export function contextSwitchNeeded(contextId: string): boolean {
  * the inverted guards (`if (!isFileTab(tab)) return;`) readable instead of needing a second
  * `tab &&` beside them.
  */
+/** §38 The tabs "Close Others" closes: every unpinned tab but `tabId`. */
+export function otherTabIds(
+  tabs: readonly EditorTab[],
+  tabId: string,
+): string[] {
+  return tabs.filter((t) => !t.isPinned && t.id !== tabId).map((t) => t.id);
+}
+
+/** §38 The tabs "Close Tabs to the Right" closes: unpinned tabs after `tabId`. */
 export function isFileTab(tab: EditorTab | undefined): tab is EditorTab {
   return !!tab && (!tab.type || tab.type === "file");
+}
+
+export function tabIdsToRight(
+  tabs: readonly EditorTab[],
+  tabId: string,
+): string[] {
+  const idx = tabs.findIndex((t) => t.id === tabId);
+  if (idx === -1) return [];
+  return tabs.filter((t, i) => i > idx && !t.isPinned).map((t) => t.id);
 }
 
 /**
@@ -593,68 +617,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   closeOtherTabs: (tabId) =>
-    set((state) => {
-      // §38 Keep pinned tabs + the specified tab; close all other unpinned tabs
-      const tabs = state.tabs.filter((t) => t.isPinned || t.id === tabId);
-      const closedIds = new Set(
-        state.tabs
-          .filter((t) => !t.isPinned && t.id !== tabId)
-          .map((t) => t.id),
-      );
-      const activeTabId = closedIds.has(state.activeTabId ?? "")
-        ? tabId
-        : state.activeTabId;
-      const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
-      const closed = (id: string) => closedIds.has(id);
-      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
-      const sourceEditedTabs = withoutClosedTabs(
-        state.sourceEditedTabs,
-        closed,
-      );
-      const staleContentTabs = withoutClosedTabs(
-        state.staleContentTabs,
-        closed,
-      );
-      return {
-        tabs,
-        activeTabId,
-        mruOrder,
-        sourceEditedTabs,
-        sourceModeTabs,
-        staleContentTabs,
-      };
-    }),
+    get().closeTabsById(otherTabIds(get().tabs, tabId), tabId),
 
   closeTabsToRight: (tabId) =>
+    get().closeTabsById(tabIdsToRight(get().tabs, tabId), tabId),
+
+  closeTabsById: (ids, anchorId) =>
     set((state) => {
-      const idx = state.tabs.findIndex((t) => t.id === tabId);
-      if (idx === -1) return state;
-      // §38 Close unpinned tabs to the right of tabId
-      const tabs = state.tabs.filter((t, i) => i <= idx || t.isPinned);
+      // §38 Pinned tabs stay open whoever asked.
       const closedIds = new Set(
-        state.tabs.filter((t, i) => i > idx && !t.isPinned).map((t) => t.id),
+        state.tabs
+          .filter((t) => !t.isPinned && ids.includes(t.id))
+          .map((t) => t.id),
       );
+      if (closedIds.size === 0) return state;
+      const tabs = state.tabs.filter((t) => !closedIds.has(t.id));
       const activeTabId = closedIds.has(state.activeTabId ?? "")
-        ? tabId
+        ? anchorId
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
       const closed = (id: string) => closedIds.has(id);
-      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
-      const sourceEditedTabs = withoutClosedTabs(
-        state.sourceEditedTabs,
-        closed,
-      );
-      const staleContentTabs = withoutClosedTabs(
-        state.staleContentTabs,
-        closed,
-      );
       return {
         tabs,
         activeTabId,
         mruOrder,
-        sourceEditedTabs,
-        sourceModeTabs,
-        staleContentTabs,
+        sourceEditedTabs: withoutClosedTabs(state.sourceEditedTabs, closed),
+        sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, closed),
+        staleContentTabs: withoutClosedTabs(state.staleContentTabs, closed),
       };
     }),
 

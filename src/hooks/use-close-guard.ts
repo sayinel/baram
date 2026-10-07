@@ -61,8 +61,17 @@ export async function saveDirtyTabsForContexts(
   return saveDirtyTabsWhere((t) => wanted.has(t.contextId), deps);
 }
 
+/** §38 Save exactly these tabs' unsaved work — the bulk tab close's "Save" (#798). */
+export async function saveDirtyTabsByIds(
+  tabIds: readonly string[],
+  deps: CloseGuardDeps,
+): Promise<boolean> {
+  const wanted = new Set(tabIds);
+  return saveDirtyTabsWhere((t) => wanted.has(t.id), deps);
+}
+
 /**
- * The shared body of the two save-many helpers: dirty file tabs matching `match`,
+ * The shared body of the save-many helpers: dirty file tabs matching `match`,
  * active one first so its live editor is flushed before the cached-content writes.
  */
 async function saveDirtyTabsWhere(
@@ -217,6 +226,33 @@ export async function requestCloseWorkspace(): Promise<void> {
     return;
   }
   useUIStore.getState().openUnsavedModal({ intent: "closeWorkspace" });
+}
+
+/**
+ * §38 The tab context menu's Close Others and Close Tabs to the Right. Nothing unsaved
+ * among `tabIds` → close them; otherwise ask once, scoped to exactly those tabs (#798).
+ *
+ * ‼️ These used to call the store action directly and closed a dirty background tab
+ * without a word. Once its tab is gone, the closed-tab release drops the cached text and
+ * source buffer that held the unsaved edits, so the prompt has to come first.
+ */
+export async function requestCloseTabs(
+  tabIds: readonly string[],
+  anchorTabId: string,
+): Promise<void> {
+  if (tabIds.length === 0) return;
+  const wanted = new Set(tabIds);
+  // issue 594: same barrier as the other closes.
+  await awaitBlockIdRenames();
+  if (unsavedTabs((t) => wanted.has(t.id)).length === 0) {
+    useEditorStore.getState().closeTabsById(tabIds, anchorTabId);
+    return;
+  }
+  useUIStore.getState().openUnsavedModal({
+    anchorTabId,
+    intent: "closeTabs",
+    tabIds: [...tabIds],
+  });
 }
 
 /**

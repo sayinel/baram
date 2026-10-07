@@ -137,6 +137,13 @@ describe("§3.5 closing a tab releases what only it used (#798)", () => {
     open("p", "/v/p.md");
     useEditorStore.getState().pinTab("p");
     useEditorStore.getState().closeTab("p");
+    // 이것을 실패시키는 것: editor.ts 의 `closeTabsById` 에서 `!t.isPinned` 거르기를 빼면 고정된
+    // 탭이 목록으로 넘어왔을 때 닫힌다. `closedIds.size === 0` 조기 반환을 지우면 닫을 것이 없어도
+    // editor store 의 state 가 새 객체가 된다.
+    const before = useEditorStore.getState();
+    useEditorStore.getState().closeTabsById(["p"], "p");
+    expect(useEditorStore.getState()).toBe(before);
+    expect(useEditorStore.getState().tabs.map((t) => t.id)).toEqual(["p"]);
     expect(useFileStore.getState().openFiles.has("/v/p.md")).toBe(true);
     expect(hasOriginalDoc("p")).toBe(true);
   });
