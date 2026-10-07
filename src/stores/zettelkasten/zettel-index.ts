@@ -2,6 +2,7 @@
 import { create } from "zustand";
 
 import { listDir, readFile } from "../../ipc/invoke";
+import { foldName } from "../../utils/name-fold";
 import {
   extractLeadingId,
   firstBodyLine,
@@ -43,7 +44,8 @@ export const useZettelIndexStore = create<ZettelIndexState>((set) => ({
 }));
 
 /**
- * Resolves the id ONLY when exactly one note has that title (case-insensitive);
+ * Resolves the id ONLY when exactly one note has that title (under `foldName`:
+ * case and Unicode normalization ignored, §390);
  * null if 0 or ambiguous (>1).
  *
  * §99 Authored titles are considered first. The body-line fallback puts every
@@ -58,9 +60,11 @@ export const useZettelIndexStore = create<ZettelIndexState>((set) => ({
  * the name.
  */
 export function idForTitle(title: string): null | string {
-  const q = title.trim().toLowerCase();
+  // §390 Titles compare under foldName: an index built from names some tool
+  // stored decomposed (NFD) holds them so, and the title is typed composed.
+  const q = foldName(title.trim());
   const matches = Object.values(useZettelIndexStore.getState().byId).filter(
-    (n) => n.title.toLowerCase() === q,
+    (n) => foldName(n.title) === q,
   );
   const authored = matches.filter((n) => !n.titleFromBody);
   const pool = authored.length > 0 ? authored : matches;

@@ -26,6 +26,7 @@ import {
 } from "../../utils/file-search";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
+import { foldName } from "../../utils/name-fold";
 import { extractNamespace } from "../../utils/path-utils";
 import {
   extractHeadingsFromDoc,
@@ -224,12 +225,13 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       resolvedJournalDir,
     );
 
-    // §61 Namespace filter
+    // §61 Namespace filter — §390 folders compare under foldName: a folder
+    // the disk stores decomposed (NFD) answers to the name typed.
     if (parsedQuery.nsFilter) {
-      const nsLower = parsedQuery.nsFilter.toLowerCase();
+      const nsKey = foldName(parsedQuery.nsFilter);
       candidateFiles = candidateFiles.filter((f) => {
         const ns = extractNamespace(f.relativePath);
-        return ns ? ns.toLowerCase().includes(nsLower) : nsLower === "";
+        return ns ? foldName(ns).includes(nsKey) : nsKey === "";
       });
     }
 
@@ -267,7 +269,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       !parsedQuery.prefix &&
       !parsedQuery.nsFilter &&
       q &&
-      !matched.some((f) => f.name.toLowerCase() === q.toLowerCase())
+      !matched.some((f) => foldName(f.name) === foldName(q))
     ) {
       items.push({
         type: "create",
