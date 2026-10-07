@@ -10,13 +10,17 @@
 // 사슬 밖으로 꺼내 숨기기만 하면 그 사슬 전체가 성립하지 않는다: 언마운트가 없으니 파기할
 // NodeView도, 복원할 것도 없다. 편집기 인스턴스는 원래 하나뿐이라 메모리 대가도 없다.
 import type { MutableRefObject } from "react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import type { UseInlineAIReturn } from "../../hooks/use-inline-ai";
 import type { Editor } from "@tiptap/react";
 
 import { EditorContent } from "@tiptap/react";
 
+import {
+  dispatchClearSearch,
+  setFindOpen,
+} from "../../extensions/plugins/find-replace";
 import { useTabScrollMemory } from "../../hooks/use-tab-scroll-memory";
 import { InlineAIPrompt } from "../ai/InlineAIPrompt";
 import { BlockHandle } from "../toolbar/BlockHandle";
@@ -94,6 +98,21 @@ export function MarkdownSurface({
     },
     scrollOffsets,
   );
+
+  // §5.6 Find 가 닫혀 있으면 검색어를 지운다(#792). 검색어가 plugin 상태에 남아 있으면
+  // 막대가 없어도 편집마다 match 를 다시 구한다. 닫는 길은 막대의 닫기 버튼·Esc(onClose)와
+  // 막대를 거치지 않는 네이티브 메뉴 토글(use-menu-event-handler)이다 — 닫는 호출은
+  // `grep -rn "FindReplaceOpen(false\|FindReplaceOpen((" src` 로 찾았다. 그래서 막대가 아니라 열림
+  // 상태를 보고 한 곳에서 지운다. 막대의 언마운트 cleanup 에 두지 않는 것은 StrictMode 가
+  // 마운트 직후 cleanup 을 한 번 돌려, Global Search 가 막대를 열기 직전에 넣은 검색어를
+  // 지우기 때문이다. 이미 비어 있으면 dispatchClearSearch 가 아무것도 하지 않는다.
+  // 캐시된 상태를 통째로 설치하는 길은 transaction 이 없어 이 effect 를 다시 부르지 않는다 —
+  // 그쪽은 여기서 적는 열림 값을 보고 `withoutClosedSearch` 가 지운다.
+  useEffect(() => {
+    setFindOpen(findReplaceOpen);
+    if (findReplaceOpen || !activeEditor) return;
+    dispatchClearSearch(activeEditor.view);
+  }, [findReplaceOpen, activeEditor]);
 
   return (
     <>
