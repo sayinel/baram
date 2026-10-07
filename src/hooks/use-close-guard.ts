@@ -8,7 +8,8 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { EditorTab } from "../stores/editor/editor";
 
-import { confirmQuit, updateFileIndex, writeFile } from "../ipc/invoke";
+import { updateFileIndex, writeFile } from "../ipc/invoke";
+import { quitApp, reloadWindow } from "../services/app-exit";
 import { closeContexts } from "../services/close-context";
 import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
@@ -221,7 +222,7 @@ export async function requestReload(): Promise<void> {
   // marks its tab dirty only once it lands.
   await awaitBlockIdRenames();
   if (unsavedTabs().length === 0) {
-    window.location.reload();
+    await reloadWindow();
     return;
   }
   useUIStore.getState().openUnsavedModal({ intent: "reload" });
@@ -323,7 +324,7 @@ export function useCloseGuard(): void {
         // other files renamed and this document not.
         await awaitBlockIdRenames();
         if (unsavedTabs().length === 0) {
-          await confirmQuit();
+          await quitApp();
           return;
         }
         useUIStore.getState().openUnsavedModal({ intent: "quit" });

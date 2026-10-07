@@ -18,7 +18,6 @@
 // the only thing standing between a failed replace and a user with no way
 // forward.
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 import { type Locale, t } from "../i18n";
@@ -26,6 +25,7 @@ import { useSettingsStore } from "../stores/settings/store";
 import { useAppUpdateStore } from "../stores/system/app-update";
 import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
+import { relaunchApp } from "./app-exit";
 
 export const RELEASES_URL = "https://github.com/sayinel/baram/releases/latest";
 
@@ -107,7 +107,6 @@ export async function installAppUpdate(): Promise<void> {
           break;
       }
     });
-    await relaunch();
   } catch (err) {
     // e.g. Linux deb/rpm: in-app install is unsupported by the plugin.
     logger.warn("[AppUpdate] install failed:", err);
@@ -115,6 +114,16 @@ export async function installAppUpdate(): Promise<void> {
       /* best-effort fallback — nothing more we can do here */
     });
     store.setError(err instanceof Error ? err.message : String(err), true);
+    return;
+  }
+  // §44 The update is installed. Save the chat history and relaunch (#800). A failure from
+  // here on is not an install failure — the releases page would only offer the same
+  // version again — so it keeps the installed state and asks for a manual restart.
+  try {
+    await relaunchApp();
+  } catch (err) {
+    logger.warn("[AppUpdate] relaunch after install failed:", err);
+    store.setInstalled();
   }
 }
 

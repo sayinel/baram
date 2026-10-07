@@ -13,6 +13,7 @@ export type AppUpdateStatus =
   | "downloading"
   | "error"
   | "idle"
+  | "installed"
   | "installing"
   | "upToDate";
 
@@ -31,6 +32,8 @@ interface AppUpdateState {
   setChecking: () => void;
   setDownloading: () => void;
   setError: (message: string, fallbackOpened?: boolean) => void;
+  /** §44 Installed, but the relaunch failed — the user restarts by hand (#800). */
+  setInstalled: () => void;
   setInstalling: () => void;
   setProgress: (progress: AppUpdateProgress) => void;
   setUpToDate: () => void;
@@ -77,6 +80,8 @@ export const useAppUpdateStore = create<AppUpdateState>()((set) => ({
   setDownloading: () => set({ status: "downloading", progress: null }),
 
   setProgress: (progress) => set({ progress }),
+
+  setInstalled: () => set({ status: "installed" }),
 
   setInstalling: () => set({ status: "installing" }),
 

@@ -116,6 +116,11 @@ export function UpdateDialog() {
             </div>
           </div>
         )}
+        {status === "installed" && (
+          <div className="update-dialog-installed">
+            {t("update.dialog.installedRestart")}
+          </div>
+        )}
         {busy && (
           <div className="update-dialog-progress">
             <div className="update-dialog-progress-track">
@@ -141,7 +146,7 @@ export function UpdateDialog() {
           </button>
           <button
             className={`update-dialog-primary${busy ? "update-dialog-primary--busy" : ""}`}
-            disabled={busy}
+            disabled={busy || status === "installed"}
             onClick={() => {
               installAppUpdate().catch(() => {
                 /* errors are surfaced via the store's error status */

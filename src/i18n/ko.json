@@ -1656,6 +1656,7 @@
   "update.dialog.error.generic": "업데이트에 실패했습니다: {message}",
   "update.dialog.error.title": "업데이트 실패",
   "update.dialog.installRestart": "설치 후 재시작",
+  "update.dialog.installedRestart": "업데이트를 설치했습니다. Baram 을 종료하고 다시 열면 마무리됩니다.",
   "update.dialog.installing": "설치 중…",
   "update.dialog.title": "업데이트 사용 가능",
   "update.dialog.versionChange": "{current} → {available}",

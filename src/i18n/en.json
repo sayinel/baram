@@ -1656,6 +1656,7 @@
   "update.dialog.error.generic": "The update failed: {message}",
   "update.dialog.error.title": "Update Failed",
   "update.dialog.installRestart": "Install & Restart",
+  "update.dialog.installedRestart": "The update is installed. Quit and reopen Baram to finish.",
   "update.dialog.installing": "Installing…",
   "update.dialog.title": "Update Available",
   "update.dialog.versionChange": "{current} → {available}",
