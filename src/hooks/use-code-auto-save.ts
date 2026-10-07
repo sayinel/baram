@@ -15,7 +15,7 @@ import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
-import { isMarkdownFile } from "../utils/file-type";
+import { isEditableTextPath, isMarkdownFile } from "../utils/file-type";
 
 export interface UseCodeAutoSaveOptions {
   /** §perf-large-file: bumps whenever the active tab's source buffer is
@@ -76,21 +76,31 @@ export function useCodeAutoSave({
       // 사용자가 버리기로 고른 것이고, 닫힌 탭의 버퍼는 use-source-mode 가 내려놓아 ""로 읽힌다 —
       // 여기서 쓰면 파일을 빈 내용으로 덮는다. 이 effect 의 deps 에는 활성 탭이 없어서, 닫혀도
       // cleanup 이 이 timer 를 지운다는 보장이 없다.
-      if (!useEditorStore.getState().tabs.some((t) => t.id === tab.id)) return;
+      //
+      // 같은 이유로 경로도 지금의 탭에서 읽는다. 기다리는 사이 rename · move 되었으면 걸 때의 경로에
+      // 쓰면 옛 파일을 되살린다. 어느 writer 가 이 경로를 맡는지도 새 경로로 다시 판정한다.
+      const { sourceModeTabs: sourceTabsNow, tabs: tabsNow } =
+        useEditorStore.getState();
+      const live = tabsNow.find((t) => t.id === tab.id);
+      if (!live?.filePath) return;
+      const path = live.filePath;
+      const sourceMarkdown =
+        isMarkdownFile(path) && sourceTabsNow.includes(live.id);
+      if (!isEditableTextPath(path) && !sourceMarkdown) return;
       try {
         const content = getSourceBuffer(tab.id);
-        await writeFile(tab.filePath!, content);
-        useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
-        setFileContent(tab.filePath!, content);
+        await writeFile(path, content);
+        useFileStore.getState().updateLastSaveMtime(path, Date.now());
+        setFileContent(path, content);
         markDirty(tab.id, false);
         useEditorStore.getState().markSourceEdited(tab.id, false);
         // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
         useSnapshotStore.getState().markPendingAutoSnapshot();
         // Markdown carries links; leaving the index stale after an auto-save is
         // what `handleSave` already avoids on the manual path.
-        if (markdownInSourceMode) {
-          updateFileIndex(tab.filePath!)
-            .then(() => useLinkStore.getState().invalidate(tab.filePath!))
+        if (sourceMarkdown) {
+          updateFileIndex(path)
+            .then(() => useLinkStore.getState().invalidate(path))
             .catch(() => {});
         }
       } catch {

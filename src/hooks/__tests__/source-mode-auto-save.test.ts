@@ -114,8 +114,8 @@ describe("auto-save for markdown edited in source mode", () => {
 
   // §3.5 (#798) 닫힌 탭의 버퍼는 use-source-mode 가 내려놓아 ""로 읽힌다. timer 가 이미 걸린 뒤
   // 탭이 닫히면(사용자가 "저장 안 함" 을 고른 경우 포함) 이 effect 의 deps 는 그대로라 timer 가 남는다.
-  // 이것을 실패시키는 것: use-code-auto-save.ts 의 timer 첫 줄 `tabs.some(...)` 관문을 지우면
-  // 닫힌 탭의 경로에 쓴다(위 첫 시험이 같은 timer 가 열린 탭에서는 쓰는 것을 보인다).
+  // 이것을 실패시키는 것: use-code-auto-save.ts 의 timer 가 지금의 탭을 찾지 못했을 때 걸 때의 탭으로
+  // 대신하게 하면(`tabsNow.find(...) ?? tab`) 닫힌 탭의 경로에 쓴다(위 첫 시험이 같은 timer 가 열린 탭에서는 쓰는 것을 보인다).
   it("does not write a tab that was closed while the timer waited", async () => {
     const h = mount({ getSourceBuffer: () => "" });
     act(() => {
