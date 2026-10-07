@@ -107,6 +107,39 @@ describe("code auto-save that finishes after its tab closed", () => {
     h.unmount();
   });
 
+  // 이것을 실패시키는 것: `stillShown` 에서 `t.filePath === path` 를 빼면 쓰는 사이 rename 된 탭의 옛
+  // 경로에 원문과 수정 시각이 다시 생긴다.
+  it("does not record the save under a path the tab has left", async () => {
+    useEditorStore.setState({
+      activeTabId: "t",
+      sourceEditedTabs: [],
+      sourceModeTabs: [],
+      tabs: [tab("t", "/v/note.txt")],
+    } as never);
+    const h = renderHook(() =>
+      useCodeAutoSave({
+        bufferVersion: 1,
+        getSourceBuffer: () => "old save",
+        isEditableTextFile: true,
+        markDirty: () => undefined,
+        sourceModeTabs: new Set(),
+      }),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    act(() => {
+      useEditorStore
+        .getState()
+        .renameTab("/v/note.txt", "/v/renamed.txt", "renamed.txt");
+    });
+    await finish();
+
+    expect(useFileStore.getState().openFiles.has("/v/note.txt")).toBe(false);
+    expect(useFileStore.getState().fileMtimes.has("/v/note.txt")).toBe(false);
+    h.unmount();
+  });
+
   it("records the save when the tab is still there", async () => {
     // 긍정 짝 — 같은 저장이 탭이 남아 있으면 원문과 수정 시각을 갱신한다.
     useEditorStore.setState({
@@ -165,6 +198,39 @@ describe("markdown auto-save that finishes after its tab closed", () => {
       "reopened from disk",
     );
     expect(useFileStore.getState().fileMtimes.has("/v/note.md")).toBe(false);
+    h.unmount();
+    editor.destroy();
+  });
+
+  // 이것을 실패시키는 것: use-auto-save.ts 의 `stillShown` 에서 `t.filePath === filePath` 를 빼면 옛 경로에
+  // 원문이 다시 생긴다.
+  it("does not record the save under a path the tab has left", async () => {
+    const editor = new Editor({
+      content: "<p>hello</p>",
+      extensions: [Document, Paragraph, Text],
+    });
+    useEditorStore.setState({
+      activeTabId: "t",
+      sourceEditedTabs: [],
+      sourceModeTabs: [],
+      tabs: [tab("t", "/v/note.md", false)],
+    } as never);
+    updateOriginalDoc("t", editor.state.doc);
+    const h = renderHook(() => useAutoSave(editor));
+    act(() => {
+      editor.commands.insertContentAt(1, "edited ");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    act(() => {
+      useEditorStore
+        .getState()
+        .renameTab("/v/note.md", "/v/renamed.md", "renamed.md");
+    });
+    await finish();
+
+    expect(useFileStore.getState().openFiles.has("/v/note.md")).toBe(false);
     h.unmount();
     editor.destroy();
   });
