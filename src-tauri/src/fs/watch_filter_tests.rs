@@ -1,26 +1,37 @@
 use super::*;
 use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 
-/// Counts every filesystem read routing asks for, and answers "a file".
+/// Counts every metadata read routing asks for. Answers "a file, mtime 7", or `None`
+/// for a path staged as vanished.
 #[derive(Default)]
 struct CountingProbe {
     reads: Cell<usize>,
+    gone: RefCell<HashSet<PathBuf>>,
 }
 
 impl Probe for CountingProbe {
-    fn is_dir(&self, _: &Path) -> bool {
+    fn stat(&self, path: &Path) -> Option<Stat> {
         self.reads.set(self.reads.get() + 1);
-        false
+        if self.gone.borrow().contains(path) {
+            return None;
+        }
+        Some(Stat {
+            is_dir: false,
+            mtime: 7,
+        })
     }
-    fn exists(&self, _: &Path) -> bool {
-        self.reads.set(self.reads.get() + 1);
-        true
-    }
-    fn mtime(&self, _: &Path) -> u64 {
-        self.reads.set(self.reads.get() + 1);
-        0
-    }
+}
+
+/// A registry that knows these open files.
+fn known(paths: &[&Path]) -> OpenFiles {
+    let open = OpenFiles::default();
+    let paths: Vec<String> = paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    replace_open_files(&open, &paths).unwrap();
+    open
 }
 
 /// What a build writing one file looks like: created, then its data written.
@@ -32,8 +43,9 @@ fn written(path: &Path) -> [Event; 2] {
     ]
 }
 
+/// A filter whose registry knows no file is open.
 fn filter(root: &Path) -> WatchFilter {
-    WatchFilter::with_open_files(root, OpenFiles::default())
+    WatchFilter::with_open_files(root, known(&[]))
 }
 
 fn route_all(filter: &mut WatchFilter, events: &[Event], probe: &CountingProbe) -> Vec<Emit> {
@@ -86,10 +98,8 @@ fn an_open_file_below_an_excluded_folder_keeps_every_event() {
     // atomic replace arrives as a rename.
     // 이것을 실패시키는 것: `route` 가 열린 파일 집합을 보지 않는다.
     let dir = tempfile::tempdir().unwrap();
-    let open = OpenFiles::default();
     let note = dir.path().join("build/README.md");
-    replace_open_files(&open, &[note.to_string_lossy().into_owned()]).unwrap();
-    let mut f = WatchFilter::with_open_files(dir.path(), open);
+    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&note]));
     let probe = CountingProbe::default();
     let changed =
         Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(note.clone());
@@ -171,13 +181,46 @@ fn hidden_folders_are_dropped_and_hidden_files_are_not() {
     );
 }
 
+const INTERMEDIATE_ID: &str = "0123456789abcdef0123456789abcdef";
+
+fn holds(open: &OpenFiles, path: &str) -> bool {
+    matches!(&*open.read().unwrap(), OpenSet::Known(set) if set.contains(Path::new(path)))
+}
+
+fn is_unknown(open: &OpenFiles) -> bool {
+    matches!(&*open.read().unwrap(), OpenSet::Unknown)
+}
+
 #[test]
-fn atomic_write_intermediates_and_removals_keep_their_old_handling() {
+fn only_baram_s_own_intermediates_are_dropped_as_tmp_files() {
+    // `fs::write_file` writes `<target>.<32 hex>.tmp` and renames it over the target.
+    // A file a user named `*.tmp` is an ordinary file.
+    // 이것을 실패시키는 것: `is_write_intermediate` 대신 `.tmp` 로 끝나는 모든 경로를 버린다.
     let dir = tempfile::tempdir().unwrap();
     let mut f = filter(dir.path());
     let probe = CountingProbe::default();
-    let tmp = dir.path().join("a.md.0123.tmp");
-    assert!(route_all(&mut f, &written(&tmp), &probe).is_empty());
+    let ours = dir.path().join(format!("a.md.{INTERMEDIATE_ID}.tmp"));
+    assert!(route_all(&mut f, &written(&ours), &probe).is_empty());
+    assert_eq!(probe.reads.get(), 0);
+    let theirs = dir.path().join("notes.tmp");
+    assert_eq!(route_all(&mut f, &written(&theirs), &probe).len(), 2);
+    for not_ours in [
+        "a.md.0123.tmp",
+        ".tmp",
+        "a.md.0123456789ABCDEF0123456789ABCDEF.tmp",
+    ] {
+        assert!(
+            !is_write_intermediate(&dir.path().join(not_ours)),
+            "{not_ours}"
+        );
+    }
+}
+
+#[test]
+fn a_removal_reads_nothing_and_reports_the_path_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut f = filter(dir.path());
+    let probe = CountingProbe::default();
     let gone = Event::new(EventKind::Remove(RemoveKind::File)).add_path(dir.path().join("a.md"));
     assert_eq!(
         route_all(&mut f, &[gone], &probe),
@@ -185,6 +228,63 @@ fn atomic_write_intermediates_and_removals_keep_their_old_handling() {
             path: dir.path().join("a.md").to_string_lossy().into_owned()
         }]
     );
+    assert_eq!(probe.reads.get(), 0);
+}
+
+#[test]
+fn each_routed_path_is_read_once_and_a_rename_reports_one_snapshot() {
+    // Separate probes let a destination removed between them yield a creation and a
+    // change with mtime 0 (issue 795 review).
+    // 이것을 실패시키는 것: Modify(Name) 갈래가 Changed 를 위해 다시 `stat` 한다.
+    let dir = tempfile::tempdir().unwrap();
+    let note = dir.path().join("build/README.md");
+    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&note]));
+    let probe = CountingProbe::default();
+    let replaced =
+        Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any))).add_path(note.clone());
+    let emitted = route_all(&mut f, &[replaced], &probe);
+    assert_eq!(probe.reads.get(), 1);
+    let path = note.to_string_lossy().into_owned();
+    assert_eq!(
+        emitted,
+        vec![
+            Emit::Created {
+                path: path.clone(),
+                is_dir: false,
+                origin: "external"
+            },
+            Emit::Changed {
+                path,
+                mtime: 7,
+                origin: "external"
+            },
+        ]
+    );
+}
+
+#[test]
+fn a_path_gone_by_the_time_it_is_read_is_reported_deleted_never_changed() {
+    // 이것을 실패시키는 것: `stat` 이 `None` 일 때 Deleted 대신 mtime 0 의 Changed/Created 를 낸다.
+    let dir = tempfile::tempdir().unwrap();
+    let note = dir.path().join("notes/a.md");
+    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&note]));
+    let probe = CountingProbe::default();
+    probe.gone.borrow_mut().insert(note.clone());
+    let kinds = [
+        EventKind::Create(CreateKind::File),
+        EventKind::Modify(ModifyKind::Name(RenameMode::Any)),
+        EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+    ];
+    for kind in kinds {
+        let emitted = route_all(&mut f, &[Event::new(kind).add_path(note.clone())], &probe);
+        assert_eq!(
+            emitted,
+            vec![Emit::Deleted {
+                path: note.to_string_lossy().into_owned()
+            }],
+            "{kind:?}"
+        );
+    }
 }
 
 #[test]
@@ -196,10 +296,9 @@ fn a_tab_without_an_absolute_path_is_skipped_not_registered() {
         &["".into(), "untitled-1".into(), "/v/build/a.md".into()],
     )
     .unwrap();
-    let held = open.read().unwrap();
-    assert!(held.contains(Path::new("/v/build/a.md")));
-    assert!(!held.contains(Path::new("untitled-1")));
-    assert!(!held.contains(Path::new("")));
+    assert!(holds(&open, "/v/build/a.md"));
+    assert!(!holds(&open, "untitled-1"));
+    assert!(!holds(&open, ""));
 }
 
 #[test]
@@ -216,36 +315,64 @@ fn a_rename_onto_a_file_that_is_not_open_reports_no_change() {
 }
 
 #[test]
-fn an_open_file_named_like_an_intermediate_keeps_its_events() {
-    // 이것을 실패시키는 것: `.tmp` 검사를 열린 파일 판정보다 먼저 한다.
+fn an_open_file_named_like_a_tmp_file_keeps_its_events() {
+    // 이것을 실패시키는 것: 열린 파일이라도 `.tmp` 로 끝나면 버린다.
     let dir = tempfile::tempdir().unwrap();
-    let open = OpenFiles::default();
-    let scratch = dir.path().join("scratch.tmp");
-    replace_open_files(&open, &[scratch.to_string_lossy().into_owned()]).unwrap();
-    let mut f = WatchFilter::with_open_files(dir.path(), open);
+    let scratch = dir.path().join("build/scratch.tmp");
+    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&scratch]));
     let probe = CountingProbe::default();
     assert_eq!(route_all(&mut f, &written(&scratch), &probe).len(), 2);
-    // A `.tmp` that is not open is still an intermediate.
-    let other = dir.path().join("other.tmp");
+    // Its unopened neighbour below `build/` is dropped by the folder rule.
+    let other = dir.path().join("build/other.tmp");
     assert!(route_all(&mut f, &written(&other), &probe).is_empty());
 }
 
 #[test]
-fn set_open_files_refuses_a_call_over_its_limits_and_keeps_the_old_set() {
+fn an_unknown_open_set_drops_nothing_but_baram_s_intermediates() {
+    // Until a registration lands — and after one fails — any path may be open, so
+    // nothing is filtered out: a registration that did not land must not hide an
+    // open file's changes.
+    // 이것을 실패시키는 것: `may_be_open` 이 `Unknown` 을 "열려 있지 않음" 으로 읽는다.
+    let dir = tempfile::tempdir().unwrap();
+    let mut f = WatchFilter::with_open_files(dir.path(), OpenFiles::default());
+    let probe = CountingProbe::default();
+    let out = dir.path().join("build/out.md");
+    assert_eq!(route_all(&mut f, &written(&out), &probe).len(), 2);
+    let ours = dir
+        .path()
+        .join(format!("build/out.md.{INTERMEDIATE_ID}.tmp"));
+    assert!(route_all(&mut f, &written(&ours), &probe).is_empty());
+}
+
+#[test]
+fn a_refused_registration_leaves_the_set_unknown_not_stale() {
+    // Keeping the previous set would filter a file opened since (issue 795 review).
+    // 이것을 실패시키는 것: 상한을 넘은 호출이 이전 집합을 그대로 둔다.
+    let open = OpenFiles::default();
+    assert!(is_unknown(&open));
+    replace_open_files(&open, &["/v/kept.md".into()]).unwrap();
+    assert!(holds(&open, "/v/kept.md"));
+
+    let over_count: Vec<String> = (0..=MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
+    assert!(replace_open_files(&open, &over_count).is_err());
+    assert!(is_unknown(&open));
+
+    replace_open_files(&open, &["/v/kept.md".into()]).unwrap();
+    let long = format!("/{}", "a".repeat(MAX_OPEN_FILES_BYTES - 1));
+    assert!(replace_open_files(&open, &[format!("{long}b")]).is_err());
+    assert!(is_unknown(&open));
+}
+
+#[test]
+fn set_open_files_accepts_its_limits_and_refuses_one_past_them() {
     // 이것을 실패시키는 것: `replace_open_files` 의 개수 또는 바이트 상한 검사를 지운다.
     let open = OpenFiles::default();
-    replace_open_files(&open, &["/v/kept.md".into()]).unwrap();
     let at_count: Vec<String> = (0..MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
     let over_count: Vec<String> = (0..=MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
     let long = format!("/{}", "a".repeat(MAX_OPEN_FILES_BYTES - 1));
-    let over_bytes = vec![format!("{long}b")];
-
     assert!(replace_open_files(&open, &over_count).is_err());
-    assert!(replace_open_files(&open, &over_bytes).is_err());
-    assert!(open.read().unwrap().contains(Path::new("/v/kept.md")));
-
-    // The boundaries themselves are accepted.
+    assert!(replace_open_files(&open, &[format!("{long}b")]).is_err());
     assert!(replace_open_files(&open, &[long]).is_ok());
     assert!(replace_open_files(&open, &at_count).is_ok());
-    assert!(open.read().unwrap().contains(Path::new("/v/0.md")));
+    assert!(holds(&open, "/v/0.md"));
 }

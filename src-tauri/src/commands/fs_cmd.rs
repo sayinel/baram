@@ -171,10 +171,12 @@ pub async fn write_file(
     content: String,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
-    crate::fs::write_file(&path, &content)
+    // §3.2 The written file's mtime: what the watcher will report for this write, so
+    // the frontend can tell its own save's echo from any other change (issue 795).
+    crate::fs::write_file_mtime(&path, &content)
         .await
         .map_err(|e| e.to_string())
 }

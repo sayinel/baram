@@ -34,9 +34,23 @@ use notify::{Event, EventKind};
 
 use super::exclusion::{VaultExclusion, BARAMIGNORE};
 
-/// The files open in the editor, each as the frontend spelled it and as it resolves —
-/// the watcher reports paths in the spelling the OS gives (on macOS the canonical one).
-type OpenFiles = Arc<RwLock<HashSet<PathBuf>>>;
+/// What the watchers know of the editor's open files — each as the frontend spelled it
+/// and as it resolves, since the watcher reports paths in the spelling the OS gives
+/// (on macOS the canonical one).
+///
+/// `Unknown` until the first `set_open_files` succeeds, and again after any call that
+/// fails. While it is unknown, no path can be ruled out as open, so the filter drops
+/// nothing but Baram's own write intermediates: a registration that did not land must
+/// never leave a filtered watcher hiding an open file's changes (issue 795). The cost
+/// is the build-output events this filter exists to drop, for as long as it lasts.
+#[derive(Debug, Default)]
+enum OpenSet {
+    #[default]
+    Unknown,
+    Known(HashSet<PathBuf>),
+}
+
+type OpenFiles = Arc<RwLock<OpenSet>>;
 static OPEN_FILES: LazyLock<OpenFiles> = LazyLock::new(OpenFiles::default);
 
 /// The most paths one `set_open_files` call may name — far above any number of open
@@ -52,20 +66,23 @@ pub fn set_open_files(paths: &[String]) -> Result<(), String> {
 }
 
 /// A call over `MAX_OPEN_FILES` or `MAX_OPEN_FILES_BYTES` is refused before any path
-/// is resolved, and the set stays as it was. A path that is not an absolute file path
-/// (an untitled or plugin tab) is skipped rather than refusing the call, which would
-/// leave every open file without its events.
+/// is resolved, and leaves the set `Unknown` — not the previous set, which may lack a
+/// file opened since. A path that is not an absolute file path (an untitled or plugin
+/// tab) is skipped rather than refusing the call.
 fn replace_open_files(open: &OpenFiles, paths: &[String]) -> Result<(), String> {
+    let refuse = |reason: String| {
+        if let Ok(mut state) = open.write() {
+            *state = OpenSet::Unknown;
+        }
+        Err(format!("set_open_files: {reason}"))
+    };
     if paths.len() > MAX_OPEN_FILES {
-        return Err(format!(
-            "set_open_files: {} paths, more than {MAX_OPEN_FILES}",
-            paths.len()
-        ));
+        return refuse(format!("{} paths, more than {MAX_OPEN_FILES}", paths.len()));
     }
     let bytes: usize = paths.iter().map(String::len).sum();
     if bytes > MAX_OPEN_FILES_BYTES {
-        return Err(format!(
-            "set_open_files: {bytes} bytes of paths, more than {MAX_OPEN_FILES_BYTES}"
+        return refuse(format!(
+            "{bytes} bytes of paths, more than {MAX_OPEN_FILES_BYTES}"
         ));
     }
     let mut set = HashSet::new();
@@ -75,30 +92,63 @@ fn replace_open_files(open: &OpenFiles, paths: &[String]) -> Result<(), String> 
             set.insert(canonical);
         }
     }
-    if let Ok(mut open) = open.write() {
-        *open = set;
+    match open.write() {
+        Ok(mut state) => {
+            *state = OpenSet::Known(set);
+            Ok(())
+        }
+        Err(_) => Err("set_open_files: the open-file registry is poisoned".to_string()),
     }
-    Ok(())
 }
 
-/// The filesystem reads routing needs. A trait so the tests can count them.
+/// One metadata read of a path that exists.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Stat {
+    pub(crate) is_dir: bool,
+    /// Milliseconds since the epoch; 0 when the OS gives no modification time.
+    pub(crate) mtime: u64,
+}
+
+/// The filesystem read routing needs — one per routed path. A trait so the tests can
+/// count it and stage a file that vanished.
 pub(crate) trait Probe {
-    fn is_dir(&self, path: &Path) -> bool;
-    fn exists(&self, path: &Path) -> bool;
-    fn mtime(&self, path: &Path) -> u64;
+    /// `None` when the path is gone.
+    fn stat(&self, path: &Path) -> Option<Stat>;
 }
 
 pub(crate) struct RealProbe;
 
 impl Probe for RealProbe {
-    fn is_dir(&self, path: &Path) -> bool {
-        path.is_dir()
+    fn stat(&self, path: &Path) -> Option<Stat> {
+        let meta = std::fs::metadata(path).ok()?;
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_millis() as u64);
+        Some(Stat {
+            is_dir: meta.is_dir(),
+            mtime,
+        })
     }
-    fn exists(&self, path: &Path) -> bool {
-        path.exists()
-    }
-    fn mtime(&self, path: &Path) -> u64 {
-        super::mtime_ms(path)
+}
+
+/// Whether `path` is one of `fs::write_file`'s own intermediates,
+/// `<target>.<32 hex digits>.tmp` — not any file a user named `*.tmp`.
+fn is_write_intermediate(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let Some(stem) = name.strip_suffix(".tmp") else {
+        return false;
+    };
+    match stem.rsplit_once('.') {
+        Some((target, id)) => {
+            !target.is_empty()
+                && id.len() == 32
+                && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        }
+        None => false,
     }
 }
 
@@ -140,8 +190,12 @@ impl WatchFilter {
         }
     }
 
-    fn is_open(&self, path: &Path) -> bool {
-        self.open.read().is_ok_and(|open| open.contains(path))
+    /// Whether `path` may be open: it is in the set, or the set is unknown.
+    fn may_be_open(&self, path: &Path) -> bool {
+        match self.open.read().as_deref() {
+            Ok(OpenSet::Known(set)) => set.contains(path),
+            Ok(OpenSet::Unknown) | Err(_) => true,
+        }
     }
 
     /// Whether the event of `path`, not an open file, is dropped. No filesystem read
@@ -169,62 +223,71 @@ impl WatchFilter {
     }
 
     /// The webview events `event` becomes. Dropped paths are decided before `probe`
-    /// is asked anything.
+    /// is asked anything, and each routed path is read once: every event it yields
+    /// describes that one snapshot, and a path gone by then becomes `Deleted`, never a
+    /// change with no modification time.
     pub(crate) fn route(&mut self, event: &Event, probe: &impl Probe) -> Vec<Emit> {
         let mut out = Vec::new();
         for event_path in &event.paths {
-            let path_str = event_path.to_string_lossy().to_string();
-            self.notice(event_path);
-            // An open file passes before anything else, even one named `*.tmp`.
-            let open = self.is_open(event_path);
-            // Atomic-write intermediates, and what the walk leaves out.
-            if !open && (path_str.ends_with(".tmp") || self.drops(event_path)) {
+            if is_write_intermediate(event_path) {
                 continue;
             }
+            self.notice(event_path);
+            // A file that may be open passes whatever folder it is in.
+            let open = self.may_be_open(event_path);
+            if !open && self.drops(event_path) {
+                continue;
+            }
+            let path = event_path.to_string_lossy().to_string();
+            if matches!(event.kind, EventKind::Remove(_)) {
+                out.push(Emit::Deleted { path });
+                continue;
+            }
+            if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
+                continue;
+            }
+            let Some(stat) = probe.stat(event_path) else {
+                out.push(Emit::Deleted { path });
+                continue;
+            };
+            let origin = origin(event_path, stat.mtime);
             match event.kind {
-                EventKind::Create(_) => out.push(created(event_path, path_str, probe)),
+                EventKind::Create(_) => out.push(Emit::Created {
+                    path,
+                    is_dir: stat.is_dir,
+                    origin,
+                }),
                 // macOS FSEvents reports an atomic-write rename and an external move
                 // as Modify(Name), not Create/Remove.
                 EventKind::Modify(ModifyKind::Name(_)) => {
-                    if probe.exists(event_path) {
-                        out.push(created(event_path, path_str.clone(), probe));
-                        // Another program's atomic save of an OPEN file arrives as a
-                        // rename onto it. Only `file:changed` reaches the editor's
-                        // reload and conflict checks — `file:created` feeds the tree —
-                        // so the rename is reported as a change as well. FSEvents also
-                        // sent a Modify(Data) for the destination in the replaces we
-                        // measured, but nothing promises that flag.
-                        if open {
-                            out.push(changed(event_path, path_str, probe));
-                        }
-                    } else {
-                        out.push(Emit::Deleted { path: path_str });
+                    out.push(Emit::Created {
+                        path: path.clone(),
+                        is_dir: stat.is_dir,
+                        origin,
+                    });
+                    // Another program's atomic save of an OPEN file arrives as a
+                    // rename onto it. Only `file:changed` reaches the editor's reload
+                    // and conflict checks — `file:created` feeds the tree — so the
+                    // rename is reported as a change as well, from the same snapshot.
+                    // FSEvents also sent a Modify(Data) for the destination in the
+                    // replaces we measured, but nothing promises that flag; the
+                    // frontend handles each (path, mtime) once.
+                    if open {
+                        out.push(Emit::Changed {
+                            path,
+                            mtime: stat.mtime,
+                            origin,
+                        });
                     }
                 }
-                EventKind::Modify(_) => out.push(changed(event_path, path_str, probe)),
-                EventKind::Remove(_) => out.push(Emit::Deleted { path: path_str }),
-                _ => {}
+                _ => out.push(Emit::Changed {
+                    path,
+                    mtime: stat.mtime,
+                    origin,
+                }),
             }
         }
         out
-    }
-}
-
-fn changed(event_path: &Path, path: String, probe: &impl Probe) -> Emit {
-    let mtime = probe.mtime(event_path);
-    Emit::Changed {
-        path,
-        mtime,
-        origin: origin(event_path, mtime),
-    }
-}
-
-fn created(event_path: &Path, path: String, probe: &impl Probe) -> Emit {
-    let is_dir = probe.is_dir(event_path);
-    Emit::Created {
-        path,
-        is_dir,
-        origin: origin(event_path, probe.mtime(event_path)),
     }
 }
 

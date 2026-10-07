@@ -34,13 +34,13 @@
         "path": "string",
         "content": "string"
       },
-      "output": "void",
+      "output": "number (mtime ms)",
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "description": "파일 쓰기 (원자적 쓰기)"
+      "description": "파일 쓰기 (원자적 쓰기). 쓴 파일의 mtime 을 돌려준다 — 워처가 그 쓰기에 보고할 값 (issue 795)"
     },
     {
       "name": "list_dir",
