@@ -6,6 +6,41 @@ use super::normalizer::{
 };
 use super::{LinkEdge, LinkEntry, LinkGraph, LinkIndex, LinkResolution};
 
+/// `file_path` under `root_path`, without the separator after the root.
+fn under_root<'a>(file_path: &'a str, root_path: &str) -> Option<&'a str> {
+    let rel = file_path.strip_prefix(root_path)?;
+    Some(
+        rel.strip_prefix('/')
+            .or_else(|| rel.strip_prefix('\\'))
+            .unwrap_or(rel),
+    )
+}
+
+/// The `relative_map` key `register_file_path` files `file_path` under — the one
+/// `remove_file` takes it out of again (issue 796).
+pub(super) fn relative_key(file_path: &str, root_path: &str) -> Option<String> {
+    under_root(file_path, root_path).map(strip_extension_and_fold)
+}
+
+/// The `name_map` keys `register_link_target` files `file_path` under: its folded file
+/// name, and its folded path under the root when there is one.
+pub(super) fn target_keys(file_path: &str, root_path: Option<&str>) -> Vec<String> {
+    let mut keys: Vec<String> = Vec::new();
+    if let Some(name) = std::path::Path::new(file_path)
+        .file_name()
+        .map(|n| fold_name(&n.to_string_lossy()))
+    {
+        keys.push(name);
+    }
+    if let Some(rel) = root_path.and_then(|root| under_root(file_path, root)) {
+        let rel = fold_name(rel);
+        if !keys.contains(&rel) {
+            keys.push(rel);
+        }
+    }
+    keys
+}
+
 impl LinkIndex {
     /// Register a file path in file_map and relative_map for target resolution
     pub(super) fn register_file_path(&mut self, file_path: &str, root_path: &str) {
@@ -16,12 +51,7 @@ impl LinkIndex {
         }
 
         // Build relative path mapping (e.g., "notes/architecture" → "/vault/notes/architecture.md")
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel);
-            let rel_normalized = strip_extension_and_fold(rel);
+        if let Some(rel_normalized) = relative_key(file_path, root_path) {
             self.relative_map
                 .insert(rel_normalized, file_path.to_string());
         }
@@ -47,27 +77,7 @@ impl LinkIndex {
     /// `paper.pdf` and `[[papers/Paper.pdf]]` to `papers/paper.pdf`, and both forms have
     /// to find the file.
     pub(super) fn register_link_target(&mut self, file_path: &str, root_path: &str) {
-        let mut keys: Vec<String> = Vec::new();
-
-        if let Some(name) = std::path::Path::new(file_path)
-            .file_name()
-            .map(|n| fold_name(&n.to_string_lossy()))
-        {
-            keys.push(name);
-        }
-
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = fold_name(
-                rel.strip_prefix('/')
-                    .or_else(|| rel.strip_prefix('\\'))
-                    .unwrap_or(rel),
-            );
-            if !keys.contains(&rel) {
-                keys.push(rel);
-            }
-        }
-
-        for key in keys {
+        for key in target_keys(file_path, Some(root_path)) {
             let paths = self.name_map.entry(key).or_default();
             if !paths.contains(&file_path.to_string()) {
                 paths.push(file_path.to_string());

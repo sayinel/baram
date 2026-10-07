@@ -11,6 +11,8 @@ mod judgement;
 mod normalizer;
 mod read_back;
 mod relative_links;
+#[cfg(test)]
+mod removal_tests;
 mod resolve;
 mod rewriter;
 pub mod service;
@@ -44,6 +46,24 @@ thread_local! {
     /// `Path` key on this thread — what a rename's note sets cost, counted
     /// rather than timed. Per thread, so tests running side by side do not mix.
     static PATH_KEYS_SPELLED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many stored entries `LinkIndex::remove_file` has looked at on this thread —
+    /// what a save's removal costs, counted rather than timed (issue 796).
+    static REMOVAL_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn note_removal_visit() {
+    #[cfg(test)]
+    REMOVAL_VISITS.with(|c| c.set(c.get() + 1));
+}
+
+/// `REMOVAL_VISITS` so far on this thread.
+#[cfg(test)]
+pub(crate) fn removal_visits() -> usize {
+    REMOVAL_VISITS.with(std::cell::Cell::get)
 }
 
 /// `PATH_KEYS_SPELLED` so far on this thread; a test reads it before and after.
@@ -233,32 +253,72 @@ impl LinkIndex {
         })
     }
 
-    /// Remove a file from the index
+    /// Remove a file from the index.
+    ///
+    /// Issue 796: by the keys the file was filed under, not by scanning the maps — a save
+    /// costs the same in a vault of ten notes and of twenty thousand. Each key is the one
+    /// its registration computed: `filing_key` of each outgoing entry (`file_incoming`),
+    /// the stem, `resolve::relative_key`, the zettel id and `resolve::target_keys`.
+    /// `removal_tests` holds this against a full scan of every map.
     pub fn remove_file(&mut self, file_path: &str) {
-        self.outgoing.remove(file_path);
-        // Remove from incoming: filter out entries with this source_path
-        for entries in self.incoming.values_mut() {
-            entries.retain(|e| e.source_path != file_path);
+        if let Some(entries) = self.outgoing.remove(file_path) {
+            for entry in &entries {
+                let key = filing_key(
+                    &entry.source_path,
+                    &entry.target,
+                    entry.target_vault_alias.as_deref(),
+                    self.root_path.as_deref(),
+                    cfg!(windows),
+                );
+                if let Some(filed) = self.incoming.get_mut(&key) {
+                    filed.retain(|e| {
+                        note_removal_visit();
+                        e.source_path != file_path
+                    });
+                    if filed.is_empty() {
+                        self.incoming.remove(&key);
+                    }
+                }
+            }
         }
-        // Clean up empty keys
-        self.incoming.retain(|_, v| !v.is_empty());
 
-        // Remove from file maps
         let stem = normalize_file_path(file_path);
         if let Some(paths) = self.file_map.get_mut(&stem) {
-            paths.retain(|p| p != file_path);
+            paths.retain(|p| {
+                note_removal_visit();
+                p != file_path
+            });
             if paths.is_empty() {
                 self.file_map.remove(&stem);
             }
         }
-        self.relative_map.retain(|_, v| v != file_path);
-        self.id_map.retain(|_, v| v != file_path);
+        let root = self.root_path.clone();
+        if let Some(key) = root
+            .as_deref()
+            .and_then(|r| resolve::relative_key(file_path, r))
+        {
+            if self.relative_map.get(&key).is_some_and(|p| p == file_path) {
+                self.relative_map.remove(&key);
+            }
+        }
+        if let Some(id) = normalizer::extract_id_from_stem(&stem) {
+            if self.id_map.get(&id).is_some_and(|p| p == file_path) {
+                self.id_map.remove(&id);
+            }
+        }
         // §278 same shape as the file_map cleanup above — drop the path, then the key
         // once nothing points at it.
-        self.name_map.retain(|_, paths| {
-            paths.retain(|p| p != file_path);
-            !paths.is_empty()
-        });
+        for key in resolve::target_keys(file_path, root.as_deref()) {
+            if let Some(paths) = self.name_map.get_mut(&key) {
+                paths.retain(|p| {
+                    note_removal_visit();
+                    p != file_path
+                });
+                if paths.is_empty() {
+                    self.name_map.remove(&key);
+                }
+            }
+        }
         self.file_tags.remove(file_path);
     }
 
