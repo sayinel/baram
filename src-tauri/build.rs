@@ -144,6 +144,7 @@ fn main() {
         "set_vault_config",
         "set_vault_config_by_path",
         "set_vault_root",
+        "sync_watched_paths",
         "theme_import_pick",
         "theme_install_commit",
         "theme_install_discard",

@@ -813,6 +813,17 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 }
 
 /// 디렉토리 감시 시작 — notify crate 기반
+/// `file:created` 의 `origin`. 앱의 저장은 임시 파일을 이름만 바꿔 놓으므로 macOS 에서는
+/// 저장마다 저장한 파일의 `file:created` 가 온다 — `file:changed` 와 같은 판정으로 그것을
+/// 가른다(링크 index 는 저장이 이미 고쳤으므로 다시 읽지 않는다, issue 790).
+fn created_origin(path: &Path) -> &'static str {
+    if is_app_write(path, mtime_ms(path)) {
+        "app"
+    } else {
+        "external"
+    }
+}
+
 /// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
 ///
 /// Returns the watcher, which must be kept alive by the caller.
@@ -862,7 +873,11 @@ pub fn start_watching(
                         let is_dir = event_path.is_dir();
                         let _ = app_handle.emit(
                             "file:created",
-                            serde_json::json!({ "path": path_str, "isDir": is_dir }),
+                            serde_json::json!({
+                                "path": path_str,
+                                "isDir": is_dir,
+                                "origin": created_origin(event_path),
+                            }),
                         );
                     }
                     // Rename: macOS FSEvents reports atomic-write rename
@@ -872,7 +887,11 @@ pub fn start_watching(
                             let is_dir = event_path.is_dir();
                             let _ = app_handle.emit(
                                 "file:created",
-                                serde_json::json!({ "path": path_str, "isDir": is_dir }),
+                                serde_json::json!({
+                                    "path": path_str,
+                                    "isDir": is_dir,
+                                    "origin": created_origin(event_path),
+                                }),
                             );
                         } else {
                             let _ = app_handle

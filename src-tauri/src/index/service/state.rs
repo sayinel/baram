@@ -111,6 +111,8 @@ pub(super) enum Mutation {
     Update { path: PathBuf, content: String },
     /// A file is gone under this path (renamed away).
     Remove { path: PathBuf },
+    /// §278 A non-markdown file appeared: a link target only (issue 790).
+    Target { path: PathBuf },
 }
 
 impl Mutation {
@@ -130,9 +132,16 @@ impl Mutation {
         })
     }
 
+    /// A non-markdown file under `path` — canonicalised outside any lock.
+    pub(super) fn target(path: &str) -> Result<Self, String> {
+        Ok(Self::Target {
+            path: crate::context::manager::resolve_canonical(path)?,
+        })
+    }
+
     fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) {
         let canonical_path = match self {
-            Self::Update { path, .. } | Self::Remove { path } => path,
+            Self::Update { path, .. } | Self::Remove { path } | Self::Target { path } => path,
         };
         let Some(spelled) = root.spell(canonical_path) else {
             return;
@@ -140,6 +149,7 @@ impl Mutation {
         match self {
             Self::Update { content, .. } => index.update_file_from_content(&spelled, content),
             Self::Remove { .. } => index.remove_file(&spelled),
+            Self::Target { .. } => index.register_link_target(&spelled, &root.spelling),
         }
     }
 }
@@ -214,6 +224,29 @@ impl LinkIndexState {
             .get(key)
             .filter(|s| s.published_incarnation == incarnation)
             .and_then(|s| s.index.as_ref()))
+    }
+
+    /// Whether the index published for `incarnation` under `key` holds a note
+    /// or a link target strictly below `canonical_dir` — what a vanished path
+    /// that was a directory leaves behind (issue 790). `false` with no index.
+    pub(super) async fn holds_under(
+        &self,
+        key: &str,
+        incarnation: u64,
+        canonical_dir: &Path,
+    ) -> bool {
+        let map = self.slots.lock().await;
+        let Some(slot) = map
+            .get(key)
+            .filter(|s| s.published_incarnation == incarnation)
+        else {
+            return false;
+        };
+        let (Some(index), Some(root)) = (slot.index.as_ref(), slot.root.as_ref()) else {
+            return false;
+        };
+        root.spell(canonical_dir)
+            .is_some_and(|dir| index.holds_under(&dir))
     }
 
     /// Apply mutations under `key` while holding the lock; same discipline.

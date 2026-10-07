@@ -75,6 +75,19 @@ impl LinkIndex {
         }
     }
 
+    /// Whether a note or a link target this index holds lies strictly below
+    /// `dir` — component-wise, so `/v/a` does not claim `/v/ab.md`.
+    pub(super) fn holds_under(&self, dir: &str) -> bool {
+        let dir = std::path::Path::new(dir);
+        let below = |p: &String| {
+            let p = std::path::Path::new(p);
+            p != dir && p.starts_with(dir)
+        };
+        self.outgoing.keys().any(below)
+            || self.file_map.values().flatten().any(below)
+            || self.name_map.values().flatten().any(below)
+    }
+
     #[cfg(test)]
     pub(crate) fn id_map_len(&self) -> usize {
         self.id_map.len()

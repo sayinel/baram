@@ -17,6 +17,7 @@ mod nested_roots;
 mod normalization;
 mod same_stem;
 mod stem_spelling;
+mod watched;
 
 fn info(id: &str, path: &str, kind: ContextType) -> ContextInfo {
     ContextInfo {

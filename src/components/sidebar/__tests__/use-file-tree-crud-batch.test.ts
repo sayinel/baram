@@ -24,7 +24,7 @@ vi.mock("../../../utils/confirm-dialog", () => ({
   showAlert: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { deleteDir, deleteFile } from "../../../ipc/invoke";
+import { deleteDir, deleteFile, refreshIndex } from "../../../ipc/invoke";
 import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
 
 beforeEach(() => {
@@ -76,5 +76,20 @@ describe("handleDeleteMany", () => {
     const { result } = renderHook(() => useFileTreeCrud());
     await act(() => result.current.handleDeleteMany(["/r/b.md"]));
     expect(vi.mocked(showConfirm).mock.calls[0][0]).toContain('"b.md"');
+  });
+});
+
+// §29 지운 폴더의 노트를 index 에서 빼는 일은 워처 → `sync_watched_paths` 가 한다 — Rust 가
+// index 에 그 아래 항목이 남았는지로 디렉터리를 판정한다(issue 790). 삭제 핸들러가 따로
+// build 하면 같은 삭제에 전체 build 가 한 번 더 붙는다.
+describe("deletion leaves the link index to the watcher", () => {
+  // 이것을 실패시키는 것: 폴더 삭제 뒤에 `refreshIndex(rootPath)` 를 다시 부른다.
+  it("폴더 · 파일 · 일괄 삭제 모두 vault 를 다시 build 하지 않는다", async () => {
+    const { result } = renderHook(() => useFileTreeCrud());
+    await act(() => result.current.handleDelete("/r/docs"));
+    await act(() => result.current.handleDeleteMany(["/r/b.md", "/r/c.md"]));
+    expect(deleteDir).toHaveBeenCalledTimes(1);
+    expect(deleteFile).toHaveBeenCalledTimes(2);
+    expect(refreshIndex).not.toHaveBeenCalled();
   });
 });
