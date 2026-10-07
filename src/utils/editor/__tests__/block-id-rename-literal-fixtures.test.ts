@@ -29,6 +29,19 @@ const fixtures = JSON.parse(
 ) as Fixtures;
 
 describe("the rename fixtures shared with the backend", () => {
+  it("names its own target only for a note stored decomposed (NFD)", () => {
+    // spec 0069 §7: the input is not NFC. Declared before the cases, so it is
+    // asserted first, before the cases that lean on it run.
+    // What fails this: an own target written composed, as an editor or a copy
+    // could leave it; a fixture with no own target at all, where the loop
+    // below would assert nothing (`own.length > 0`).
+    const own = fixtures.cases.flatMap((c) =>
+      c.target === undefined ? [] : [c.target],
+    );
+    expect(own.length).toBeGreaterThan(0);
+    for (const target of own) expect(target.normalize("NFC")).not.toBe(target);
+  });
+
   it.each(fixtures.cases)("$name", ({ expected, markdown, target }) => {
     expect(
       renameBlockIdInMarkdown(
@@ -38,16 +51,5 @@ describe("the rename fixtures shared with the backend", () => {
         fixtures.new,
       ),
     ).toBe(expected);
-  });
-
-  it("names its own target only for a note stored decomposed (NFD)", () => {
-    // spec 0069 §7: the input is not NFC, asserted before anything leans on it.
-    // What fails this: an own target written composed, as an editor or a copy
-    // could leave it.
-    const own = fixtures.cases.flatMap((c) =>
-      c.target === undefined ? [] : [c.target],
-    );
-    expect(own.length).toBeGreaterThan(0);
-    for (const target of own) expect(target.normalize("NFC")).not.toBe(target);
   });
 });

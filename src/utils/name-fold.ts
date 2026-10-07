@@ -14,7 +14,8 @@
  * holds the composed letter (U+01F0).
  *
  * ‼️ Names and link targets only. Whether a path lies under a root is
- * `isUnderRoot`'s question, which folds ASCII case alone (`foldAsciiCase`).
+ * `isUnderRoot`'s question, which folds ASCII case alone (`foldAsciiCase`),
+ * and only when asked to.
  * ‼️ Never cut an unfolded string at an index or length measured on a folded
  * one: folding changes length — NFC joins a decomposed syllable into one code
  * unit, and lowercasing `İ` gives two.

@@ -17,8 +17,9 @@
  * mention in another case (`baram` for `Baram.md` — the backend matches case
  * insensitively) keeps its own text as the link's. Folding would write
  * `[[Baram]]` over the user's `baram`, in another note, past undo.
- * The name is written composed (D7); the mention's text is the user's and is
- * kept as written.
+ * The name is written composed (D7). The mention's text is the user's and is
+ * kept as written when it becomes the alias (`[[name|mention]]`); a mention
+ * that spells the name is replaced by the name, composed.
  */
 export function linkifyMention(
   line: string,

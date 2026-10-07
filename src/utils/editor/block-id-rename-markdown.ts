@@ -28,12 +28,16 @@ type Range = [start: number, end: number];
  * active. Accepted as "this document": the empty target (`((#^id))`); a
  * relative path (`./x`, `../y/x`) that resolves, against this file's
  * directory, to this file; a path-qualified target (`a/x`) that this file's
- * path ends with; a bare stem equal to this file's stem. Names compare
- * under `foldName` (NFC, lowercase, NFC — §390) and
- * without `.md`/`.markdown`, as the resolver does. A
- * bare stem that another file in another folder also carries is ambiguous;
- * the resolver would pick one by its own rules, this treats it as ours — the
- * same choice the transaction builder makes, so the two paths agree.
+ * path ends with; a bare stem equal to this file's stem. Names and paths
+ * compare under `foldName` (NFC, lowercase, NFC — §390) and without
+ * `.md`/`.markdown`, as the resolver does. A path is folded whole and
+ * `basename` then cuts the folded copy, where spec 0069 D2 splits before
+ * folding; the result is the same, because `/` is a barrier for NFC (it
+ * composes with no mark) and for the final-sigma rule (it is neither cased nor
+ * case-ignorable), so `basename(foldName(p))` is `foldName(basename(p))`. A
+ * bare stem that another file in another folder also carries is ambiguous; the
+ * resolver would pick one by its own rules, this treats it as ours — the same
+ * choice the transaction builder makes, so the two paths agree.
  */
 export function refersToThisDocument(
   target: string,

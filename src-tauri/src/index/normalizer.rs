@@ -28,10 +28,9 @@ pub(crate) fn nfc(s: &str) -> Cow<'_, str> {
 /// contract records; it is kept so that lowercase reads one form. The cases
 /// are `md/fixtures/name-fold.json`, which this module's tests read and so
 /// does the frontend's `foldName` test (`src/utils/__tests__/name-fold.test.ts`).
-/// Strip a
-/// note extension and split a path BEFORE folding, and compare folded
-/// strings of one shape only: Greek capital sigma folds by what
-/// follows it (`ΑΣ` → `ας`, `ΑΣ.md` → `ασ.md`).
+/// Strip a note extension and split a path BEFORE folding, and compare folded
+/// strings of one shape only: Greek capital sigma folds by what follows it
+/// (`ΑΣ` → `ας`, `ΑΣ.md` → `ασ.md`).
 pub(crate) fn fold_name(s: &str) -> String {
     if s.is_ascii() {
         // NFC leaves ASCII as it is, and an ASCII letter's lowercase is its

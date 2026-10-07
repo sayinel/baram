@@ -45,8 +45,8 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
     }, [items]);
 
     /**
-     * §95 이름이 겹치는 파일 행의 label 집합 — `foldName` 기준(대소문자와 유니코드
-     * 정규화를 무시, §390).
+     * §95 이름이 겹치는 파일 행의 label 집합 — `foldName` 기준(NFC → 소문자 →
+     * NFC, §390).
      *
      * 설계 §95는 중복 제목을 "폴더/ID/미리보기로 구분"한다고 적었는데, 목록에서
      * ID를 뺀 뒤로 남은 구분 수단이 없다 — 제목이 같은 두 노트는 **글자 하나까지

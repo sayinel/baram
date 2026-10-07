@@ -38,8 +38,8 @@ export function resolveRelativeTarget(
 
 /**
  * Resolve a wikilink target (e.g. "architecture") to a file path.
- * Exact match on the filename stem (without .md extension) under `foldName`:
- * case and Unicode normalization ignored (§390).
+ * Exact match on the filename stem (without .md extension) under `foldName`
+ * (NFC, lowercase, NFC — §390).
  *
  * §87 Cross-vault resolution: when vaultAlias is set, resolve in that context.
  * §61 Namespace-aware resolution order:
@@ -90,9 +90,9 @@ export function resolveWikilinkTarget(
     if (sourcePath) {
       const candidate = resolveRelativeTarget(target, sourcePath);
       if (candidate) {
-        // §390 Case and Unicode normalization ignored (spec 0069 §3.3): the
-        // candidate joins the open note's folder as stored with the name as
-        // typed.
+        // §390 Compared under `foldName` (NFC, lowercase, NFC — §390; spec
+        // 0069 §3.3): the candidate joins the open note's folder as stored
+        // with the name as typed.
         const wanted = foldName(candidate);
         const match = flat.find((f) => foldName(f.path) === wanted);
         if (match) return { path: match.path, name: match.name };
@@ -101,9 +101,9 @@ export function resolveWikilinkTarget(
     return null; // Relative paths don't fall back to global search
   }
 
-  // §390 Names compare under foldName — case and Unicode normalization
-  // ignored (spec 0069 §3.3): a note the disk stores decomposed (NFD)
-  // answers to the composed name typed.
+  // §390 Names compare under `foldName` (NFC, lowercase, NFC — §390; spec
+  // 0069 §3.3): a note the disk stores decomposed (NFD) answers to the
+  // composed name typed.
   const targetKey = foldName(target);
 
   // §56l Journal-aware: try notes/ first when journal-scoped
@@ -194,8 +194,8 @@ export function resolveWikilinkTarget(
  *
  * ‼️ 확장자 목록도, "확장자가 있는가" 판별도 두지 않는다. 판별을 패턴으로 하면
  * `[[v1.2 회의록]]`처럼 이름에 점이 든 노트가 확장자로 오인된다. 그냥 트리의 실제
- * 파일명(경로를 적은 타깃이면 루트 기준 상대경로도)과 같은지만 본다 — 대소문자와
- * 유니코드 정규화는 무시한다(`foldName`, §390). 그래서 §69의 새 뷰어
+ * 파일명(경로를 적은 타깃이면 루트 기준 상대경로도)과 같은지만 본다 — 비교는
+ * `foldName` 기준(NFC → 소문자 → NFC, §390)이다. 그래서 §69의 새 뷰어
  * 타입(이미지·SVG·HTML)이 자동으로 따라오고, 열거를 갱신하지 않아 조용히 빠지는
  * 일이 없다.
  *

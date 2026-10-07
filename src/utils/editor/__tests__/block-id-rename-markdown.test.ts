@@ -214,10 +214,11 @@ describe("§390 refersToThisDocument across normalization", () => {
   const FILE = `/v/${"노트".normalize("NFD")}.md`;
 
   it("a reference typed composed names a document stored decomposed", () => {
-    // What fails the three positives: the `here` fold (this file's name) left
-    // at toLowerCase, so the file's stem stays decomposed against composed
-    // references. What fails the last line, which pairs them: a comparison
-    // that takes a name for a prefix of a longer one.
+    // What fails the three positives (bare, `./`, `v/`): the `here` fold (this
+    // file's path without its extension) left at toLowerCase, so the file's
+    // stem stays decomposed against composed references. What fails the
+    // `노트장` negative, which pairs them: a comparison that takes a name for a
+    // prefix of a longer one.
     expect(FILE.normalize("NFC")).not.toBe(FILE);
     expect(refersToThisDocument("노트", FILE)).toBe(true);
     expect(refersToThisDocument("./노트", FILE)).toBe(true);
@@ -226,10 +227,11 @@ describe("§390 refersToThisDocument across normalization", () => {
   });
 
   it("a reference spelled decomposed names a document stored composed", () => {
-    // What fails this: the `wanted` fold left at toLowerCase (the first and
-    // third lines reach it; the `./` line returns before it), or the fold of
-    // the `./` resolution left at toLowerCase (the second line), so a
-    // decomposed reference stays decomposed against this file's composed name.
+    // What fails this: the `wanted` fold left at toLowerCase (the bare and
+    // `v/` assertions reach it; the `./` assertion returns before it), or the
+    // fold of the `./` resolution left at toLowerCase (the `./` assertion), so
+    // a decomposed reference stays decomposed against this file's composed
+    // name.
     const composed = "/v/노트.md";
     const typed = "노트".normalize("NFD");
     expect(typed.normalize("NFC")).not.toBe(typed);

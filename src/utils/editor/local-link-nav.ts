@@ -98,7 +98,7 @@ export function resolveLocalLinkTarget(
   for (const candidate of candidates) {
     if (files.some((f) => f.path === candidate)) return candidate;
   }
-  // 대소문자 · 유니코드 정규화 무시(`foldName`, §390)는 정확 일치가 전부 실패한
+  // `foldName` 기준(NFC → 소문자 → NFC, §390) 비교는 정확 일치가 전부 실패한
   // 뒤에만. macOS/Windows의 기본 파일시스템은 대소문자를 구분하지 않고, macOS 의
   // 일부 도구는 한글 이름을 분해형(NFD)으로 저장하므로 링크에 적은 글자가
   // 파일명과 다를 수 있다. 순서를 지켜야 대소문자나 정규화만 다른 두 파일이 공존하는

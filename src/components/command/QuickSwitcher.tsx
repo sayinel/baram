@@ -250,7 +250,8 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     // two strings on every call (foldName), and a comparator that scores calls
     // it twice per comparison — over 10,000 names that alone passed the 16 ms
     // keystroke budget for one query of five (`e`: 16.06–16.79 ms; the other
-    // four 3.8–11.2 ms. V8 in jsdom, plan 0120, measured 2026-10-06/07).
+    // four 3.8–11.2 ms — minima of single runs, not medians. V8 in jsdom, plan
+    // 0120, measured 2026-10-06/07).
     const matched = candidateFiles
       .filter((f) => fuzzyMatch(q, f.relativePath) || fuzzyMatch(q, f.name))
       .map((f) => ({ f, score: fuzzyScore(q, f.name) }))

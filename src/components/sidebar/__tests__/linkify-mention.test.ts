@@ -36,12 +36,15 @@ describe("§390 linkifyMention", () => {
   });
 
   it("keeps the mention's own spelling as the link's text", () => {
-    // The mention is the user's text, and the link shows it as written. What
+    // The mention is the user's text, and the link shows it as written. The
+    // stem is stored decomposed too: the backend's pattern is the name
+    // composed or as stored (`find_unlinked_mentions`), so a decomposed
+    // mention is reported only beside a decomposed stem (spec 0069 §8). What
     // fails this: composing the alias along with the name.
     const mention = `baram${NOTE_NFD}`;
-    expect(linkifyMention(`about ${mention}`, mention, `Baram${NOTE}`)).toBe(
-      `about [[Baram${NOTE}|${mention}]]`,
-    );
+    expect(
+      linkifyMention(`about ${mention}`, mention, `Baram${NOTE_NFD}`),
+    ).toBe(`about [[Baram${NOTE}|${mention}]]`);
   });
 
   it("finds the mention as it is, and cuts the line where it is", () => {
@@ -54,7 +57,9 @@ describe("§390 linkifyMention", () => {
   });
 
   it("returns null for a line that no longer holds the mention", () => {
-    // The partner of the three above: no write without the mention.
+    // No write without the mention — the other tests here assert the link
+    // when it is there. What fails this: deleting `if (at === -1) return
+    // null;` — the splice then runs at index -1 and returns a line, not null.
     expect(linkifyMention("nothing here", "Baram", "Baram")).toBeNull();
   });
 });

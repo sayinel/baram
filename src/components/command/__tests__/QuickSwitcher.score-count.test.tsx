@@ -1,8 +1,9 @@
 // §390 spec 0069 §5 — fuzzyScore folds its two strings on every call, so a
 // sort whose comparator scores calls it twice per comparison: over 10,000
 // names that put Quick Switcher past the 16 ms keystroke budget for one query
-// of five (`e`: 16.06–16.79 ms; the other four 3.8–11.2 ms. V8 in jsdom, plan
-// 0120, measured 2026-10-06/07). Each candidate is scored once, then sorted.
+// of five (`e`: 16.06–16.79 ms; the other four 3.8–11.2 ms — minima of single
+// runs, not medians. V8 in jsdom, plan 0120, measured 2026-10-06/07). Each
+// candidate is scored once, then sorted.
 // Pinned by count, not time — CLAUDE.md:
 // "성능 회귀 테스트는 타이밍이 아니라 카운트로 고정".
 import type { FileEntry } from "../../../stores/file/file";

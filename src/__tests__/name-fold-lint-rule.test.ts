@@ -1,6 +1,7 @@
 // §390 spec 0069 D6 — ESLint refuses a bare lowercase in the files that
 // compare link names, and points to foldName (src/utils/name-fold.ts). This
-// pins the rule's reach: on in each glob, off outside them and in tests.
+// pins the rule's reach: on in each glob, off outside them and in `__tests__`
+// directories.
 import { ESLint } from "eslint";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -32,7 +33,8 @@ describe("§390 the bare-lowercase rule", () => {
       expect(await lint(file), file).toHaveLength(2);
     }
 
-    // The partner: the rule reaches its globs only, and not their tests.
+    // The partner: the rule reaches its globs only, and not their `__tests__`
+    // directories.
     for (const file of [
       "src/utils/__probe__.ts",
       "src/components/command/__probe__.tsx",

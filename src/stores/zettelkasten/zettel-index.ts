@@ -44,9 +44,8 @@ export const useZettelIndexStore = create<ZettelIndexState>((set) => ({
 }));
 
 /**
- * Resolves the id ONLY when exactly one note has that title (under `foldName`:
- * case and Unicode normalization ignored, §390);
- * null if 0 or ambiguous (>1).
+ * Resolves the id ONLY when exactly one note has that title under `foldName`
+ * (NFC, lowercase, NFC — §390); null if 0 or ambiguous (>1).
  *
  * §99 Authored titles are considered first. The body-line fallback puts every
  * fleeting note into this namespace, and a quick capture whose first line
