@@ -512,7 +512,7 @@ fn an_event_is_reported_in_every_spelling_the_leases_registered() {
     let links = tempfile::tempdir().unwrap();
     let alias = links.path().join("vault");
     std::os::unix::fs::symlink(&real_root, &alias).unwrap();
-    let spellings: Spellings = Arc::new(RwLock::new(vec![alias.clone()]));
+    let spellings: Spellings = Arc::new(RwLock::new(vec![(real_root.clone(), alias.clone())]));
     let mut f = WatchFilter::for_watch(&alias, true, Focus::default(), Arc::clone(&spellings));
     let probe = CountingProbe::default();
     let note = real_root.join("note.md");
@@ -522,11 +522,83 @@ fn an_event_is_reported_in_every_spelling_the_leases_registered() {
     assert_eq!(paths, vec![expected.as_str(), expected.as_str()]);
 
     // Two spellings registered: each gets the event.
-    spellings.write().unwrap().push(real_root.clone());
+    spellings
+        .write()
+        .unwrap()
+        .push((real_root.clone(), real_root.clone()));
     let emitted = route_all(&mut f, &[written(&note)[1].clone()], &probe);
     let mut paths: Vec<String> = emitted.iter().map(|e| e.path().to_string()).collect();
     paths.sort();
     let mut want = vec![expected, note.to_string_lossy().into_owned()];
     want.sort();
     assert_eq!(paths, want);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_folder_served_by_an_ancestors_watch_gets_its_events_in_its_own_spelling() {
+    // A file window's folder inside the vault, opened through another link: its tab
+    // compares paths under that link. Events outside the folder are not respelled
+    // into it.
+    // 이것을 실패시키는 것: `respell` 이 폴더가 event 를 담는지 보지 않고 spelling 마다 낸다.
+    let real = tempfile::tempdir().unwrap();
+    let real_root = std::fs::canonicalize(real.path()).unwrap();
+    std::fs::create_dir(real_root.join("sub")).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let sub_alias = links.path().join("sub");
+    std::os::unix::fs::symlink(real_root.join("sub"), &sub_alias).unwrap();
+    let spellings: Spellings = Arc::new(RwLock::new(vec![
+        (real_root.clone(), real_root.clone()),
+        (real_root.join("sub"), sub_alias.clone()),
+    ]));
+    let mut f = WatchFilter::for_watch(&real_root, true, Focus::default(), spellings);
+    let probe = CountingProbe::default();
+    let inside = real_root.join("sub/n.md");
+    let mut paths: Vec<String> = route_all(&mut f, &[written(&inside)[1].clone()], &probe)
+        .iter()
+        .map(|e| e.path().to_string())
+        .collect();
+    paths.sort();
+    let mut want = vec![
+        inside.to_string_lossy().into_owned(),
+        sub_alias.join("n.md").to_string_lossy().into_owned(),
+    ];
+    want.sort();
+    assert_eq!(paths, want);
+    let top = real_root.join("top.md");
+    let paths: Vec<String> = route_all(&mut f, &[written(&top)[1].clone()], &probe)
+        .iter()
+        .map(|e| e.path().to_string())
+        .collect();
+    assert_eq!(paths, vec![top.to_string_lossy().into_owned()]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_focus_file_reported_in_the_hosts_other_spelling_still_passes_an_excluded_folder() {
+    // A watcher reports paths in the spelling it was started with (inotify does); a
+    // file window's focus file below the host's `build/` must pass in it too.
+    // 이것을 실패시키는 것: `may_be_open` 이 focus 를 보고된 표기로만 찾는다.
+    let real = tempfile::tempdir().unwrap();
+    let real_root = std::fs::canonicalize(real.path()).unwrap();
+    std::fs::create_dir(real_root.join("build")).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let alias = links.path().join("vault");
+    std::os::unix::fs::symlink(&real_root, &alias).unwrap();
+    let focus: Focus = Arc::new(RwLock::new(
+        [real_root.join("build/out.md")].into_iter().collect(),
+    ));
+    let spellings: Spellings = Arc::new(RwLock::new(vec![(real_root.clone(), alias.clone())]));
+    // The editor's open set is known and holds neither file: only the focus lets one in.
+    let mut f = WatchFilter::with_open_files(&alias, true, known(&[]), focus);
+    f.spellings = spellings;
+    let probe = CountingProbe::default();
+    let reported = alias.join("build/out.md");
+    std::fs::write(real_root.join("build/out.md"), "x").unwrap();
+    let emitted = route_all(&mut f, &[written(&reported)[1].clone()], &probe);
+    assert_eq!(emitted.len(), 1);
+    // Not vacuous: another file there is dropped.
+    let other = alias.join("build/other.md");
+    std::fs::write(real_root.join("build/other.md"), "x").unwrap();
+    assert!(route_all(&mut f, &[written(&other)[1].clone()], &probe).is_empty());
 }

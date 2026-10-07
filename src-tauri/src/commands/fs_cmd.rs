@@ -14,7 +14,7 @@ pub struct FileEntry {
 }
 
 /// Validate path at IPC boundary: reject null bytes and non-absolute paths.
-fn check(path: &str) -> Result<(), String> {
+pub(crate) fn check(path: &str) -> Result<(), String> {
     crate::fs::validate_path(path).map_err(|e| e.to_string())
 }
 
@@ -49,7 +49,10 @@ async fn check_vault(
 /// flows (`openFolder`, `ensureFileContext`) register a context or vault root BEFORE
 /// issuing any file IPC, so this only blocks stray access (e.g. a compromised webview
 /// probing arbitrary absolute paths on launch), not normal usage.
-fn vault_fallback_decision(root: Option<&std::path::Path>, path: &str) -> Result<(), String> {
+pub(crate) fn vault_fallback_decision(
+    root: Option<&std::path::Path>,
+    path: &str,
+) -> Result<(), String> {
     match root {
         Some(root) => {
             let canonical_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
@@ -327,157 +330,6 @@ pub async fn import_dir(
         .map_err(|e| e.to_string())
 }
 
-/// §3.2 Watch `path` for the calling window and answer the lease that holds the watch
-/// (#797); `unwatch_dir` gives it back, and the window's destruction gives back every
-/// lease it holds.
-///
-/// Only what the app already opened may be watched (the events tell a page the names
-/// and times of what changes there):
-/// - recursively (the default), only a registered folder or vault root — exactly one,
-///   not a folder below or above it;
-/// - non-recursively, only the folder of a `focus` file that a registered context holds
-///   (`check_vault`, the rule file reads follow) — `path` must be that file's folder.
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn watch_dir(
-    path: String,
-    recursive: Option<bool>,
-    focus: Option<String>,
-    window: tauri::Window,
-    app_handle: tauri::AppHandle,
-    state: tauri::State<'_, crate::VaultRootState>,
-    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
-    watcher_state: tauri::State<'_, crate::WatcherState>,
-) -> Result<u64, String> {
-    let recursive = recursive.unwrap_or(true);
-    let legacy_root = state.0.read().await.clone();
-    authorize_watch(
-        &ctx_mgr,
-        legacy_root.as_deref(),
-        &path,
-        recursive,
-        focus.as_deref(),
-    )
-    .await?;
-    let mut registry = watcher_state.0.lock().map_err(|e| e.to_string())?;
-    registry.acquire(
-        window.label(),
-        &path,
-        recursive,
-        focus.as_deref(),
-        &|spec| spawn_watcher(&app_handle, spec),
-    )
-}
-
-/// §3.2 What `watch_dir` may watch (#797) — see its doc. The file check is
-/// `check_vault`'s rule: any registered context, or the legacy vault root when none is
-/// registered, and nothing at all before something is open.
-async fn authorize_watch(
-    ctx_mgr: &crate::context::ContextManager,
-    legacy_root: Option<&std::path::Path>,
-    path: &str,
-    recursive: bool,
-    focus: Option<&str>,
-) -> Result<(), String> {
-    check(path)?;
-    if recursive {
-        if ctx_mgr.context_registered_at(path).await.is_none() {
-            return Err(format!(
-                "watch_dir: {path} is not a registered folder or vault"
-            ));
-        }
-        return Ok(());
-    }
-    let Some(file) = focus else {
-        return Err("watch_dir: a folder watched for one file must name that file".into());
-    };
-    check(file)?;
-    if ctx_mgr.list().await.is_empty() {
-        vault_fallback_decision(legacy_root, file)?;
-    } else {
-        ctx_mgr.validate_path_any(file).await?;
-    }
-    let parent = crate::context::manager::resolve_canonical(file)?
-        .parent()
-        .map(std::path::Path::to_path_buf);
-    if parent != Some(crate::context::manager::resolve_canonical(path)?) {
-        return Err(format!("watch_dir: {path} is not the folder of {file}"));
-    }
-    Ok(())
-}
-
-/// §3.2 Give back a watch lease the calling window holds (#797). Another window's
-/// lease is refused.
-#[tauri::command]
-pub async fn unwatch_dir(
-    lease: u64,
-    window: tauri::Window,
-    app_handle: tauri::AppHandle,
-    watcher_state: tauri::State<'_, crate::WatcherState>,
-) -> Result<(), String> {
-    let mut registry = watcher_state.0.lock().map_err(|e| e.to_string())?;
-    registry.release(window.label(), lease, &|spec| {
-        spawn_watcher(&app_handle, spec)
-    })
-}
-
-/// §3.2 Give back every watch lease the calling window holds (#797). A page calls it
-/// once when it loads, before it watches anything: a reload or navigation fires no
-/// `Destroyed` and need not run the old page's cleanups, so the leases the previous
-/// page took would otherwise stay until the window closes.
-#[tauri::command]
-pub async fn release_window_watches(
-    window: tauri::Window,
-    app_handle: tauri::AppHandle,
-    watcher_state: tauri::State<'_, crate::WatcherState>,
-) -> Result<(), String> {
-    let mut registry = watcher_state.0.lock().map_err(|e| e.to_string())?;
-    registry.release_window(window.label(), &|spec| spawn_watcher(&app_handle, spec));
-    Ok(())
-}
-
-/// How many times an ended watch is tried again once its folder exists, and the
-/// longest wait between tries.
-const REVIVE_ATTEMPTS: u32 = 8;
-const REVIVE_MAX_DELAY: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// Start a watcher whose end — an error, its folder removed — is reported to the
-/// registry, which then tries to start it again a bounded number of times.
-pub(crate) fn spawn_watcher(
-    app: &tauri::AppHandle,
-    spec: &crate::fs::watch_registry::WatchSpec,
-) -> Result<notify::RecommendedWatcher, crate::fs::FsError> {
-    let ended_app = app.clone();
-    let key = spec.key.clone();
-    crate::fs::start_watching(
-        spec,
-        app.clone(),
-        Box::new(move || watch_ended(&ended_app, key.clone())),
-    )
-}
-
-fn watch_ended(app: &tauri::AppHandle, key: std::path::PathBuf) {
-    use tauri::Manager;
-    if let Ok(mut registry) = app.state::<crate::WatcherState>().0.lock() {
-        registry.watch_ended(&key);
-    }
-    let app = app.clone();
-    std::thread::spawn(move || {
-        let mut delay = std::time::Duration::from_secs(1);
-        for _ in 0..REVIVE_ATTEMPTS {
-            std::thread::sleep(delay);
-            if key.exists() {
-                if let Ok(mut registry) = app.state::<crate::WatcherState>().0.lock() {
-                    if registry.revive(&key, &|spec| spawn_watcher(&app, spec)) {
-                        return;
-                    }
-                }
-            }
-            delay = (delay * 2).min(REVIVE_MAX_DELAY);
-        }
-    });
-}
-
 /// §3.2 The files open in the editor. The watcher drops events below an excluded
 /// folder (issue 795) except for these: the reload and conflict checks of an open
 /// file need its events wherever it lives.
@@ -566,70 +418,6 @@ pub async fn export_binary_file(path: String, data: Vec<u8>) -> Result<(), Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn context(
-        id: &str,
-        path: &str,
-        kind: crate::context::ContextType,
-    ) -> crate::context::ContextInfo {
-        crate::context::ContextInfo {
-            id: id.to_string(),
-            context_type: kind,
-            path: path.to_string(),
-            label: id.to_string(),
-            color: "#ffffff".to_string(),
-            alias: None,
-            vault_type: None,
-            added_at: 0,
-        }
-    }
-
-    // §3.2 #797 — a page may watch only what the app opened: the events tell it the
-    // names and times of what changes in the folder.
-    #[tokio::test]
-    async fn watch_dir_watches_only_what_the_app_opened() {
-        use crate::context::{ContextManager, ContextType};
-        let vault = tempfile::tempdir().unwrap();
-        let outside = tempfile::tempdir().unwrap();
-        let v = vault.path().to_str().unwrap().to_string();
-        let o = outside.path().to_str().unwrap().to_string();
-        std::fs::create_dir(vault.path().join("sub")).unwrap();
-        let ext = outside.path().join("e.md");
-        std::fs::write(&ext, "x").unwrap();
-        let ext = ext.to_str().unwrap().to_string();
-        let ctx = ContextManager::new();
-        ctx.add(context("v", &v, ContextType::Vault)).await.unwrap();
-        ctx.add(context("f", &ext, ContextType::File))
-            .await
-            .unwrap();
-
-        // Recursive: a registered root only.
-        // 이것을 실패시키는 것: 재귀 요청에 `context_registered_at` 검사를 지운다.
-        assert!(authorize_watch(&ctx, None, &v, true, None).await.is_ok());
-        assert!(authorize_watch(&ctx, None, &format!("{v}/sub"), true, None)
-            .await
-            .is_err());
-        assert!(authorize_watch(&ctx, None, &o, true, None).await.is_err());
-
-        // Non-recursive: the folder of a file the app opened, naming that file.
-        assert!(authorize_watch(&ctx, None, &o, false, Some(&ext))
-            .await
-            .is_ok());
-        // 이것을 실패시키는 것: focus 없는 비재귀 요청을 받는다.
-        assert!(authorize_watch(&ctx, None, &o, false, None).await.is_err());
-        // 이것을 실패시키는 것: focus 가 `path` 의 파일인지 확인하지 않는다.
-        assert!(authorize_watch(&ctx, None, &v, false, Some(&ext))
-            .await
-            .is_err());
-        // 이것을 실패시키는 것: focus 를 `validate_path_any` 로 확인하지 않는다.
-        let stray = outside.path().join("other.md");
-        std::fs::write(&stray, "x").unwrap();
-        assert!(
-            authorize_watch(&ctx, None, &o, false, Some(stray.to_str().unwrap()))
-                .await
-                .is_err()
-        );
-    }
 
     // §backlog #2 — cold-start vault bypass. With no registered context, access
     // must fall back to the legacy vault root, and deny when none is set.

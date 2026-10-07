@@ -793,9 +793,9 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 /// Returns the watcher, which must be kept alive by the caller.
 /// Dropping the returned watcher closes the internal channel, causing the
 /// background thread to exit naturally (RAII cleanup — no thread leak).
-pub(crate) fn start_watching(
+pub(crate) fn start_watching<R: tauri::Runtime>(
     spec: &watch_registry::WatchSpec,
-    app_handle: tauri::AppHandle,
+    app_handle: tauri::AppHandle<R>,
     on_end: Box<dyn Fn() + Send>,
 ) -> Result<RecommendedWatcher, FsError> {
     let path = spec.root.clone();

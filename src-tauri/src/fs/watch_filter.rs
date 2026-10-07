@@ -175,11 +175,13 @@ pub(crate) enum Emit {
 /// leases come and go.
 pub(crate) type Focus = Arc<RwLock<HashSet<PathBuf>>>;
 
-/// The spellings the leases of one watch registered its folder under (#797). The
-/// watcher reports paths in the spelling the OS gives (on macOS `/private/var/…` for a
-/// folder opened as `/var/…`), while the frontend compares paths byte for byte with
-/// the ones it opened — so an event is reported once per registered spelling.
-pub(crate) type Spellings = Arc<RwLock<Vec<PathBuf>>>;
+/// The folders the leases of one watch registered, each as (canonical, as spelled)
+/// (#797). The watcher reports paths in the spelling the OS gives (on macOS
+/// `/private/var/…` for a folder opened as `/var/…`), while the frontend compares paths
+/// byte for byte with the ones it opened — so an event is reported once per spelling
+/// whose folder holds it. A lease served by an ancestor's watcher registers its own
+/// folder here.
+pub(crate) type Spellings = Arc<RwLock<Vec<(PathBuf, PathBuf)>>>;
 
 /// The drop rule of one watched root.
 ///
@@ -228,10 +230,16 @@ impl WatchFilter {
         }
     }
 
-    /// Whether `path` may be open: a focus file of this watch, or — for a vault's
-    /// watch — in the editor's open set, or that set is unknown.
+    /// Whether `path` may be open: a focus file of this watch — as reported, or read
+    /// back to canonical through the spelling it came in — or, for a vault's watch, in
+    /// the editor's open set, or that set is unknown.
     fn may_be_open(&self, path: &Path) -> bool {
-        if self.focus.read().is_ok_and(|focus| focus.contains(path)) {
+        let canonical = self.canonical_of(path);
+        if self
+            .focus
+            .read()
+            .is_ok_and(|focus| focus.contains(path) || focus.contains(&canonical))
+        {
             return true;
         }
         if !self.recursive {
@@ -337,40 +345,53 @@ impl WatchFilter {
         self.respell(out)
     }
 
-    /// Each event once per spelling the leases registered this folder under, the path
-    /// rebuilt below that spelling. With no spelling known — or a path the folder
-    /// does not hold — the OS spelling stands.
+    /// Each event once per registered spelling whose folder holds it, the path rebuilt
+    /// below that spelling. The event's path is first read back to canonical through
+    /// whichever spelling it came in. With no spelling holding it, the OS spelling stands.
     fn respell(&self, emits: Vec<Emit>) -> Vec<Emit> {
         let spellings = self.spellings.read().map(|s| s.clone()).unwrap_or_default();
         if spellings.is_empty() {
             return emits;
         }
-        let canonical = std::fs::canonicalize(&self.root).ok();
         let mut out = Vec::new();
         for emit in emits {
             let path = PathBuf::from(emit.path());
-            let relative = canonical
-                .as_deref()
-                .and_then(|c| path.strip_prefix(c).ok())
-                .or_else(|| spellings.iter().find_map(|s| path.strip_prefix(s).ok()))
-                .map(Path::to_path_buf);
-            let Some(relative) = relative else {
-                out.push(emit);
-                continue;
-            };
+            let canonical = self.canonical_of(&path);
             let mut seen = HashSet::new();
-            for spelling in &spellings {
+            for (folder, spelled) in &spellings {
+                let Ok(relative) = canonical.strip_prefix(folder) else {
+                    continue;
+                };
                 let respelled = if relative.as_os_str().is_empty() {
-                    spelling.clone()
+                    spelled.clone()
                 } else {
-                    spelling.join(&relative)
+                    spelled.join(relative)
                 };
                 if seen.insert(respelled.clone()) {
                     out.push(emit.with_path(respelled.to_string_lossy().into_owned()));
                 }
             }
+            if seen.is_empty() {
+                out.push(emit);
+            }
         }
         out
+    }
+}
+
+impl WatchFilter {
+    /// `path` read back to canonical through the registered spelling it lies under; as
+    /// given when it lies under none.
+    fn canonical_of(&self, path: &Path) -> PathBuf {
+        self.spellings
+            .read()
+            .ok()
+            .and_then(|spellings| {
+                spellings
+                    .iter()
+                    .find_map(|(c, spelled)| path.strip_prefix(spelled).ok().map(|r| c.join(r)))
+            })
+            .unwrap_or_else(|| path.to_path_buf())
     }
 }
 

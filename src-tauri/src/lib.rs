@@ -35,7 +35,7 @@ use std::sync::Mutex;
 use commands::{
     approval_cmd, config_cmd, context_cmd, embedding_cmd, export_cmd, font_cmd, fs_cmd, git_cmd,
     index_cmd, keyring_cmd, llm_cmd, plugin_cmd, plugin_dev_cmd, search_cmd, snapshot_cmd, tag_cmd,
-    task_cmd, theme_cmd, thumbnail_cmd,
+    task_cmd, theme_cmd, thumbnail_cmd, watch_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -317,9 +317,9 @@ pub fn run() {
             fs_cmd::copy_file,
             fs_cmd::import_dir,
             fs_cmd::import_file,
-            fs_cmd::watch_dir,
-            fs_cmd::unwatch_dir,
-            fs_cmd::release_window_watches,
+            watch_cmd::watch_dir,
+            watch_cmd::unwatch_dir,
+            watch_cmd::release_window_watches,
             fs_cmd::set_open_files,
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
@@ -468,12 +468,7 @@ pub fn run() {
             // §3.2 A window that is gone holds no watch (#797) — also one whose page
             // never ran its cleanup.
             if let tauri::WindowEvent::Destroyed = event {
-                let app = window.app_handle().clone();
-                if let Ok(mut registry) = window.state::<WatcherState>().0.lock() {
-                    registry.release_window(window.label(), &|spec| {
-                        crate::commands::fs_cmd::spawn_watcher(&app, spec)
-                    });
-                }
+                crate::commands::watch_cmd::release_window(window.app_handle(), window.label());
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let guard = window.state::<QuitGuard>();
