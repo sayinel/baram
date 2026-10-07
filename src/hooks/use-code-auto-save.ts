@@ -72,6 +72,11 @@ export function useCodeAutoSave({
 
     if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
     codeAutoSaveTimer.current = setTimeout(async () => {
+      // §3.5 timer 가 기다리는 사이 탭이 닫혔으면 쓰지 않는다(#798). 닫는 길은 저장을 먼저 끝내거나
+      // 사용자가 버리기로 고른 것이고, 닫힌 탭의 버퍼는 use-source-mode 가 내려놓아 ""로 읽힌다 —
+      // 여기서 쓰면 파일을 빈 내용으로 덮는다. 이 effect 의 deps 에는 활성 탭이 없어서, 닫혀도
+      // cleanup 이 이 timer 를 지운다는 보장이 없다.
+      if (!useEditorStore.getState().tabs.some((t) => t.id === tab.id)) return;
       try {
         const content = getSourceBuffer(tab.id);
         await writeFile(tab.filePath!, content);

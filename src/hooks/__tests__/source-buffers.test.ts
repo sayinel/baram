@@ -5,8 +5,12 @@
 // 쓴다 — 엉뚱한 내용이 엉뚱한 파일에 간다. 그래서 단정은 "버퍼가 분리된다"가 아니라
 // "B에 쓴 뒤에도 A를 읽으면 A의 내용"이다.
 import { act, renderHook } from "@testing-library/react";
+import Document from "@tiptap/extension-document";
+import Text from "@tiptap/extension-text";
+import { Editor } from "@tiptap/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { Paragraph } from "../../extensions/nodes/paragraph";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSourceMode } from "../use-source-mode";
 
@@ -84,5 +88,53 @@ describe("per-tab source buffers", () => {
     });
     expect(result.current.isSourceMode).toBe(false);
     expect(result.current.sourceModeTabs.has("a")).toBe(true);
+  });
+});
+
+// §3.5 (#798) 탭 id 는 열 때마다 새로 만들어지므로, 닫힌 탭의 버퍼를 지우지 않으면 같은 파일을 다시
+// 열 때마다 하나씩 쌓인다.
+describe("releasing a closed tab's source buffer", () => {
+  function fileTab(id: string, filePath: string) {
+    return {
+      contextId: "c",
+      filePath,
+      id,
+      isDirty: false,
+      isPinned: false,
+      title: id,
+    };
+  }
+
+  // 이것을 실패시키는 것: use-source-mode.ts 의 release effect 에서 버퍼 루프를 지우면 첫 단정이,
+  // 커서 위치 루프를 지우면 마지막 단정이 깨진다.
+  it("drops the buffer and cursor offset of a closed tab and keeps an open one's", () => {
+    useEditorStore.setState({
+      activeTabId: "a",
+      mruOrder: ["a", "b"],
+      tabs: [fileTab("a", "/v/a.md"), fileTab("b", "/v/b.md")],
+    });
+    const editor = new Editor({
+      content: "<p>hello world</p>",
+      extensions: [Document, Paragraph, Text],
+    });
+    editor.commands.setTextSelection(4);
+    const { result } = renderHook(() => useSourceMode({ editor }));
+    act(() => {
+      result.current.toggleSourceMode();
+      result.current.setSourceBuffer("b", "content of B");
+    });
+    expect(result.current.hasSourceBuffer("a")).toBe(true);
+    const offset = result.current.sourceCursorOffsetFor("a");
+    expect(offset).toBeGreaterThan(0);
+
+    act(() => {
+      useEditorStore.getState().closeTab("a");
+    });
+
+    expect(result.current.hasSourceBuffer("a")).toBe(false);
+    // 열린 탭은 그대로다.
+    expect(result.current.getSourceBuffer("b")).toBe("content of B");
+    expect(result.current.sourceCursorOffsetFor("a")).toBe(0);
+    editor.destroy();
   });
 });
