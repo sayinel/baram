@@ -926,6 +926,7 @@ exports[`간격·모서리 선언의 계산값이 그대로다 1`] = `
   "src/styles/journal-extras.css|.journal-list-item|padding|4px 6px",
   "src/styles/journal-extras.css|.journal-photos-cell|border-radius|4px",
   "src/styles/journal-extras.css|.journal-photos-grid|gap|4px",
+  "src/styles/journal-extras.css|.journal-photos-missing|padding|4px",
   "src/styles/journal-extras.css|.photo-gallery-clip-badge|border-radius|2px",
   "src/styles/journal-extras.css|.photo-gallery-clip-badge|gap|2px",
   "src/styles/journal-extras.css|.photo-gallery-clip-badge|padding|1px 4px",

@@ -25,7 +25,17 @@ export const JournalPhotoCell = memo(function JournalPhotoCell({
   const thumb = useVisibleThumb(holderRef, absolutePath, maxPx, revision);
 
   return (
-    <div className="journal-photos-cell" ref={holderRef} title={title}>
+    // The `data-photo-*` attributes are what an export reads (`export-journal-photos.ts`):
+    // it embeds every cell from its source, whether or not this cell ever came into view.
+    <div
+      className="journal-photos-cell"
+      data-photo-alt={alt}
+      data-photo-path={absolutePath}
+      data-photo-px={maxPx}
+      data-photo-revision={revision}
+      ref={holderRef}
+      title={title}
+    >
       {thumb && (
         <img
           alt={alt}

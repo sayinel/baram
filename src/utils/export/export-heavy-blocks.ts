@@ -1,7 +1,8 @@
 // §5.12 export — wake every lazily-mounted heavy block and wait for it to land.
 //
-// Code blocks, math (inline and block), Mermaid diagrams and journal-photos cells all
-// defer their real content until they near the viewport (extensions/nodes/views/lazy-visible.ts).
+// Code blocks, math (inline and block) and Mermaid diagrams all defer their real
+// content until they near the viewport; a journal-photos block lists its photos
+// asynchronously and is waited on until that list is known (extensions/nodes/views/lazy-visible.ts).
 // An export reads the WHOLE document from a viewport that never moves, so
 // without this the capture cloned whatever placeholder each unvisited block
 // happened to be showing.
@@ -85,7 +86,7 @@ export function pendingHeavyBlocks(root: ParentNode): PendingBlock[] {
   check(".math-block", "math-block", mathBlockSettled);
   check(".math-inline", "math-inline", mathInlineSettled);
   check(".mermaid-block", "mermaid", mermaidSettled);
-  check(".journal-photos-cell", "journal-photo", journalPhotoSettled);
+  check("[data-journal-photos]", "journal-photos", journalPhotosListed);
   return pending;
 }
 
@@ -194,13 +195,13 @@ function mathInlineSettled(el: Element): boolean {
 }
 
 /**
- * A `journal-photos` cell (issue 793) mounts its image only once a thumbnail exists, and
- * asks for one only when it nears the viewport — so a cell the reader never scrolled to
- * has no image at all. Waking it (`flushPendingVisibility`) makes it ask; it is settled
- * once the image is there, the thumbnail or, when none can be made, the original.
+ * A `journal-photos` block (issue 793) is settled once its photo list is known — empty or
+ * not. Its cells are NOT waited on here: they load lazily, and waking hundreds of them
+ * would put hundreds of thumbnail requests in front of a backend that decodes two at a
+ * time. The export embeds them from their source instead (`embedJournalPhotos`).
  */
-function journalPhotoSettled(el: Element): boolean {
-  return el.querySelector("img") !== null;
+function journalPhotosListed(el: Element): boolean {
+  return el.getAttribute("data-journal-photos") !== "loading";
 }
 
 /**

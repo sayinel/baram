@@ -26,6 +26,7 @@ import {
   stripMediaChrome,
 } from "./export-html-media";
 import { buildExportStylesheet } from "./export-html-styles";
+import { embedJournalPhotos } from "./export-journal-photos";
 
 export interface CaptureEditorHTMLOptions {
   /**
@@ -156,6 +157,9 @@ export async function captureEditorHTML(
 
   hideAtomBlockEditingUI(clone);
 
+  // Before the general conversion: the photos it embeds are already data URIs, which
+  // that pass leaves alone.
+  await embedJournalPhotos(clone);
   await convertImagesToDataURIs(clone, dom);
   resolveVideoSources(clone, forPdf);
   resolveVideoEmbeds(clone, forPdf);

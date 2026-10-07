@@ -238,29 +238,54 @@ describe("journal-photos block", () => {
     expect(img.dataset.thumbSource).toBe("original");
   });
 
-  /** An export settles every cell before the clone, visible or not: each one asks for its
-   *  thumbnail and counts as settled only once its image exists.
-   *  이것을 실패시키는 것: `pendingHeavyBlocks` 에서 `.journal-photos-cell` 검사를 지우는 것 —
-   *  settle 이 곧바로 끝나고 칸이 빈 채로 복제된다. */
-  test("an export settles cells the reader never scrolled to", async () => {
-    const { container } = await renderBlock("grid");
-    expect(container.querySelectorAll("img")).toHaveLength(0);
-    expect(pendingHeavyBlocks(container)).toHaveLength(3);
-
-    // Not inside `act`: the loop polls the DOM between renders, as it does in the app.
-    const unsettled = await settleHeavyBlocks(container, {
-      ceilingMs: 5_000,
-      pollMs: 5,
-      stallMs: 1_000,
+  /** An export waits while the block is still listing its photos — before the listing
+   *  there are no cells, and the block would export as its loading line. It does not wait
+   *  on the cells themselves (`embedJournalPhotos` fills those from their source).
+   *  이것을 실패시키는 것: `pendingHeavyBlocks` 에서 `[data-journal-photos]` 검사를 지우는 것. */
+  test("an export waits for the photo list, not for the cells", async () => {
+    let finishListing: () => void = () => {};
+    listDir.mockImplementation(
+      (path: string) =>
+        new Promise((resolve) => {
+          const answer = () =>
+            resolve(
+              path === MONTH
+                ? NAMES.map((name) => ({
+                    isDir: false,
+                    modifiedAt: 1,
+                    name,
+                    size: 100,
+                  }))
+                : [{ isDir: true, name: "2026-08" }],
+            );
+          if (path === MONTH) finishListing = answer;
+          else answer();
+        }),
+    );
+    const { container } = render(
+      <JournalDynamicBlock
+        content="range: 2026-08-01..2026-08-31"
+        language="journal-photos"
+        onShowSource={vi.fn()}
+      />,
+    );
+    await act(async () => {
+      await vi.runAllTimersAsync();
     });
-
-    expect(unsettled).toEqual([]);
-    const imgs = [...container.querySelectorAll("img")];
-    expect(imgs).toHaveLength(3);
-    expect(imgs.every((img) => img.dataset.thumbSource === "cache")).toBe(true);
-    expect(photoThumbnail.mock.calls.map(([, maxPx]) => maxPx)).toEqual([
-      640, 640, 640,
+    expect(pendingHeavyBlocks(container).map((b) => b.kind)).toEqual([
+      "journal-photos",
     ]);
+
+    await act(async () => {
+      finishListing();
+      await vi.runAllTimersAsync();
+    });
+    expect(container.querySelectorAll(".journal-photos-cell")).toHaveLength(3);
+    // Listed: nothing left to wait for, though no cell has its image yet.
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+    expect(pendingHeavyBlocks(container)).toEqual([]);
+    expect(await settleHeavyBlocks(container)).toEqual([]);
+    expect(photoThumbnail).not.toHaveBeenCalled();
   });
 
   /** A photo replaced at the same path (new modification time) is asked for again; the

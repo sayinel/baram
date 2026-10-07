@@ -265,15 +265,24 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
     })();
   }, [rootPath, journalDirectory, params.range]);
 
+  // `data-journal-photos` says whether the photo list is known yet. An export waits
+  // while it is "loading" (`pendingHeavyBlocks`): before the listing lands there are no
+  // cells, and the block would export as its loading line.
   if (loading)
     return (
-      <div aria-live="polite" className="journal-block-loading">
+      <div
+        aria-live="polite"
+        className="journal-block-loading"
+        data-journal-photos="loading"
+      >
         {t("journal.loading")}
       </div>
     );
   if (photos.length === 0)
     return (
-      <div className="journal-block-empty">{t("journal.block.empty")}</div>
+      <div className="journal-block-empty" data-journal-photos="empty">
+        {t("journal.block.empty")}
+      </div>
     );
 
   const gridStyle =
@@ -285,7 +294,11 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
       : { gridTemplateColumns: `repeat(${columns}, 1fr)` };
 
   return (
-    <div className="journal-photos-grid" style={gridStyle}>
+    <div
+      className="journal-photos-grid"
+      data-journal-photos="ready"
+      style={gridStyle}
+    >
       {photos.map((photo) => (
         <JournalPhotoCell
           absolutePath={photo.absolutePath}

@@ -862,6 +862,20 @@
   border-radius: var(--radius-default);
 }
 
+/* An exported cell whose photo could not be read: its name, not a broken image. */
+.journal-photos-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-1);
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: center;
+  word-break: break-all;
+}
+
 .journal-photos-thumb {
   display: block;
   width: 100%;
