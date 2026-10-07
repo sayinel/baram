@@ -84,20 +84,28 @@ fn a_vault_whose_root_is_named_build_keeps_its_events() {
 fn an_open_file_below_an_excluded_folder_keeps_every_event() {
     // The reload, the conflict modal and the auto-save guard read `file:changed`; an
     // atomic replace arrives as a rename.
-    // 이것을 실패시키는 것: `drops` 가 열린 파일 집합을 보지 않는다.
+    // 이것을 실패시키는 것: `route` 가 열린 파일 집합을 보지 않는다.
     let dir = tempfile::tempdir().unwrap();
     let open = OpenFiles::default();
     let note = dir.path().join("build/README.md");
-    replace_open_files(&open, &[note.to_string_lossy().into_owned()]);
+    replace_open_files(&open, &[note.to_string_lossy().into_owned()]).unwrap();
     let mut f = WatchFilter::with_open_files(dir.path(), open);
     let probe = CountingProbe::default();
     let changed =
         Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(note.clone());
     let replaced =
         Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any))).add_path(note.clone());
-    let emitted = route_all(&mut f, &[changed, replaced], &probe);
-    assert!(matches!(emitted[0], Emit::Changed { .. }), "{emitted:?}");
-    assert!(matches!(emitted[1], Emit::Created { .. }), "{emitted:?}");
+    let emitted = route_all(&mut f, &[changed], &probe);
+    assert!(matches!(emitted[..], [Emit::Changed { .. }]), "{emitted:?}");
+    // Another program's atomic save renames onto the open file: the tree hears a
+    // creation, and the editor's reload and conflict checks — which listen to
+    // `file:changed` only — hear a change.
+    // 이것을 실패시키는 것: Modify(Name) 갈래의 `if open { … changed … }` 를 지운다.
+    let emitted = route_all(&mut f, &[replaced], &probe);
+    assert!(
+        matches!(emitted[..], [Emit::Created { .. }, Emit::Changed { .. }]),
+        "{emitted:?}"
+    );
     // Its neighbour, not open, is still dropped.
     let other = dir.path().join("build/other.md");
     assert!(route_all(&mut f, &written(&other), &probe).is_empty());
@@ -186,9 +194,58 @@ fn a_tab_without_an_absolute_path_is_skipped_not_registered() {
     replace_open_files(
         &open,
         &["".into(), "untitled-1".into(), "/v/build/a.md".into()],
-    );
+    )
+    .unwrap();
     let held = open.read().unwrap();
     assert!(held.contains(Path::new("/v/build/a.md")));
     assert!(!held.contains(Path::new("untitled-1")));
     assert!(!held.contains(Path::new("")));
+}
+
+#[test]
+fn a_rename_onto_a_file_that_is_not_open_reports_no_change() {
+    // The change event is for the editor; a closed file has nothing to reload.
+    // 이것을 실패시키는 것: Modify(Name) 갈래가 `open` 과 상관없이 changed 를 낸다.
+    let dir = tempfile::tempdir().unwrap();
+    let mut f = filter(dir.path());
+    let probe = CountingProbe::default();
+    let replaced = Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any)))
+        .add_path(dir.path().join("notes/a.md"));
+    let emitted = route_all(&mut f, &[replaced], &probe);
+    assert!(matches!(emitted[..], [Emit::Created { .. }]), "{emitted:?}");
+}
+
+#[test]
+fn an_open_file_named_like_an_intermediate_keeps_its_events() {
+    // 이것을 실패시키는 것: `.tmp` 검사를 열린 파일 판정보다 먼저 한다.
+    let dir = tempfile::tempdir().unwrap();
+    let open = OpenFiles::default();
+    let scratch = dir.path().join("scratch.tmp");
+    replace_open_files(&open, &[scratch.to_string_lossy().into_owned()]).unwrap();
+    let mut f = WatchFilter::with_open_files(dir.path(), open);
+    let probe = CountingProbe::default();
+    assert_eq!(route_all(&mut f, &written(&scratch), &probe).len(), 2);
+    // A `.tmp` that is not open is still an intermediate.
+    let other = dir.path().join("other.tmp");
+    assert!(route_all(&mut f, &written(&other), &probe).is_empty());
+}
+
+#[test]
+fn set_open_files_refuses_a_call_over_its_limits_and_keeps_the_old_set() {
+    // 이것을 실패시키는 것: `replace_open_files` 의 개수 또는 바이트 상한 검사를 지운다.
+    let open = OpenFiles::default();
+    replace_open_files(&open, &["/v/kept.md".into()]).unwrap();
+    let at_count: Vec<String> = (0..MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
+    let over_count: Vec<String> = (0..=MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
+    let long = format!("/{}", "a".repeat(MAX_OPEN_FILES_BYTES - 1));
+    let over_bytes = vec![format!("{long}b")];
+
+    assert!(replace_open_files(&open, &over_count).is_err());
+    assert!(replace_open_files(&open, &over_bytes).is_err());
+    assert!(open.read().unwrap().contains(Path::new("/v/kept.md")));
+
+    // The boundaries themselves are accepted.
+    assert!(replace_open_files(&open, &[long]).is_ok());
+    assert!(replace_open_files(&open, &at_count).is_ok());
+    assert!(open.read().unwrap().contains(Path::new("/v/0.md")));
 }

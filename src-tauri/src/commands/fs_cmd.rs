@@ -346,8 +346,8 @@ pub async fn watch_dir(
 /// folder (issue 795) except for these: the reload and conflict checks of an open
 /// file need its events wherever it lives.
 #[tauri::command]
-pub fn set_open_files(paths: Vec<String>) {
-    crate::fs::set_open_files(&paths);
+pub fn set_open_files(paths: Vec<String>) -> Result<(), String> {
+    crate::fs::set_open_files(&paths)
 }
 
 /// §53 ZIP 파일 추출 — Notion 내보내기 호환

@@ -39,14 +39,35 @@ use super::exclusion::{VaultExclusion, BARAMIGNORE};
 type OpenFiles = Arc<RwLock<HashSet<PathBuf>>>;
 static OPEN_FILES: LazyLock<OpenFiles> = LazyLock::new(OpenFiles::default);
 
+/// The most paths one `set_open_files` call may name — far above any number of open
+/// tabs, low enough that the synchronous canonicalisation stays bounded.
+pub const MAX_OPEN_FILES: usize = 2_000;
+
+/// The most bytes the paths of one `set_open_files` call may add up to.
+pub const MAX_OPEN_FILES_BYTES: usize = 1024 * 1024;
+
 /// Replace the set of open files every watcher consults (`set_open_files`).
-pub fn set_open_files(paths: &[String]) {
-    replace_open_files(&OPEN_FILES, paths);
+pub fn set_open_files(paths: &[String]) -> Result<(), String> {
+    replace_open_files(&OPEN_FILES, paths)
 }
 
-/// A path that is not an absolute file path (an untitled or plugin tab) is skipped
-/// rather than refusing the call, which would leave every open file without its events.
-fn replace_open_files(open: &OpenFiles, paths: &[String]) {
+/// A call over `MAX_OPEN_FILES` or `MAX_OPEN_FILES_BYTES` is refused before any path
+/// is resolved, and the set stays as it was. A path that is not an absolute file path
+/// (an untitled or plugin tab) is skipped rather than refusing the call, which would
+/// leave every open file without its events.
+fn replace_open_files(open: &OpenFiles, paths: &[String]) -> Result<(), String> {
+    if paths.len() > MAX_OPEN_FILES {
+        return Err(format!(
+            "set_open_files: {} paths, more than {MAX_OPEN_FILES}",
+            paths.len()
+        ));
+    }
+    let bytes: usize = paths.iter().map(String::len).sum();
+    if bytes > MAX_OPEN_FILES_BYTES {
+        return Err(format!(
+            "set_open_files: {bytes} bytes of paths, more than {MAX_OPEN_FILES_BYTES}"
+        ));
+    }
     let mut set = HashSet::new();
     for p in paths.iter().filter(|p| super::validate_path(p).is_ok()) {
         set.insert(PathBuf::from(p));
@@ -57,6 +78,7 @@ fn replace_open_files(open: &OpenFiles, paths: &[String]) {
     if let Ok(mut open) = open.write() {
         *open = set;
     }
+    Ok(())
 }
 
 /// The filesystem reads routing needs. A trait so the tests can count them.
@@ -118,12 +140,14 @@ impl WatchFilter {
         }
     }
 
-    /// Whether `path`'s event is dropped. No filesystem read on the way: the walk's
-    /// rule for the folders above it, the matcher alone for the entry itself.
+    fn is_open(&self, path: &Path) -> bool {
+        self.open.read().is_ok_and(|open| open.contains(path))
+    }
+
+    /// Whether the event of `path`, not an open file, is dropped. No filesystem read
+    /// on the way: the walk's rule for the folders above it, the matcher alone for the
+    /// entry itself.
     fn drops(&self, path: &Path) -> bool {
-        if self.open.read().is_ok_and(|open| open.contains(path)) {
-            return false;
-        }
         let folders_skipped = path
             .parent()
             .is_some_and(|parent| self.exclusion.walk_skips(parent, true));
@@ -150,12 +174,11 @@ impl WatchFilter {
         let mut out = Vec::new();
         for event_path in &event.paths {
             let path_str = event_path.to_string_lossy().to_string();
-            // Atomic-write intermediates.
-            if path_str.ends_with(".tmp") {
-                continue;
-            }
             self.notice(event_path);
-            if self.drops(event_path) {
+            // An open file passes before anything else, even one named `*.tmp`.
+            let open = self.is_open(event_path);
+            // Atomic-write intermediates, and what the walk leaves out.
+            if !open && (path_str.ends_with(".tmp") || self.drops(event_path)) {
                 continue;
             }
             match event.kind {
@@ -164,24 +187,35 @@ impl WatchFilter {
                 // as Modify(Name), not Create/Remove.
                 EventKind::Modify(ModifyKind::Name(_)) => {
                     if probe.exists(event_path) {
-                        out.push(created(event_path, path_str, probe));
+                        out.push(created(event_path, path_str.clone(), probe));
+                        // Another program's atomic save of an OPEN file arrives as a
+                        // rename onto it. Only `file:changed` reaches the editor's
+                        // reload and conflict checks — `file:created` feeds the tree —
+                        // so the rename is reported as a change as well. FSEvents also
+                        // sent a Modify(Data) for the destination in the replaces we
+                        // measured, but nothing promises that flag.
+                        if open {
+                            out.push(changed(event_path, path_str, probe));
+                        }
                     } else {
                         out.push(Emit::Deleted { path: path_str });
                     }
                 }
-                EventKind::Modify(_) => {
-                    let mtime = probe.mtime(event_path);
-                    out.push(Emit::Changed {
-                        path: path_str,
-                        mtime,
-                        origin: origin(event_path, mtime),
-                    });
-                }
+                EventKind::Modify(_) => out.push(changed(event_path, path_str, probe)),
                 EventKind::Remove(_) => out.push(Emit::Deleted { path: path_str }),
                 _ => {}
             }
         }
         out
+    }
+}
+
+fn changed(event_path: &Path, path: String, probe: &impl Probe) -> Emit {
+    let mtime = probe.mtime(event_path);
+    Emit::Changed {
+        path,
+        mtime,
+        origin: origin(event_path, mtime),
     }
 }
 
