@@ -66,6 +66,8 @@ describe("§390 QuickSwitcher across normalization", () => {
 
   it("still offers create for a name nothing has", () => {
     // The partner: the create row still appears where nothing matches.
+    // What fails this: the create check never offering a row — the `some(…)`
+    // replaced by `false`.
     render(<QuickSwitcher editor={null} onNewFile={() => {}} />);
     type("없는 노트");
     expect(screen.getByText('"없는 노트" 만들기')).toBeTruthy();

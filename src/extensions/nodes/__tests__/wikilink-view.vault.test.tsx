@@ -17,6 +17,14 @@ import { createBaramExtensions } from "../../index";
 const DIARY = "일기";
 const DIARY_NFD = DIARY.normalize("NFD");
 
+// The colour `context()` gives a vault, as the badge's inline style reads back:
+// jsdom reports `#123456` as `rgb(18, 52, 86)`.
+const BADGE_COLOR = "rgb(18, 52, 86)";
+
+function badge(wikilink: HTMLElement): HTMLElement {
+  return wikilink.querySelector(".wikilink-vault-badge") as HTMLElement;
+}
+
 function context(over: Partial<ContextInfo>): ContextInfo {
   return {
     addedAt: 0,
@@ -68,7 +76,8 @@ describe("§390 WikilinkView — the vault badge", () => {
 
   it("a space name finds the journal kept in a folder of another name", async () => {
     // What fails this: the badge looking aliases up by itself, without the
-    // space names — `Journal` is no context's alias here.
+    // space names — `Journal` is no context's alias here. And the badge's
+    // colour, which comes from the context found: `color: null` in `vaultInfo`.
     useContextStore.setState({
       contexts: [
         context({ alias: DIARY, path: `/v/${DIARY}`, vaultType: "journal" }),
@@ -76,6 +85,7 @@ describe("§390 WikilinkView — the vault badge", () => {
     });
     const el = await link("Journal");
     expect(el.classList.contains("wikilink--dangling")).toBe(false);
+    expect(badge(el).style.backgroundColor).toBe(BADGE_COLOR);
   });
 
   it("an alias typed composed finds the vault whose folder is stored decomposed", async () => {
@@ -86,10 +96,13 @@ describe("§390 WikilinkView — the vault badge", () => {
     });
     const el = await link(DIARY);
     expect(el.classList.contains("wikilink--dangling")).toBe(false);
+    expect(badge(el).style.backgroundColor).toBe(BADGE_COLOR);
   });
 
   it("an alias no vault has is still dangling", async () => {
     // The partner: the badge still marks an alias nothing answers to.
+    // What fails this: the badge never marking one — `open: !!ctx` replaced by
+    // `open: true` in `vaultInfo`.
     useContextStore.setState({
       contexts: [context({ alias: DIARY_NFD, path: `/v/${DIARY_NFD}` })],
     });

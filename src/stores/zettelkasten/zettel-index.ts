@@ -61,7 +61,8 @@ export const useZettelIndexStore = create<ZettelIndexState>((set) => ({
  */
 export function idForTitle(title: string): null | string {
   // §390 Titles compare under foldName: an index built from names some tool
-  // stored decomposed (NFD) holds them so, and the title is typed composed.
+  // stored decomposed (NFD) holds them so, and the title — typed or pasted —
+  // may be either form: both sides fold.
   const q = foldName(title.trim());
   const matches = Object.values(useZettelIndexStore.getState().byId).filter(
     (n) => foldName(n.title) === q,

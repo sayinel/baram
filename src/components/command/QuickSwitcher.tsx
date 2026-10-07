@@ -264,12 +264,16 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       detail: extractNamespace(f.relativePath),
     }));
 
+    // §390 Folded once rather than per row: `matched` holds every file that
+    // matches, while `items` holds only its first 50.
+    const qKey = foldName(q);
+
     // Only offer "create" when no prefix or namespace filter active
     if (
       !parsedQuery.prefix &&
       !parsedQuery.nsFilter &&
       q &&
-      !matched.some((f) => foldName(f.name) === foldName(q))
+      !matched.some((f) => foldName(f.name) === qKey)
     ) {
       items.push({
         type: "create",
