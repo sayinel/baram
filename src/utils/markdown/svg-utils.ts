@@ -1,9 +1,15 @@
 // §5.1 SVG utilities — canonical SVG sanitizer shared by the inline HTML block
 // (raw `<svg>` markup) and the dedicated ```svg fenced block.
+import type { DOMPurify as Purifier } from "dompurify";
+
 import DOMPurify from "dompurify";
 
 import { SANITIZER_ALLOWED_URI_REGEXP } from "../link-href";
 import { VIM_ISLAND_MARKERS } from "../vim-island-markers";
+
+const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
+
+let svgPurifier: null | Purifier = null;
 
 /**
  * Inline HTML tags that may legitimately appear inside an SVG `<foreignObject>`
@@ -30,25 +36,66 @@ const SVG_FOREIGN_OBJECT_TAGS = [
  * (drop-shadow/blur), `<style>`, presentation attributes and inline `style`
  * survive — i.e. authored SVG renders with full visual fidelity. `<foreignObject>`
  * is treated as an HTML integration point so HTML-namespaced label content passes
- * the namespace check (see §5.5 Mermaid regression). `<script>`, event handlers
- * (`onload`/`onerror`/…) and `javascript:` URLs stay forbidden by the profile +
- * DOMPurify defaults; URI attributes follow the shared link policy in
- * utils/link-href.ts (issue 499), which also refuses protocol-relative `//host`.
+ * the namespace check (see §5.5 Mermaid regression). The `mathMl` profile lets
+ * MathML through — Mermaid renders a `$$…$$` label as KaTeX MathML inside
+ * `<foreignObject>`, and an authored SVG may carry the same markup. Without the
+ * profile the whole `<math>` went, text included (`math`/`mi`/`mn`/`mo` are in
+ * DOMPurify's default FORBID_CONTENTS). The profile still refuses `semantics`,
+ * `annotation`, `annotation-xml` and `maction`. DOMPurify drops a refused
+ * element and hoists its children into the parent, unless the tag is in
+ * FORBID_CONTENTS — `annotation-xml` is by default, and `annotation` is added:
+ * it is an alternative encoding, not presentation, and hoisting would leave the
+ * TeX source KaTeX stores there in the `<math>` as a bare text node.
+ * MathML elements also lose `href` (see {@link getSvgPurifier}).
+ * `<script>`, event handlers (`onload`/`onerror`/…) and `javascript:` URLs stay
+ * forbidden by the profiles + DOMPurify defaults; URI attributes follow the
+ * shared link policy in utils/link-href.ts (issue 499), which also refuses
+ * protocol-relative `//host`.
  *
- * This is the single source of SVG sanitize truth: both the inline HTML block and
- * the dedicated SVG block render through it, as does {@link sanitizeMermaidSvg}.
+ * This is the single source of SVG sanitize truth: the dedicated SVG block, the
+ * SVG branches of the HTML block and of AI-output raw HTML, and
+ * {@link sanitizeMermaidSvg} all render through it.
  */
 export function sanitizeSvg(svg: string): string {
-  return DOMPurify.sanitize(svg, {
-    USE_PROFILES: { svg: true, svgFilters: true },
+  return getSvgPurifier().sanitize(svg, {
+    USE_PROFILES: { mathMl: true, svg: true, svgFilters: true },
     ALLOWED_URI_REGEXP: SANITIZER_ALLOWED_URI_REGEXP,
     ADD_TAGS: SVG_FOREIGN_OBJECT_TAGS,
+    ADD_FORBID_CONTENTS: ["annotation"],
     // HTML_INTEGRATION_POINTS replaces (not merges) the default, so re-list the
     // built-in `annotation-xml` alongside `foreignobject`.
     HTML_INTEGRATION_POINTS: { "annotation-xml": true, foreignobject: true },
     // vim island markers are an app capability — never document-grantable.
     FORBID_ATTR: [...VIM_ISLAND_MARKERS],
   });
+}
+
+/**
+ * The SVG sanitizer's own DOMPurify instance, created on first use. Hooks are
+ * per instance, so the hook below applies to everything sanitizeSvg handles and
+ * to nothing that uses DOMPurify's default instance — the non-SVG branches of
+ * the HTML-block and AI-output sanitizers, and mermaid's own label sanitizing.
+ * The reverse holds too: hooks mermaid installs on the default instance (it
+ * keeps `target` on HTML `<a>`) do not apply here.
+ *
+ * The hook drops `href` and `xlink:href` from MathML elements. WebKit follows
+ * `href` on any MathML element, while the app's link handling keys on `<a>`:
+ * export's stripDisallowedLinkHrefs and the link mark's Cmd/Ctrl-click routing
+ * both query for it. Links therefore stay on `<a>`, where both of them look.
+ */
+function getSvgPurifier(): Purifier {
+  if (svgPurifier) return svgPurifier;
+  const purifier = DOMPurify(window);
+  purifier.addHook("uponSanitizeAttribute", (node, data) => {
+    if (
+      node.namespaceURI === MATHML_NS &&
+      (data.attrName === "href" || data.attrName === "xlink:href")
+    ) {
+      data.keepAttr = false;
+    }
+  });
+  svgPurifier = purifier;
+  return purifier;
 }
 
 /**
