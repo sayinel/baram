@@ -139,10 +139,12 @@ export async function saveDirtyTab(
       ? sourceBufferAccess.getSourceBuffer(tab.id)
       : (useFileStore.getState().openFiles.get(tab.filePath) ?? "");
     const filePath = tab.filePath;
-    const savedAt = await asTabSave(filePath, () =>
+    const savedAt = await asTabSave(filePath, tab.id, () =>
       writeFile(filePath, content),
     );
-    useFileStore.getState().updateLastSaveMtime(filePath, savedAt);
+    useFileStore
+      .getState()
+      .updateLastSaveMtime(filePath, savedAt ?? Date.now());
     // §3.5 What it holds may have moved on while the write ran (a block ID rename or a
     // task edit landing in a background tab). Then the file has the older text and the
     // tab is not saved: report that, so the caller keeps it open instead of closing it
@@ -178,8 +180,10 @@ export async function saveDirtyTab(
   if (!savePath) return false;
 
   const content = useFileStore.getState().openFiles.get(tab.id) ?? "";
-  const savedAt = await asTabSave(savePath, () => writeFile(savePath, content));
-  useFileStore.getState().updateLastSaveMtime(savePath, savedAt);
+  const savedAt = await asTabSave(savePath, tab.id, () =>
+    writeFile(savePath, content),
+  );
+  useFileStore.getState().updateLastSaveMtime(savePath, savedAt ?? Date.now());
   // §3.5 The file exists now; the tab is clean only if it still holds what was written,
   // and the caller must not close it otherwise (#798).
   const clean =

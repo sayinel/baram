@@ -133,6 +133,10 @@ export async function triggerAutoReload(
   // 먼저 시작한 리로드와 나중 리로드가 같은 번호를 받을 수 있다.
   const generation = ++reloadCounter;
   reloadGenerations.set(filePath, generation);
+  // §3.2 The conflict base, if the tab turns dirty during the read below: what the tab
+  // was showing when this reload began (issue 795). Taken now — a save landing during
+  // the read would otherwise hand the modal a base the user never saw.
+  const baseAtStart = useFileStore.getState().openFiles.get(filePath) ?? "";
 
   // PDFs are binary — keep the "" cache sentinel; the mtime bump below
   // refreshes the viewer iframe instead.
@@ -162,14 +166,15 @@ export async function triggerAutoReload(
 
   // §3.2 읽기를 기다리는 사이 사용자가 이 파일을 고쳤으면 읽은 내용을 쓰지 않는다(issue 795). "fresh"
   // refresh 는 WYSIWYG 상태를 다시 짓기 때문에, 쓰면 그 사이 친 글이 사라진다. 대신 충돌 모달로
-  // 묻는다 — 기준은 읽기 전의 캐시다. `force` 는 사용자가 로컬 편집을 버려도 좋다고 답한 경우다.
+  // 묻는다 — 기준은 이 리로드를 시작할 때의 캐시(`baseAtStart`)다. `force` 는 사용자가 로컬 편집을
+  // 버려도 좋다고 답한 경우다.
   if (
     !options.force &&
     useEditorStore
       .getState()
       .tabs.some((t) => t.filePath === filePath && t.isDirty)
   ) {
-    showConflictModal(filePath, externalMtime, cachedBefore ?? "");
+    showConflictModal(filePath, externalMtime, baseAtStart);
     return;
   }
 
@@ -338,11 +343,13 @@ export function useFileOperations({
       // Existing file — save directly
       try {
         const savePath = saveTab.filePath;
-        const savedAt = await asTabSave(savePath, () =>
+        const savedAt = await asTabSave(savePath, saveTab.id, () =>
           writeFile(savePath, md),
         );
         useSnapshotStore.getState().markPendingAutoSnapshot();
-        useFileStore.getState().updateLastSaveMtime(savePath, savedAt);
+        useFileStore
+          .getState()
+          .updateLastSaveMtime(savePath, savedAt ?? Date.now());
         if (stillHolds()) {
           setFileContent(saveTab.filePath, md);
           markDirty(saveTab.id, false);
@@ -383,11 +390,13 @@ export function useFileOperations({
       if (!savePath) return;
 
       try {
-        const savedAt = await asTabSave(savePath, () =>
+        const savedAt = await asTabSave(savePath, saveTab.id, () =>
           writeFile(savePath, md),
         );
         useSnapshotStore.getState().markPendingAutoSnapshot();
-        useFileStore.getState().updateLastSaveMtime(savePath, savedAt);
+        useFileStore
+          .getState()
+          .updateLastSaveMtime(savePath, savedAt ?? Date.now());
         if (!isCode) {
           updateFileIndex(savePath)
             .then(() => useLinkStore.getState().invalidate(savePath))
@@ -451,9 +460,13 @@ export function useFileOperations({
     if (!savePath) return;
 
     try {
-      const savedAt = await asTabSave(savePath, () => writeFile(savePath, md));
+      const savedAt = await asTabSave(savePath, saveAsTab.id, () =>
+        writeFile(savePath, md),
+      );
       useSnapshotStore.getState().markPendingAutoSnapshot();
-      useFileStore.getState().updateLastSaveMtime(savePath, savedAt);
+      useFileStore
+        .getState()
+        .updateLastSaveMtime(savePath, savedAt ?? Date.now());
       if (!isCode) {
         updateFileIndex(savePath)
           .then(() => useLinkStore.getState().invalidate(savePath))

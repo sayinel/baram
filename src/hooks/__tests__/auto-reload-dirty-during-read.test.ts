@@ -58,6 +58,22 @@ describe("an auto-reload whose tab turned dirty during the read", () => {
     });
   });
 
+  // A save landing during the read updates the cache. The modal must compare against
+  // what the tab showed when the reload began.
+  // 이것을 실패시키는 것: 충돌 모달의 base 를 읽기 뒤의 캐시(`cachedBefore`)로 준다.
+  it("bases the modal on the cache from before the read, whatever changed it meanwhile", async () => {
+    const reload = triggerAutoReload(NOTE, 42);
+    act(() => {
+      useFileStore.getState().setFileContent(NOTE, "saved meanwhile");
+      useEditorStore.getState().markDirty("t1", true);
+    });
+    reads.shift()?.("from disk");
+    await act(async () => {
+      await reload;
+    });
+    expect(useUIStore.getState().conflictModal?.base).toBe("before");
+  });
+
   // 위의 0 이 리로드가 아무것도 안 해서가 아님을 보인다 — 깨끗한 채로 끝나면 적용한다.
   it("applies the read when the tab stayed clean", async () => {
     const reload = triggerAutoReload(NOTE, 42);

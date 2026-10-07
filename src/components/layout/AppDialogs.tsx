@@ -9,14 +9,13 @@ import type { Editor } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
 import { reloadAfterConflictConsent } from "../../hooks/use-file-operations";
-import { readFile, writeFile } from "../../ipc/invoke";
+import { readFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useSnapshotStore } from "../../stores/editor/snapshot";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
+import { applyConflictMerge } from "../../utils/editor/apply-conflict-merge";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
-import { asTabSave } from "../../utils/editor/tab-save-in-flight";
 import { logger } from "../../utils/logger";
 import { SmartTemplateDialogWrapper } from "../ai/SmartTemplateDialogWrapper";
 import { UnsavedChangesModal } from "../editor/UnsavedChangesModal";
@@ -219,23 +218,12 @@ export function AppDialogs({
         <MergeView
           filePath={mergeState.filePath}
           onApply={(merged) => {
-            const fp = mergeState.filePath;
-            void (async () => {
-              try {
-                const savedAt = await asTabSave(fp, () =>
-                  writeFile(fp, merged),
-                );
-                useFileStore.getState().setFileContent(fp, merged);
-                useFileStore.getState().updateLastSaveMtime(fp, savedAt);
-                useEditorStore.getState().requestContentRefresh();
-                const { activeTabId: tid } = useEditorStore.getState();
-                if (tid) markDirty(tid, false);
-                // §71 A conflict-merge write is a real content change.
-                useSnapshotStore.getState().markPendingAutoSnapshot();
-              } catch (err) {
-                logger.error("[App] merge apply failed", err);
-              }
-            })();
+            applyConflictMerge(
+              mergeState.filePath,
+              merged,
+              activeEditor,
+              markDirty,
+            ).catch((err) => logger.error("[App] merge apply failed", err));
             setMergeState(null);
           }}
           onCancel={() => setMergeState(null)}

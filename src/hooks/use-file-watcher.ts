@@ -15,6 +15,7 @@ import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
 import {
   afterTabSaves,
+  ownSaveCovers,
   tabSaveInFlight,
 } from "../utils/editor/tab-save-in-flight";
 import { logger } from "../utils/logger";
@@ -97,7 +98,19 @@ export function useFileWatcher() {
       debounceRef.current = setTimeout(flush, 300);
     };
 
-    // §3.2 The change of an open file, decided once per (path, mtime) (issue 795).
+    // §3.2 Reloads still reading, per path (issue 795): the mtime being applied, and
+    // the notifications that arrived meanwhile. One write can be reported twice — the
+    // rename of an atomic save and its data flag — so a notification with the mtime
+    // being applied is that same write and needs no read of its own; any other one
+    // gets one trailing read when the reload finishes. Nothing outlives the reload:
+    // a notification after it is read again.
+    interface Reloading {
+      again: ChangedPayload | null;
+      mtime: number;
+      same: boolean;
+    }
+    const reloading = new Map<string, Reloading>();
+
     const handleChanged = (payload: ChangedPayload) => {
       const filePath = payload.path;
       const externalMtime = payload.mtime;
@@ -114,42 +127,58 @@ export function useFileWatcher() {
       ) {
         return;
       }
-      // One write can arrive twice — the rename of an atomic save and its data
-      // flag. The first one decided it.
-      if (
-        externalMtime > 0 &&
-        prevMtime?.handledMtime !== undefined &&
-        externalMtime <= prevMtime.handledMtime
-      ) {
+
+      const inFlight = reloading.get(filePath);
+      if (inFlight) {
+        if (externalMtime > 0 && externalMtime === inFlight.mtime) {
+          inFlight.same = true;
+        } else if (!inFlight.again || externalMtime >= inFlight.again.mtime) {
+          inFlight.again = payload;
+        }
         return;
       }
 
       // Record the external mtime
       useFileStore.getState().updateCanReloadMtime(filePath, externalMtime);
-      if (externalMtime > 0) {
-        useFileStore.getState().markChangeHandled(filePath, externalMtime);
-      }
 
-      // Check dirty state
-      const tabs = useEditorStore.getState().tabs;
-      const tab = tabs.find((t) => t.filePath === filePath);
-      const isDirty = tab?.isDirty ?? false;
+      // Check dirty state — any tab showing the file.
+      const isDirty = useEditorStore
+        .getState()
+        .tabs.some((t) => t.filePath === filePath && t.isDirty);
 
-      if (!isDirty) {
-        // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
-        // 버리는 재구축도 하지 않는다. dirty 탭은 아래 그대로다: 앱이 디스크에
-        // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
-        // 버릴 수 없고, 그 판단은 충돌 모달이 사용자에게 묻는다.
-        triggerAutoReload(filePath, externalMtime, {
-          appOrigin: payload.origin === "app",
-        }).catch((err) =>
-          logger.warn("useFileWatcher: triggerAutoReload failed", err),
-        );
-      } else {
+      if (isDirty) {
         // Capture the pre-external content (last synced) as the 3-way base.
         const base = useFileStore.getState().openFiles.get(filePath) ?? "";
         showConflictModal(filePath, externalMtime, base);
+        return;
       }
+
+      // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
+      // 버리는 재구축도 하지 않는다. dirty 탭은 위에서 갈렸다: 앱이 디스크에
+      // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
+      // 버릴 수 없고, 그 판단은 충돌 모달이 사용자에게 묻는다.
+      const entry: Reloading = {
+        again: null,
+        mtime: externalMtime,
+        same: false,
+      };
+      reloading.set(filePath, entry);
+      triggerAutoReload(filePath, externalMtime, {
+        appOrigin: payload.origin === "app",
+      }).then(
+        () => {
+          reloading.delete(filePath);
+          if (entry.again) handleChanged(entry.again);
+        },
+        (err: unknown) => {
+          logger.warn("useFileWatcher: triggerAutoReload failed", err);
+          reloading.delete(filePath);
+          // The change was not applied: a report that arrived meanwhile — even of
+          // the same write — gets another attempt.
+          const retry = entry.again ?? (entry.same ? payload : null);
+          if (retry) handleChanged(retry);
+        },
+      );
     };
 
     // The newest change of each path whose tab save is still running — the one
@@ -160,18 +189,17 @@ export function useFileWatcher() {
       if (prev && prev.mtime >= payload.mtime) return;
       held.set(payload.path, payload);
       if (prev) return;
-      void afterTabSaves(payload.path).then((savedAt) => {
-        const latest = held.get(payload.path);
-        held.delete(payload.path);
-        if (!latest) return;
-        // The save's own write: it is on disk because the tab put it there.
-        if (
-          savedAt !== undefined &&
-          latest.mtime > 0 &&
-          latest.mtime <= savedAt
-        )
-          return;
-        handleChanged(latest);
+      void afterTabSaves(payload.path).then((saves) => {
+        // After the save site's own bookkeeping, which runs when its write
+        // resolves: the tab that saved is clean by now if it still holds the text.
+        setTimeout(() => {
+          const latest = held.get(payload.path);
+          held.delete(payload.path);
+          if (!latest) return;
+          // The saving tab's own write, and that tab is still the one showing it.
+          if (ownSaveCovers(latest.path, latest.mtime, saves)) return;
+          handleChanged(latest);
+        }, 0);
       });
     };
 

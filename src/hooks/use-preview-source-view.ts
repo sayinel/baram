@@ -47,9 +47,11 @@ export function usePreviewSourceView({
     if (leavingSourceView && tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
       const content = getSourceBuffer(tab.id);
-      void asTabSave(filePath, () => writeFile(filePath, content))
+      void asTabSave(filePath, tab.id, () => writeFile(filePath, content))
         .then((savedAt) => {
-          useFileStore.getState().updateLastSaveMtime(filePath, savedAt);
+          useFileStore
+            .getState()
+            .updateLastSaveMtime(filePath, savedAt ?? Date.now());
           // §3.5 Typed again while the write ran → that text is not on disk (#798).
           if (getSourceBuffer(tab.id) !== content) return;
           useFileStore.getState().setFileContent(filePath, content);

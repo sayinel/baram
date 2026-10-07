@@ -107,7 +107,7 @@ export function useAutoSave(editor: Editor | null) {
     try {
       const docAtWrite = editor.state.doc;
       const markdown = serializeLiveDoc(editor);
-      const savedAt = await asTabSave(filePath, () =>
+      const savedAt = await asTabSave(filePath, pending.id, () =>
         writeFile(filePath, markdown),
       );
       // §3.5 쓰는 사이 탭이 닫혔거나 다른 경로로 옮겨졌으면 저장 결과를 탭의 기록에 남기지 않는다
@@ -119,7 +119,9 @@ export function useAutoSave(editor: Editor | null) {
       if (stillShown) {
         // Phase 4: record save time so future mtime comparisons have a baseline — this
         // write is ours whatever happened to the document since.
-        useFileStore.getState().updateLastSaveMtime(filePath, savedAt);
+        useFileStore
+          .getState()
+          .updateLastSaveMtime(filePath, savedAt ?? Date.now());
       }
       // §3.5 쓰는 사이 사용자가 더 고쳤으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다.
       if (

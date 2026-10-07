@@ -90,14 +90,18 @@ export function useCodeAutoSave({
       if (!isEditableTextPath(path) && !sourceMarkdown) return;
       try {
         const content = getSourceBuffer(tab.id);
-        const savedAt = await asTabSave(path, () => writeFile(path, content));
+        const savedAt = await asTabSave(path, tab.id, () =>
+          writeFile(path, content),
+        );
         // §3.5 쓰는 사이 탭이 닫혔거나 옮겨졌으면 결과를 탭의 기록에 남기지 않는다 — use-auto-save 와
         // 같은 이유다(#798).
         const stillShown = useEditorStore
           .getState()
           .tabs.some((t) => t.id === tab.id && t.filePath === path);
         if (stillShown) {
-          useFileStore.getState().updateLastSaveMtime(path, savedAt);
+          useFileStore
+            .getState()
+            .updateLastSaveMtime(path, savedAt ?? Date.now());
         }
         // §3.5 쓰는 사이 버퍼가 더 바뀌었으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다(#798).
         if (stillShown && getSourceBuffer(tab.id) === content) {
