@@ -11,20 +11,20 @@ mod judgement;
 mod normalizer;
 mod read_back;
 mod relative_links;
+#[cfg(test)]
+mod removal_tests;
 mod resolve;
 mod rewriter;
 pub mod service;
 mod types;
 
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
 pub(crate) use extractor::file_stem_from_path;
-pub use extractor::{
-    collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
-};
+pub use extractor::{collect_md_files, find_unlinked_mentions, UnlinkedMentionResult};
 pub(crate) use filing::{filing_key, keys_for, root_relative_key, FilingKey, LocalAlias};
 pub(crate) use judgement::{root_places, BlockTarget, KnownPaths, RenameTarget, RootNotes};
 pub(crate) use read_back::{index_reads_the_rename_back, reads_a_link_under};
@@ -46,6 +46,24 @@ thread_local! {
     /// `Path` key on this thread — what a rename's note sets cost, counted
     /// rather than timed. Per thread, so tests running side by side do not mix.
     static PATH_KEYS_SPELLED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many stored entries `LinkIndex::remove_file` has looked at on this thread —
+    /// what a save's removal costs, counted rather than timed (issue 796).
+    static REMOVAL_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn note_removal_visit() {
+    #[cfg(test)]
+    REMOVAL_VISITS.with(|c| c.set(c.get() + 1));
+}
+
+/// `REMOVAL_VISITS` so far on this thread.
+#[cfg(test)]
+pub(crate) fn removal_visits() -> usize {
+    REMOVAL_VISITS.with(std::cell::Cell::get)
 }
 
 /// `PATH_KEYS_SPELLED` so far on this thread; a test reads it before and after.
@@ -135,8 +153,10 @@ pub struct LinkIndex {
     /// `root_path`, or its vault alias with its target) → the links filed
     /// there. A file's backlinks are read under `backlink_keys`: `keys_for`
     /// its path, plus the zettel id in its stem when it has one, bare and
-    /// behind each local alias.
-    incoming: HashMap<FilingKey, Vec<LinkEntry>>,
+    /// behind each local alias. Within a key the links are held per source note
+    /// (issue 796), so a save takes its own links out of a key that a thousand
+    /// notes link through without visiting the others.
+    incoming: HashMap<FilingKey, BTreeMap<String, Vec<LinkEntry>>>,
     /// Root path of the vault
     root_path: Option<String>,
     /// What the build's walk left out below `root_path` (issue 794) — kept so a save is
@@ -188,8 +208,8 @@ impl LinkIndex {
         let mut files_indexed: u32 = 0;
         let mut links_found: u32 = 0;
 
-        // Collect all .md files
-        let md_files = collect_md_files(root_path, &self.exclusion).await?;
+        // Issue 796: one walk; the markdown and every file come out of it together.
+        let (md_files, all_files) = extractor::walk_vault(root_path, &self.exclusion).await?;
 
         // Build file maps for wikilink target resolution
         for file_path in &md_files {
@@ -198,8 +218,8 @@ impl LinkIndex {
 
         // §278 Non-markdown files are link TARGETS only — registered after the markdown
         // pass so that where the two could collide, markdown is already in place.
-        for file_path in collect_all_files(root_path, &self.exclusion).await? {
-            self.register_link_target(&file_path, root_path);
+        for file_path in &all_files {
+            self.register_link_target(file_path, root_path);
         }
 
         for file_path in &md_files {
@@ -235,32 +255,77 @@ impl LinkIndex {
         })
     }
 
-    /// Remove a file from the index
+    /// Remove a file from the index.
+    ///
+    /// Issue 796: by the keys the file was filed under, not by scanning the maps — a save
+    /// costs the same in a vault of ten notes and of twenty thousand. Each key is the one
+    /// its registration computed: `filing_key` of each outgoing entry (`file_incoming`),
+    /// the stem, `resolve::relative_key`, the zettel id and `resolve::target_keys`.
+    /// `removal_tests` holds this against a full scan of every map.
     pub fn remove_file(&mut self, file_path: &str) {
-        self.outgoing.remove(file_path);
-        // Remove from incoming: filter out entries with this source_path
-        for entries in self.incoming.values_mut() {
-            entries.retain(|e| e.source_path != file_path);
+        if let Some(entries) = self.outgoing.remove(file_path) {
+            let mut keys: Vec<FilingKey> = entries
+                .iter()
+                .map(|entry| {
+                    filing_key(
+                        &entry.source_path,
+                        &entry.target,
+                        entry.target_vault_alias.as_deref(),
+                        self.root_path.as_deref(),
+                        cfg!(windows),
+                    )
+                })
+                .collect();
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                note_removal_visit();
+                if let Some(by_source) = self.incoming.get_mut(&key) {
+                    by_source.remove(file_path);
+                    if by_source.is_empty() {
+                        self.incoming.remove(&key);
+                    }
+                }
+            }
         }
-        // Clean up empty keys
-        self.incoming.retain(|_, v| !v.is_empty());
 
-        // Remove from file maps
         let stem = normalize_file_path(file_path);
         if let Some(paths) = self.file_map.get_mut(&stem) {
-            paths.retain(|p| p != file_path);
+            paths.retain(|p| {
+                note_removal_visit();
+                p != file_path
+            });
             if paths.is_empty() {
                 self.file_map.remove(&stem);
             }
         }
-        self.relative_map.retain(|_, v| v != file_path);
-        self.id_map.retain(|_, v| v != file_path);
+        let root = self.root_path.clone();
+        if let Some(key) = root
+            .as_deref()
+            .and_then(|r| resolve::relative_key(file_path, r))
+        {
+            if self.relative_map.get(&key).is_some_and(|p| p == file_path) {
+                self.relative_map.remove(&key);
+            }
+        }
+        if let Some(id) = normalizer::extract_id_from_stem(&stem) {
+            if self.id_map.get(&id).is_some_and(|p| p == file_path) {
+                self.id_map.remove(&id);
+            }
+        }
         // §278 same shape as the file_map cleanup above — drop the path, then the key
         // once nothing points at it.
-        self.name_map.retain(|_, paths| {
-            paths.retain(|p| p != file_path);
-            !paths.is_empty()
-        });
+        for key in resolve::target_keys(file_path, root.as_deref()) {
+            if let Some(paths) = self.name_map.get_mut(&key) {
+                paths.retain(|p| {
+                    note_removal_visit();
+                    p != file_path
+                });
+                if paths.is_empty() {
+                    self.name_map.remove(&key);
+                }
+            }
+        }
         self.file_tags.remove(file_path);
     }
 
@@ -273,7 +338,12 @@ impl LinkIndex {
             self.root_path.as_deref(),
             cfg!(windows),
         );
-        self.incoming.entry(key).or_default().push(entry.clone());
+        self.incoming
+            .entry(key)
+            .or_default()
+            .entry(entry.source_path.clone())
+            .or_default()
+            .push(entry.clone());
     }
 
     /// The keys a link to `file_path` is filed under in this index
@@ -386,8 +456,8 @@ impl LinkIndex {
     pub fn block_reference_lines(&self, file_path: &str, block_id: &str) -> Vec<(String, u32)> {
         let mut out = Vec::new();
         for key in self.backlink_keys(file_path, &[]) {
-            if let Some(entries) = self.incoming.get(&key) {
-                for e in entries {
+            if let Some(by_source) = self.incoming.get(&key) {
+                for e in by_source.values().flatten() {
                     if e.block_id.as_deref() == Some(block_id) {
                         out.push((e.source_path.clone(), e.line));
                     }
@@ -419,7 +489,7 @@ impl LinkIndex {
             .filing_keys_of(file_path, local_aliases)
             .iter()
             .filter_map(|key| self.incoming.get(key))
-            .flatten()
+            .flat_map(|by_source| by_source.values().flatten())
             .map(|e| (e.source_path.clone(), e.line))
             .collect();
         out.sort();
@@ -440,8 +510,8 @@ impl LinkIndex {
         let mut seen = std::collections::HashSet::new();
         let mut results = Vec::new();
         for key in keys {
-            if let Some(entries) = self.incoming.get(&key) {
-                for e in entries {
+            if let Some(by_source) = self.incoming.get(&key) {
+                for e in by_source.values().flatten() {
                     if seen.insert((e.source_path.clone(), e.line)) {
                         results.push(BacklinkResult {
                             source_path: e.source_path.clone(),
@@ -524,6 +594,8 @@ mod tests {
         index
             .incoming
             .entry(FilingKey::Stem("architecture".to_string()))
+            .or_default()
+            .entry(entry.source_path.clone())
             .or_default()
             .push(entry);
 
@@ -610,7 +682,8 @@ mod tests {
             .get(&FilingKey::Stem(file_key("target")))
             .map_or(0, |entries| {
                 entries
-                    .iter()
+                    .values()
+                    .flatten()
                     .filter(|e| e.source_path == "/vault/r.md")
                     .count()
             });
@@ -688,7 +761,8 @@ mod tests {
         let filed_under = |key: &FilingKey| {
             index.incoming.get(key).map_or(0, |entries| {
                 entries
-                    .iter()
+                    .values()
+                    .flatten()
                     .filter(|e| e.source_path == "/v/dir/r.md")
                     .count()
             })
@@ -905,6 +979,8 @@ mod tests {
         index
             .incoming
             .entry(FilingKey::Stem("b".to_string()))
+            .or_default()
+            .entry(entry.source_path.clone())
             .or_default()
             .push(entry);
 
@@ -1192,16 +1268,10 @@ mod build_bench {
 
         let started = std::time::Instant::now();
         let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap();
-        let md = collect_md_files(&root, &exclusion).await.unwrap();
+        let (md, all) = extractor::walk_vault(&root, &exclusion).await.unwrap();
         println!(
-            "{label} collect_md_files -> {} in {:?}",
+            "{label} walk_vault -> {} markdown, {} files in {:?}",
             md.len(),
-            started.elapsed()
-        );
-        let started = std::time::Instant::now();
-        let all = collect_all_files(&root, &exclusion).await.unwrap();
-        println!(
-            "{label} collect_all_files -> {} in {:?}",
             all.len(),
             started.elapsed()
         );

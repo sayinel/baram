@@ -442,22 +442,26 @@ pub async fn collect_md_files(
         .collect())
 }
 
-/// §278 Every file under root — wikilink TARGETS, not link sources.
-///
-/// Only markdown is scanned for outgoing links; this exists so a link pointing at a
-/// non-markdown file (`[[Paper.pdf]]`) resolves to a real node instead of dangling.
-pub async fn collect_all_files(
+/// Issue 796: the markdown files and every file under `root`, from ONE walk — what the
+/// index build used to collect with `collect_md_files` and a second, all-files walk.
+pub async fn walk_vault(
     root: &str,
     exclusion: &crate::fs::VaultExclusion,
-) -> Result<Vec<String>, IndexError> {
-    let mut path_bufs = Vec::new();
-    crate::fs::collect_all_files(std::path::Path::new(root), exclusion, &mut path_bufs)
-        .await
-        .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
-    Ok(path_bufs
-        .into_iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect())
+) -> Result<(Vec<String>, Vec<String>), IndexError> {
+    let found = crate::fs::walk_vault(
+        std::path::Path::new(root),
+        exclusion,
+        crate::fs::Collect::Both,
+    )
+    .await
+    .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
+    let strings = |paths: Vec<std::path::PathBuf>| -> Vec<String> {
+        paths
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect()
+    };
+    Ok((strings(found.markdown), strings(found.all)))
 }
 
 #[cfg(test)]

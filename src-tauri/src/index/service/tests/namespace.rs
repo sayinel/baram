@@ -161,8 +161,11 @@ async fn a_committed_namespace_rename_reports_the_move_and_drops_an_index_it_cou
     )
     .await
     .unwrap();
-    // A build left pending (models a rebuild failure that is not a removal).
-    let (token, _snapshot, _stats) = staged_build(&state, &ctx, &key, &root).await;
+    // A rebuild failure that is not a removal: the vault's `.baramignore` became
+    // unusable after the move (issue 794 — the build refuses it). A lease left pending
+    // used to model this; under the build lock such a lease has no owner and is now
+    // replaced (issue 796, `begin_build_holding_lock`).
+    std::fs::write(dir.path().join(crate::fs::BARAMIGNORE), "{unclosed\n").unwrap();
     let rebuilt = rebuild_and_publish(&state, &target, &root, false).await;
     assert!(matches!(&rebuilt, Err(IndexBuildError::Failed(_))));
     // The move is reported as what it is — done — and the index that still
@@ -173,7 +176,6 @@ async fn a_committed_namespace_rename_reports_the_move_and_drops_an_index_it_cou
     assert_eq!(committed.files_moved, 1);
     assert!(dir.path().join("ns2/c.md").exists());
     assert!(state.with_index(&key, |idx| idx.is_none()).await);
-    state.abort_build(&key, token).await;
 }
 
 #[tokio::test]

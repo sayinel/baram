@@ -299,12 +299,42 @@ impl LinkIndexState {
     /// context was removed meanwhile); a build already pending is a different
     /// failure (one build per key at a time — `rebuild_and_publish` holds the
     /// build lock, so this only happens to a caller outside it).
+    #[cfg(test)]
     pub(super) async fn begin_build(
         &self,
         key: &str,
         requested: &RegistrationVersion,
         root: &str,
         incarnation: u64,
+    ) -> Result<BuildToken, IndexBuildError> {
+        self.begin(key, requested, root, incarnation, false).await
+    }
+
+    /// `begin_build` for the caller that holds the key's build lock
+    /// (`rebuild_and_publish`). A lease already pending then has no owner: every
+    /// lease that caller makes is ended by its `publish` or `abort_build` while it
+    /// still holds the lock, so one left over was made by a build whose future was
+    /// dropped in between — a refresh cancelled mid-walk. It is replaced rather
+    /// than refusing every later refresh with `INDEX_BUILD_PENDING`; its journal
+    /// goes with it, since the new build reads the files afresh.
+    pub(super) async fn begin_build_holding_lock(
+        &self,
+        key: &str,
+        requested: &RegistrationVersion,
+        root: &str,
+        incarnation: u64,
+        _held: &tokio::sync::MutexGuard<'_, ()>,
+    ) -> Result<BuildToken, IndexBuildError> {
+        self.begin(key, requested, root, incarnation, true).await
+    }
+
+    async fn begin(
+        &self,
+        key: &str,
+        requested: &RegistrationVersion,
+        root: &str,
+        incarnation: u64,
+        replace_abandoned: bool,
     ) -> Result<BuildToken, IndexBuildError> {
         // Canonicalisation touches the filesystem: before the lock.
         let root = IndexRoot::new(root).map_err(IndexBuildError::Failed)?;
@@ -313,7 +343,7 @@ impl LinkIndexState {
         if slot.generation != requested.generation {
             return Err(IndexBuildError::Invalidated);
         }
-        if slot.pending.is_some() {
+        if slot.pending.is_some() && !replace_abandoned {
             return Err(IndexBuildError::Failed(INDEX_BUILD_PENDING.to_string()));
         }
         // The slot now belongs to (at least) this registration: an older
@@ -329,6 +359,16 @@ impl LinkIndexState {
             journal: Vec::new(),
         });
         Ok(token)
+    }
+
+    /// Whether a build lease is pending under `key` (tests).
+    #[cfg(test)]
+    pub(super) async fn has_pending(&self, key: &str) -> bool {
+        self.slots
+            .lock()
+            .await
+            .get(key)
+            .is_some_and(|s| s.pending.is_some())
     }
 
     /// The build failed before publishing: stop journaling for it.
