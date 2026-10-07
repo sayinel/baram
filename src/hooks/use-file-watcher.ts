@@ -57,11 +57,7 @@ export function useFileWatcher() {
   const pendingRef = useRef<Map<string, PendingEntry>>(new Map());
   const externalDirsRef = useRef<Set<string>>(new Set());
   // Paths of currently open file tabs — drives out-of-vault watching below.
-  const openFilePaths = useEditorStore(
-    useShallow((s) =>
-      s.tabs.map((t) => t.filePath).filter((p) => p.length > 0),
-    ),
-  );
+  const openFilePaths = useEditorStore(useShallow((s) => openPathsOf(s.tabs)));
 
   // Register watcher event listeners once on mount, independent of rootPath, so
   // single files opened without a vault still receive change events.
@@ -216,21 +212,25 @@ export function useFileWatcher() {
   }, []);
 
   // Watch the vault root directory whenever a vault is open.
+  //
+  // §3.2 The Rust watcher drops events below excluded folders (`build/`, `target/`, …)
+  // except for the open files (issue 795), so the open set is sent FIRST: tabs
+  // restored inside such a folder are registered before the watch that would drop
+  // their events starts. The open set's own effect below keeps it current.
   useEffect(() => {
     if (!rootPath) return;
-    watchDir(rootPath).catch((err) =>
-      logger.warn("useFileWatcher: watchDir failed", err),
+    void registerOpenFiles(currentOpenFilePaths()).finally(() =>
+      watchDir(rootPath).catch((err) =>
+        logger.warn("useFileWatcher: watchDir failed", err),
+      ),
     );
   }, [rootPath]);
 
-  // §3.2 The Rust watcher drops events below excluded folders (`build/`, `target/`, …)
-  // except for the files open here, whose reload and conflict checks need them
-  // wherever they live (issue 795). Sent on every change of the open set; until the
-  // first call lands, an open file in such a folder gets no events.
+  // §3.2 Sent on every change of the open set. A tab opened while a watch runs is
+  // registered one IPC round trip after it appears in the store: a change to it
+  // inside an excluded folder in that window is not reported.
   useEffect(() => {
-    setOpenFiles(openFilePaths).catch((err) =>
-      logger.warn("useFileWatcher: setOpenFiles failed", err),
-    );
+    void registerOpenFiles(openFilePaths);
   }, [openFilePaths]);
 
   // §3.6 Out-of-vault files: when the vault is open (so the watcher listeners
@@ -256,14 +256,32 @@ export function useFileWatcher() {
   }, [openFilePaths, rootPath]);
 }
 
+/** The open set, read now — the same selection `openFilePaths` makes. */
+function currentOpenFilePaths(): string[] {
+  return openPathsOf(useEditorStore.getState().tabs);
+}
+
 function fileName(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx >= 0 ? path.substring(idx + 1) : path;
 }
 
+function openPathsOf(tabs: ReadonlyArray<{ filePath: string }>): string[] {
+  return tabs.map((t) => t.filePath).filter((p) => p.length > 0);
+}
+
 function parentDir(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx > 0 ? path.substring(0, idx) : path;
+}
+
+/** §3.2 `setOpenFiles`, logged on failure — the watch starts either way. */
+async function registerOpenFiles(paths: string[]): Promise<void> {
+  try {
+    await setOpenFiles(paths);
+  } catch (err) {
+    logger.warn("useFileWatcher: setOpenFiles failed", err);
+  }
 }
 
 function shouldSkip(path: string, isDir = false): boolean {
