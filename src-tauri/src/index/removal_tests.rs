@@ -6,8 +6,11 @@ use super::*;
 /// What `remove_file` did before issue 796: every map scanned for the path.
 fn remove_by_scanning(index: &mut LinkIndex, file_path: &str) {
     index.outgoing.remove(file_path);
-    for entries in index.incoming.values_mut() {
-        entries.retain(|e| e.source_path != file_path);
+    for by_source in index.incoming.values_mut() {
+        for entries in by_source.values_mut() {
+            entries.retain(|e| e.source_path != file_path);
+        }
+        by_source.retain(|_, entries| !entries.is_empty());
     }
     index.incoming.retain(|_, v| !v.is_empty());
     let stem = normalize_file_path(file_path);
@@ -96,27 +99,36 @@ async fn removing_by_key_leaves_what_scanning_every_map_left() {
 }
 
 /// A save's removal looks at the same number of stored entries in a vault of ten notes
-/// and of a thousand. 이것을 실패시키는 것: `incoming` 의 정리를 `values_mut()` 전체를
-/// 도는 옛 방식으로 되돌리는 것(방문한 항목도 세면서) — 수가 노트 수를 따라 는다.
+/// and of a thousand — with every note linking the same hub, so the hub's key holds a
+/// link from each of them. 이것을 실패시키는 것: 키 안에서 source 를 찾지 않고 그 키의
+/// 링크를 모두 훑는 것(훑은 것도 세면서), 또는 `incoming` 전체를 훑는 옛 방식 — 수가 노트
+/// 수를 따라 는다.
 #[tokio::test]
 async fn removing_a_note_costs_the_same_however_large_the_vault() {
     let mut visits = Vec::new();
     for notes in [10, 1_000] {
         let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "home.md", "hub");
         for i in 0..notes {
             write(
                 dir.path(),
                 &format!("n{i}.md"),
-                &format!("see [[n{}]]", i + 1),
+                &format!("see [[home]], [[home]] again and [[n{}]]", i + 1),
             );
         }
         let mut index = built(dir.path()).await;
+        let home = dir.path().join("home.md").to_string_lossy().into_owned();
+        assert_eq!(index.get_backlinks(&home, &[]).len(), notes);
         let path = dir.path().join("n5.md").to_string_lossy().into_owned();
         let before = removal_visits();
         index.remove_file(&path);
         visits.push(removal_visits() - before);
-        assert!(!index.outgoing.contains_key(&path));
+        assert_eq!(index.get_backlinks(&home, &[]).len(), notes - 1);
     }
     assert_eq!(visits[0], visits[1], "{visits:?}");
-    assert!(visits[0] > 0);
+    // Two filing keys (`home` once though linked twice, `n6`), then the one path under
+    // the stem in `file_map` and under its `name_map` key — at the root its name and its
+    // path are one key: 2 + 1 + 1.
+    // 이것을 실패시키는 것: 키의 `dedup` 을 지우는 것 — `home` 을 두 번 찾아 5 가 된다.
+    assert_eq!(visits[0], 4);
 }

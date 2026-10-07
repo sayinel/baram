@@ -19,7 +19,7 @@ pub mod service;
 mod types;
 
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
@@ -153,8 +153,10 @@ pub struct LinkIndex {
     /// `root_path`, or its vault alias with its target) → the links filed
     /// there. A file's backlinks are read under `backlink_keys`: `keys_for`
     /// its path, plus the zettel id in its stem when it has one, bare and
-    /// behind each local alias.
-    incoming: HashMap<FilingKey, Vec<LinkEntry>>,
+    /// behind each local alias. Within a key the links are held per source note
+    /// (issue 796), so a save takes its own links out of a key that a thousand
+    /// notes link through without visiting the others.
+    incoming: HashMap<FilingKey, BTreeMap<String, Vec<LinkEntry>>>,
     /// Root path of the vault
     root_path: Option<String>,
     /// What the build's walk left out below `root_path` (issue 794) — kept so a save is
@@ -262,20 +264,25 @@ impl LinkIndex {
     /// `removal_tests` holds this against a full scan of every map.
     pub fn remove_file(&mut self, file_path: &str) {
         if let Some(entries) = self.outgoing.remove(file_path) {
-            for entry in &entries {
-                let key = filing_key(
-                    &entry.source_path,
-                    &entry.target,
-                    entry.target_vault_alias.as_deref(),
-                    self.root_path.as_deref(),
-                    cfg!(windows),
-                );
-                if let Some(filed) = self.incoming.get_mut(&key) {
-                    filed.retain(|e| {
-                        note_removal_visit();
-                        e.source_path != file_path
-                    });
-                    if filed.is_empty() {
+            let mut keys: Vec<FilingKey> = entries
+                .iter()
+                .map(|entry| {
+                    filing_key(
+                        &entry.source_path,
+                        &entry.target,
+                        entry.target_vault_alias.as_deref(),
+                        self.root_path.as_deref(),
+                        cfg!(windows),
+                    )
+                })
+                .collect();
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                note_removal_visit();
+                if let Some(by_source) = self.incoming.get_mut(&key) {
+                    by_source.remove(file_path);
+                    if by_source.is_empty() {
                         self.incoming.remove(&key);
                     }
                 }
@@ -331,7 +338,12 @@ impl LinkIndex {
             self.root_path.as_deref(),
             cfg!(windows),
         );
-        self.incoming.entry(key).or_default().push(entry.clone());
+        self.incoming
+            .entry(key)
+            .or_default()
+            .entry(entry.source_path.clone())
+            .or_default()
+            .push(entry.clone());
     }
 
     /// The keys a link to `file_path` is filed under in this index
@@ -444,8 +456,8 @@ impl LinkIndex {
     pub fn block_reference_lines(&self, file_path: &str, block_id: &str) -> Vec<(String, u32)> {
         let mut out = Vec::new();
         for key in self.backlink_keys(file_path, &[]) {
-            if let Some(entries) = self.incoming.get(&key) {
-                for e in entries {
+            if let Some(by_source) = self.incoming.get(&key) {
+                for e in by_source.values().flatten() {
                     if e.block_id.as_deref() == Some(block_id) {
                         out.push((e.source_path.clone(), e.line));
                     }
@@ -477,7 +489,7 @@ impl LinkIndex {
             .filing_keys_of(file_path, local_aliases)
             .iter()
             .filter_map(|key| self.incoming.get(key))
-            .flatten()
+            .flat_map(|by_source| by_source.values().flatten())
             .map(|e| (e.source_path.clone(), e.line))
             .collect();
         out.sort();
@@ -498,8 +510,8 @@ impl LinkIndex {
         let mut seen = std::collections::HashSet::new();
         let mut results = Vec::new();
         for key in keys {
-            if let Some(entries) = self.incoming.get(&key) {
-                for e in entries {
+            if let Some(by_source) = self.incoming.get(&key) {
+                for e in by_source.values().flatten() {
                     if seen.insert((e.source_path.clone(), e.line)) {
                         results.push(BacklinkResult {
                             source_path: e.source_path.clone(),
@@ -582,6 +594,8 @@ mod tests {
         index
             .incoming
             .entry(FilingKey::Stem("architecture".to_string()))
+            .or_default()
+            .entry(entry.source_path.clone())
             .or_default()
             .push(entry);
 
@@ -668,7 +682,8 @@ mod tests {
             .get(&FilingKey::Stem(file_key("target")))
             .map_or(0, |entries| {
                 entries
-                    .iter()
+                    .values()
+                    .flatten()
                     .filter(|e| e.source_path == "/vault/r.md")
                     .count()
             });
@@ -746,7 +761,8 @@ mod tests {
         let filed_under = |key: &FilingKey| {
             index.incoming.get(key).map_or(0, |entries| {
                 entries
-                    .iter()
+                    .values()
+                    .flatten()
                     .filter(|e| e.source_path == "/v/dir/r.md")
                     .count()
             })
@@ -963,6 +979,8 @@ mod tests {
         index
             .incoming
             .entry(FilingKey::Stem("b".to_string()))
+            .or_default()
+            .entry(entry.source_path.clone())
             .or_default()
             .push(entry);
 
