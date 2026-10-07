@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
-use super::normalizer::nfc;
+use super::normalizer::{fold_name, nfc};
 use super::IndexError;
 use super::{LinkEntry, LinkKind};
 use crate::md::literal::{front_matter_end, source_lines, Literal};
@@ -314,6 +314,15 @@ pub(crate) fn strip_wikilinks(line: &str) -> String {
 /// §34 Find unlinked mentions — text occurrences of a file stem in other files,
 /// NOT inside [[wikilink]] brackets. Case-insensitive, word-boundary aware.
 /// The name is matched as typed (NFC) and as stored (§390).
+/// A path's file name through `fold_name` (NFC and case) — the forms one
+/// file can be spelled in on a volume that folds normalization or case.
+fn folded_file_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|n| fold_name(&n.to_string_lossy()))
+        .unwrap_or_default()
+}
+
 pub async fn find_unlinked_mentions(
     file_path: &str,
     root_path: &str,
@@ -346,10 +355,26 @@ pub async fn find_unlinked_mentions(
     let stem_re = Regex::new(&pattern)
         .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
 
+    // The note itself is not searched — by identity, not spelling: the panel
+    // skips the search when this note is saved (issue 791), so a walk path
+    // that names the same file in another spelling must not be read as
+    // another note. Canonical paths settle a `..` segment (tested) and a
+    // symlink; NFC against NFD or case on a folding volume are settled only as
+    // far as `canonicalize` returns one spelling for both, which is not tested
+    // here. Only walk paths whose file name folds (`fold_name`) to the
+    // note's are canonicalised.
+    let target = tokio::fs::canonicalize(file_path).await.ok();
+    let target_name = folded_file_name(file_path);
     for md_path in &md_files {
-        // Skip the current file itself
         if md_path == file_path {
             continue;
+        }
+        if let Some(target) = &target {
+            if folded_file_name(md_path) == target_name
+                && tokio::fs::canonicalize(md_path).await.ok().as_ref() == Some(target)
+            {
+                continue;
+            }
         }
 
         let content = match tokio::fs::read_to_string(md_path).await {
@@ -791,6 +816,29 @@ mod tests {
             [(1, name.as_str()), (3, name_on_disk.as_str())],
             "{found:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn the_viewed_note_is_not_searched_in_another_spelling() {
+        // Issue 791: Backlinks skips this search when the viewed note itself
+        // is saved, which is right only if the note's own body is never part
+        // of it. Spelled with a `..` segment the path differs from the walk's
+        // as a string but names the same file.
+        // 이것을 실패시키는 것: 자기 자신을 `md_path == file_path` 문자열 비교로만 건너뛴다.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().to_string();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        tokio::fs::write(format!("{root}/note.md"), "this note mentions note\n")
+            .await
+            .unwrap();
+        tokio::fs::write(format!("{root}/other.md"), "a note here\n")
+            .await
+            .unwrap();
+        let found = find_unlinked_mentions(&format!("{root}/sub/../note.md"), &root)
+            .await
+            .unwrap();
+        let sources: Vec<&str> = found.iter().map(|m| m.source_path.as_str()).collect();
+        assert_eq!(sources, [format!("{root}/other.md").as_str()], "{found:?}");
     }
 
     /// issue 666 — the graph's tags are the tag index's tags: the same loose
