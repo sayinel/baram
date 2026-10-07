@@ -25,7 +25,7 @@ import { createBaramExtensions } from "../../extensions";
 import { useAutoSave } from "../../hooks/use-auto-save";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { useTranslation } from "../../i18n/useTranslation";
-import { readFile, watchDir, writeFile } from "../../ipc/invoke";
+import { readFile, unwatchDir, watchDir, writeFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useContextStore } from "../../stores/context/context";
@@ -185,8 +185,14 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     if (!editor) return;
     let cancelled = false;
     let unlisten: undefined | UnlistenFn;
+    // §3.2 The file's folder only, held while this effect lives (#797). Rust also gives
+    // it back when the window is destroyed.
     const dir = dirname(filePath);
-    if (dir) watchDir(dir).catch(() => {});
+    const lease = dir
+      ? watchDir(dir, { focus: filePath, recursive: false }).catch(
+          () => undefined,
+        )
+      : Promise.resolve(undefined);
     (async () => {
       const fn = await listen<{ mtime: number; path: string }>(
         "file:changed",
@@ -218,6 +224,9 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     return () => {
       cancelled = true;
       unlisten?.();
+      void lease.then((id) => {
+        if (typeof id === "number") unwatchDir(id).catch(() => {});
+      });
     };
   }, [editor, filePath]);
 

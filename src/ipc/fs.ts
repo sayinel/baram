@@ -256,8 +256,26 @@ export async function setOpenFiles(paths: string[]): Promise<void> {
   return invoke<void>("set_open_files", { paths });
 }
 
-export async function watchDir(path: string): Promise<void> {
-  return invoke<void>("watch_dir", { path });
+/**
+ * §3.2 Watch `path` for this window and answer the lease that holds the watch (#797).
+ * A vault is watched recursively (the default); a folder watched for one file is not,
+ * and names that file as `focus` so an atomic replace of it reports a change. Give the
+ * lease back with `unwatchDir`.
+ */
+export async function watchDir(
+  path: string,
+  options: { focus?: string; recursive?: boolean } = {},
+): Promise<number> {
+  return invoke<number>("watch_dir", {
+    focus: options.focus ?? null,
+    path,
+    recursive: options.recursive ?? true,
+  });
+}
+
+/** §3.2 Give back a watch lease this window holds (#797). */
+export async function unwatchDir(lease: number): Promise<void> {
+  return invoke<void>("unwatch_dir", { lease });
 }
 
 /** §56d Write binary data to a file (for images, etc.) — vault-confined. */

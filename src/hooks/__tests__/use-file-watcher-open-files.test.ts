@@ -20,6 +20,7 @@ const setOpenFiles = vi.fn();
 const watchDir = vi.fn();
 vi.mock("../../ipc/invoke", () => ({
   setOpenFiles: (...a: unknown[]) => setOpenFiles(...a),
+  unwatchDir: vi.fn(async () => {}),
   watchDir: (...a: unknown[]) => watchDir(...a),
 }));
 
@@ -70,7 +71,7 @@ beforeEach(() => {
 });
 
 describe("useFileWatcher registers the open files with the watcher", () => {
-  // 이것을 실패시키는 것: use-file-watcher.ts 에서 `registerOpenFiles(openFilePaths)` effect 를 지운다.
+  // 이것을 실패시키는 것: use-watch-leases.ts 에서 `registerOpenFiles(openFilePaths)` effect 를 지운다.
   it("sends the open set on mount and again whenever it changes", async () => {
     tabs(OPEN);
     renderHook(() => useFileWatcher());
@@ -92,7 +93,7 @@ describe("useFileWatcher registers the open files with the watcher", () => {
     tabs(OPEN);
     renderHook(() => useFileWatcher());
     await settle();
-    expect(watchDir).toHaveBeenCalledWith("/v");
+    expect(watchDir).toHaveBeenCalledWith("/v", {});
     expect(order.indexOf("setOpenFiles")).toBeLessThan(
       order.indexOf("watchDir"),
     );
@@ -103,7 +104,7 @@ describe("useFileWatcher registers the open files with the watcher", () => {
     setOpenFiles.mockRejectedValue(new Error("ipc"));
     renderHook(() => useFileWatcher());
     await settle();
-    expect(watchDir).toHaveBeenCalledWith("/v");
+    expect(watchDir).toHaveBeenCalledWith("/v", {});
   });
 
   // The watcher then filters nothing (watch_filter.rs) — safe, but not silent.
