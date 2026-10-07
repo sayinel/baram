@@ -182,6 +182,26 @@ describe("installAppUpdate — platform branching", () => {
     );
   });
 
+  // §44 A failure after the install is not an install failure: the releases page would only
+  // offer the version that is already installed (#800).
+  // 이것을 실패시키는 것: app-update.ts 에서 relaunchApp() 을 설치와 같은 try 로 되돌리면 재시작 실패가 설치
+  // 실패로 보고되고 releases 페이지가 열린다.
+  it("a failed relaunch after a good install asks for a manual restart", async () => {
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+    });
+    await checkForAppUpdate(true);
+    relaunchMock.mockRejectedValueOnce(new Error("relaunch refused"));
+
+    await installAppUpdate();
+
+    expect(openUrlMock).not.toHaveBeenCalled();
+    expect(useAppUpdateStore.getState().status).toBe("installed");
+    expect(useAppUpdateStore.getState().fallbackOpened).toBe(false);
+  });
+
   // The fallback is platform-independent: if the in-place install throws on
   // macOS the way it does for a Linux deb, the user must still reach the
   // download. Pinned separately because the mac path no longer has a branch of

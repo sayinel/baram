@@ -107,8 +107,6 @@ export async function installAppUpdate(): Promise<void> {
           break;
       }
     });
-    // §44 Save the chat history first — the relaunch takes the webview with it (#800).
-    await relaunchApp();
   } catch (err) {
     // e.g. Linux deb/rpm: in-app install is unsupported by the plugin.
     logger.warn("[AppUpdate] install failed:", err);
@@ -116,6 +114,16 @@ export async function installAppUpdate(): Promise<void> {
       /* best-effort fallback — nothing more we can do here */
     });
     store.setError(err instanceof Error ? err.message : String(err), true);
+    return;
+  }
+  // §44 The update is installed. Save the chat history and relaunch (#800). A failure from
+  // here on is not an install failure — the releases page would only offer the same
+  // version again — so it keeps the installed state and asks for a manual restart.
+  try {
+    await relaunchApp();
+  } catch (err) {
+    logger.warn("[AppUpdate] relaunch after install failed:", err);
+    store.setInstalled();
   }
 }
 
