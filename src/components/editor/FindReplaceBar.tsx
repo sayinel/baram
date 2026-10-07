@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 
 import {
-  dispatchClearSearch,
   dispatchNextMatch,
   dispatchPrevMatch,
   dispatchReplaceAll,
@@ -171,13 +170,14 @@ export function FindReplaceBar({
     [editor],
   );
 
+  // §5.6 검색을 지우는 것은 여기가 아니라 MarkdownSurface 다 — 메뉴는 이 막대를 거치지
+  // 않고 닫으므로, 닫기 버튼·Esc·메뉴가 같은 처리를 거치게 그쪽 한 곳에 둔다(#792).
   const handleClose = useCallback(() => {
-    dispatchClearSearch(editor.view);
     setLocalSearchTerm("");
     setLocalReplaceWith("");
     lastSelectedRef.current = null;
     onClose();
-  }, [editor, onClose]);
+  }, [onClose]);
 
   // Replace current match — sync local replaceWith to plugin state first
   const handleReplaceCurrent = useCallback(() => {

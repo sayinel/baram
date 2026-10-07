@@ -3,11 +3,8 @@ import { EditorState } from "@tiptap/pm/state";
 // §5.6 Find/Replace — Plugin key, search matching, options, replace
 import { describe, expect, test } from "vitest";
 
-import {
-  buildSearchRegex,
-  findMatches,
-  findReplacePluginKey,
-} from "../plugins/find-replace";
+import { findReplacePluginKey } from "../plugins/find-replace";
+import { buildSearchRegex, findMatches } from "../plugins/find-replace-text";
 
 // ── Minimal schema for unit tests ────────────────────────────────────
 
