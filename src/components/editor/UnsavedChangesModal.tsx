@@ -12,14 +12,13 @@ import type { UnsavedModalRequest } from "../../stores/ui/ui";
 import { useShallow } from "zustand/shallow";
 
 import {
-  quitApp,
-  reloadWindow,
   saveAllDirtyForQuit,
   saveDirtyTab,
   saveDirtyTabsByIds,
   saveDirtyTabsForContexts,
 } from "../../hooks/use-close-guard";
 import { useTranslation } from "../../i18n/useTranslation";
+import { quitApp, reloadWindow } from "../../services/app-exit";
 import { closeContexts } from "../../services/close-context";
 import { useContextStore } from "../../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";

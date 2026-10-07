@@ -8,9 +8,9 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { EditorTab } from "../stores/editor/editor";
 
-import { confirmQuit, updateFileIndex, writeFile } from "../ipc/invoke";
+import { updateFileIndex, writeFile } from "../ipc/invoke";
+import { quitApp, reloadWindow } from "../services/app-exit";
 import { closeContexts } from "../services/close-context";
-import { flushChatPersist } from "../stores/ai/chat";
 import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
@@ -35,21 +35,6 @@ export interface CloseGuardDeps {
 function unsavedTabs(match: (tab: EditorTab) => boolean = () => true) {
   const { sourceEditedTabs, tabs } = useEditorStore.getState();
   return tabs.filter((t) => isTabUnsaved(t, sourceEditedTabs) && match(t));
-}
-
-/**
- * §close-guard The two ways out of the window that take the webview with them. Both save
- * the chat history first: it is written at most once per interval (§44, #800), so the last
- * moments of a conversation may not be on disk yet.
- */
-export async function quitApp(): Promise<void> {
-  await flushChatPersist();
-  await confirmQuit();
-}
-
-export async function reloadWindow(): Promise<void> {
-  await flushChatPersist();
-  window.location.reload();
 }
 
 /**

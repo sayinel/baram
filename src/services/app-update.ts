@@ -18,7 +18,6 @@
 // the only thing standing between a failed replace and a user with no way
 // forward.
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 import { type Locale, t } from "../i18n";
@@ -26,6 +25,7 @@ import { useSettingsStore } from "../stores/settings/store";
 import { useAppUpdateStore } from "../stores/system/app-update";
 import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
+import { relaunchApp } from "./app-exit";
 
 export const RELEASES_URL = "https://github.com/sayinel/baram/releases/latest";
 
@@ -107,7 +107,8 @@ export async function installAppUpdate(): Promise<void> {
           break;
       }
     });
-    await relaunch();
+    // §44 Save the chat history first — the relaunch takes the webview with it (#800).
+    await relaunchApp();
   } catch (err) {
     // e.g. Linux deb/rpm: in-app install is unsupported by the plugin.
     logger.warn("[AppUpdate] install failed:", err);
