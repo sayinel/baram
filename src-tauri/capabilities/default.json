@@ -116,6 +116,7 @@
     "allow-read-file",
     "allow-read-media-data-url",
     "allow-refresh-index",
+    "allow-release-window-watches",
     "allow-remove-config",
     "allow-remove-context",
     "allow-rename-block-id",

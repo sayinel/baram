@@ -266,11 +266,23 @@ export async function watchDir(
   path: string,
   options: { focus?: string; recursive?: boolean } = {},
 ): Promise<number> {
+  await releasePreviousPageWatches();
   return invoke<number>("watch_dir", {
     focus: options.focus ?? null,
     path,
     recursive: options.recursive ?? true,
   });
+}
+
+/**
+ * §3.2 Once per page load, before this page watches anything: give back what an earlier
+ * page of this window still holds (#797). A reload or navigation keeps the window — no
+ * `Destroyed` — and need not run the old page's cleanups.
+ */
+let pageWatchesReset: null | Promise<void> = null;
+function releasePreviousPageWatches(): Promise<void> {
+  pageWatchesReset ??= invoke<void>("release_window_watches").catch(() => {});
+  return pageWatchesReset;
 }
 
 /** §3.2 Give back a watch lease this window holds (#797). */

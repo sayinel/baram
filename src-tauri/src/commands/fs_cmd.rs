@@ -421,6 +421,21 @@ pub async fn unwatch_dir(
     })
 }
 
+/// §3.2 Give back every watch lease the calling window holds (#797). A page calls it
+/// once when it loads, before it watches anything: a reload or navigation fires no
+/// `Destroyed` and need not run the old page's cleanups, so the leases the previous
+/// page took would otherwise stay until the window closes.
+#[tauri::command]
+pub async fn release_window_watches(
+    window: tauri::Window,
+    app_handle: tauri::AppHandle,
+    watcher_state: tauri::State<'_, crate::WatcherState>,
+) -> Result<(), String> {
+    let mut registry = watcher_state.0.lock().map_err(|e| e.to_string())?;
+    registry.release_window(window.label(), &|spec| spawn_watcher(&app_handle, spec));
+    Ok(())
+}
+
 /// How many times an ended watch is tried again once its folder exists, and the
 /// longest wait between tries.
 const REVIVE_ATTEMPTS: u32 = 8;

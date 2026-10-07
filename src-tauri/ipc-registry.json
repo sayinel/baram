@@ -112,6 +112,17 @@
       "description": "호출한 창이 가진 감시 lease 를 돌려준다. 다른 창의 lease 는 거부한다. 폴더의 마지막 lease 가 떠나면 watcher 를 내린다 (issue 797)"
     },
     {
+      "name": "release_window_watches",
+      "input": {},
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 3,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "호출한 창의 감시 lease 를 모두 돌려준다. 새로고침은 창을 남기므로 페이지가 첫 watch_dir 전에 한 번 부른다 (issue 797)"
+    },
+    {
       "name": "set_open_files",
       "input": {
         "paths": "string[]"

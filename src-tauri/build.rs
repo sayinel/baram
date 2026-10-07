@@ -122,6 +122,7 @@ fn main() {
         "read_file",
         "read_media_data_url",
         "refresh_index",
+        "release_window_watches",
         "remove_config",
         "remove_context",
         "rename_block_id",
