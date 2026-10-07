@@ -63,7 +63,7 @@ afterEach(() => {
 });
 
 describe("watch-leases", () => {
-  // 이것을 실패시키는 것: capacity 로 거부된 watch 를 버린다 — 또는 `watch:retry` 에 바로 다시 묻지 않는다 — 또는 경고를 띄우지 않는다.
+  // 이것을 실패시키는 것: capacity 로 거부된 watch 를 버린다 — 또는 `watch:retry` 에 바로 다시 묻지 않는다 — 또는 경고가 할 일을 말하지 않는다.
   it("shows a watch refused at the cap and takes it once room is made", async () => {
     const { want, WatchWarning } = await load();
     watchDir.mockRejectedValueOnce(
@@ -72,7 +72,9 @@ describe("watch-leases", () => {
     render(<WatchWarning />);
     const handle = want("/out", { focus: "/out/x.md", recursive: false });
     await flush();
-    expect(screen.getByRole("alert").textContent).toMatch(/1/);
+    // It says what to do: free a watch by closing other folders' tabs; it retries itself.
+    expect(screen.getByRole("alert").textContent).toMatch(/1 folder watch/);
+    expect(screen.getByRole("alert").textContent).toMatch(/Close tabs/);
     expect(watchDir).toHaveBeenCalledTimes(1);
     // A watcher stopped somewhere: room.
     await fire("watch:retry");
@@ -118,13 +120,15 @@ describe("watch-leases", () => {
   // (the folder was gone), and nothing in Rust announces its return.
   // 이것을 실패시키는 것: 인가·용량 거부에는 backoff 를 걸지 않고 `watch:retry` 만 기다린다.
   it("takes again a watch refused while its folder was gone, without any event", async () => {
-    const { useWatchStatusStore, want } = await load();
+    const { useWatchStatusStore, want, WatchWarning } = await load();
+    render(<WatchWarning />);
     const handle = want("/v");
     await flush();
     watchDir.mockRejectedValueOnce("watch-unauthorized: /v does not exist");
     live.delete(1);
     await fire("watch:lease-ended", { lease: 1 });
     expect(useWatchStatusStore.getState().queued.unauthorized).toBe(1);
+    expect(screen.getByRole("alert").textContent).toMatch(/approve/);
     await flush(1_000);
     expect(watchDir).toHaveBeenCalledTimes(3);
     expect(live.size).toBe(1);
