@@ -120,6 +120,11 @@ export const useChatStore = create<ChatState>()(
       },
 
       updateLastMessage: (sessionId, content) => {
+        // §44 Equality gate (#800): every streamed token comes through here. Nothing to change
+        // → no `set`, because each one schedules a save and wakes every subscriber.
+        const session = get().sessions.find((s) => s.id === sessionId);
+        const last = session?.messages.at(-1);
+        if (!last || last.content === content) return;
         set((state) => ({
           sessions: state.sessions.map((s) =>
             s.id === sessionId && s.messages.length > 0

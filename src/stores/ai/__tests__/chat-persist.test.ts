@@ -101,4 +101,35 @@ describe("§44 chat history saves (#800)", () => {
     expect(chatWrites()).toHaveLength(1);
     expect(lastSavedContent()).toBe("half a reply");
   });
+
+  // 이것을 실패시키는 것: updateLastMessage 의 `if (!last || last.content === content) return` 관문을 지우면
+  // 바뀔 것이 없는 갱신도 store 를 깨우고 저장을 예약한다.
+  it("writes nothing for an unchanged update or an update to a deleted session", async () => {
+    useChatStore.getState().updateLastMessage(session, "same");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHAT_SAVE_INTERVAL_MS);
+    });
+    setConfig.mockClear();
+    let storeWrites = 0;
+    const unsubscribe = useChatStore.subscribe(() => storeWrites++);
+
+    useChatStore.getState().updateLastMessage(session, "same");
+    useChatStore.getState().updateLastMessage("gone", "anything");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHAT_SAVE_INTERVAL_MS);
+    });
+    await settle();
+
+    expect(storeWrites).toBe(0);
+    expect(chatWrites()).toHaveLength(0);
+    // 긍정 짝 — 바뀌는 갱신은 store 를 깨우고 저장한다.
+    useChatStore.getState().updateLastMessage(session, "different");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(CHAT_SAVE_INTERVAL_MS);
+    });
+    await settle();
+    expect(storeWrites).toBe(1);
+    expect(chatWrites()).toHaveLength(1);
+    unsubscribe();
+  });
 });
