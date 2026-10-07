@@ -500,3 +500,33 @@ fn an_atomic_replace_in_a_non_recursive_folder_reaches_the_open_file() {
     assert!(changed > 0, "no change reported for the replaced open file");
     assert_eq!(deep, 0);
 }
+
+#[cfg(unix)]
+#[test]
+fn an_event_is_reported_in_every_spelling_the_leases_registered() {
+    // The OS reports the resolved spelling (`/private/var/…` on macOS); a tab opened
+    // under the alias compares paths byte for byte and must get its own.
+    // 이것을 실패시키는 것: `route` 가 `respell` 없이 OS 의 표기를 그대로 낸다.
+    let real = tempfile::tempdir().unwrap();
+    let real_root = std::fs::canonicalize(real.path()).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let alias = links.path().join("vault");
+    std::os::unix::fs::symlink(&real_root, &alias).unwrap();
+    let spellings: Spellings = Arc::new(RwLock::new(vec![alias.clone()]));
+    let mut f = WatchFilter::for_watch(&alias, true, Focus::default(), Arc::clone(&spellings));
+    let probe = CountingProbe::default();
+    let note = real_root.join("note.md");
+    let emitted = route_all(&mut f, &written(&note), &probe);
+    let paths: Vec<&str> = emitted.iter().map(Emit::path).collect();
+    let expected = alias.join("note.md").to_string_lossy().into_owned();
+    assert_eq!(paths, vec![expected.as_str(), expected.as_str()]);
+
+    // Two spellings registered: each gets the event.
+    spellings.write().unwrap().push(real_root.clone());
+    let emitted = route_all(&mut f, &[written(&note)[1].clone()], &probe);
+    let mut paths: Vec<String> = emitted.iter().map(|e| e.path().to_string()).collect();
+    paths.sort();
+    let mut want = vec![expected, note.to_string_lossy().into_owned()];
+    want.sort();
+    assert_eq!(paths, want);
+}

@@ -18,14 +18,24 @@ impl Drop for Fake {
 struct Spawner {
     log: Rc<RefCell<Vec<String>>>,
     specs: RefCell<Vec<(String, bool)>>,
+    /// The focus files and spellings each watcher had when it started.
+    sets: RefCell<Vec<(HashSet<PathBuf>, Vec<PathBuf>)>>,
+    fail: std::cell::Cell<bool>,
 }
 
 impl Spawner {
     fn spawn(&self, spec: &WatchSpec) -> Result<Fake, FsError> {
+        if self.fail.get() {
+            return Err(FsError::WatchError("refused".into()));
+        }
         let id = self.specs.borrow().len();
         self.specs
             .borrow_mut()
             .push((spec.root.clone(), spec.recursive));
+        self.sets.borrow_mut().push((
+            spec.focus.read().unwrap().clone(),
+            spec.spellings.read().unwrap().clone(),
+        ));
         self.log.borrow_mut().push(format!("start {id}"));
         Ok(Fake {
             id,
@@ -222,4 +232,118 @@ fn two_spellings_of_one_folder_share_a_watcher_started_with_the_first_spelling()
     assert_eq!(r.live_watches(), 1);
     // The vault root as registered is what the watch judges paths against.
     assert_eq!(s.specs.borrow().clone(), vec![(alias, true)]);
+}
+
+#[test]
+fn a_new_watcher_starts_with_its_focus_file_and_spelling_already_in_place() {
+    // An event can arrive the moment the watcher starts; with an empty focus set an
+    // atomic replace of the file it watches for would route as a creation only.
+    // 이것을 실패시키는 것: `install` 이 spawn 뒤에 `refresh_sets` 를 부른다.
+    let (_d, dir) = tmp();
+    let s = Spawner::default();
+    let spawn = |spec: &WatchSpec| s.spawn(spec);
+    let mut r: WatchRegistry<Fake> = WatchRegistry::default();
+    r.acquire("main", &dir, false, Some("/d/a.md"), &spawn)
+        .unwrap();
+    let (focus, spellings) = s.sets.borrow()[0].clone();
+    assert!(focus.contains(&PathBuf::from("/d/a.md")));
+    assert_eq!(spellings, vec![PathBuf::from(&dir)]);
+}
+
+#[test]
+fn a_watcher_that_fails_to_start_leaves_nothing_behind() {
+    // 이것을 실패시키는 것: spawn 이 실패해도 lease 나 빈 항목을 남긴다.
+    let (_d, dir) = tmp();
+    let s = Spawner::default();
+    let spawn = |spec: &WatchSpec| s.spawn(spec);
+    let mut r: WatchRegistry<Fake> = WatchRegistry::default();
+    s.fail.set(true);
+    assert!(r
+        .acquire("main", &dir, false, Some("/d/a.md"), &spawn)
+        .is_err());
+    assert_eq!(r.leases(), 0);
+    assert!(r.watches.is_empty());
+    // A failed widening keeps the narrow watcher and its own lease only.
+    s.fail.set(false);
+    r.acquire("main", &dir, false, Some("/d/a.md"), &spawn)
+        .unwrap();
+    s.fail.set(true);
+    assert!(r.acquire("main", &dir, true, None, &spawn).is_err());
+    assert_eq!(r.leases(), 1);
+    assert!(!r.watches.values().next().unwrap().recursive);
+    assert_eq!(
+        r.watches
+            .values()
+            .next()
+            .unwrap()
+            .spellings
+            .read()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn the_app_watches_at_most_its_cap_of_folders() {
+    // 이것을 실패시키는 것: `acquire` 의 전체 폴더 상한 검사를 지운다.
+    let s = Spawner::default();
+    let spawn = |spec: &WatchSpec| s.spawn(spec);
+    let mut r: WatchRegistry<Fake> = WatchRegistry::default();
+    let dirs: Vec<tempfile::TempDir> = (0..=MAX_WATCHED_FOLDERS)
+        .map(|_| tempfile::tempdir().unwrap())
+        .collect();
+    for (i, d) in dirs.iter().take(MAX_WATCHED_FOLDERS).enumerate() {
+        let window = if i % 2 == 0 { "main" } else { "file-1" };
+        r.acquire(window, &d.path().to_string_lossy(), true, None, &spawn)
+            .unwrap();
+    }
+    let extra = dirs[MAX_WATCHED_FOLDERS]
+        .path()
+        .to_string_lossy()
+        .into_owned();
+    assert!(r.acquire("file-2", &extra, true, None, &spawn).is_err());
+    // A folder already watched takes another lease.
+    let first = dirs[0].path().to_string_lossy().into_owned();
+    assert!(r.acquire("file-2", &first, true, None, &spawn).is_ok());
+}
+
+#[test]
+fn an_ended_watcher_is_started_again_by_the_next_lease_or_by_revive() {
+    // The native watch ends when its folder is deleted (#797); the entry must not be
+    // taken for a live watch.
+    // 이것을 실패시키는 것: `install` 이 handle 없는 항목을 살아 있는 것으로 보고 다시 시작하지 않는다.
+    let (_d, dir) = tmp();
+    let s = Spawner::default();
+    let spawn = |spec: &WatchSpec| s.spawn(spec);
+    let mut r: WatchRegistry<Fake> = WatchRegistry::default();
+    r.acquire("main", &dir, true, None, &spawn).unwrap();
+    let key = canonical(&dir);
+    r.watch_ended(&key);
+    assert_eq!(r.live_watches(), 0);
+    assert_eq!(r.leases(), 1);
+    r.acquire("file-1", &dir, false, Some("/d/a.md"), &spawn)
+        .unwrap();
+    assert_eq!(r.live_watches(), 1);
+    // The restarted watcher keeps the scope its leases need.
+    assert!(s.specs.borrow().last().unwrap().1);
+
+    // 이것을 실패시키는 것: `revive` 가 끝난 watcher 를 다시 시작하지 않는다 — 또는 살아 있어도 또 시작한다.
+    r.watch_ended(&key);
+    assert!(r.revive(&key, &spawn));
+    assert!(r.revive(&key, &spawn));
+    let starts = s.log().iter().filter(|l| l.starts_with("start")).count();
+    assert_eq!(starts, 3);
+}
+
+#[test]
+fn revive_does_nothing_for_a_folder_nobody_holds() {
+    let (_d, dir) = tmp();
+    let s = Spawner::default();
+    let spawn = |spec: &WatchSpec| s.spawn(spec);
+    let mut r: WatchRegistry<Fake> = WatchRegistry::default();
+    let id = r.acquire("main", &dir, true, None, &spawn).unwrap();
+    r.release("main", id, &spawn).unwrap();
+    assert!(!r.revive(&canonical(&dir), &spawn));
+    assert_eq!(r.live_watches(), 0);
 }

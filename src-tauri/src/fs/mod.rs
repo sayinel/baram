@@ -16,7 +16,7 @@ pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
 pub use walk::{collect_all_files, collect_md_files, walk_vault, Collect};
 
 use crate::commands::fs_cmd::FileEntry;
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
@@ -796,6 +796,7 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 pub(crate) fn start_watching(
     spec: &watch_registry::WatchSpec,
     app_handle: tauri::AppHandle,
+    on_end: Box<dyn Fn() + Send>,
 ) -> Result<RecommendedWatcher, FsError> {
     let path = spec.root.clone();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
@@ -819,10 +820,29 @@ pub(crate) fn start_watching(
     // tx is dropped, rx becomes disconnected, and this thread exits on its own.
     // §3.2 Which events reach the webview is `watch_filter`'s call (issue 795): the
     // vault walk's exclusion, judged relative to this root, before any metadata read.
-    let mut filter =
-        watch_filter::WatchFilter::for_watch(Path::new(&path), spec.recursive, spec.focus.clone());
+    let mut filter = watch_filter::WatchFilter::for_watch(
+        Path::new(&path),
+        spec.recursive,
+        spec.focus.clone(),
+        spec.spellings.clone(),
+    );
+    let root = spec.key.clone();
+    let spelled_root = PathBuf::from(&path);
     std::thread::spawn(move || {
-        for event in rx.into_iter().flatten() {
+        for result in rx {
+            // §3.2 A watcher that errors, or whose folder is removed, has stopped
+            // watching (#797): say so, so its registry entry is not taken for a live
+            // watch, and stop routing.
+            let event = match result {
+                Ok(event) => event,
+                Err(e) => {
+                    log::warn!("§3.2 watcher on {}: {e}; ended", root.display());
+                    on_end();
+                    return;
+                }
+            };
+            let root_removed = matches!(event.kind, EventKind::Remove(_))
+                && event.paths.iter().any(|p| p == &root || p == &spelled_root);
             for emit in filter.route(&event, &watch_filter::RealProbe) {
                 let _ = match emit {
                     watch_filter::Emit::Created {
@@ -845,6 +865,14 @@ pub(crate) fn start_watching(
                         serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
                     ),
                 };
+            }
+            if root_removed {
+                log::warn!(
+                    "§3.2 watched folder {} was removed; watch ended",
+                    root.display()
+                );
+                on_end();
+                return;
             }
         }
     });

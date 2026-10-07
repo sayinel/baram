@@ -470,7 +470,7 @@ pub fn run() {
                 let app = window.app_handle().clone();
                 if let Ok(mut registry) = window.state::<WatcherState>().0.lock() {
                     registry.release_window(window.label(), &|spec| {
-                        crate::fs::start_watching(spec, app.clone())
+                        crate::commands::fs_cmd::spawn_watcher(&app, spec)
                     });
                 }
             }

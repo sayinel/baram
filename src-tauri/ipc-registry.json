@@ -96,7 +96,7 @@
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "description": "디렉토리 감시를 호출한 창의 lease 로 잡는다 (notify crate). 같은 폴더의 watcher 는 하나이고 재귀 lease 가 있으면 재귀, 아니면 비재귀다. focus 는 그 lease 가 지켜보는 파일로, 그 watch 의 필터가 열린 파일로 다룬다. 창이 닫히면 그 창의 lease 를 모두 돌려준다 (issue 797)"
+      "description": "디렉토리 감시를 호출한 창의 lease 로 잡는다 (notify crate). 같은 폴더의 watcher 는 하나이고 재귀 lease 가 있으면 재귀, 아니면 비재귀다. focus 는 그 lease 가 지켜보는 파일로, 그 watch 의 필터가 열린 파일로 다룬다. 재귀 lease 는 등록된 디렉터리 context 의 root 만, 비재귀 lease 는 열 수 있는 파일(focus)과 그 canonical 부모 폴더만 받는다. 앱 전체에서 감시하는 폴더 수에 상한이 있다. 창이 닫히면 그 창의 lease 를 모두 돌려준다 (issue 797)"
     },
     {
       "name": "unwatch_dir",

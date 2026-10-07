@@ -175,6 +175,12 @@ pub(crate) enum Emit {
 /// leases come and go.
 pub(crate) type Focus = Arc<RwLock<HashSet<PathBuf>>>;
 
+/// The spellings the leases of one watch registered its folder under (#797). The
+/// watcher reports paths in the spelling the OS gives (on macOS `/private/var/…` for a
+/// folder opened as `/var/…`), while the frontend compares paths byte for byte with
+/// the ones it opened — so an event is reported once per registered spelling.
+pub(crate) type Spellings = Arc<RwLock<Vec<PathBuf>>>;
+
 /// The drop rule of one watched root.
 ///
 /// A recursive watch is a vault's: it judges by that vault's `VaultExclusion` and the
@@ -189,18 +195,27 @@ pub(crate) struct WatchFilter {
     exclusion: VaultExclusion,
     open: OpenFiles,
     focus: Focus,
+    spellings: Spellings,
 }
 
 impl WatchFilter {
     /// The filter of a watch on `root` as spelled — for a vault, the root as the context
     /// registered it, so the root-relative judgement holds whichever spelling the
     /// watcher reports paths in (`VaultExclusion::relative`).
-    pub(crate) fn for_watch(root: &Path, recursive: bool, focus: Focus) -> Self {
-        Self::with_open_files(root, recursive, Arc::clone(&OPEN_FILES), focus)
+    pub(crate) fn for_watch(
+        root: &Path,
+        recursive: bool,
+        focus: Focus,
+        spellings: Spellings,
+    ) -> Self {
+        let mut filter = Self::with_open_files(root, recursive, Arc::clone(&OPEN_FILES), focus);
+        filter.spellings = spellings;
+        filter
     }
 
     fn with_open_files(root: &Path, recursive: bool, open: OpenFiles, focus: Focus) -> Self {
         Self {
+            spellings: Spellings::default(),
             root: root.to_path_buf(),
             recursive,
             exclusion: if recursive {
@@ -319,7 +334,69 @@ impl WatchFilter {
                 }),
             }
         }
+        self.respell(out)
+    }
+
+    /// Each event once per spelling the leases registered this folder under, the path
+    /// rebuilt below that spelling. With no spelling known — or a path the folder
+    /// does not hold — the OS spelling stands.
+    fn respell(&self, emits: Vec<Emit>) -> Vec<Emit> {
+        let spellings = self.spellings.read().map(|s| s.clone()).unwrap_or_default();
+        if spellings.is_empty() {
+            return emits;
+        }
+        let canonical = std::fs::canonicalize(&self.root).ok();
+        let mut out = Vec::new();
+        for emit in emits {
+            let path = PathBuf::from(emit.path());
+            let relative = canonical
+                .as_deref()
+                .and_then(|c| path.strip_prefix(c).ok())
+                .or_else(|| spellings.iter().find_map(|s| path.strip_prefix(s).ok()))
+                .map(Path::to_path_buf);
+            let Some(relative) = relative else {
+                out.push(emit);
+                continue;
+            };
+            let mut seen = HashSet::new();
+            for spelling in &spellings {
+                let respelled = if relative.as_os_str().is_empty() {
+                    spelling.clone()
+                } else {
+                    spelling.join(&relative)
+                };
+                if seen.insert(respelled.clone()) {
+                    out.push(emit.with_path(respelled.to_string_lossy().into_owned()));
+                }
+            }
+        }
         out
+    }
+}
+
+impl Emit {
+    fn path(&self) -> &str {
+        match self {
+            Emit::Created { path, .. } | Emit::Deleted { path } | Emit::Changed { path, .. } => {
+                path
+            }
+        }
+    }
+
+    fn with_path(&self, path: String) -> Emit {
+        match self {
+            Emit::Created { is_dir, origin, .. } => Emit::Created {
+                path,
+                is_dir: *is_dir,
+                origin,
+            },
+            Emit::Deleted { .. } => Emit::Deleted { path },
+            Emit::Changed { mtime, origin, .. } => Emit::Changed {
+                path,
+                mtime: *mtime,
+                origin,
+            },
+        }
     }
 }
 
