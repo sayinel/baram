@@ -1671,6 +1671,7 @@
   "video.loadError": "Cannot load the video — the file is missing or this platform does not support the format: {src}",
   "video.noDocumentPath": "Save the document before adding “{name}”.",
   "video.saveFailed": "Could not save the video “{name}”.",
+  "viewer.edit.pullFailed": "The viewer could not hand over its content, so the file is now shown as source. Changes made after it last handed over its text are not included.",
   "viewer.noPlugin": "No viewer plugin is enabled for this file type. You can turn one on in Settings › Plugins.",
   "wikilink.create.exists": "“{name}” already exists, but this link does not find it. No new note was created.",
   "wikilink.vault": "{alias} vault",

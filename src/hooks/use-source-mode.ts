@@ -18,6 +18,7 @@ import {
   mdastBlocksToPmNodes,
 } from "../pipeline/md-to-pm";
 import { parseMdastAsync } from "../pipeline/parse-async";
+import { deliverHostWrite } from "../plugins/viewer-edit-mounts";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import {
   mdOffsetToPmPos,
@@ -38,6 +39,7 @@ import {
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isMarkdownFile } from "../utils/file-type";
 import { LARGE_DOC_BLOCK_THRESHOLD } from "./use-large-doc-keepalive";
+import { pullViewerEdit } from "./viewer-edit-pull";
 
 /** Shared ref type for registering progressive append handles so all cancel
  *  sites (tab switch, cleanup) can cancel source-mode fills too. */
@@ -131,10 +133,13 @@ export function useSourceMode({
   );
   const isSourceMode = !!activeTabId && sourceModeTabs.has(activeTabId);
 
-  const getSourceBuffer = useCallback(
-    (tabId: string): string => buffersRef.current.get(tabId) ?? "",
-    [],
-  );
+  // §392 spec 0071 §6.3 (D9) — every reader of a tab's text comes through here, so a change an
+  // editable viewer reported and the host has not taken yet is taken in this one place, before
+  // the read. The take writes the map only — see `pullViewerEdit`.
+  const getSourceBuffer = useCallback((tabId: string): string => {
+    pullViewerEdit(buffersRef.current, tabId);
+    return buffersRef.current.get(tabId) ?? "";
+  }, []);
   const hasSourceBuffer = useCallback(
     (tabId: string): boolean => buffersRef.current.has(tabId),
     // bufferVersion을 deps에 두어, 버퍼가 처음 채워진 렌더에서 이 콜백의 참조가 바뀌고
@@ -143,8 +148,16 @@ export function useSourceMode({
     [bufferVersion],
   );
   const setSourceBuffer = useCallback((tabId: string, content: string) => {
+    const previous = buffersRef.current.get(tabId);
     buffersRef.current.set(tabId, content);
     setBufferVersion((v) => v + 1);
+    // §392 spec 0071 §6.4 — another writer changed the text: the tab's editing mount, if it
+    // has one, is sent the new text, and its untaken change is dropped (the host's text
+    // replaces it). Compared with the buffer's value just before, not with what the viewer was
+    // last sent: after a take made the buffer T1, a write back to the first text T0 must still
+    // go out. Synchronous, not in a later effect — a take between this write and that effect
+    // would put the viewer's older model over the new text.
+    if (previous !== content) deliverHostWrite(tabId, content);
   }, []);
   const sourceCursorOffsetFor = useCallback(
     (tabId: string): number => cursorOffsetsRef.current.get(tabId) ?? 0,
