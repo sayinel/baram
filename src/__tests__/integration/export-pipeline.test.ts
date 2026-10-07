@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { generateStandaloneHTML } from "../../utils/export/export-html";
+import { exportedKatexCSS } from "../../utils/export/export-katex-fonts";
 import { createTestSchema, FIXTURE_RICH } from "./fixtures";
 
 const schema = createTestSchema();
@@ -39,7 +40,9 @@ describe("Integration: HTML Export Pipeline", () => {
       "<table><tr><th>Name</th><th>Value</th></tr><tr><td>alpha</td><td>1</td></tr></table>",
     ].join("\n");
 
-    const standalone = generateStandaloneHTML(editorHTML, "Test Document");
+    const standalone = generateStandaloneHTML(editorHTML, "Test Document", {
+      katexCSS: exportedKatexCSS(),
+    });
 
     // Valid HTML5 structure
     expect(standalone).toContain("<!DOCTYPE html>");
@@ -76,6 +79,7 @@ describe("Integration: HTML Export Pipeline", () => {
     const standalone = generateStandaloneHTML(
       '<div class="math-block"><span class="math-block-katex">E = mc^2</span></div>',
       "Math",
+      { katexCSS: exportedKatexCSS() },
     );
     expect(standalone).toContain(".math-block");
     expect(standalone).toContain("E = mc^2");

@@ -46,7 +46,8 @@ const generateStandaloneHTML = vi.fn(
   (_editorHTML: string, _title: string, _options?: Record<string, unknown>) =>
     "<html></html>",
 );
-vi.mock("../export-html", () => ({
+vi.mock("../export-html", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../export-html")>()),
   captureEditorHTML: vi.fn(async () => "<p>hello</p>"),
   generateStandaloneHTML,
 }));

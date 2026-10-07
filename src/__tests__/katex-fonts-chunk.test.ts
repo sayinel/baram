@@ -7,9 +7,14 @@
 // chunk App.tsx loads lazily. A font no group claims stays with its importer.
 // This reads the real config and the real import list, so a font the export
 // adds later is checked too.
+//
+// The export chunk itself is not enough either: AppDialogs renders the lazy
+// ExportDialog unconditionally, and `lazy()` starts its import on that first
+// render — at startup. So the font module must be reached only through
+// `import()` at export time, never statically; the last block pins that.
 import type { ConfigEnv, UserConfig } from "vite";
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
@@ -73,5 +78,52 @@ describe("vite codeSplitting and the export's KaTeX fonts", () => {
     expect(
       katex?.test?.test("C:\\repo\\node_modules\\katex\\dist\\katex.mjs"),
     ).toBe(true);
+  });
+});
+
+/** Every production source file under src (tests and fixtures excluded). */
+function productionSources(): Array<{ file: string; text: string }> {
+  const root = path.resolve(import.meta.dirname, "..");
+  const out: Array<{ file: string; text: string }> = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "__tests__") walk(full);
+      } else if (
+        /\.(ts|tsx)$/.test(entry.name) &&
+        !/\.test\.(ts|tsx)$/.test(entry.name)
+      ) {
+        out.push({ file: full, text: readFileSync(full, "utf8") });
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+
+describe("the export's KaTeX font module is reached only at export time", () => {
+  // A static import (or re-export) pulls the module — and its 20 inlined
+  // fonts — into its importer's chunk. `import type` is erased and does not.
+  const STATIC =
+    /^\s*(?:import(?!\s+type\b)|export)\b[^;]*?from\s*["'][^"']*\/export-katex-fonts["']/m;
+  const DYNAMIC = /import\(\s*["'][^"']*\/export-katex-fonts["']\s*\)/;
+
+  // 이것을 실패시키는 것: export-html.ts 에서 `inlineKatexFonts` 를 다시 정적으로 import 한다.
+  it("is imported statically by no production file", () => {
+    const sources = productionSources();
+    expect(sources.length).toBeGreaterThan(100);
+    const offenders = sources
+      .filter((s) => STATIC.test(s.text))
+      .map((s) => path.relative(process.cwd(), s.file));
+    expect(offenders).toEqual([]);
+  });
+
+  // 위의 빈 목록이 스캔이 아무것도 못 읽어서가 아님을 보인다 — export 경로가 그 모듈을 부르는 자리.
+  it("is loaded through import() by the export path", () => {
+    const loaders = productionSources()
+      .filter((s) => DYNAMIC.test(s.text))
+      .map((s) => path.basename(s.file));
+    expect(loaders).toEqual(["export.ts"]);
   });
 });

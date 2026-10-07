@@ -2,8 +2,6 @@ import type { CodeBlockInfo } from "./export-html-code-block";
 // §5.12 HTML Export — Standalone HTML document generator
 import type { Editor } from "@tiptap/core";
 
-import katexCSS from "katex/dist/katex.min.css?raw";
-
 import { withVirtualizationSuspendedAsync } from "../../extensions/plugins/viewport-virtualize";
 import { useSettingsStore } from "../../stores/settings/store";
 import { exportFontVariables } from "./export-font-embed";
@@ -28,7 +26,6 @@ import {
   stripMediaChrome,
 } from "./export-html-media";
 import { buildExportStylesheet } from "./export-html-styles";
-import { inlineKatexFonts } from "./export-katex-fonts";
 
 export interface CaptureEditorHTMLOptions {
   /**
@@ -53,6 +50,15 @@ export interface ExportHTMLOptions {
    * existing call site's output unchanged.
    */
   fontFaceCSS?: string;
+  /**
+   * §5.12 — KaTeX's stylesheet with its fonts embedded (`exportedKatexCSS` in
+   * export-katex-fonts.ts). Required when `needsKatexStylesheet` says the
+   * document has math; `generateStandaloneHTML` throws without it rather than
+   * ship formulas in fallback fonts. The caller loads it with a dynamic
+   * `import()` (`export.ts`): the 20 fonts are ~400KB the app must not read
+   * before an export runs (issue 799).
+   */
+  katexCSS?: string;
   /**
    * §362 — the active theme's `:root` block, built by `themeTokensBlock` and
    * resolved by the caller (`export.ts`'s two entry points, gated on
@@ -271,7 +277,7 @@ export function generateStandaloneHTML(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Baram">
   <title>${safeTitle}</title>
-  ${katexStyles(editorHTML)}
+  ${katexStyles(editorHTML, options?.katexCSS)}
   <style>${buildExportStylesheet(options?.fontFaceCSS, options?.themeTokens)}</style>
 </head>
 <body>
@@ -307,6 +313,14 @@ function isAuthoredMarkup(el: Element): boolean {
 }
 
 /**
+ * Whether an export of `editorHTML` ships KaTeX's stylesheet — the caller asks
+ * this before loading it (see `katexStyles` for the test itself).
+ */
+export function needsKatexStylesheet(editorHTML: string): boolean {
+  return editorHTML.includes("katex");
+}
+
+/**
  * KaTeX's stylesheet — fonts embedded — or nothing at all.
  *
  * The 20 inlined woff2 faces are ~400KB of base64 and a document with no
@@ -322,7 +336,12 @@ function isAuthoredMarkup(el: Element): boolean {
  * a document with math keeps the stylesheet even if something went wrong
  * upstream.
  */
-function katexStyles(editorHTML: string): string {
-  if (!editorHTML.includes("katex")) return "";
-  return `<style>${inlineKatexFonts(katexCSS)}</style>`;
+function katexStyles(editorHTML: string, katexCSS: string | undefined): string {
+  if (!needsKatexStylesheet(editorHTML)) return "";
+  if (katexCSS === undefined) {
+    throw new Error(
+      "generateStandaloneHTML: the document has math but no katexCSS was given",
+    );
+  }
+  return `<style>${katexCSS}</style>`;
 }
