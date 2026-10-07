@@ -19,6 +19,7 @@ import {
   captureEditorHTML,
   generateStandaloneHTML,
 } from "../export/export-html";
+import { exportedKatexCSS } from "../export/export-katex-fonts";
 
 /**
  * A minimal mock Editor: `view.dom` is the given element.
@@ -64,7 +65,9 @@ describe("generateStandaloneHTML", () => {
   });
 
   it("ships KaTeX's stylesheet for a document that has math", () => {
-    const html = generateStandaloneHTML('<p class="katex">x</p>', "Test");
+    const html = generateStandaloneHTML('<p class="katex">x</p>', "Test", {
+      katexCSS: exportedKatexCSS(),
+    });
     // Two blocks: KaTeX's own sheet, then everything Baram ships (tokens + the
     // editor's rescoped CSS + export frame + print).
     expect(html.match(/<style>/g)).toHaveLength(2);
