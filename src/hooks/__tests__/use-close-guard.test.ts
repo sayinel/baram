@@ -19,6 +19,7 @@ import type { EditorTab } from "../../stores/editor/editor";
 import type { CloseGuardDeps } from "../use-close-guard";
 
 import { confirmQuit, writeFile } from "../../ipc/invoke";
+import { startClosedTabRelease } from "../../stores/editor/closed-tab-release";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
@@ -331,6 +332,32 @@ describe("saveDirtyTabsForContexts", () => {
     expect(
       useEditorStore.getState().tabs.find((t) => t.id === "theirs")?.isDirty,
     ).toBe(true);
+  });
+
+  // §3.5 (#798) 닫힌 탭의 원문을 내려놓아도 닫기 전 저장은 그 원문을 그대로 쓴다 — 저장을 기다린
+  // 뒤에 탭을 닫기 때문이다.
+  it("writes the cached content first, and the close then releases it", async () => {
+    const stop = startClosedTabRelease();
+    try {
+      const mine = fileTab({ contextId: "a", filePath: "/v/a/mine.md" });
+      useEditorStore.setState({ activeTabId: null, tabs: [mine] });
+      useFileStore.setState({
+        openFiles: new Map([["/v/a/mine.md", "mine content"]]),
+      });
+
+      expect(await saveDirtyTabsForContexts(["a"], makeDeps(vi.fn()))).toBe(
+        true,
+      );
+      useEditorStore.getState().closeTabsForContexts(new Set(["a"]));
+
+      expect(writeFile).toHaveBeenCalledExactlyOnceWith(
+        "/v/a/mine.md",
+        "mine content",
+      );
+      expect(useFileStore.getState().openFiles.size).toBe(0);
+    } finally {
+      stop();
+    }
   });
 
   it("writes nothing when no tab in those contexts is dirty", async () => {

@@ -23,6 +23,7 @@ import {
 import { openFolder } from "../services/vault-context-loader";
 import { getSpace } from "../spaces";
 import { useContextStore } from "../stores/context/context";
+import { startClosedTabRelease } from "../stores/editor/closed-tab-release";
 import { startLastOpenedFileRecorder } from "../stores/editor/last-opened-file";
 import { useSettingsStore } from "../stores/settings/store";
 import { waitForHydration } from "../stores/system/hydration";
@@ -80,6 +81,8 @@ export function useAppStartup({
   // recorder writes it. Started here, with the restore it serves: an effect, so
   // StrictMode's remount unsubscribes the first subscription before the second.
   useEffect(() => startLastOpenedFileRecorder(), []);
+  // §3.5 닫힌 탭의 원문을 내려놓는다(#798).
+  useEffect(() => startClosedTabRelease(), []);
 
   // onLaunch — restore folder/file on startup
   const onLaunchDone = useRef(false);

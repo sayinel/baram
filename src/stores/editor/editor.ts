@@ -455,12 +455,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     });
 
-    // Clean up original doc tracking for dirty detection
-    if (target && !target.isPinned) {
-      import("../../utils/editor/programmatic-update").then(
-        ({ clearOriginalDoc }) => clearOriginalDoc(tabId),
-      );
-    }
+    // 닫힌 탭의 원문 · dirty 기준 문서는 closed-tab-release.ts 가 탭 배열의 변화를 보고 내려놓는다(#798).
 
     // §89 Auto-remove FileContext when its last tab is closed
     if (target && !target.isPinned && target.contextId) {
@@ -717,13 +712,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     });
 
-    // Same dirty-detection cleanup `closeTab` does. No §89 FileContext sweep here:
-    // every doomed tab belongs to a context the caller is removing outright.
-    import("../../utils/editor/programmatic-update").then(
-      ({ clearOriginalDoc }) => {
-        for (const id of ids) clearOriginalDoc(id);
-      },
-    );
+    // No §89 FileContext sweep here: every doomed tab belongs to a context the caller is
+    // removing outright. The dirty-detection cleanup is closed-tab-release.ts's (#798).
   },
 
   closeAllTabs: () =>
