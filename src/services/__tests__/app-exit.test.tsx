@@ -28,6 +28,7 @@ vi.mock("@tauri-apps/plugin-process", () => ({ relaunch }));
 import { TabSurface } from "../../components/editor/TabSurface";
 import { ErrorBoundary } from "../../components/ErrorBoundary";
 import { confirmQuit } from "../../ipc/invoke";
+import { useChatStore } from "../../stores/ai/chat";
 import {
   EXIT_SAVE_TIMEOUT_MS,
   quitApp,
@@ -181,6 +182,42 @@ describe("§44 a stuck save cannot keep the app from quitting (#800)", () => {
     });
     finishSaves();
     await settle();
+    vi.mocked(confirmQuit).mockClear();
+
+    void quitApp();
+    await settle();
+    expect(flushChatPersist).toHaveBeenCalledTimes(2);
+    expect(confirmQuit).not.toHaveBeenCalled();
+  });
+
+  // 이것을 실패시키는 것: app-exit.ts 의 `leave` 가 종료 동작이 실패했을 때 `abandoned = null` 을 하지 않으면,
+  // 떠나지 못한 앱의 다음 종료가 저장 없이 떠난다.
+  it("saves again after an exit that timed out and then failed to leave", async () => {
+    vi.mocked(confirmQuit).mockRejectedValueOnce(new Error("quit refused"));
+    const first = quitApp().catch(() => undefined);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(EXIT_SAVE_TIMEOUT_MS);
+    });
+    await first;
+    // 백엔드가 살아나 멈췄던 저장이 끝나기 전에 다시 종료한다.
+    void quitApp();
+    await settle();
+
+    expect(flushChatPersist).toHaveBeenCalledTimes(2);
+    expect(confirmQuit).toHaveBeenCalledTimes(1);
+    finishSaves();
+    await settle();
+    expect(confirmQuit).toHaveBeenCalledTimes(2);
+  });
+
+  // 이것을 실패시키는 것: saveBeforeExit 의 `abandoned.chat === useChatStore.getState()` 비교를 빼면, 그 뒤에
+  // 이어진 대화가 다음 종료에서 저장되지 않는다.
+  it("saves again when the chat changed since the exit that gave up", async () => {
+    void quitApp();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(EXIT_SAVE_TIMEOUT_MS);
+    });
+    useChatStore.setState({ activeSessionId: "a new chat" });
     vi.mocked(confirmQuit).mockClear();
 
     void quitApp();
