@@ -18,4 +18,11 @@ describe("block-link", () => {
       "((prompt#^abc123))",
     );
   });
+
+  it("§390 writes a file name stored decomposed composed (D7)", () => {
+    // What fails this: blockBasename keeping the stored spelling.
+    const stored = "노트".normalize("NFD");
+    expect(stored).not.toBe("노트");
+    expect(blockBasename(`/v/${stored}.md`)).toBe("노트");
+  });
 });

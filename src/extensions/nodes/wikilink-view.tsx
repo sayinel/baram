@@ -10,8 +10,8 @@ import { Calendar } from "lucide-react";
 
 import { Tooltip } from "../../components/Tooltip";
 import { useTranslation } from "../../i18n/useTranslation";
-import { useContextStore } from "../../stores/context/context";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
+import { findAliasContext } from "../../utils/editor/wikilink-nav";
 import { isDateString } from "../../utils/journal/journal";
 import {
   capNoteTitle,
@@ -53,12 +53,12 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
 
   const isDate = isDateString(target);
 
-  // §87 Cross-vault: resolve vault context for color badge and dangling state
+  // §87 Cross-vault: resolve vault context for color badge and dangling state.
+  // §317 · §390 The ruler a click uses (`findAliasContext`): space names
+  // (`Journal::`), and aliases under foldName.
   const vaultInfo = useMemo(() => {
     if (!vaultAlias) return null;
-    const contexts = useContextStore.getState().contexts;
-    const aliasLower = vaultAlias.toLowerCase();
-    const ctx = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
+    const ctx = findAliasContext(vaultAlias);
     return {
       color: ctx?.color ?? null,
       open: !!ctx,

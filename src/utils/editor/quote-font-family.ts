@@ -41,6 +41,7 @@ export const GENERIC_FAMILIES = new Set([
 export function quoteFamily(name: string): string {
   const trimmed = name.trim();
   if (trimmed === "") return "";
+  // eslint-disable-next-line no-restricted-properties -- a font family name checked against the ASCII CSS generic keywords, not a file name
   if (GENERIC_FAMILIES.has(trimmed.toLowerCase())) return trimmed;
   const escaped = trimmed.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
   return `"${escaped}"`;

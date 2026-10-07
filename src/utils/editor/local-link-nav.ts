@@ -12,6 +12,7 @@
 //
 // ‼️ 이 함수는 해석을 **추가만** 한다. 지금 앱에서 열리는 링크(`.md`/`.markdown`)는
 // 호출부가 별도로 계속 붙잡으므로, 여기서 못 찾았다고 기존 링크가 외부로 새지 않는다.
+import { foldName } from "../name-fold";
 import { decodePercent, normalizePath } from "../path-utils";
 
 /** 트리에서 조회할 때 필요한 최소 형태 — `FlatFile`이 이것을 만족한다. */
@@ -97,13 +98,14 @@ export function resolveLocalLinkTarget(
   for (const candidate of candidates) {
     if (files.some((f) => f.path === candidate)) return candidate;
   }
-  // 대소문자 무시는 정확 일치가 전부 실패한 뒤에만. macOS/Windows의 기본
-  // 파일시스템은 대소문자를 구분하지 않으므로 사용자가 링크에 적은 대소문자가
-  // 파일명과 다를 수 있다. 순서를 지켜야 대소문자만 다른 두 파일이 공존하는
-  // 대소문자 구분 파일시스템에서 정확한 쪽이 이긴다.
+  // `foldName` 기준(NFC → 소문자 → NFC, §390) 비교는 정확 일치가 전부 실패한
+  // 뒤에만. macOS/Windows의 기본 파일시스템은 대소문자를 구분하지 않고, macOS 의
+  // 일부 도구는 한글 이름을 분해형(NFD)으로 저장하므로 링크에 적은 글자가
+  // 파일명과 다를 수 있다. 순서를 지켜야 대소문자나 정규화만 다른 두 파일이 공존하는
+  // 파일시스템에서 정확한 쪽이 이긴다.
   for (const candidate of candidates) {
-    const lower = candidate.toLowerCase();
-    const hit = files.find((f) => f.path.toLowerCase() === lower);
+    const key = foldName(candidate);
+    const hit = files.find((f) => foldName(f.path) === key);
     if (hit) return hit.path;
   }
   return null;

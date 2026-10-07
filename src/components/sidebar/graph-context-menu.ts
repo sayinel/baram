@@ -61,5 +61,6 @@ export function nodeClipboardText(target: GraphNodeMenuTarget): string {
   if (target.isTag) {
     return `#${target.nodeId.slice(TAG_PREFIX.length)}`;
   }
-  return `[[${displayName(target.nodeId)}]]`;
+  // §390 D7 — the link text is composed (NFC), whatever spelling the disk stores.
+  return `[[${displayName(target.nodeId).normalize("NFC")}]]`;
 }

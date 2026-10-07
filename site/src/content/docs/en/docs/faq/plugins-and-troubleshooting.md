@@ -116,7 +116,7 @@ If you believe there's a roundtrip bug, please [report it on GitHub](https://git
 ### Wikilinks aren't working
 
 - Make sure you have a workspace (folder) open — wikilinks link to files within your workspace
-- File names are matched case-insensitively
+- File names are matched case-insensitively, and it makes no difference whether the file system stores Korean or accented letters composed (NFC) or decomposed (NFD)
 - If autocomplete doesn't show a file, check that the file exists in your workspace folder
 
 ### Where are the log files?

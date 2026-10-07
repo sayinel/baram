@@ -16,15 +16,19 @@ vi.mock("../../components/editor/pdf/pdf-highlight-store", () => ({
   readSidecar,
 }));
 
-// ‼️ BOTH exports. use-navigation now imports `findAliasContext` from this
-// module too, and a partial mock would leave it undefined — the failure would
-// surface as a TypeError inside an async IIFE, i.e. swallowed.
+// ‼️ Every export use-navigation imports from this module (`findAliasContext`,
+// `findNoteByStem`, `resolveWikilinkTarget`): vitest throws on reading one the
+// mock lacks. `findAliasContext` and `resolveWikilinkTarget` are read in
+// `handleWikilinkNavigate` itself, so a missing one throws out of it;
+// `findNoteByStem` is read inside the cross-vault fallback's async IIFE, whose
+// `try` would swallow the throw and log it through `logger` (mocked below).
 const { findAliasContext, resolveWikilinkTarget } = vi.hoisted(() => ({
   findAliasContext: vi.fn(),
   resolveWikilinkTarget: vi.fn(),
 }));
 vi.mock("../../utils/editor/wikilink-nav", () => ({
   findAliasContext,
+  findNoteByStem: vi.fn(() => null),
   resolveWikilinkTarget,
 }));
 

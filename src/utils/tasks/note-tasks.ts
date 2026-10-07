@@ -8,6 +8,7 @@
 // 말하는 날이 온다.
 import type { TaskEntry } from "../../ipc/types";
 
+import { foldName } from "../name-fold";
 import { basename, toPosixPath } from "../path-utils";
 import { extractLeadingId } from "../zettelkasten/parse-note-title";
 import { linkTarget } from "./task-links";
@@ -83,7 +84,8 @@ function targetsNote(raw: string, note: NoteIdentity): boolean {
   const target = linkTarget(raw);
   if (target === "") return false;
   if (note.id !== null && target === note.id) return true;
-  // 파일명은 대소문자를 가리지 않는다 — macOS·Windows 파일 시스템이 그렇고, 링크를 적는
-  // 사람도 그렇게 적는다.
-  return target.toLowerCase() === note.stem.toLowerCase();
+  // 파일명은 `foldName` 기준(NFC → 소문자 → NFC, §390)으로 맞춘다 — macOS·Windows 의
+  // 기본 파일 시스템은 대소문자를 구분하지 않고, 링크를 적는 사람도 그렇게 적는다. 디스크가
+  // 분해형(NFD)으로 저장한 이름도 키보드로 친 완성형 글자와 같은 이름이다.
+  return foldName(target) === foldName(note.stem);
 }

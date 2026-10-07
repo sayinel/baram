@@ -1293,23 +1293,25 @@ pub(super) mod tests {
     /// issue 620 — the cross-language contract: the editor's text path
     /// (`block-id-rename-markdown.ts`) and this reader→writer chain rewrite
     /// the same references. The expectations live in the JSON, not in
-    /// either implementation; the vitest side reads the same file.
+    /// either implementation; the vitest side reads the same file. A case
+    /// may name its own `target` in place of the top-level one (spec 0069 D5).
     #[test]
     fn the_rename_fixtures_shared_with_the_frontend_hold() {
         let doc: serde_json::Value =
             serde_json::from_str(include_str!("../md/fixtures/literal-regions.json")).unwrap();
         let referrer = doc["referrer"].as_str().unwrap();
-        let target = doc["target"].as_str().unwrap();
+        let default_target = doc["target"].as_str().unwrap();
         let (old, new) = (doc["old"].as_str().unwrap(), doc["new"].as_str().unwrap());
         for case in doc["cases"].as_array().unwrap() {
             let (name, markdown) = (
                 case["name"].as_str().unwrap(),
                 case["markdown"].as_str().unwrap(),
             );
+            let path = case["target"].as_str().unwrap_or(default_target);
             let target = BlockTarget {
                 keys_by_root: vec![(
                     "/vault".to_string(),
-                    crate::index::keys_for(target, Some("/vault"), &[], false),
+                    crate::index::keys_for(path, Some("/vault"), &[], false),
                 )],
                 known_paths: Default::default(),
                 windows: false,

@@ -3,6 +3,8 @@ import type { UnlinkedMention } from "../../ipc/types";
 // §34 Unlinked Mentions — integration tests
 import { describe, expect, test } from "vitest";
 
+import { linkifyMention } from "../../components/sidebar/linkify-mention";
+
 /** Group unlinked mentions by source file — mirrors Backlinks.tsx logic */
 function groupUnlinkedByFile(
   entries: UnlinkedMention[],
@@ -23,27 +25,6 @@ function groupUnlinkedByFile(
     sourcePath,
     entries: groupEntries,
   }));
-}
-
-/** Simulate linkify: replace matchText on line with [[target]] */
-function linkifyLine(
-  lineContent: string,
-  matchText: string,
-  currentStem: string,
-): string {
-  const matchIdx = lineContent.toLowerCase().indexOf(matchText.toLowerCase());
-  if (matchIdx === -1) return lineContent;
-
-  const before = lineContent.slice(0, matchIdx);
-  const matched = lineContent.slice(matchIdx, matchIdx + matchText.length);
-  const after = lineContent.slice(matchIdx + matchText.length);
-
-  const wikilink =
-    matched === currentStem
-      ? `[[${currentStem}]]`
-      : `[[${currentStem}|${matched}]]`;
-
-  return before + wikilink + after;
 }
 
 describe("§34 Unlinked Mentions", () => {
@@ -102,7 +83,7 @@ describe("§34 Unlinked Mentions", () => {
 
   describe("linkify (convert mention to wikilink)", () => {
     test("wraps exact match as [[target]]", () => {
-      const result = linkifyLine(
+      const result = linkifyMention(
         "discusses architecture patterns",
         "architecture",
         "architecture",
@@ -111,7 +92,7 @@ describe("§34 Unlinked Mentions", () => {
     });
 
     test("uses alias syntax when case differs", () => {
-      const result = linkifyLine(
+      const result = linkifyMention(
         "discusses Architecture patterns",
         "Architecture",
         "architecture",
@@ -120,7 +101,7 @@ describe("§34 Unlinked Mentions", () => {
     });
 
     test("preserves surrounding text", () => {
-      const result = linkifyLine(
+      const result = linkifyMention(
         "the architecture is important for architecture",
         "architecture",
         "architecture",
@@ -129,17 +110,17 @@ describe("§34 Unlinked Mentions", () => {
       expect(result).toBe("the [[architecture]] is important for architecture");
     });
 
-    test("returns original line when matchText not found", () => {
-      const result = linkifyLine(
+    test("returns null when matchText is not found", () => {
+      const result = linkifyMention(
         "no match here",
         "architecture",
         "architecture",
       );
-      expect(result).toBe("no match here");
+      expect(result).toBeNull();
     });
 
     test("handles match at start of line", () => {
-      const result = linkifyLine(
+      const result = linkifyMention(
         "architecture is key",
         "architecture",
         "architecture",
@@ -148,7 +129,7 @@ describe("§34 Unlinked Mentions", () => {
     });
 
     test("handles match at end of line", () => {
-      const result = linkifyLine(
+      const result = linkifyMention(
         "about the architecture",
         "architecture",
         "architecture",
