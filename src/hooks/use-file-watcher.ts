@@ -9,7 +9,7 @@ import type { FileEntry } from "../stores/file/file";
 import { useShallow } from "zustand/shallow";
 
 import defaultExcludedDirs from "../../src-tauri/src/fs/default-excluded-dirs.json";
-import { watchDir } from "../ipc/invoke";
+import { setOpenFiles, watchDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { logger } from "../utils/logger";
@@ -222,6 +222,16 @@ export function useFileWatcher() {
       logger.warn("useFileWatcher: watchDir failed", err),
     );
   }, [rootPath]);
+
+  // §3.2 The Rust watcher drops events below excluded folders (`build/`, `target/`, …)
+  // except for the files open here, whose reload and conflict checks need them
+  // wherever they live (issue 795). Sent on every change of the open set; until the
+  // first call lands, an open file in such a folder gets no events.
+  useEffect(() => {
+    setOpenFiles(openFilePaths).catch((err) =>
+      logger.warn("useFileWatcher: setOpenFiles failed", err),
+    );
+  }, [openFilePaths]);
 
   // §3.6 Out-of-vault files: when the vault is open (so the watcher listeners
   // above are active), also watch the parent directory of any open file that
