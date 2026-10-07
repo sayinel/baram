@@ -6,6 +6,9 @@
 //! The frontend sends what the watcher saw and nothing else; the rule for
 //! what each path means lives here:
 //!
+//! - a file reported in two spellings (`/var/…` and `/private/var/…`, #797: the watcher
+//!   reports an event once per spelling its leases registered) is taken once, under the
+//!   first; the others count neither as applied nor as failed;
 //! - a path a vault build would not walk is ignored — judged per containing
 //!   context by that root's `VaultExclusion` (issue 794: a hidden component, the
 //!   default list, the root's `.baramignore`), the judgement the build's walk uses.
@@ -30,7 +33,7 @@
 //! about 300 ms of batching later — #824 tracks moving that guarantee into
 //! Rust for every writer.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::context::manager::{resolve_canonical, Registered};
@@ -42,14 +45,16 @@ use super::keys::buildable;
 use super::query::update_file_index_inner;
 use super::state::{LinkIndexState, Mutation};
 
-/// What a sync did: how many paths reached an index, and which could not be
-/// applied — for the caller to retry. A failed rebuild reports every path that
-/// asked for it.
+/// What a sync did: how many files reached an index, and which paths could not
+/// be applied — for the caller to retry. A failed rebuild reports every path that
+/// asked for it. `distinct` is how many files the paths named, each spelling of
+/// one counted once.
 #[derive(Debug, Default, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchedSync {
     pub applied: u32,
     pub failed: Vec<String>,
+    pub distinct: u32,
 }
 
 /// Bring `paths` into every index containing them.
@@ -65,11 +70,15 @@ pub(crate) async fn sync_watched_paths_inner(
     // Key → that root's matcher, read once per sync; `None` when its
     // `.baramignore` cannot be used.
     let mut exclusions: HashMap<String, Option<VaultExclusion>> = HashMap::new();
+    let mut seen: HashSet<std::path::PathBuf> = HashSet::new();
     for path in paths {
         let Ok(canonical) = resolve_canonical(path) else {
             failed.push(path.clone());
             continue;
         };
+        if !seen.insert(canonical.clone()) {
+            continue;
+        }
         let metadata = tokio::fs::metadata(path).await;
         let is_dir = metadata.as_ref().is_ok_and(|m| m.is_dir());
         let mut contexts: Vec<(Registered, VaultExclusion)> = Vec::new();
@@ -157,7 +166,11 @@ pub(crate) async fn sync_watched_paths_inner(
     }
     failed.sort();
     failed.dedup();
-    WatchedSync { applied, failed }
+    WatchedSync {
+        applied,
+        failed,
+        distinct: seen.len() as u32,
+    }
 }
 
 /// The markdown rule a vault build reads notes by (`fs::collect_md_files`).

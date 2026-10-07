@@ -245,3 +245,29 @@ async fn a_root_with_an_unusable_baramignore_takes_nothing_and_reports_the_path(
     let graph = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
     assert!(!graph.1.contains(&(path, format!("{root}/a.md"))));
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn one_note_reported_in_two_spellings_is_indexed_once() {
+    // #797: the watcher reports an event once per spelling its leases registered, so a
+    // vault opened through a link sends each change twice.
+    // 이것을 실패시키는 것: `seen` 으로 canonical 중복을 거르지 않는다 — 노트가 spelling 마다 다시 읽힌다.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-s", true).await;
+    let links = tempfile::tempdir().unwrap();
+    let alias = links.path().join("vault");
+    std::os::unix::fs::symlink(dir.path(), &alias).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    std::fs::write(dir.path().join("b.md"), "back to [[a]]").unwrap();
+    let paths = [
+        format!("{root}/b.md"),
+        alias.join("b.md").to_string_lossy().into_owned(),
+    ];
+    let result = sync_watched_paths_inner(&state, &ctx, &paths).await;
+    assert!(result.failed.is_empty(), "{:?}", result.failed);
+    assert_eq!((result.applied, result.distinct), (1, 1));
+    // The change still landed.
+    let graph = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
+    assert!(graph.1.iter().any(|(from, _)| from.ends_with("b.md")));
+}
