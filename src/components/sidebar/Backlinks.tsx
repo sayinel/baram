@@ -26,6 +26,7 @@ import {
   groupBacklinksByFile,
   groupBacklinksByNamespace,
 } from "./backlink-utils";
+import { linkifyMention } from "./linkify-mention";
 
 export function Backlinks() {
   const { t } = useTranslation();
@@ -194,27 +195,15 @@ export function Backlinks() {
 
         if (lineIdx < 0 || lineIdx >= lines.length) return;
 
-        // Replace the first occurrence of matchText on this line with [[target]]
-        const line = lines[lineIdx];
-        const matchIdx = line
-          .toLowerCase()
-          .indexOf(mention.matchText.toLowerCase());
-        if (matchIdx === -1) return;
-
-        const before = line.slice(0, matchIdx);
-        const matched = line.slice(
-          matchIdx,
-          matchIdx + mention.matchText.length,
+        // §34 · §390 The first occurrence of the mention becomes a link
+        // (`linkifyMention`); a line that no longer holds it is left alone.
+        const linked = linkifyMention(
+          lines[lineIdx],
+          mention.matchText,
+          currentStem,
         );
-        const after = line.slice(matchIdx + mention.matchText.length);
-
-        // If matchText differs from stem (including case), use alias syntax: [[stem|matchText]]
-        const wikilink =
-          matched === currentStem
-            ? `[[${currentStem}]]`
-            : `[[${currentStem}|${matched}]]`;
-
-        lines[lineIdx] = before + wikilink + after;
+        if (linked === null) return;
+        lines[lineIdx] = linked;
         const newContent = lines.join("\n");
 
         await writeFile(mention.sourcePath, newContent);

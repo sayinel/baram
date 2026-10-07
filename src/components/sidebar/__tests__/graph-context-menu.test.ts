@@ -92,3 +92,14 @@ describe("nodeClipboardText", () => {
     ).toBe("[[missing]]");
   });
 });
+
+describe("§390 nodeClipboardText", () => {
+  it("copies a note name stored decomposed composed (D7)", () => {
+    // What fails this: the link text keeping the stored spelling.
+    const stored = "노트".normalize("NFD");
+    expect(stored).not.toBe("노트");
+    expect(nodeClipboardText(target({ nodeId: `/vault/${stored}.md` }))).toBe(
+      "[[노트]]",
+    );
+  });
+});
