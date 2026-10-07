@@ -26,6 +26,7 @@ import {
 } from "../../utils/file-search";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
+import { foldName } from "../../utils/name-fold";
 import { extractNamespace } from "../../utils/path-utils";
 import {
   extractHeadingsFromDoc,
@@ -157,13 +158,12 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
 
     // "filename#heading" → find best matching file, load its headings
     setCurrentFileHeadings([]);
+    // §390 Scored once each, then sorted — see `results`.
     const matched = allFiles
       .filter((f) => fuzzyMatch(parsedQuery.fileQuery, f.name))
-      .sort(
-        (a, b) =>
-          fuzzyScore(parsedQuery.fileQuery, a.name) -
-          fuzzyScore(parsedQuery.fileQuery, b.name),
-      );
+      .map((f) => ({ f, score: fuzzyScore(parsedQuery.fileQuery, f.name) }))
+      .sort((a, b) => a.score - b.score)
+      .map(({ f }) => f);
 
     const target = matched[0];
     if (!target) {
@@ -225,12 +225,13 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       resolvedJournalDir,
     );
 
-    // §61 Namespace filter
+    // §61 Namespace filter — §390 folders compare under foldName: a folder
+    // the disk stores decomposed (NFD) answers to the name typed.
     if (parsedQuery.nsFilter) {
-      const nsLower = parsedQuery.nsFilter.toLowerCase();
+      const nsKey = foldName(parsedQuery.nsFilter);
       candidateFiles = candidateFiles.filter((f) => {
         const ns = extractNamespace(f.relativePath);
-        return ns ? ns.toLowerCase().includes(nsLower) : nsLower === "";
+        return ns ? foldName(ns).includes(nsKey) : nsKey === "";
       });
     }
 
@@ -245,9 +246,17 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       return items;
     }
 
+    // §390 Each candidate is scored once, then sorted: fuzzyScore folds its
+    // two strings on every call (foldName), and a comparator that scores calls
+    // it twice per comparison — over 10,000 names that alone passed the 16 ms
+    // keystroke budget for one query of five (`e`: 16.06–16.79 ms; the other
+    // four 3.8–11.2 ms — minima of single runs, not medians. V8 in jsdom, plan
+    // 0120, measured 2026-10-06/07).
     const matched = candidateFiles
       .filter((f) => fuzzyMatch(q, f.relativePath) || fuzzyMatch(q, f.name))
-      .sort((a, b) => fuzzyScore(q, a.name) - fuzzyScore(q, b.name));
+      .map((f) => ({ f, score: fuzzyScore(q, f.name) }))
+      .sort((a, b) => a.score - b.score)
+      .map(({ f }) => f);
 
     const items: ResultItem[] = matched.slice(0, 50).map((f) => ({
       type: "file" as const,
@@ -256,12 +265,16 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       detail: extractNamespace(f.relativePath),
     }));
 
+    // §390 Folded once rather than per row: `matched` holds every file that
+    // matches, while `items` holds only its first 50.
+    const qKey = foldName(q);
+
     // Only offer "create" when no prefix or namespace filter active
     if (
       !parsedQuery.prefix &&
       !parsedQuery.nsFilter &&
       q &&
-      !matched.some((f) => f.name.toLowerCase() === q.toLowerCase())
+      !matched.some((f) => foldName(f.name) === qKey)
     ) {
       items.push({
         type: "create",

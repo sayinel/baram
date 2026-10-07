@@ -44,9 +44,14 @@ export function useFileTreeSearch(): UseFileTreeSearchReturn {
         (f) => globMatch(q, f.name) || globMatch(q, f.relativePath),
       );
     }
+    // §390 Each match is scored once, then sorted, as Quick Switcher's
+    // `results` is: fuzzyScore folds on every call, and a comparator that
+    // scores calls it twice per comparison.
     return flat
       .filter((f) => fuzzyMatch(q, f.name))
-      .sort((a, b) => fuzzyScore(q, a.name) - fuzzyScore(q, b.name));
+      .map((f) => ({ f, score: fuzzyScore(q, f.name) }))
+      .sort((a, b) => a.score - b.score)
+      .map(({ f }) => f);
   }, [searchQuery, fileTree, rootPath]);
 
   // Tag filter: fetch matching file paths when tagFilter changes

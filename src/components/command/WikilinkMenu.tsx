@@ -13,6 +13,7 @@ import type { WikilinkSuggestionItem } from "../../extensions/plugins/wikilink-s
 
 import { ChevronDown, ChevronRight, Folder, Plus } from "lucide-react";
 
+import { foldName } from "../../utils/name-fold";
 import { basename, dirname } from "../../utils/path-utils";
 
 export interface WikilinkMenuRef {
@@ -44,7 +45,8 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
     }, [items]);
 
     /**
-     * §95 이름이 겹치는 파일 행의 label(소문자 기준) 집합.
+     * §95 이름이 겹치는 파일 행의 label 집합 — `foldName` 기준(NFC → 소문자 →
+     * NFC, §390).
      *
      * 설계 §95는 중복 제목을 "폴더/ID/미리보기로 구분"한다고 적었는데, 목록에서
      * ID를 뺀 뒤로 남은 구분 수단이 없다 — 제목이 같은 두 노트는 **글자 하나까지
@@ -59,7 +61,7 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
       const counts = new Map<string, number>();
       for (const i of items) {
         if (!isFileRow(i)) continue;
-        const key = i.label.toLowerCase();
+        const key = foldName(i.label);
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
       return new Set(
@@ -212,12 +214,11 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
                   <span className="wikilink-item-label">{item.label}</span>
                   {/* §95 이름이 겹친 행에만 붙는 상위 폴더. 배지와 같은 이유로
                       flex-shrink:0 — 말줄임이 이름 끝을 먹어도 남아야 한다. */}
-                  {ambiguousLabels.has(item.label.toLowerCase()) &&
-                    item.path && (
-                      <span className="wikilink-item-folder">
-                        {basename(dirname(item.path))}
-                      </span>
-                    )}
+                  {ambiguousLabels.has(foldName(item.label)) && item.path && (
+                    <span className="wikilink-item-folder">
+                      {basename(dirname(item.path))}
+                    </span>
+                  )}
                   {/* §278 마크다운이 아닌 항목만 — 배지 없는 줄이 곧 노트다.
                       말줄임이 이름의 끝을 먹어도 타입은 남는다(links.css의
                       flex-shrink:0). PDF와 그 동반 노트는 이름이 같으므로

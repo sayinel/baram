@@ -273,3 +273,39 @@ describe("maybeRefreshForPath", () => {
     expect(listDir).not.toHaveBeenCalled();
   });
 });
+
+describe("§390 idForTitle across normalization", () => {
+  beforeEach(() => useZettelIndexStore.getState().clear());
+
+  it("finds a title the index holds decomposed from the title typed", () => {
+    // What fails this: idForTitle comparing by toLowerCase.
+    const title = "원자적 노트";
+    const stored = title.normalize("NFD");
+    expect(stored).not.toBe(title);
+    const note = {
+      id: "202610061300",
+      path: `notes/202610061300 ${stored}.md`,
+      title: stored,
+    };
+    useZettelIndexStore.getState().setAll([note]);
+    expect(idForTitle(title)).toBe("202610061300");
+    expect(idForTitle("다른 노트")).toBeNull();
+  });
+
+  it("finds a title the index holds composed from the title typed decomposed", () => {
+    // The other side of the comparison: the case above types composed text over
+    // a decomposed title, so folding the stored titles alone passes it.
+    // What fails this: idForTitle folding the stored titles but not the title
+    // typed (`q`).
+    const title = "원자적 노트";
+    const typed = title.normalize("NFD");
+    expect(typed).not.toBe(title);
+    const note = {
+      id: "202610061300",
+      path: `notes/202610061300 ${title}.md`,
+      title,
+    };
+    useZettelIndexStore.getState().setAll([note]);
+    expect(idForTitle(typed)).toBe("202610061300");
+  });
+});

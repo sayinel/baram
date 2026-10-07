@@ -15,6 +15,7 @@
 
 import { BLOCK_REF_RE, unescapeBlockRefTarget } from "../../pipeline/block-id";
 import { markdownParser } from "../../pipeline/markdown-parser";
+import { foldName } from "../name-fold";
 import { basename, dirname } from "../path-utils";
 
 type Range = [start: number, end: number];
@@ -27,11 +28,16 @@ type Range = [start: number, end: number];
  * active. Accepted as "this document": the empty target (`((#^id))`); a
  * relative path (`./x`, `../y/x`) that resolves, against this file's
  * directory, to this file; a path-qualified target (`a/x`) that this file's
- * path ends with; a bare stem equal to this file's stem. Stems compare
- * case-insensitively and without `.md`/`.markdown`, as the resolver does. A
- * bare stem that another file in another folder also carries is ambiguous;
- * the resolver would pick one by its own rules, this treats it as ours — the
- * same choice the transaction builder makes, so the two paths agree.
+ * path ends with; a bare stem equal to this file's stem. Names and paths
+ * compare under `foldName` (NFC, lowercase, NFC — §390) and without
+ * `.md`/`.markdown`, as the resolver does. A path is folded whole and
+ * `basename` then cuts the folded copy, where spec 0069 D2 splits before
+ * folding; the result is the same, because `/` is a barrier for NFC (it
+ * composes with no mark) and for the final-sigma rule (it is neither cased nor
+ * case-ignorable), so `basename(foldName(p))` is `foldName(basename(p))`. A
+ * bare stem that another file in another folder also carries is ambiguous; the
+ * resolver would pick one by its own rules, this treats it as ours — the same
+ * choice the transaction builder makes, so the two paths agree.
  */
 export function refersToThisDocument(
   target: string,
@@ -41,15 +47,17 @@ export function refersToThisDocument(
   // Tauri hands out native paths — `C:\vault\note.md` on Windows; the
   // helpers below speak `/`.
   const raw = unescapeBlockRefTarget(target).replaceAll("\\", "/");
-  const here = withoutExtension(filePath.replaceAll("\\", "/")).toLowerCase();
+  const here = foldName(withoutExtension(filePath.replaceAll("\\", "/")));
   if (raw.startsWith("./") || raw.startsWith("../")) {
     return (
-      normalizePath(
-        `${dirname(filePath.replaceAll("\\", "/"))}/${withoutExtension(raw)}`,
-      ).toLowerCase() === here
+      foldName(
+        normalizePath(
+          `${dirname(filePath.replaceAll("\\", "/"))}/${withoutExtension(raw)}`,
+        ),
+      ) === here
     );
   }
-  const wanted = withoutExtension(raw).replace(/^\/+/, "").toLowerCase();
+  const wanted = foldName(withoutExtension(raw).replace(/^\/+/, ""));
   if (wanted.includes("/")) {
     return here === wanted || here.endsWith(`/${wanted}`);
   }

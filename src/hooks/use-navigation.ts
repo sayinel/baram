@@ -28,6 +28,7 @@ import {
 import { planLocalLinkNavigation } from "../utils/editor/local-link-nav";
 import {
   findAliasContext,
+  findNoteByStem,
   resolveWikilinkTarget,
 } from "../utils/editor/wikilink-nav";
 import { flattenFileTree } from "../utils/file-search";
@@ -174,15 +175,7 @@ export function useNavigation({
               const entries = await listDir(ctx.path, true);
               const tree = buildFileTree(entries, ctx.path);
               const flat = flattenFileTree(tree, ctx.path);
-              const targetLower = target.toLowerCase();
-              const match = flat.find((f) => {
-                if (!f.name.endsWith(".md") && !f.name.endsWith(".markdown"))
-                  return false;
-                const stem = f.name.endsWith(".markdown")
-                  ? f.name.slice(0, -9)
-                  : f.name.slice(0, -3);
-                return stem.toLowerCase() === targetLower;
-              });
+              const match = findNoteByStem(flat, target);
               if (match) {
                 await handleOpenFilePath(match.path);
               }
@@ -250,13 +243,12 @@ export function useNavigation({
             await createDir(parentDir).catch(() => {});
 
             // `createFile`, never `writeFile`: the latter replaces whatever is at the
-            // path, and the link failing to resolve is no evidence the path is free.
-            // The name in the link and the name on disk can differ in a way the
-            // resolver does not fold — Unicode normalization: a note saved by macOS
-            // with a decomposed (NFD) Korean name, linked by text typed in the
-            // composed form (NFC). On APFS both spellings open the same file, so the
-            // write emptied that note to the one heading line. The OS refuses a
-            // taken path instead, and nothing below runs.
+            // path, and the link failing to resolve is no evidence the path is free —
+            // the resolver reads the file tree, not the disk. Before §390 a note saved
+            // by macOS with a decomposed (NFD) Korean name was not matched by text
+            // typed in the composed form (NFC); on APFS both spellings open the same
+            // file, so the write emptied that note to the one heading line (#814).
+            // The OS refuses a taken path instead, and nothing below runs.
             try {
               await createFile(newPath, `# ${target}\n`);
             } catch (err) {

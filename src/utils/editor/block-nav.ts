@@ -66,12 +66,14 @@ export function findHeadingPosByText(
   doc: PmNode,
   heading: string,
 ): null | number {
+  // eslint-disable-next-line no-restricted-properties -- heading text matched against a note's body, not a file name; a body that is itself NFD is out of scope (spec 0069 §8)
   const headingLower = heading.toLowerCase();
   let found: null | number = null;
   doc.descendants((node, pos) => {
     if (found !== null) return false;
     if (
       node.type.name === "heading" &&
+      // eslint-disable-next-line no-restricted-properties -- heading text matched against a note's body, not a file name; a body that is itself NFD is out of scope (spec 0069 §8)
       node.textContent.toLowerCase() === headingLower
     ) {
       found = pos;

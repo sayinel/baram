@@ -27,3 +27,35 @@ describe("toWikilinkLabel", () => {
     expect(toWikilinkLabel("/r/README", "/r", ["/r/README"])).toBe("README");
   });
 });
+
+describe("§390 toWikilinkLabel across normalization", () => {
+  const NOTE = "노트";
+  const NOTE_NFD = NOTE.normalize("NFD");
+
+  it("writes a name stored decomposed composed (D7)", () => {
+    // What fails this: the label keeping the stored spelling.
+    expect(NOTE_NFD).not.toBe(NOTE);
+    expect(
+      toWikilinkLabel(`/r/${NOTE_NFD}.md`, "/r", [`/r/${NOTE_NFD}.md`]),
+    ).toBe(NOTE);
+  });
+
+  it("counts a name stored both ways as one name, and qualifies both", () => {
+    // What fails this: the collision check comparing bytes — the two names
+    // then look unique, and `[[노트]]` is copied for a name the link index
+    // reads as two notes.
+    const paths = [`/r/a/${NOTE}.md`, `/r/b/${NOTE_NFD}.md`];
+    expect(toWikilinkLabel(paths[0], "/r", paths)).toBe(`a/${NOTE}`);
+    expect(toWikilinkLabel(paths[1], "/r", paths)).toBe(`b/${NOTE}`);
+  });
+
+  it("counts names that differ only in case as one name, and qualifies both", () => {
+    // What fails this: the collision check composing the name but not
+    // lowercasing it — `foldName` replaced by NFC alone — so the two look
+    // unique and `[[Note]]` is copied for a name the link index reads as one
+    // key.
+    const paths = ["/r/a/Note.md", "/r/b/note.md"];
+    expect(toWikilinkLabel(paths[0], "/r", paths)).toBe("a/Note");
+    expect(toWikilinkLabel(paths[1], "/r", paths)).toBe("b/note");
+  });
+});

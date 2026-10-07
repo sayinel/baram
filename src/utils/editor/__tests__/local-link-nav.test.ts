@@ -206,3 +206,39 @@ describe("§278.1 planLocalLinkNavigation", () => {
     ).toBe("a b");
   });
 });
+
+describe("§390 a file the disk stores decomposed (NFD)", () => {
+  const PAPER = "논문";
+  const PAPER_NFD = PAPER.normalize("NFD");
+  const DIR = "프로젝트";
+  const DIR_NFD = DIR.normalize("NFD");
+
+  it("is found from a link typed composed", () => {
+    // What fails this: the fallback comparing by toLowerCase.
+    expect(PAPER_NFD).not.toBe(PAPER);
+    const files = [{ path: `/v/${DIR_NFD}/${PAPER_NFD}.pdf` }];
+    expect(resolveLocalLinkTarget(`${PAPER}.pdf`, `/v/${DIR_NFD}`, files)).toBe(
+      `/v/${DIR_NFD}/${PAPER_NFD}.pdf`,
+    );
+    expect(
+      resolveLocalLinkTarget(`../${DIR}/${PAPER}.pdf`, `/v/${DIR_NFD}`, files),
+    ).toBe(`/v/${DIR_NFD}/${PAPER_NFD}.pdf`);
+    expect(
+      resolveLocalLinkTarget("없는.pdf", `/v/${DIR_NFD}`, files),
+    ).toBeNull();
+  });
+
+  it("an exact match still wins over a spelling that only folds to it", () => {
+    // Where both spellings exist (a disk that keeps them apart), the one the
+    // link spells is the one opened — the order the fallback's comment keeps.
+    // What fails this: the exact-match pass removed — the fold pass alone
+    // returns the first listed file, the composed one.
+    const files = [
+      { path: `/v/${PAPER}.pdf` },
+      { path: `/v/${PAPER_NFD}.pdf` },
+    ];
+    expect(resolveLocalLinkTarget(`${PAPER_NFD}.pdf`, "/v", files)).toBe(
+      `/v/${PAPER_NFD}.pdf`,
+    );
+  });
+});

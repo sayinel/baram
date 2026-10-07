@@ -18,9 +18,13 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { buildFileTree, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
-import { resolveWikilinkTarget } from "../../utils/editor/wikilink-nav";
+import {
+  findAliasContext,
+  resolveWikilinkTarget,
+} from "../../utils/editor/wikilink-nav";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { logger } from "../../utils/logger";
+import { foldName } from "../../utils/name-fold";
 import { wikilinkSuggestPluginKey } from "./suggestion-keys";
 import {
   createSuggestionRenderer,
@@ -113,11 +117,12 @@ export function applyWikilinkSuggestion({
 /**
  * §31 The "create" row's note, `# target` at the vault root, then the index and the tree
  * refreshed so the link resolves. `createFile`, never `writeFile`: the menu offers "create"
- * because no listed name matched, and that is no evidence the path is free — a note saved
- * with a decomposed (NFD) Korean name is not matched by the composed (NFC) text typed
- * here, yet on APFS both spellings open the same file, which the write emptied to the one
- * heading line. The OS refuses a taken path instead: a toast says so and nothing else
- * runs. The caller inserts the link either way.
+ * because no listed name matched, and that is no evidence the path is free: the menu
+ * lists the file tree, not the disk. Before §390 a note saved with a decomposed (NFD)
+ * Korean name was not matched by the composed (NFC) text typed here, yet on APFS both
+ * spellings open the same file, which the write emptied to the one heading line (#814).
+ * The OS refuses a taken path instead: a toast says so and nothing else runs. The caller
+ * inserts the link either way.
  */
 export async function createLinkedNote(
   rootPath: string,
@@ -149,18 +154,19 @@ export async function createLinkedNote(
 }
 
 /**
- * §95 Zettelkasten: true when the query exactly matches a file's `searchKey` —
- * used to suppress the redundant `Create "<query>"` fallback item. Zettel-note
- * items store the note id in `target` (so the stored wikilink is `[[id]]`), so
- * an exact TITLE match must compare against the search key instead. Regular
- * (non-zettel) files have no `searchText`, so behavior there is unchanged.
+ * §95 Zettelkasten: true when the query equals a file's `searchKey` under
+ * `foldName` (NFC, lowercase, NFC — §390) — used to suppress
+ * the redundant `Create "<query>"` fallback item. Zettel-note items store the
+ * note id in `target` (so the stored wikilink is `[[id]]`), so a TITLE match
+ * must compare against the search key instead. Regular (non-zettel) files have
+ * no `searchText`, so behavior there is unchanged.
  */
 export function hasExactMatch(
   files: WikilinkSuggestionItem[],
   query: string,
 ): boolean {
-  const queryLower = query.toLowerCase();
-  return files.some((f) => searchKey(f).toLowerCase() === queryLower);
+  const key = foldName(query);
+  return files.some((f) => foldName(searchKey(f)) === key);
 }
 
 /**
@@ -233,11 +239,9 @@ export const WikilinkSuggest = Extension.create({
           if (colonIdx > 0) {
             const alias = query.slice(0, colonIdx);
             const crossTarget = query.slice(colonIdx + 2);
-            const contexts = useContextStore.getState().contexts;
-            const aliasLower = alias.toLowerCase();
-            const ctx = contexts.find(
-              (c) => c.alias?.toLowerCase() === aliasLower,
-            );
+            // §317 · §390 The ruler a click uses (`findAliasContext`): space
+            // names (`Journal::`), and aliases under foldName.
+            const ctx = findAliasContext(alias);
             if (ctx) {
               // Try current file tree first (works if this is the active context)
               const { rootPath, fileTree } = useFileStore.getState();
