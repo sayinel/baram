@@ -10,6 +10,7 @@ function makeEntry(dateStr: string, caption = ""): PhotoGalleryEntry {
   return {
     filename: `photo-${dateStr}.jpg`,
     relativePath: `journal/assets/2026-03/photo-${dateStr}.jpg`,
+    revision: "1:1",
     absolutePath: `/root/journal/assets/2026-03/photo-${dateStr}.jpg`,
     date: new Date(dateStr),
     dateFromFilename: true,
@@ -24,6 +25,7 @@ function makeVideo(dateStr: string): PhotoGalleryEntry {
     ...makeEntry(dateStr),
     filename: `clip-${dateStr}.mp4`,
     relativePath: `journal/assets/2026-03/clip-${dateStr}.mp4`,
+    revision: "1:1",
     absolutePath: `/root/journal/assets/2026-03/clip-${dateStr}.mp4`,
     kind: "video-file",
   };

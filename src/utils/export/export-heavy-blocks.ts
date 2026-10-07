@@ -1,8 +1,9 @@
 // §5.12 export — wake every lazily-mounted heavy block and wait for it to land.
 //
 // Code blocks, math (inline and block), Mermaid diagrams and plugin-rendered
-// blocks (§394) all defer their real content until they near the viewport
-// (extensions/nodes/views/lazy-visible.ts).
+// blocks (§394) all defer their real content until they near the viewport; a
+// journal-photos block lists its photos asynchronously and is waited on until
+// that list is known (extensions/nodes/views/lazy-visible.ts).
 // An export reads the WHOLE document from a viewport that never moves, so
 // without this the capture cloned whatever placeholder each unvisited block
 // happened to be showing.
@@ -95,6 +96,7 @@ export function pendingHeavyBlocks(root: ParentNode): PendingBlock[] {
   check(".math-block", "math-block", mathBlockSettled);
   check(".math-inline", "math-inline", mathInlineSettled);
   check(".mermaid-block", "mermaid", mermaidSettled);
+  check("[data-journal-photos]", "journal-photos", journalPhotosListed);
   check("[data-plugin-block]", "plugin", pluginBlockSettled);
   return pending;
 }
@@ -213,6 +215,16 @@ function mathBlockSettled(el: Element): boolean {
 function mathInlineSettled(el: Element): boolean {
   if (el.getAttribute("data-empty") === "true") return true;
   return el.childNodes.length > 0 && el.textContent !== "";
+}
+
+/**
+ * A `journal-photos` block (issue 793) is settled once its photo list is known — empty or
+ * not. Its cells are NOT waited on here: they load lazily, and waking hundreds of them
+ * would put hundreds of thumbnail requests in front of a backend that decodes two at a
+ * time. The export embeds them from their source instead (`embedJournalPhotos`).
+ */
+function journalPhotosListed(el: Element): boolean {
+  return el.getAttribute("data-journal-photos") !== "loading";
 }
 
 /**

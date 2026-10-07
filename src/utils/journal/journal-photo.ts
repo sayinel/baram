@@ -7,6 +7,7 @@ import { copyBytesToDir } from "../media-copy";
 import { classifyMediaSrc, isMediaFilePath } from "../media-src";
 import { basename } from "../path-utils";
 import { JOURNAL_DATE_PARTS_RE } from "./journal";
+import { sourceRevision } from "./photo-thumbnail";
 
 /**
  * 캡션을 찾으려고 한 달의 md를 읽을 때 동시에 띄우는 요청 수.
@@ -34,6 +35,8 @@ export interface PhotoGalleryEntry {
    */
   kind: MediaKind;
   relativePath: string;
+  /** `sourceRevision` of the file when it was listed — the thumbnail caches' key part. */
+  revision: string;
 }
 
 /**
@@ -276,6 +279,7 @@ export async function scanJournalPhotos(
             caption: "",
             journalPath: null,
             kind: classifyMediaSrc(file.name),
+            revision: sourceRevision(file),
           });
         }
 
