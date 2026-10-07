@@ -26,8 +26,9 @@ pub(crate) fn nfc(s: &str) -> Cow<'_, str> {
 /// `j` + caron, and only then composes to the `ǰ` a name typed in lowercase
 /// holds. The first NFC changed no key in the search `name-fold.json`'s
 /// contract records; it is kept so that lowercase reads one form. The cases
-/// are `md/fixtures/name-fold.json`, which this module's tests read and the
-/// frontend's `foldName` tests are to read too (the frontend PR). Strip a
+/// are `md/fixtures/name-fold.json`, which this module's tests read and so
+/// does the frontend's `foldName` test (`src/utils/__tests__/name-fold.test.ts`).
+/// Strip a
 /// note extension and split a path BEFORE folding, and compare folded
 /// strings of one shape only: Greek capital sigma folds by what
 /// follows it (`ΑΣ` → `ας`, `ΑΣ.md` → `ασ.md`).
@@ -185,7 +186,8 @@ mod tests {
     }
 
     /// One case of `md/fixtures/name-fold.json` — the frontend's `foldName`
-    /// test is to read the same file (the frontend PR, spec 0069 D5).
+    /// test reads the same file (`src/utils/__tests__/name-fold.test.ts`,
+    /// spec 0069 D5).
     #[derive(serde::Deserialize)]
     struct FoldCase {
         input: String,
