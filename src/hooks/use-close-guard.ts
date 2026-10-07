@@ -10,6 +10,7 @@ import type { EditorTab } from "../stores/editor/editor";
 
 import { confirmQuit, updateFileIndex, writeFile } from "../ipc/invoke";
 import { closeContexts } from "../services/close-context";
+import { flushChatPersist } from "../stores/ai/chat";
 import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
@@ -34,6 +35,21 @@ export interface CloseGuardDeps {
 function unsavedTabs(match: (tab: EditorTab) => boolean = () => true) {
   const { sourceEditedTabs, tabs } = useEditorStore.getState();
   return tabs.filter((t) => isTabUnsaved(t, sourceEditedTabs) && match(t));
+}
+
+/**
+ * §close-guard The two ways out of the window that take the webview with them. Both save
+ * the chat history first: it is written at most once per interval (§44, #800), so the last
+ * moments of a conversation may not be on disk yet.
+ */
+export async function quitApp(): Promise<void> {
+  await flushChatPersist();
+  await confirmQuit();
+}
+
+export async function reloadWindow(): Promise<void> {
+  await flushChatPersist();
+  window.location.reload();
 }
 
 /**
@@ -221,7 +237,7 @@ export async function requestReload(): Promise<void> {
   // marks its tab dirty only once it lands.
   await awaitBlockIdRenames();
   if (unsavedTabs().length === 0) {
-    window.location.reload();
+    await reloadWindow();
     return;
   }
   useUIStore.getState().openUnsavedModal({ intent: "reload" });
@@ -323,7 +339,7 @@ export function useCloseGuard(): void {
         // other files renamed and this document not.
         await awaitBlockIdRenames();
         if (unsavedTabs().length === 0) {
-          await confirmQuit();
+          await quitApp();
           return;
         }
         useUIStore.getState().openUnsavedModal({ intent: "quit" });

@@ -12,13 +12,14 @@ import type { UnsavedModalRequest } from "../../stores/ui/ui";
 import { useShallow } from "zustand/shallow";
 
 import {
+  quitApp,
+  reloadWindow,
   saveAllDirtyForQuit,
   saveDirtyTab,
   saveDirtyTabsByIds,
   saveDirtyTabsForContexts,
 } from "../../hooks/use-close-guard";
 import { useTranslation } from "../../i18n/useTranslation";
-import { confirmQuit } from "../../ipc/invoke";
 import { closeContexts } from "../../services/close-context";
 import { useContextStore } from "../../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
@@ -115,9 +116,9 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
   // workspace, close one context, or close the tab.
   const proceed = async () => {
     if (unsavedModal.intent === "quit") {
-      await confirmQuit();
+      await quitApp();
     } else if (unsavedModal.intent === "reload") {
-      window.location.reload();
+      await reloadWindow();
     } else if (unsavedModal.intent === "closeWorkspace") {
       useFileStore.getState().closeFolder();
     } else if (unsavedModal.intent === "closeContext") {
