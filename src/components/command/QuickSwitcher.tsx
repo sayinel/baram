@@ -157,13 +157,12 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
 
     // "filename#heading" → find best matching file, load its headings
     setCurrentFileHeadings([]);
+    // §390 Scored once each, then sorted — see `results`.
     const matched = allFiles
       .filter((f) => fuzzyMatch(parsedQuery.fileQuery, f.name))
-      .sort(
-        (a, b) =>
-          fuzzyScore(parsedQuery.fileQuery, a.name) -
-          fuzzyScore(parsedQuery.fileQuery, b.name),
-      );
+      .map((f) => ({ f, score: fuzzyScore(parsedQuery.fileQuery, f.name) }))
+      .sort((a, b) => a.score - b.score)
+      .map(({ f }) => f);
 
     const target = matched[0];
     if (!target) {
@@ -245,9 +244,15 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       return items;
     }
 
+    // §390 Each candidate is scored once, then sorted: fuzzyScore folds its
+    // two strings on every call (foldName), and a comparator that scores calls
+    // it twice per comparison — over 10,000 names that alone passed the 16 ms
+    // keystroke budget (plan 0120, measured 2026-10-06).
     const matched = candidateFiles
       .filter((f) => fuzzyMatch(q, f.relativePath) || fuzzyMatch(q, f.name))
-      .sort((a, b) => fuzzyScore(q, a.name) - fuzzyScore(q, b.name));
+      .map((f) => ({ f, score: fuzzyScore(q, f.name) }))
+      .sort((a, b) => a.score - b.score)
+      .map(({ f }) => f);
 
     const items: ResultItem[] = matched.slice(0, 50).map((f) => ({
       type: "file" as const,

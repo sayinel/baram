@@ -1,6 +1,7 @@
 // §35 Quick Switcher — file search utilities
 import type { FileEntry } from "../stores/file/file";
 
+import { foldName } from "./name-fold";
 import { relativeToRoot } from "./path-utils";
 
 export interface FlatFile {
@@ -85,10 +86,15 @@ export function flattenFileTree(
   return result;
 }
 
-/** Fuzzy match query against text. Returns true if all characters match in order. */
+/**
+ * Fuzzy match query against text. Returns true if all characters match in order.
+ * Both are folded first (`foldName`, §390): matching walks code units, and a
+ * name some tool stored decomposed (NFD) spells a syllable in two or three
+ * where the query typed composed (NFC) has one.
+ */
 export function fuzzyMatch(query: string, text: string): boolean {
-  const q = query.toLowerCase();
-  const t = text.toLowerCase();
+  const q = foldName(query);
+  const t = foldName(text);
   let qi = 0;
   for (let ti = 0; ti < t.length && qi < q.length; ti++) {
     if (t[ti] === q[qi]) qi++;
@@ -99,14 +105,18 @@ export function fuzzyMatch(query: string, text: string): boolean {
 /**
  * Score a fuzzy match — lower is better. Returns Infinity if no match.
  * Rewards: consecutive matches, start-of-string, start-of-word (after separator).
+ * Both are folded first, as in `fuzzyMatch` (§390) — so score each candidate
+ * once and sort on the scores; a sort comparator that calls this folds twice
+ * per comparison.
  */
 export function fuzzyScore(query: string, text: string): number {
-  return fuzzyScoreLower(query.toLowerCase(), text.toLowerCase());
+  return fuzzyScoreLower(foldName(query), foldName(text));
 }
 
 /**
- * `fuzzyScore` for a query and text the caller has ALREADY lowercased (§385 spec 0061 §7) —
- * so a list of thousands can be lowercased once when it opens rather than on every keystroke.
+ * `fuzzyScore` for a query and text the caller has ALREADY folded — lowercased
+ * (§385 spec 0061 §7), or `foldName`d as `fuzzyScore` does (§390) — so a list
+ * of thousands can be folded once when it opens rather than on every keystroke.
  */
 export function fuzzyScoreLower(q: string, t: string): number {
   let qi = 0;
