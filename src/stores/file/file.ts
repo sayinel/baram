@@ -231,6 +231,9 @@ export const useFileStore = create<FileState>((set, get) => ({
   renameFileEntry: (oldPath, newPath, newName) =>
     set((state) => ({
       openFiles: rekeyOpenFilesPrefix(state.openFiles, oldPath, newPath),
+      // §3.5 수정 시각 기록도 원문과 같은 key 를 따른다 — 옛 key 에 남으면 닫힌 탭의 release 가
+      // 새 경로로 찾지 못해 영영 남는다(폴더를 옮기면 그 아래 파일마다, #798).
+      fileMtimes: rekeyOpenFilesPrefix(state.fileMtimes, oldPath, newPath),
       fileTree: renameInTree(state.fileTree, oldPath, newPath, newName),
     })),
 
@@ -284,6 +287,11 @@ export const useFileStore = create<FileState>((set, get) => ({
       return {
         openFiles: rekeyOpenFilesPrefix(
           state.openFiles,
+          oldPath,
+          moved.newPath,
+        ),
+        fileMtimes: rekeyOpenFilesPrefix(
+          state.fileMtimes,
           oldPath,
           moved.newPath,
         ),
