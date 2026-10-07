@@ -26,16 +26,19 @@ const DIARY = "일기";
 const DIARY_NFD = DIARY.normalize("NFD");
 const MEETING = "회의록";
 const MEETING_NFD = MEETING.normalize("NFD");
+// A journal kept in a folder some tool named decomposed. `addContext` defaults
+// both the label and the alias to the folder's name.
+const JOURNAL_DIR = `/v/${DIARY_NFD}`;
 
-function journalContext(alias: string): ContextInfo {
+function journalContext(): ContextInfo {
   return {
     addedAt: 0,
-    alias,
+    alias: DIARY_NFD,
     color: "#000",
     contextType: "vault",
     id: "journal",
-    label: "Journal",
-    path: "/j",
+    label: DIARY_NFD,
+    path: JOURNAL_DIR,
     vaultType: "journal",
   };
 }
@@ -46,16 +49,22 @@ function menuItems(): MenuItems {
 }
 
 function note(name: string): FileEntry {
-  return { isDir: false, modifiedAt: 0, name, path: `/j/${name}`, size: 0 };
+  return {
+    isDir: false,
+    modifiedAt: 0,
+    name,
+    path: `${JOURNAL_DIR}/${name}`,
+    size: 0,
+  };
 }
 
 beforeEach(() => {
   useContextStore.setState({
-    contexts: [journalContext(DIARY_NFD)],
+    contexts: [journalContext()],
   });
   useFileStore.setState({
     fileTree: [note(`${MEETING_NFD}.md`)],
-    rootPath: "/j",
+    rootPath: JOURNAL_DIR,
   });
 });
 

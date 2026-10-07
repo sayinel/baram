@@ -312,11 +312,14 @@ export async function loadFileHeadings(
  * ‼️ The cut is measured on the first string itself (§390). Folding changes
  * length — NFC joins a decomposed syllable into one code unit, lowercasing
  * `İ` gives two — so an index found on folded copies cuts the original in the
- * wrong place. Code points that fold together only as a sequence (a
- * decomposed syllable against a composed one) do not match here, which stops
- * a completion short and never cuts it in the wrong place. The menu's file
- * rows are composed (`buildFileSuggestionItem`); a heading row's text comes
- * from the note's body, which §390 leaves as written (spec 0069 §8).
+ * wrong place. Code points that fold together only as a sequence do not match
+ * here — a decomposed syllable against a composed one, but also, between two
+ * composed names, a capital J with a caron against U+01F0 (it lowercases to a
+ * decomposed pair) and a capital Greek sigma against the final sigma (a
+ * lone Σ lowercases to σ, at the end of a word to ς). That stops a completion
+ * short and never cuts it in the wrong place. The menu's file rows are
+ * composed (`buildFileSuggestionItem`); a heading row's text comes from the
+ * note's body, which §390 leaves as written (spec 0069 §8).
  */
 export function longestCommonPrefix(strings: string[]): string {
   if (strings.length === 0) return "";

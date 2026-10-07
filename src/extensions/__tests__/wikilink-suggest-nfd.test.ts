@@ -74,8 +74,9 @@ describe("§390 rows are built composed (D7)", () => {
 describe("§390 Tab completion", () => {
   it("completes two decomposed names to their common prefix, composed", () => {
     // spec 0069 §7: NFD 회의록 2026 and 회의록 2027 complete to 회의록 202, NFC.
-    // What fails this: rows keeping the stored spelling — the composed query
-    // matches no candidate, and Tab completes nothing.
+    // What fails this: rows keeping the stored spelling — both labels still
+    // match `회의` under foldName and Tab completes them, but to `회의록 202`
+    // decomposed, so the text the menu writes into the note is not composed.
     const rows = [row(`${MEETING_NFD} 2026.md`), row(`${MEETING_NFD} 2027.md`)];
     expect(longestCommonPrefix(completionCandidates(rows, "회의"))).toBe(
       `${MEETING} 202`,
@@ -109,7 +110,8 @@ describe("§390 Tab completion", () => {
 
   it("a decomposed query still completes against the composed rows", () => {
     // What fails this: completionCandidates folding the row but not the typed
-    // query — a name pasted from Finder is decomposed (NFD), the rows composed.
+    // query — a name pasted from Finder can be decomposed (NFD), the rows
+    // composed.
     expect(
       completionCandidates(
         [row(`${MEETING} 2026.md`)],
@@ -121,8 +123,13 @@ describe("§390 Tab completion", () => {
 
 describe("§390 a typed name against the rows", () => {
   it("hasExactMatch sees a stored decomposed name in the composed query", () => {
-    // What fails this: rows keeping the stored spelling — the query then
-    // matches nothing, and the menu offers to create a note that exists.
+    // What fails this: only both layers reverted together — rows keeping the
+    // stored spelling AND hasExactMatch comparing without foldName, which is the
+    // code before §390 (the menu then offers to create a note that exists).
+    // Either layer alone still matches: composed rows against the composed
+    // query, or decomposed rows folded. So this is the regression pin for the
+    // pair; the row tests above pin the rows, and the two hasExactMatch tests
+    // below pin the comparison.
     expect(hasExactMatch([row(`${MEETING_NFD}.md`)], MEETING)).toBe(true);
     expect(hasExactMatch([row(`${MEETING_NFD}.md`)], `${MEETING} 2`)).toBe(
       false,
@@ -138,7 +145,7 @@ describe("§390 a typed name against the rows", () => {
 
   it("hasExactMatch folds the typed query too, not only the rows", () => {
     // What fails this: hasExactMatch folding the row but not the query — a
-    // name pasted from Finder is decomposed (NFD), the row composed.
+    // name pasted from Finder can be decomposed (NFD), the row composed.
     expect(hasExactMatch([row(`${MEETING}.md`)], MEETING_NFD)).toBe(true);
     expect(hasExactMatch([row(`${MEETING}.md`)], `${MEETING_NFD} 2`)).toBe(
       false,

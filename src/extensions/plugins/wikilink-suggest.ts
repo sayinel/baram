@@ -154,11 +154,12 @@ export async function createLinkedNote(
 }
 
 /**
- * §95 Zettelkasten: true when the query exactly matches a file's `searchKey` —
- * used to suppress the redundant `Create "<query>"` fallback item. Zettel-note
- * items store the note id in `target` (so the stored wikilink is `[[id]]`), so
- * an exact TITLE match must compare against the search key instead. Regular
- * (non-zettel) files have no `searchText`, so behavior there is unchanged.
+ * §95 Zettelkasten: true when the query equals a file's `searchKey` under
+ * `foldName` (case and Unicode normalization ignored, §390) — used to suppress
+ * the redundant `Create "<query>"` fallback item. Zettel-note items store the
+ * note id in `target` (so the stored wikilink is `[[id]]`), so a TITLE match
+ * must compare against the search key instead. Regular (non-zettel) files have
+ * no `searchText`, so behavior there is unchanged.
  */
 export function hasExactMatch(
   files: WikilinkSuggestionItem[],
