@@ -15,7 +15,10 @@
 // The fonts are therefore inlined as data URIs. ~296KB of woff2 becomes ~395KB
 // of base64 in the exported file, and the same bytes join the export chunk —
 // which App.tsx already loads lazily (`lazy(() => import("./components/export/
-// ExportDialog"))`), so nothing reaches the app's startup path.
+// ExportDialog"))`), so nothing reaches the app's startup path. That holds
+// only while no codeSplitting group in vite.config.ts claims these files —
+// `vendor-katex` once did, and carried them into the chunk math-inline-edit.ts
+// loads at startup (issue 799, pinned by src/__tests__/katex-fonts-chunk.test.ts).
 //
 // Only woff2 is embedded. The woff and TrueType alternates in KaTeX's src lists
 // exist for browsers that predate woff2; the only two engines that ever open a
