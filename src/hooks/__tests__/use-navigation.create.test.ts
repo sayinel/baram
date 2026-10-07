@@ -15,15 +15,26 @@ vi.mock("../../components/editor/pdf/pdf-highlight-store", () => ({
 }));
 
 // Every export use-navigation imports from this module (`findAliasContext`,
-// `findNoteByStem`, `resolveWikilinkTarget`): vitest throws on reading a
-// missing one, and the async IIFE's `try` in use-navigation swallows that.
-const { findAliasContext, resolveWikilinkTarget } = vi.hoisted(() => ({
-  findAliasContext: vi.fn(),
-  resolveWikilinkTarget: vi.fn(),
-}));
+// `findNoteByStem`, `resolveWikilinkTarget`): vitest throws on reading one the
+// mock lacks. `findAliasContext` and `resolveWikilinkTarget` are read in
+// `handleWikilinkNavigate` itself, so a missing one throws out of it;
+// `findNoteByStem` is read inside the cross-vault fallback's async IIFE, whose
+// `try` would swallow the throw and log it through `logger` (mocked below).
+const { findAliasContext, findNoteByStem, resolveWikilinkTarget } = vi.hoisted(
+  () => ({
+    findAliasContext: vi.fn(),
+    findNoteByStem: vi.fn<
+      (
+        files: { name: string; path: string; relativePath: string }[],
+        target: string,
+      ) => null | { name: string; path: string }
+    >(() => null),
+    resolveWikilinkTarget: vi.fn(),
+  }),
+);
 vi.mock("../../utils/editor/wikilink-nav", () => ({
   findAliasContext,
-  findNoteByStem: vi.fn(() => null),
+  findNoteByStem,
   resolveWikilinkTarget,
 }));
 
@@ -31,7 +42,9 @@ const { createDir, createFile, listDir, refreshIndex, writeFile } = vi.hoisted(
   () => ({
     createDir: vi.fn(async () => {}),
     createFile: vi.fn(async (_path: string, _content: string) => {}),
-    listDir: vi.fn(async () => []),
+    listDir: vi.fn(
+      async (_path: string, _recursive?: boolean): Promise<FileEntry[]> => [],
+    ),
     refreshIndex: vi.fn(async () => {}),
     writeFile: vi.fn(async () => {}),
   }),
@@ -54,7 +67,7 @@ const { logger } = vi.hoisted(() => ({
 }));
 vi.mock("../../utils/logger", () => ({ logger }));
 
-import type { ContextInfo } from "../../ipc/types";
+import type { ContextInfo, FileEntry } from "../../ipc/types";
 
 import { FileExistsError } from "../../ipc/fs";
 import { useContextStore } from "../../stores/context/context";
@@ -89,6 +102,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   resolveWikilinkTarget.mockReturnValue(null);
   findAliasContext.mockReturnValue(null);
+  findNoteByStem.mockReturnValue(null);
   useContextStore.setState({ activeContextId: VAULT.id, contexts: [VAULT] });
   useFileStore.setState({ rootPath: "/v" });
   useUIStore.setState({ toast: null });
@@ -139,5 +153,51 @@ describe("§28 creating the target of a link that resolves to nothing", () => {
     );
     expect(handleOpenFilePath).not.toHaveBeenCalled();
     expect(useUIStore.getState().toast).toBeNull();
+  });
+});
+
+describe("§87 a link into another vault that the open vault cannot resolve", () => {
+  it("opens the note findNoteByStem picks from the other vault's listing", async () => {
+    // What fails this: the fallback matching stems with a loop of its own
+    // instead of calling findNoteByStem. The listing holds the name decomposed
+    // (NFD) and the link is composed (NFC), so a loop that does not fold finds
+    // nothing, and one that does is still not the call asserted below.
+    const name = "회의록";
+    const nameNfd = name.normalize("NFD");
+    expect(nameNfd).not.toBe(name);
+    const listed = {
+      isDir: false,
+      modifiedAt: 0,
+      name: `${nameNfd}.md`,
+      path: `/w/${nameNfd}.md`,
+      size: 0,
+    };
+    findAliasContext.mockReturnValue({
+      ...VAULT,
+      alias: "w",
+      id: "ctx-w",
+      path: "/w",
+    });
+    listDir.mockResolvedValueOnce([listed]);
+    findNoteByStem.mockReturnValue({ name: listed.name, path: listed.path });
+    const { handleOpenFilePath, result } = renderNav();
+
+    result.current.handleWikilinkNavigate(name, null, "w");
+
+    await waitFor(() =>
+      expect(handleOpenFilePath).toHaveBeenCalledWith(listed.path),
+    );
+    expect(listDir).toHaveBeenCalledWith("/w", true);
+    expect(findNoteByStem).toHaveBeenCalledWith(
+      [
+        {
+          name: listed.name,
+          path: listed.path,
+          relativePath: listed.name,
+        },
+      ],
+      name,
+    );
+    expect(createFile).not.toHaveBeenCalled();
   });
 });

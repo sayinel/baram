@@ -163,6 +163,20 @@ describe("§390 a note stored decomposed answers to its name typed composed", ()
     );
   });
 
+  it("by a folder and a file name with an extension", () => {
+    // What fails this: resolveByExactFileName's comparison of the relative
+    // path left at toLowerCase — the name alone is no match for a target that
+    // carries its folder.
+    useTree([
+      folder(`/v/${PROJECT_NFD}`, [
+        leaf(`/v/${PROJECT_NFD}/${MEETING_NFD}.pdf`),
+      ]),
+    ]);
+    expect(resolveWikilinkTarget(`${PROJECT}/${MEETING}.pdf`)?.path).toBe(
+      `/v/${PROJECT_NFD}/${MEETING_NFD}.pdf`,
+    );
+  });
+
   it("from a standalone file's folder", () => {
     // What fails this: resolveInSameFolder's comparison left at toLowerCase —
     // the fallback then builds `${dir}/${target}.md` from the name as typed,
@@ -196,6 +210,27 @@ describe("§390 the journal's folder, set in the settings as typed", () => {
     ]);
     expect(resolveWikilinkTarget(MEETING)?.path).toBe(
       `/v/${DIARY_NFD}/notes/${MEETING_NFD}.md`,
+    );
+  });
+
+  it("finds a note by name from a folder under notes/", () => {
+    // What fails this: the stem comparison in the notes/ loop left at
+    // toLowerCase. The note sits in a folder, so the folder/name comparison
+    // beside it cannot match a bare name and only the stem comparison can; when
+    // that misses, the standard loop answers with the same name listed first.
+    journalAt(`/v/${DIARY}`);
+    useTree([
+      folder("/v/archive", [leaf(`/v/archive/${MEETING}.md`)]),
+      folder(`/v/${DIARY_NFD}`, [
+        folder(`/v/${DIARY_NFD}/notes`, [
+          folder(`/v/${DIARY_NFD}/notes/${PROJECT_NFD}`, [
+            leaf(`/v/${DIARY_NFD}/notes/${PROJECT_NFD}/${MEETING_NFD}.md`),
+          ]),
+        ]),
+      ]),
+    ]);
+    expect(resolveWikilinkTarget(MEETING)?.path).toBe(
+      `/v/${DIARY_NFD}/notes/${PROJECT_NFD}/${MEETING_NFD}.md`,
     );
   });
 
@@ -242,6 +277,9 @@ describe("§390 the journal's folder, set in the settings as typed", () => {
     // These paths compare composed, case as written: on a disk that keeps
     // case, `Diary` and `diary` are two folders. The partner of the notes/
     // test above, on the same shape of tree.
+    // What fails this: the notes/ folder and the stored path both folded
+    // under foldName — `diary/notes` then counts as the journal's notes/ and
+    // answers before the standard loop reaches `archive`.
     journalAt("/v/Diary");
     useTree([
       folder("/v/archive", [leaf("/v/archive/plan.md")]),
@@ -250,6 +288,30 @@ describe("§390 the journal's folder, set in the settings as typed", () => {
       ]),
     ]);
     expect(resolveWikilinkTarget("plan")?.path).toBe("/v/archive/plan.md");
+  });
+
+  it("does not take a date note in a folder of another case for it", () => {
+    // The partner of the date-note test above, on the same shape of tree: the
+    // daily path compares composed, case as written, like the notes/ folder.
+    // What fails this: the daily path and the stored path both folded under
+    // foldName — `diary/daily/…` then counts as the journal's date note and
+    // answers before the standard loop reaches `archive`.
+    journalAt("/v/Diary");
+    useTree([
+      folder("/v/archive", [leaf("/v/archive/2026-10-06.md")]),
+      folder("/v/diary", [
+        folder("/v/diary/daily", [
+          folder("/v/diary/daily/2026", [
+            folder("/v/diary/daily/2026/10", [
+              leaf("/v/diary/daily/2026/10/2026-10-06.md"),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]);
+    expect(resolveWikilinkTarget("2026-10-06")?.path).toBe(
+      "/v/archive/2026-10-06.md",
+    );
   });
 });
 
@@ -263,11 +325,17 @@ describe("§390 another vault, and its alias", () => {
   });
 
   it("resolves by name in the alias's vault when it is the open one", () => {
-    // What fails this: findNoteByStem comparing by toLowerCase.
+    // What fails this: findNoteByStem comparing by toLowerCase. The note sits
+    // in a folder, so the path comparison after the stem lookup cannot match a
+    // bare name and the stem lookup is the only way to this note.
     scope.contexts = [vault("w", "/v")];
-    useTree([leaf(`/v/${MEETING_NFD}.md`)]);
+    useTree([
+      folder(`/v/${PROJECT_NFD}`, [
+        leaf(`/v/${PROJECT_NFD}/${MEETING_NFD}.md`),
+      ]),
+    ]);
     expect(resolveWikilinkTarget(MEETING, "w")?.path).toBe(
-      `/v/${MEETING_NFD}.md`,
+      `/v/${PROJECT_NFD}/${MEETING_NFD}.md`,
     );
   });
 
@@ -287,9 +355,11 @@ describe("§390 another vault, and its alias", () => {
 
 describe("§390 findNoteByStem", () => {
   it("matches a .md or .markdown stem under foldName, and nothing else", () => {
-    // What fails this: comparing by toLowerCase — the stored names are decomposed.
+    // What fails this: comparing by toLowerCase — the stored names are
+    // decomposed; and dropping the extension guard — `.js` is as long as `.md`,
+    // so its stem would match too.
     const files = [
-      { name: `${MEETING_NFD}.txt` },
+      { name: `${MEETING_NFD}.js` },
       { name: `${PROJECT_NFD}.markdown` },
       { name: `${MEETING_NFD}.md` },
     ];
