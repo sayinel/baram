@@ -222,6 +222,10 @@ export async function listDir(
  *
  * ‼️ The cost: a write that never settles holds back every later read and write of that
  * path. Writes Rust does on its own (link rewrites, task edits) are not in this queue.
+ *
+ * ‼️ Webview-only, and keyed by the path as spelled: `renameFile`, Rust-side writers and a
+ * second spelling of the same file all pass it by. Serializing by the file's canonical
+ * identity belongs in Rust — #824.
  */
 const pendingWrites = new Map<string, Promise<void>>();
 
