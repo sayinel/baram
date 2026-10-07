@@ -24,7 +24,7 @@ export interface RetainedEntry {
 export type RetainedKind = "code" | "html" | "pdf" | "plugin";
 
 export interface RetentionInput {
-  /** §5.1 HTML(및 플러그인 프리뷰 파일)을 원본으로 보고 있는 탭 — App의 htmlSourceTabs. */
+  /** §5.1 HTML(및 플러그인 프리뷰 파일)을 원본으로 보고 있는 탭 — 스토어의 previewSourceTabs(§392)를 useActiveTabSurface 가 Set 으로 만든 것. */
   htmlSourceTabs: ReadonlySet<string>;
   /**
    * 플러그인 `viewer` 확장점이 그리고 있는 탭(SVG 등).

@@ -321,9 +321,7 @@ function App() {
   // Cmd+/ router that falls through to the markdown source-mode toggle.
   const { handleToggleSourceMode, toggleHtmlView } = usePreviewSourceView({
     getSourceBuffer,
-    htmlSourceTabs: activeSurface.htmlSourceTabs,
     markDirty,
-    setHtmlSourceTabs: activeSurface.setHtmlSourceTabs,
     toggleSourceMode,
   });
 

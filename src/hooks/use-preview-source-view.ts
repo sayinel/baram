@@ -1,7 +1,6 @@
 // §5.1/§287 Preview ↔ source toggle for HTML / plugin-previewed text tabs,
 // with Cmd+/ routing to the markdown source-mode toggle otherwise.
 import { useCallback } from "react";
-import type { Dispatch, SetStateAction } from "react";
 
 import { writeFile } from "../ipc/invoke";
 import { matchFileViewer, usePluginUIStore } from "../plugins/plugin-ui-store";
@@ -16,9 +15,7 @@ import {
 
 interface UsePreviewSourceViewParams {
   getSourceBuffer: (tabId: string) => string;
-  htmlSourceTabs: ReadonlySet<string>;
   markDirty: (tabId: string, dirty: boolean) => void;
-  setHtmlSourceTabs: Dispatch<SetStateAction<Set<string>>>;
   toggleSourceMode: () => void;
 }
 
@@ -29,41 +26,56 @@ interface UsePreviewSourceViewReturn {
 
 export function usePreviewSourceView({
   getSourceBuffer,
-  htmlSourceTabs,
   markDirty,
-  setHtmlSourceTabs,
   toggleSourceMode,
 }: UsePreviewSourceViewParams): UsePreviewSourceViewReturn {
-  // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed
-  // text tab. The preview loads the file from disk (asset: protocol), so when
-  // leaving source view with unsaved edits, flush them first — the mtime bump
-  // then reloads the preview with the fresh content.
+  // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed text tab. The set
+  // it changes is the store's `previewSourceTabs` (§392), and each direction sets it explicitly
+  // rather than flipping it — see the preview → source branch.
   const toggleHtmlView = useCallback(() => {
-    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const {
+      activeTabId: tabId,
+      previewSourceTabs,
+      setPreviewSourceForTab,
+      tabs: currentTabs,
+    } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
     if (!tab || !isFileTab(tab) || !isPreviewToggleFile(tab.filePath)) return;
-    const leavingSourceView = htmlSourceTabs.has(tab.id);
-    if (leavingSourceView && tab.isDirty && tab.filePath) {
+
+    if (!previewSourceTabs.includes(tab.id)) {
+      // §392 spec 0071 §6.6 (D16) — preview → source. The code surface reads the buffer IN
+      // RENDER, so a change an editable viewer has not handed over yet is taken here, before
+      // the store changes. A take that fails has already switched the tab (§7.4); setting it
+      // again below is then a no-op — a flip would switch it back.
+      getSourceBuffer(tab.id);
+      setPreviewSourceForTab(tab.id, true);
+      return;
+    }
+
+    // Source → preview. An HTML preview (and a draw-only viewer) loads the file from disk
+    // (asset: protocol), so unsaved edits are flushed first — the mtime bump then reloads it
+    // with the fresh content. An editing viewer mounts from the buffer instead (§392 §6.1).
+    if (tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
       const content = getSourceBuffer(tab.id);
       void writeFile(filePath, content)
         .then(() => {
           useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
           useFileStore.getState().setFileContent(filePath, content);
-          markDirty(tab.id, false);
+          // §392 spec 0071 D17 — dirty comes down only while the buffer still holds what was
+          // written. The preview this toggle puts up can be an editing mount, and a change it
+          // reports during the write may already have been taken by another read (a zoom tick),
+          // leaving D15 no mark to refuse on. The read below takes a change still pending, so it
+          // is compared too.
+          if (getSourceBuffer(tab.id) === content) markDirty(tab.id, false);
           useSnapshotStore.getState().markPendingAutoSnapshot();
         })
         .catch(() => {
           // Save failed — keep dirty state; preview shows last saved version
         });
     }
-    setHtmlSourceTabs((prev) => {
-      const next = new Set(prev);
-      if (next.has(tab.id)) next.delete(tab.id);
-      else next.add(tab.id);
-      return next;
-    });
-  }, [htmlSourceTabs, markDirty, getSourceBuffer, setHtmlSourceTabs]);
+    setPreviewSourceForTab(tab.id, false);
+  }, [getSourceBuffer, markDirty]);
 
   // Cmd+/ — route to the preview/source toggle when an HTML or plugin-viewed
   // text tab is active; otherwise fall through to the markdown source-mode

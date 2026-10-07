@@ -1,8 +1,7 @@
 // §69/§89 Active-tab file-type derivations — the active tab's id/path/object
 // plus every file-type flag the render branches, `resolveSurfaceKind`, and the
 // retained-tabs set read off it.
-import { useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo } from "react";
 
 import type { PluginFileViewer } from "../plugins/plugin-ui-store";
 import type { EditorTab } from "../stores/editor/editor";
@@ -37,6 +36,7 @@ export interface ActiveSurfaceSnapshot {
   activeTabFilePath: null | string;
   activeTabId: null | string;
   fileViewers: PluginFileViewer[];
+  /** §392 A Set view of the store's `previewSourceTabs` — the tabs a preview ↔ source file shows as source. */
   htmlSourceTabs: ReadonlySet<string>;
   isCodeFile: boolean;
   isEditableTextFile: boolean;
@@ -48,7 +48,6 @@ export interface ActiveSurfaceSnapshot {
   pluginViewer: null | PluginFileViewer;
   previewFileMtime: number;
   rootPath: null | string;
-  setHtmlSourceTabs: Dispatch<SetStateAction<Set<string>>>;
 }
 
 export function useActiveTabSurface(): ActiveSurfaceSnapshot {
@@ -100,8 +99,14 @@ export function useActiveTabSurface(): ActiveSurfaceSnapshot {
   // HTML file viewer — rendered preview (default) vs raw source, tracked
   // per tab so toggling one tab doesn't affect others.
   const isHtmlTab = !!activeTabFilePath && isHtmlFile(activeTabFilePath);
-  const [htmlSourceTabs, setHtmlSourceTabs] = useState<Set<string>>(
-    () => new Set(),
+  // §392 The set lives in the store (`previewSourceTabs`), not in this hook's state: an
+  // editable viewer whose `getText` fails is switched to source from outside React (spec 0071
+  // §7.4). The Set view is built here once per array reference — the same identity reason as
+  // `sourceModeTabs` in `use-source-mode.ts`: `useRetainedTabs` memoizes on it.
+  const previewSourceTabIds = useEditorStore((s) => s.previewSourceTabs);
+  const htmlSourceTabs = useMemo<ReadonlySet<string>>(
+    () => new Set(previewSourceTabIds),
+    [previewSourceTabIds],
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
 
@@ -130,6 +135,5 @@ export function useActiveTabSurface(): ActiveSurfaceSnapshot {
     pluginViewer,
     previewFileMtime,
     rootPath,
-    setHtmlSourceTabs,
   };
 }

@@ -84,7 +84,7 @@ interface UseSourceModeReturn {
   setSourceModeForTab: (tabId: string, on: boolean) => void;
   sourceCursorOffsetFor: (tabId: string) => number;
   sourceEditorRef: RefObject<null | SourceCodeEditorRef>;
-  /** §287 소스 모드인 탭들. 전역 boolean이 아니다 — App의 htmlSourceTabs와 같은 모양. */
+  /** §287 소스 모드인 탭들. 전역 boolean이 아니다 — 스토어의 previewSourceTabs(§392)와 같은 모양. */
   sourceModeTabs: ReadonlySet<string>;
   toggleSourceMode: () => void;
 }
