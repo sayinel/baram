@@ -176,3 +176,23 @@
   color: var(--color-status-danger);
   border-color: var(--color-status-error-border);
 }
+
+/* §5.5 KaTeX inside an SVG foreignObject (a Mermaid $$…$$ label, or KaTeX
+   markup in an svg or html block). KaTeX's stylesheet makes .katex
+   position: relative, and WKWebView paints a relatively positioned element
+   inside a foreignObject without the transforms of the SVG groups that
+   place it: the label painted at the diagram's top-left while its layout
+   box stayed in the node. Static here costs nothing for Mermaid's
+   MathML-only output: every rule in KaTeX's stylesheet that positions
+   something absolutely (eleven in katex 0.18.2) targets an element that
+   output does not contain — the katex-mathml wrapper, the katex-inner,
+   halfarrow, brace, cd-label and katex-tag classes, and svg (checked on 20
+   formulas in both display modes). Mermaid asks KaTeX for other output only
+   under its legacyMathML or forceLegacyMathML options, which Baram does not
+   set. Written as svg .katex: an HTML element renders inside SVG only within
+   a foreignObject, and jsdom's getComputedStyle does not match the camelCase
+   foreignObject type selector, which the test
+   (katex-in-foreign-object.test.ts) depends on. */
+svg .katex {
+  position: static;
+}
