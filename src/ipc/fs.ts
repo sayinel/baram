@@ -248,6 +248,14 @@ export async function setVaultRoot(path: string): Promise<void> {
   return invoke<void>("set_vault_root", { path });
 }
 
+/**
+ * §3.2 Tell the watcher which files are open. It drops events below excluded folders
+ * (`build/`, `target/`, …) except for these (issue 795).
+ */
+export async function setOpenFiles(paths: string[]): Promise<void> {
+  return invoke<void>("set_open_files", { paths });
+}
+
 export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }

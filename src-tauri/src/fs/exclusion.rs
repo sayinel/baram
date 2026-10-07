@@ -4,10 +4,10 @@
 // The default names live in `default-excluded-dirs.json`, the one source for the
 // walkers (`collect_md_files`, `collect_all_files`, `search`), the file tree
 // (`list_dir`), the snapshot scan and the frontend's watcher-event filter
-// (`src/hooks/use-file-watcher.ts` imports the same file). The Rust watcher's own
-// path filter in `watch_dir` does not read it yet: it matches absolute-path
-// substrings, and `/build/` there would drop every event of a vault whose root is
-// named `build` — issue 795.
+// (`src/hooks/use-file-watcher.ts` imports the same file). The Rust watcher judges
+// its events by this matcher too, relative to the watched root, with two
+// departures of its own — open files pass, hidden files are kept (`watch_filter`,
+// issue 795).
 //
 // The hidden rule comes FIRST: every reader above drops an entry whose name starts with
 // `.` before it consults the list or the matcher. So `.next` and `.git` in the list change
@@ -115,6 +115,17 @@ impl VaultExclusion {
             canonical_root: std::fs::canonicalize(root).ok(),
             matcher: Some(matcher),
         })
+    }
+
+    /// The default names alone, with no `.baramignore` — what the watcher filters by
+    /// when the vault's `.baramignore` cannot be used (`fs::watch_filter`), where
+    /// refusing to filter would let the flood through.
+    pub fn defaults_only(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            canonical_root: std::fs::canonicalize(root).ok(),
+            matcher: defaults(root).build().ok(),
+        }
     }
 
     /// Whether the walk leaves out `path`, an entry of a folder it already entered.

@@ -5,6 +5,8 @@ mod copy_dir;
 mod exclusion;
 pub mod media;
 mod walk;
+mod watch_filter;
+pub use watch_filter::set_open_files;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
 #[cfg(test)]
@@ -13,7 +15,7 @@ pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
 pub use walk::{collect_all_files, collect_md_files, walk_vault, Collect};
 
 use crate::commands::fs_cmd::FileEntry;
-use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
@@ -745,17 +747,6 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 }
 
 /// 디렉토리 감시 시작 — notify crate 기반
-/// `file:created` 의 `origin`. 앱의 저장은 임시 파일을 이름만 바꿔 놓으므로 macOS 에서는
-/// 저장마다 저장한 파일의 `file:created` 가 온다 — `file:changed` 와 같은 판정으로 그것을
-/// 가른다(링크 index 는 저장이 이미 고쳤으므로 다시 읽지 않는다, issue 790).
-fn created_origin(path: &Path) -> &'static str {
-    if is_app_write(path, mtime_ms(path)) {
-        "app"
-    } else {
-        "external"
-    }
-}
-
 /// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
 ///
 /// Returns the watcher, which must be kept alive by the caller.
@@ -779,81 +770,33 @@ pub fn start_watching(
     // The watcher is NOT moved here; it is returned to the caller who stores it
     // in managed state. When the managed state drops the watcher, the internal
     // tx is dropped, rx becomes disconnected, and this thread exits on its own.
+    // §3.2 Which events reach the webview is `watch_filter`'s call (issue 795): the
+    // vault walk's exclusion, judged relative to this root, before any metadata read.
+    let mut filter = watch_filter::WatchFilter::new(Path::new(&path));
     std::thread::spawn(move || {
         for event in rx.into_iter().flatten() {
-            for event_path in &event.paths {
-                let path_str = event_path.to_string_lossy().to_string();
-
-                // Skip .tmp files (atomic write intermediates)
-                if path_str.ends_with(".tmp") {
-                    continue;
-                }
-
-                // Skip internal directories to prevent event floods
-                // (e.g., git operations can generate hundreds of .git/ events).
-                // Not `DEFAULT_EXCLUDED_DIRS`: this matches absolute-path substrings, and
-                // `/build/` would drop every event of a vault named `build` (issue 795).
-                if path_str.contains("/.git/")
-                    || path_str.contains("/.baram/")
-                    || path_str.contains("/node_modules/")
-                    || path_str.contains("/.next/")
-                    || path_str.contains("/__pycache__/")
-                {
-                    continue;
-                }
-
-                match event.kind {
-                    EventKind::Create(_) => {
-                        let is_dir = event_path.is_dir();
-                        let _ = app_handle.emit(
-                            "file:created",
-                            serde_json::json!({
-                                "path": path_str,
-                                "isDir": is_dir,
-                                "origin": created_origin(event_path),
-                            }),
-                        );
+            for emit in filter.route(&event, &watch_filter::RealProbe) {
+                let _ = match emit {
+                    watch_filter::Emit::Created {
+                        path,
+                        is_dir,
+                        origin,
+                    } => app_handle.emit(
+                        "file:created",
+                        serde_json::json!({ "path": path, "isDir": is_dir, "origin": origin }),
+                    ),
+                    watch_filter::Emit::Deleted { path } => {
+                        app_handle.emit("file:deleted", serde_json::json!({ "path": path }))
                     }
-                    // Rename: macOS FSEvents reports atomic-write rename
-                    // and external moves as Modify(Name), not Create/Remove
-                    EventKind::Modify(ModifyKind::Name(_)) => {
-                        if event_path.exists() {
-                            let is_dir = event_path.is_dir();
-                            let _ = app_handle.emit(
-                                "file:created",
-                                serde_json::json!({
-                                    "path": path_str,
-                                    "isDir": is_dir,
-                                    "origin": created_origin(event_path),
-                                }),
-                            );
-                        } else {
-                            let _ = app_handle
-                                .emit("file:deleted", serde_json::json!({ "path": path_str }));
-                        }
-                    }
-                    EventKind::Modify(_) => {
-                        // §Phase2: include mtime so frontend can detect external changes
-                        let mtime = mtime_ms(event_path);
-                        // §313 앱 자신의 쓰기인지 여기서 답한다. 프론트엔드는 이 값으로
-                        // "외부 변경"과 "우리가 방금 한 일"을 가른다 — 토스트를 띄울지,
-                        // 실행 취소 스택을 버릴지가 여기서 갈린다.
-                        let origin = if is_app_write(event_path, mtime) {
-                            "app"
-                        } else {
-                            "external"
-                        };
-                        let _ = app_handle.emit(
-                            "file:changed",
-                            serde_json::json!({ "path": path_str, "mtime": mtime, "origin": origin }),
-                        );
-                    }
-                    EventKind::Remove(_) => {
-                        let _ = app_handle
-                            .emit("file:deleted", serde_json::json!({ "path": path_str }));
-                    }
-                    _ => {}
-                }
+                    watch_filter::Emit::Changed {
+                        path,
+                        mtime,
+                        origin,
+                    } => app_handle.emit(
+                        "file:changed",
+                        serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
+                    ),
+                };
             }
         }
     });

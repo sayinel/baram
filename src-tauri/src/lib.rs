@@ -319,6 +319,7 @@ pub fn run() {
             fs_cmd::import_dir,
             fs_cmd::import_file,
             fs_cmd::watch_dir,
+            fs_cmd::set_open_files,
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
             fs_cmd::export_binary_file,

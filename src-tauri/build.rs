@@ -138,6 +138,7 @@ fn main() {
         "search_knowledge",
         "set_active_context",
         "set_config",
+        "set_open_files",
         "set_task_field",
         "set_task_state",
         "set_task_tag",

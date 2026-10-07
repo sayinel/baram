@@ -342,6 +342,14 @@ pub async fn watch_dir(
     Ok(())
 }
 
+/// §3.2 The files open in the editor. The watcher drops events below an excluded
+/// folder (issue 795) except for these: the reload and conflict checks of an open
+/// file need its events wherever it lives.
+#[tauri::command]
+pub fn set_open_files(paths: Vec<String>) {
+    crate::fs::set_open_files(&paths);
+}
+
 /// §53 ZIP 파일 추출 — Notion 내보내기 호환
 /// zip_path may be outside vault (e.g., ~/Downloads); output_dir must be inside vault.
 #[tauri::command]

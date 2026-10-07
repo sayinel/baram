@@ -97,6 +97,19 @@
       "description": "디렉토리 변경 감시 시작 (notify crate)"
     },
     {
+      "name": "set_open_files",
+      "input": {
+        "paths": "string[]"
+      },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 3,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "편집기에 열린 파일 목록 — 워처는 제외 폴더 아래 이벤트를 버리되 이 파일들의 이벤트는 보낸다 (issue 795)"
+    },
+    {
       "name": "get_config",
       "input": {
         "key": "string"
