@@ -39,7 +39,7 @@ function unsavedTabs(match: (tab: EditorTab) => boolean = () => true) {
  * §close-guard: Persist every dirty file tab so the app can safely quit.
  * Saves the active tab first (flush its live editor), then the rest.
  * @returns `true` when all dirty tabs were saved (safe to quit), `false` when
- *   the user aborted a Save As dialog (stay open, changes preserved).
+ *   one was not — see `saveDirtyTab` (stay open, changes preserved).
  */
 export async function saveAllDirtyForQuit(
   deps: CloseGuardDeps,
@@ -51,7 +51,7 @@ export async function saveAllDirtyForQuit(
  * §82 Persist every dirty file tab belonging to the given contexts — the scoped
  * variant `closeContexts` needs. Saving ALL dirty tabs there would write files the
  * user never asked to touch: closing one folder must not save another's edits.
- * @returns `false` when an Untitled Save As was aborted (caller must NOT close).
+ * @returns `false` when a tab was not saved — see `saveDirtyTab` (caller must NOT close).
  */
 export async function saveDirtyTabsForContexts(
   contextIds: readonly string[],
@@ -88,7 +88,7 @@ async function saveDirtyTabsWhere(
  * - Active tab → `handleSave` (covers source mode, code files, Untitled Save As).
  * - Other file tab → write its cached `openFiles` content directly.
  * - Other Untitled tab → prompt for a destination path (Save As).
- * @returns `false` when an Untitled Save As was cancelled (caller must NOT
+ * @returns `false` when the active tab is still dirty after `handleSave` (caller must NOT
  *   close/quit); `true` otherwise.
  *
  * Known limitation (v1): a non-active tab backed by the large-doc keep-alive
@@ -103,7 +103,11 @@ export async function saveDirtyTab(
   // Active tab — flush the live editor via the shared save path.
   if (tab.id === activeTabId) {
     await handleSave();
-    // A still-dirty active tab means an Untitled Save As was cancelled.
+    // A still-dirty active tab was not saved, or not all of it — `handleSave` resolves either
+    // way. An Untitled Save As was cancelled, the save gave up or failed, or (§392 D15 · D17)
+    // the text changed during the write — an editable viewer's change, or typing in a code
+    // tab — and the save left the tab dirty. Each must stop the quit or the close: the tab
+    // holds text that is not on disk.
     const after = useEditorStore.getState().tabs.find((t) => t.id === tab.id);
     const saved = !after?.isDirty;
     // `handleSave` reads the source buffer for a source-mode tab, so a clean result
