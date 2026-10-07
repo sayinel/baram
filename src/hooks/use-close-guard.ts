@@ -88,8 +88,8 @@ async function saveDirtyTabsWhere(
  * - Active tab → `handleSave` (covers source mode, code files, Untitled Save As).
  * - Other file tab → write its cached `openFiles` content directly.
  * - Other Untitled tab → prompt for a destination path (Save As).
- * @returns `false` when the active tab is still dirty after `handleSave` (caller must NOT
- *   close/quit); `true` otherwise.
+ * @returns `false` when the active tab is still dirty after `handleSave`, or a non-active
+ *   Untitled tab's Save As was cancelled (the caller must not close or quit); `true` otherwise.
  *
  * Known limitation (v1): a non-active tab backed by the large-doc keep-alive
  * editor pool has its latest edits in that pool, not in `openFiles`, so this

@@ -23,6 +23,7 @@ import { usePluginUIStore } from "../../plugins/plugin-ui-store";
 import { hasPendingViewerEdit } from "../../plugins/viewer-edit-mounts";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
+import { saveDirtyTab } from "../use-close-guard";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
@@ -145,6 +146,54 @@ describe("a change during a manual save's write (D15 · D17 · §8)", () => {
     });
     expect(writeFile.mock.calls).toEqual([[PATH, "T1"]]);
     expect(dirty()).toBe(false);
+  });
+
+  it("Cmd+S on a code tab: text set during the write keeps the tab dirty, and the next Cmd+S writes it (D17)", async () => {
+    seedStores([sketchTab(TAB, "/v/a.txt")], TAB);
+    useSettingsStore.setState({ autoSave: false } as never);
+    view = render(<ViewerEditHarness {...harnessProps(probe)} />);
+    act(() => fill(TAB, "C1"));
+    act(() => useEditorStore.getState().markDirty(TAB, true));
+    hold = true;
+    let saving: Promise<void> = Promise.resolve();
+    act(() => {
+      saving = ops().handleSave();
+    });
+    await vi.waitFor(() => expect(held).toHaveLength(1));
+    expect(held[0].content).toBe("C1");
+    act(() => fill(TAB, "C2"));
+    await act(async () => {
+      held[0].release();
+      await saving;
+    });
+    expect(dirty()).toBe(true);
+    hold = false;
+    await act(async () => {
+      await ops().handleSave();
+    });
+    expect(writeFile.mock.calls.map(([, content]) => content)).toEqual([
+      "C1",
+      "C2",
+    ]);
+    expect(dirty()).toBe(false);
+  });
+
+  it("quit through saveDirtyTab: a viewer change during the write makes it return false and leaves the tab dirty (§8)", async () => {
+    const double = drawnSketch();
+    hold = true;
+    let result: Promise<boolean> = Promise.resolve(true);
+    const tab = useEditorStore.getState().tabs[0];
+    act(() => {
+      result = saveDirtyTab(tab, TAB, ops().handleSave);
+    });
+    await vi.waitFor(() => expect(held).toHaveLength(1));
+    act(() => draw(double, "T2"));
+    await act(async () => {
+      held[0].release();
+      await result;
+    });
+    expect(await result).toBe(false);
+    expect(dirty()).toBe(true);
   });
 
   it("Cmd+W while drawing: the tab is saved but stays open, and dirty", async () => {

@@ -434,12 +434,12 @@ export function useFileOperations({
       // and close without a prompt (Cmd+W keeps its quick save-and-close flow).
       handleSave().then(
         () => {
-          // `handleSave` resolves normally whether or not it saved (its early
-          // returns and its catch), so the tab is asked again: one still
+          // `handleSave` resolves normally on its early returns and a failed
+          // write, so the tab is asked again: one still
           // unsaved keeps its work and stays open; only a clean one closes.
           // It stays unsaved when the save gave up (issue 594: the tab
-          // changed while a block ID rename was landing), when an Untitled
-          // Save As was cancelled, when the write failed, and — §392 D15 ·
+          // changed while a block ID rename was landing), when the write
+          // failed, and — §392 D15 ·
           // D17 — when the text changed while the write was in flight (an
           // editable viewer's change, or typing in a code tab): the save
           // then leaves the tab dirty, since what it holds is not on disk.
