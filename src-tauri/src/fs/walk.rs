@@ -2,19 +2,19 @@
 // what `VaultExclusion` leaves out skipped, markdown told apart from the rest — run as a
 // single blocking task instead of one async round trip per entry.
 //
-// The walk is `ignore::WalkBuilder` with all of its own filters off
-// (`standard_filters(false)`: no hidden, `.ignore`, `.gitignore`, global or parent
-// files) and links not followed; what to skip is decided by `filter_entry` alone, with
-// the rule the old per-entry `tokio::fs` walkers applied:
+// The walk is the old per-entry `tokio::fs` walk's own loop on `std::fs`, iterative, in
+// the same order (depth first, a folder entered where it is listed). Each failure is
+// judged where it happens, never by looking at the path again afterwards:
 //
 // - an entry whose name starts with `.` is skipped, the start folder itself never;
+// - an entry whose metadata cannot be read (it vanished after the listing) is skipped;
 // - an entry `VaultExclusion::excludes_entry` leaves out is skipped, a folder without
 //   being entered;
-// - a symlink is neither file nor folder: skipped, not followed;
-// - a folder that cannot be listed ends the walk with `FsError::ReadDir` naming it —
-//   the `ignore` walker reports such an error and carries on, so the first one is
-//   returned here rather than a partial list that reads as success; an error about an
-//   entry that is not a folder skips that entry, as before (`folder_error`).
+// - a symlink is neither file nor folder (`DirEntry::metadata` does not follow it):
+//   skipped, not followed;
+// - a folder that cannot be opened or listed — the start included, also when the start
+//   is a link — ends the walk with `FsError::ReadDir` naming it, never a partial list
+//   that reads as success.
 //
 // `old_walk_tests::the_walk_finds_what_the_per_entry_walkers_found` keeps the old
 // walkers as an oracle and compares lists, order included.
@@ -86,94 +86,96 @@ fn walk_blocking(
     collect: Collect,
     cancelled: &AtomicBool,
 ) -> Result<VaultFiles, FsError> {
-    // The start is opened through a link, as the old walk's `read_dir` opened it (a vault
-    // registered as a symlink is walked); a start that is not a folder fails the same way.
-    let unreadable = |source: std::io::Error| FsError::ReadDir {
-        path: root.to_path_buf(),
-        source,
-    };
-    if !std::fs::metadata(root).map_err(unreadable)?.is_dir() {
-        return Err(unreadable(std::io::Error::other("not a directory")));
-    }
-    let filter = exclusion.clone();
-    let walker = ignore::WalkBuilder::new(root)
-        .standard_filters(false)
-        .follow_links(false)
-        .filter_entry(move |entry| {
-            if entry.file_name().to_string_lossy().starts_with('.') {
-                return false;
-            }
-            let is_dir = entry.file_type().is_some_and(|t| t.is_dir());
-            !filter.excludes_entry(entry.path(), is_dir)
-        })
-        .build();
     let mut found = VaultFiles::default();
-    for entry in walker {
+    // The folders being listed, innermost last: a folder is opened where it is listed and
+    // its entries come before its later siblings', the old recursion's order. The start
+    // is opened on the first step, so one cancellation check covers every step.
+    let mut start = Some(root);
+    let mut open: Vec<(PathBuf, std::fs::ReadDir)> = Vec::new();
+    loop {
         if cancelled.load(Ordering::Relaxed) {
             return Err(FsError::ReadError(std::io::Error::other("walk cancelled")));
         }
-        let entry = match entry {
-            Ok(entry) => entry,
-            Err(e) => match folder_error(e, root) {
-                Some(failed) => return Err(failed),
-                None => continue,
-            },
-        };
-        let Some(kind) = entry.file_type() else {
-            continue;
-        };
-        if kind.is_dir() {
-            #[cfg(test)]
-            super::exclusion::note_folder_read(entry.path());
+        if let Some(root) = start.take() {
+            open.push(open_folder(root)?);
             continue;
         }
-        if !kind.is_file() {
+        let Some((folder, entries)) = open.last_mut() else {
+            break;
+        };
+        let Some(entry) = entries.next() else {
+            open.pop();
+            continue;
+        };
+        let entry = entry.map_err(|source| FsError::ReadDir {
+            path: folder.clone(),
+            source,
+        })?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
             continue;
         }
-        let path = entry.into_path();
-        let markdown = path
-            .file_name()
-            .is_some_and(|n| is_markdown(&n.to_string_lossy()));
-        match collect {
-            Collect::Markdown if markdown => found.markdown.push(path),
-            Collect::Markdown => {}
-            Collect::Files => found.all.push(path),
-            Collect::Both => {
-                if markdown {
-                    found.markdown.push(path.clone());
+        let Some(kind) = entry_kind(entry.metadata()) else {
+            continue;
+        };
+        let path = entry.path();
+        if exclusion.excludes_entry(&path, kind == Kind::Folder) {
+            continue;
+        }
+        match kind {
+            Kind::Folder => open.push(open_folder(&path)?),
+            Kind::File => {
+                let markdown = is_markdown(&name);
+                match collect {
+                    Collect::Markdown if markdown => found.markdown.push(path),
+                    Collect::Markdown => {}
+                    Collect::Files => found.all.push(path),
+                    Collect::Both => {
+                        if markdown {
+                            found.markdown.push(path.clone());
+                        }
+                        found.all.push(path);
+                    }
                 }
-                found.all.push(path);
             }
+            Kind::Other => {}
         }
     }
     Ok(found)
 }
 
-/// What a walk error means. A folder that cannot be listed ends the walk with
-/// `FsError::ReadDir` naming it, as the old walk's failed `read_dir` did. An error about
-/// anything that is not a folder now — an entry that vanished between the listing and
-/// its file type (an atomic save's temp file), or one whose type could not be read — is
-/// `None`: the entry is skipped, as the old walk skipped an entry whose metadata failed.
-fn folder_error(err: ignore::Error, root: &Path) -> Option<FsError> {
-    let mut path = root.to_path_buf();
-    let mut err = err;
-    let source = loop {
-        match err {
-            ignore::Error::WithDepth { err: inner, .. } => err = *inner,
-            ignore::Error::WithPath {
-                path: at,
-                err: inner,
-            } => {
-                path = at;
-                err = *inner;
-            }
-            ignore::Error::Io(source) => break source,
-            other => break std::io::Error::other(other.to_string()),
-        }
-    };
-    std::fs::symlink_metadata(&path)
-        .is_ok_and(|m| m.is_dir())
-        .then_some(FsError::ReadDir { path, source })
+/// `folder` opened for listing — through a link, as `read_dir` opens one — or
+/// `FsError::ReadDir` naming it.
+fn open_folder(folder: &Path) -> Result<(PathBuf, std::fs::ReadDir), FsError> {
+    #[cfg(test)]
+    super::exclusion::note_folder_read(folder);
+    std::fs::read_dir(folder)
+        .map(|entries| (folder.to_path_buf(), entries))
+        .map_err(|source| FsError::ReadDir {
+            path: folder.to_path_buf(),
+            source,
+        })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Folder,
+    File,
+    /// A symlink, or anything else that is neither.
+    Other,
+}
+
+/// What a listed entry is, from its own (unfollowed) metadata; `None` when that cannot
+/// be read — the entry is skipped, as the old walk skipped it.
+fn entry_kind(metadata: std::io::Result<std::fs::Metadata>) -> Option<Kind> {
+    let metadata = metadata.ok()?;
+    Some(if metadata.is_dir() {
+        Kind::Folder
+    } else if metadata.is_file() {
+        Kind::File
+    } else {
+        Kind::Other
+    })
 }
 
 /// §278 Every file under `root`, skipping hidden entries and what `exclusion` leaves out
@@ -428,32 +430,42 @@ mod old_walk_tests {
         assert_eq!((both.markdown.len(), both.all.len()), (1, 501));
     }
 
-    /// An error about an entry that is not a folder — gone between the listing and its
-    /// file type — skips it; one about a folder that cannot be listed names that folder.
-    /// 이것을 실패시키는 것: `folder_error` 가 모든 오류를 `ReadDir` 로 돌려주는 것(첫 단언),
-    /// 또는 아무것도 돌려주지 않는 것(둘째 단언 — 읽을 수 없는 폴더 시험도 함께 빨개진다).
+    /// An entry whose metadata cannot be read is skipped, not an error.
+    /// 이것을 실패시키는 것: `entry_kind` 가 읽지 못한 metadata 에 `None` 이 아닌 종류로
+    /// 답하는 것.
     #[test]
-    fn an_entry_error_skips_the_entry_and_a_folder_error_names_the_folder() {
+    fn an_entry_whose_metadata_cannot_be_read_is_skipped() {
+        let vanished = std::fs::symlink_metadata("/nonexistent/vanished.md.tmp");
+        assert!(vanished.is_err());
+        assert_eq!(entry_kind(vanished), None);
+        let here = std::fs::symlink_metadata(".").unwrap();
+        assert_eq!(entry_kind(Ok(here)), Some(Kind::Folder));
+    }
+
+    /// A start that is a link to a folder that cannot be listed is an error naming the
+    /// start — not an empty list that would publish an empty index.
+    /// 이것을 실패시키는 것: 시작 폴더를 열지 못한 오류를 빈 결과로 바꾸는 것.
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_start_whose_folder_cannot_be_listed_is_an_error() {
+        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let wrapped = |path: PathBuf, kind: std::io::ErrorKind| ignore::Error::WithDepth {
-            depth: 1,
-            err: Box::new(ignore::Error::WithPath {
-                path,
-                err: Box::new(ignore::Error::Io(std::io::Error::from(kind))),
-            }),
-        };
-        let vanished = dir.path().join("note.md.tmp");
-        assert!(
-            folder_error(wrapped(vanished, std::io::ErrorKind::NotFound), dir.path()).is_none()
-        );
-        let folder = dir.path().join("locked");
-        std::fs::create_dir(&folder).unwrap();
-        match folder_error(
-            wrapped(folder.clone(), std::io::ErrorKind::PermissionDenied),
-            dir.path(),
-        ) {
-            Some(FsError::ReadDir { path, .. }) => assert_eq!(path, folder),
-            other => panic!("expected ReadDir for {folder:?}, got {other:?}"),
+        let target = dir.path().join("target");
+        write(&target, "a.md", "a");
+        let alias = dir.path().join("alias");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_dir(&target).is_ok() {
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+            eprintln!("skipped: this user can read a 000 directory");
+            return;
+        }
+        let exclusion = VaultExclusion::default();
+        let walked = walk_blocking(&alias, &exclusion, Collect::Both, &AtomicBool::new(false));
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        match walked {
+            Err(FsError::ReadDir { path, .. }) => assert_eq!(path, alias),
+            other => panic!("expected ReadDir for {alias:?}, got {other:?}"),
         }
     }
 
