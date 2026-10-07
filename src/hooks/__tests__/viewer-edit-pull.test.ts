@@ -41,12 +41,13 @@ function viewerMount(getText: () => unknown, tabId = TAB): ViewerEditMount {
 }
 
 /** `useSourceMode` with T0 in the tab's buffer, counting its renders. */
-function setup() {
+function setup(beforeFirstWrite?: () => void) {
   let renders = 0;
   const hook = renderHook(() => {
     renders += 1;
     return useSourceMode({ editor: null });
   });
+  beforeFirstWrite?.();
   act(() => hook.result.current.setSourceBuffer(TAB, "T0"));
   return { hook, renders: () => renders };
 }
@@ -104,8 +105,10 @@ describe("a read takes a pending change (§6.3 · D9)", () => {
     m.pending = true;
     const version = hook.result.current.bufferVersion;
     const before = renders();
-    hook.result.current.getSourceBuffer(TAB);
-    // The take really happened — without this the rows below hold vacuously before the change.
+    act(() => {
+      hook.result.current.getSourceBuffer(TAB);
+    });
+    // The take really happened — without this the assertions below hold vacuously before the change.
     expect(m.getText).toHaveBeenCalledTimes(1);
     expect(m.deliver).not.toHaveBeenCalled();
     expect(renders()).toBe(before);
@@ -145,12 +148,17 @@ describe("another writer (§6.4)", () => {
   });
 
   it("sends the first text again when it is written back after a take made the buffer T1", () => {
-    const { hook } = setup();
-    const m = viewerMount(() => "T1");
+    // The mount exists before the first write, so the viewer was sent T0 once already: a
+    // last-sent comparison would skip the write back, the previous-buffer comparison does not.
+    let m!: ViewerEditMount;
+    const { hook } = setup(() => {
+      m = viewerMount(() => "T1");
+    });
     m.pending = true;
     hook.result.current.getSourceBuffer(TAB);
     act(() => hook.result.current.setSourceBuffer(TAB, "T0"));
-    expect(m.deliver).toHaveBeenCalledWith("T0");
+    expect(m.deliver).toHaveBeenCalledTimes(2);
+    expect(m.deliver).toHaveBeenLastCalledWith("T0");
   });
 });
 
@@ -204,6 +212,8 @@ describe("a failed take (§7.4)", () => {
     }, "gone");
     m.pending = true;
     hook.result.current.getSourceBuffer("gone");
+    expect(m.getText).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledTimes(1);
     expect(useEditorStore.getState().previewSourceTabs).toEqual([]);
     expect(toasts).toEqual([]);
   });
