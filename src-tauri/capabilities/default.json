@@ -132,6 +132,7 @@
     "allow-search-knowledge",
     "allow-set-active-context",
     "allow-set-config",
+    "allow-set-open-files",
     "allow-set-task-field",
     "allow-set-task-state",
     "allow-set-task-tag",

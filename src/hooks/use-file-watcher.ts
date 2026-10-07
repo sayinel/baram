@@ -9,9 +9,15 @@ import type { FileEntry } from "../stores/file/file";
 import { useShallow } from "zustand/shallow";
 
 import defaultExcludedDirs from "../../src-tauri/src/fs/default-excluded-dirs.json";
-import { watchDir } from "../ipc/invoke";
+import { setOpenFiles, watchDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
+import { useUIStore } from "../stores/ui/ui";
+import {
+  afterTabSaves,
+  ownSaveCovers,
+  tabSaveInFlight,
+} from "../utils/editor/tab-save-in-flight";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 
@@ -57,11 +63,7 @@ export function useFileWatcher() {
   const pendingRef = useRef<Map<string, PendingEntry>>(new Map());
   const externalDirsRef = useRef<Set<string>>(new Set());
   // Paths of currently open file tabs — drives out-of-vault watching below.
-  const openFilePaths = useEditorStore(
-    useShallow((s) =>
-      s.tabs.map((t) => t.filePath).filter((p) => p.length > 0),
-    ),
-  );
+  const openFilePaths = useEditorStore(useShallow((s) => openPathsOf(s.tabs)));
 
   // Register watcher event listeners once on mount, independent of rootPath, so
   // single files opened without a vault still receive change events.
@@ -94,6 +96,111 @@ export function useFileWatcher() {
     const scheduleFlush = () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(flush, 300);
+    };
+
+    // §3.2 Reloads still reading, per path (issue 795): the mtime being applied, and
+    // the notifications that arrived meanwhile. One write can be reported twice — the
+    // rename of an atomic save and its data flag — so a notification with the mtime
+    // being applied is that same write and needs no read of its own; any other one
+    // gets one trailing read when the reload finishes. Nothing outlives the reload:
+    // a notification after it is read again.
+    interface Reloading {
+      again: ChangedPayload | null;
+      mtime: number;
+      same: boolean;
+    }
+    const reloading = new Map<string, Reloading>();
+
+    const handleChanged = (payload: ChangedPayload) => {
+      const filePath = payload.path;
+      const externalMtime = payload.mtime;
+      if (!useFileStore.getState().openFiles.has(filePath)) return;
+
+      // Ignore self-write echoes: an atomic save (tmp + rename) can surface
+      // as a file:changed event. If the reported mtime is not newer than our
+      // own last save, this was almost certainly triggered by our own write.
+      const prevMtime = useFileStore.getState().getFileMtime(filePath);
+      if (
+        prevMtime &&
+        externalMtime > 0 &&
+        externalMtime <= prevMtime.lastSaveMtime
+      ) {
+        return;
+      }
+
+      const inFlight = reloading.get(filePath);
+      if (inFlight) {
+        if (externalMtime > 0 && externalMtime === inFlight.mtime) {
+          inFlight.same = true;
+        } else if (!inFlight.again || externalMtime >= inFlight.again.mtime) {
+          inFlight.again = payload;
+        }
+        return;
+      }
+
+      // Record the external mtime
+      useFileStore.getState().updateCanReloadMtime(filePath, externalMtime);
+
+      // Check dirty state — any tab showing the file.
+      const isDirty = useEditorStore
+        .getState()
+        .tabs.some((t) => t.filePath === filePath && t.isDirty);
+
+      if (isDirty) {
+        // Capture the pre-external content (last synced) as the 3-way base.
+        const base = useFileStore.getState().openFiles.get(filePath) ?? "";
+        showConflictModal(filePath, externalMtime, base);
+        return;
+      }
+
+      // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
+      // 버리는 재구축도 하지 않는다. dirty 탭은 위에서 갈렸다: 앱이 디스크에
+      // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
+      // 버릴 수 없고, 그 판단은 충돌 모달이 사용자에게 묻는다.
+      const entry: Reloading = {
+        again: null,
+        mtime: externalMtime,
+        same: false,
+      };
+      reloading.set(filePath, entry);
+      triggerAutoReload(filePath, externalMtime, {
+        appOrigin: payload.origin === "app",
+      }).then(
+        () => {
+          reloading.delete(filePath);
+          if (entry.again) handleChanged(entry.again);
+        },
+        (err: unknown) => {
+          logger.warn("useFileWatcher: triggerAutoReload failed", err);
+          reloading.delete(filePath);
+          // The change was not applied: a report that arrived meanwhile — even of
+          // the same write — gets another attempt.
+          const retry = entry.again ?? (entry.same ? payload : null);
+          if (retry) handleChanged(retry);
+        },
+      );
+    };
+
+    // The newest change of each path whose tab save is still running — the one
+    // with the highest mtime, so an earlier echo cannot hide a later edit.
+    const held = new Map<string, ChangedPayload>();
+    const holdForTabSave = (payload: ChangedPayload) => {
+      const prev = held.get(payload.path);
+      if (prev && prev.mtime >= payload.mtime) return;
+      held.set(payload.path, payload);
+      if (prev) return;
+      void afterTabSaves(payload.path).then((saves) => {
+        // After the save site's own bookkeeping, which runs when its write
+        // resolves: the tab that saved is clean by now if it still holds the text.
+        setTimeout(() => {
+          const latest = held.get(payload.path);
+          held.delete(payload.path);
+          if (!latest) return;
+          // The saving tab's own write, and that tab is still the one showing it.
+          if (ownSaveCovers(latest.path, latest.mtime, saves)) return;
+          handleChanged(latest);
+        }, 0);
+      });
     };
 
     // Listen for events — use async IIFE so unlistenFns is populated before
@@ -130,51 +237,16 @@ export function useFileWatcher() {
             scheduleFlush();
           }),
           listen<ChangedPayload>("file:changed", (event) => {
-            const filePath = event.payload.path;
-            const externalMtime = event.payload.mtime;
-
             // Ignore changes to files that are not open
-            const isOpen = useFileStore.getState().openFiles.has(filePath);
-            if (!isOpen) return;
-
-            // Ignore self-write echoes: an atomic save (tmp + rename) can surface
-            // as a file:changed event. If the reported mtime is not newer than our
-            // own last save, this was almost certainly triggered by our own write.
-            const prevMtime = useFileStore.getState().getFileMtime(filePath);
-            if (
-              prevMtime &&
-              externalMtime > 0 &&
-              externalMtime <= prevMtime.lastSaveMtime
-            ) {
+            const filePath = event.payload.path;
+            if (!useFileStore.getState().openFiles.has(filePath)) return;
+            // §3.2 The tab is saving this file itself: hold the change until the save
+            // settles, then judge it against the save's own mtime (issue 795).
+            if (tabSaveInFlight(filePath)) {
+              holdForTabSave(event.payload);
               return;
             }
-
-            // Record the external mtime
-            useFileStore
-              .getState()
-              .updateCanReloadMtime(filePath, externalMtime);
-
-            // Check dirty state
-            const tabs = useEditorStore.getState().tabs;
-            const tab = tabs.find((t) => t.filePath === filePath);
-            const isDirty = tab?.isDirty ?? false;
-
-            if (!isDirty) {
-              // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
-              // 버리는 재구축도 하지 않는다. dirty 탭은 아래 그대로다: 앱이 디스크에
-              // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
-              // 버릴 수 없고, 그 판단은 충돌 모달이 사용자에게 묻는다.
-              triggerAutoReload(filePath, externalMtime, {
-                appOrigin: event.payload.origin === "app",
-              }).catch((err) =>
-                logger.warn("useFileWatcher: triggerAutoReload failed", err),
-              );
-            } else {
-              // Capture the pre-external content (last synced) as the 3-way base.
-              const base =
-                useFileStore.getState().openFiles.get(filePath) ?? "";
-              showConflictModal(filePath, externalMtime, base);
-            }
+            handleChanged(event.payload);
           }),
         ]);
 
@@ -216,12 +288,26 @@ export function useFileWatcher() {
   }, []);
 
   // Watch the vault root directory whenever a vault is open.
+  //
+  // §3.2 The Rust watcher drops events below excluded folders (`build/`, `target/`, …)
+  // except for the open files (issue 795), so the open set is sent FIRST: tabs
+  // restored inside such a folder are registered before the watch that would drop
+  // their events starts. The open set's own effect below keeps it current.
   useEffect(() => {
     if (!rootPath) return;
-    watchDir(rootPath).catch((err) =>
-      logger.warn("useFileWatcher: watchDir failed", err),
+    void registerOpenFiles(currentOpenFilePaths()).finally(() =>
+      watchDir(rootPath).catch((err) =>
+        logger.warn("useFileWatcher: watchDir failed", err),
+      ),
     );
   }, [rootPath]);
+
+  // §3.2 Sent on every change of the open set. A tab opened while a watch runs is
+  // registered one IPC round trip after it appears in the store: a change to it
+  // inside an excluded folder in that window is not reported.
+  useEffect(() => {
+    void registerOpenFiles(openFilePaths);
+  }, [openFilePaths]);
 
   // §3.6 Out-of-vault files: when the vault is open (so the watcher listeners
   // above are active), also watch the parent directory of any open file that
@@ -246,14 +332,48 @@ export function useFileWatcher() {
   }, [openFilePaths, rootPath]);
 }
 
+/** The open set, read now — the same selection `openFilePaths` makes. */
+function currentOpenFilePaths(): string[] {
+  return openPathsOf(useEditorStore.getState().tabs);
+}
+
 function fileName(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx >= 0 ? path.substring(idx + 1) : path;
 }
 
+function openPathsOf(tabs: ReadonlyArray<{ filePath: string }>): string[] {
+  return tabs.map((t) => t.filePath).filter((p) => p.length > 0);
+}
+
 function parentDir(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx > 0 ? path.substring(0, idx) : path;
+}
+
+/**
+ * §3.2 `setOpenFiles`. The watch starts either way. A refused call leaves the watcher
+ * with no known open set, which makes it filter nothing (watch_filter.rs, issue 795):
+ * safe for an open file, at the cost of build-output events reaching the webview until
+ * the next change of the open set retries. That is said once per failure streak.
+ */
+let registrationFailing = false;
+async function registerOpenFiles(paths: string[]): Promise<void> {
+  try {
+    await setOpenFiles(paths);
+    registrationFailing = false;
+  } catch (err) {
+    logger.error("useFileWatcher: setOpenFiles failed", err);
+    if (!registrationFailing) {
+      registrationFailing = true;
+      useUIStore
+        .getState()
+        .showToast(
+          "Couldn't tell the file watcher which files are open — it will report every change until this succeeds",
+          "warning",
+        );
+    }
+  }
 }
 
 function shouldSkip(path: string, isDir = false): boolean {

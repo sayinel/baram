@@ -402,7 +402,9 @@ function createFilesAPI(readonly: boolean): FilesAPI {
     async writeFile(path: string, content: string): Promise<void> {
       if (readonly)
         throw new Error("files:readonly — writeFile is not allowed");
-      return writeFile(path, content);
+      // The command answers the written mtime (issue 795); the plugin API's
+      // `Promise<void>` does not carry it.
+      await writeFile(path, content);
     },
     async listDir(path: string): Promise<string[]> {
       const entries = await listDir(path);

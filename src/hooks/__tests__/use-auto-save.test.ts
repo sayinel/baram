@@ -173,9 +173,7 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     const { useSettingsStore } = await import("../../stores/settings/store");
     const { useAutoSave } = await import("../use-auto-save");
 
-    const writeFileSpy = vi
-      .spyOn(ipcInvoke, "writeFile")
-      .mockResolvedValue(undefined);
+    const writeFileSpy = vi.spyOn(ipcInvoke, "writeFile").mockResolvedValue(0);
     vi.spyOn(ipcInvoke, "updateFileIndex").mockResolvedValue(undefined);
 
     const editorStoreBaseline = useEditorStore.getState();
@@ -236,9 +234,7 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     const { useSettingsStore } = await import("../../stores/settings/store");
     const { useAutoSave } = await import("../use-auto-save");
 
-    const writeFileSpy = vi
-      .spyOn(ipcInvoke, "writeFile")
-      .mockResolvedValue(undefined);
+    const writeFileSpy = vi.spyOn(ipcInvoke, "writeFile").mockResolvedValue(0);
     vi.spyOn(ipcInvoke, "updateFileIndex").mockResolvedValue(undefined);
 
     const editorStoreBaseline = useEditorStore.getState();
@@ -320,9 +316,7 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     const { useSettingsStore } = await import("../../stores/settings/store");
     const { useAutoSave } = await import("../use-auto-save");
 
-    const writeFileSpy = vi
-      .spyOn(ipcInvoke, "writeFile")
-      .mockResolvedValue(undefined);
+    const writeFileSpy = vi.spyOn(ipcInvoke, "writeFile").mockResolvedValue(0);
     vi.spyOn(ipcInvoke, "updateFileIndex").mockResolvedValue(undefined);
 
     const editorStoreBaseline = useEditorStore.getState();

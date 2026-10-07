@@ -171,10 +171,12 @@ pub async fn write_file(
     content: String,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
-    crate::fs::write_file(&path, &content)
+    // §3.2 The written file's mtime: what the watcher will report for this write, so
+    // the frontend can tell its own save's echo from any other change (issue 795).
+    crate::fs::write_file_mtime(&path, &content)
         .await
         .map_err(|e| e.to_string())
 }
@@ -340,6 +342,14 @@ pub async fn watch_dir(
     let mut guard = watcher_state.0.lock().map_err(|e| e.to_string())?;
     guard.insert(path.clone(), new_watcher);
     Ok(())
+}
+
+/// §3.2 The files open in the editor. The watcher drops events below an excluded
+/// folder (issue 795) except for these: the reload and conflict checks of an open
+/// file need its events wherever it lives.
+#[tauri::command]
+pub fn set_open_files(paths: Vec<String>) -> Result<(), String> {
+    crate::fs::set_open_files(&paths)
 }
 
 /// §53 ZIP 파일 추출 — Notion 내보내기 호환

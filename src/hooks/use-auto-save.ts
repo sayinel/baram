@@ -27,6 +27,7 @@ import {
   serializeLiveDoc,
 } from "../utils/editor/serialize-live-doc";
 import { isEphemeralOnlyUpdate } from "../utils/editor/syntax-reveal-ephemeral";
+import { asTabSave } from "../utils/editor/tab-save-in-flight";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
 import { notifyJournalChanged } from "../utils/journal/journal-events";
@@ -106,7 +107,9 @@ export function useAutoSave(editor: Editor | null) {
     try {
       const docAtWrite = editor.state.doc;
       const markdown = serializeLiveDoc(editor);
-      await writeFile(filePath, markdown);
+      const savedAt = await asTabSave(filePath, pending.id, () =>
+        writeFile(filePath, markdown),
+      );
       // §3.5 쓰는 사이 탭이 닫혔거나 다른 경로로 옮겨졌으면 저장 결과를 탭의 기록에 남기지 않는다
       // (#798). 남기면 닫힌 파일의 원문 · 수정 시각이 되살아나고, 그 사이 같은 파일을 새 탭으로 다시
       // 열었다면 그 탭이 읽은 내용을 이 저장의 옛 내용으로 덮는다. 디스크와 index 갱신은 그대로 한다.
@@ -116,7 +119,9 @@ export function useAutoSave(editor: Editor | null) {
       if (stillShown) {
         // Phase 4: record save time so future mtime comparisons have a baseline — this
         // write is ours whatever happened to the document since.
-        useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+        useFileStore
+          .getState()
+          .updateLastSaveMtime(filePath, savedAt ?? Date.now());
       }
       // §3.5 쓰는 사이 사용자가 더 고쳤으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다.
       if (

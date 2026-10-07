@@ -5,6 +5,8 @@ mod copy_dir;
 mod exclusion;
 pub mod media;
 mod walk;
+mod watch_filter;
+pub use watch_filter::set_open_files;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
 #[cfg(test)]
@@ -13,7 +15,7 @@ pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
 pub use walk::{collect_all_files, collect_md_files, walk_vault, Collect};
 
 use crate::commands::fs_cmd::FileEntry;
-use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
@@ -104,17 +106,41 @@ pub async fn read_file(path: &str) -> Result<String, FsError> {
 /// Unique tmp suffix per call prevents concurrent writes from overwriting
 /// each other's tmp file (auto-save vs manual-save race).
 pub async fn write_file(path: &str, content: &str) -> Result<(), FsError> {
+    write_file_mtime(path, content).await.map(|_| ())
+}
+
+/// `write_file`, answering the mtime the written file has — what the watcher reports
+/// for this write (issue 795).
+pub async fn write_file_mtime(path: &str, content: &str) -> Result<u64, FsError> {
+    write_file_with(path, content, |from, to| async move {
+        tokio::fs::rename(from, to).await
+    })
+    .await
+}
+
+/// The write itself, with the rename step passed in so a test can stand inside it.
+///
+/// §313 The app-write record is made BEFORE the rename, from the tmp file's mtime —
+/// a rename keeps the inode's mtime, so it is the mtime the target has the moment the
+/// watcher can see it. Recorded after the rename, the first watcher event of the write
+/// could be judged before the record existed and be reported as somebody else's
+/// change (issue 795). A rename that fails takes the record back.
+async fn write_file_with<R, Fut>(path: &str, content: &str, rename: R) -> Result<u64, FsError>
+where
+    R: FnOnce(PathBuf, PathBuf) -> Fut,
+    Fut: std::future::Future<Output = std::io::Result<()>>,
+{
     let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
     tokio::fs::write(&tmp_path, content).await?;
-    tokio::fs::rename(&tmp_path, path).await.map_err(|e| {
+    let mtime = mtime_ms(Path::new(&tmp_path));
+    note_app_write_at(Path::new(path), mtime);
+    if let Err(e) = rename(PathBuf::from(&tmp_path), PathBuf::from(path)).await {
+        forget_app_write(Path::new(path), mtime);
         // 실패 시 임시 파일 삭제 시도
         let _ = std::fs::remove_file(&tmp_path);
-        FsError::ReadError(e)
-    })?;
-    // §313 방금 만든 mtime을 남긴다 — 이 자리와 `create_file` 의 같은 호출이 "앱의 쓰기"와
-    // "남의 쓰기"를 가르는 기록을 남긴다. 아래 `is_app_write` 주석 참조.
-    note_app_write(Path::new(path));
-    Ok(())
+        return Err(FsError::ReadError(e));
+    }
+    Ok(mtime)
 }
 
 /// §4.3 **새** 파일을 만든다 — 경로에 무엇이든(파일 · 디렉터리 · 링크) 이미 있으면 거부하고
@@ -249,7 +275,11 @@ pub fn is_app_write(path: &Path, mtime: u64) -> bool {
 }
 
 fn note_app_write(path: &Path) {
-    let mtime = mtime_ms(path);
+    note_app_write_at(path, mtime_ms(path));
+}
+
+/// `note_app_write` with the mtime already known (`write_file_with`, before the rename).
+fn note_app_write_at(path: &Path, mtime: u64) {
     if mtime == 0 {
         return;
     }
@@ -267,11 +297,23 @@ fn note_app_write(path: &Path) {
     }
 }
 
+/// Take back the record `note_app_write_at` made for `mtime`, when the write it
+/// announced did not happen. A newer record for the path is left alone.
+fn forget_app_write(path: &Path, mtime: u64) {
+    if let Ok(mut map) = app_writes().lock() {
+        let key = app_write_key(path);
+        if map.get(&key).is_some_and(|w| w.mtime == mtime) {
+            map.remove(&key);
+        }
+    }
+}
+
 /// 쓰는 쪽은 프론트엔드가 준 경로를, 워처는 FSEvents가 준 경로를 들고 온다. macOS에서
 /// 그 둘은 심볼릭 링크(`/tmp` → `/private/tmp`) 때문에 다른 문자열일 수 있으므로 양쪽을
-/// 같은 방식으로 정규화한다. 정규화가 실패하면(파일이 사라진 뒤) 원문을 쓴다.
+/// 같은 방식으로 정규화한다. 아직 없는 파일(rename 전에 기록하는 새 파일)은 있는 조상까지
+/// 정규화해 같은 열쇠가 되게 하고(`resolve_canonical`), 그것도 실패하면 원문을 쓴다.
 fn app_write_key(path: &Path) -> String {
-    std::fs::canonicalize(path)
+    crate::context::manager::resolve_canonical(&path.to_string_lossy())
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| path.to_string_lossy().into_owned())
 }
@@ -745,17 +787,6 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 }
 
 /// 디렉토리 감시 시작 — notify crate 기반
-/// `file:created` 의 `origin`. 앱의 저장은 임시 파일을 이름만 바꿔 놓으므로 macOS 에서는
-/// 저장마다 저장한 파일의 `file:created` 가 온다 — `file:changed` 와 같은 판정으로 그것을
-/// 가른다(링크 index 는 저장이 이미 고쳤으므로 다시 읽지 않는다, issue 790).
-fn created_origin(path: &Path) -> &'static str {
-    if is_app_write(path, mtime_ms(path)) {
-        "app"
-    } else {
-        "external"
-    }
-}
-
 /// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
 ///
 /// Returns the watcher, which must be kept alive by the caller.
@@ -779,81 +810,33 @@ pub fn start_watching(
     // The watcher is NOT moved here; it is returned to the caller who stores it
     // in managed state. When the managed state drops the watcher, the internal
     // tx is dropped, rx becomes disconnected, and this thread exits on its own.
+    // §3.2 Which events reach the webview is `watch_filter`'s call (issue 795): the
+    // vault walk's exclusion, judged relative to this root, before any metadata read.
+    let mut filter = watch_filter::WatchFilter::new(Path::new(&path));
     std::thread::spawn(move || {
         for event in rx.into_iter().flatten() {
-            for event_path in &event.paths {
-                let path_str = event_path.to_string_lossy().to_string();
-
-                // Skip .tmp files (atomic write intermediates)
-                if path_str.ends_with(".tmp") {
-                    continue;
-                }
-
-                // Skip internal directories to prevent event floods
-                // (e.g., git operations can generate hundreds of .git/ events).
-                // Not `DEFAULT_EXCLUDED_DIRS`: this matches absolute-path substrings, and
-                // `/build/` would drop every event of a vault named `build` (issue 795).
-                if path_str.contains("/.git/")
-                    || path_str.contains("/.baram/")
-                    || path_str.contains("/node_modules/")
-                    || path_str.contains("/.next/")
-                    || path_str.contains("/__pycache__/")
-                {
-                    continue;
-                }
-
-                match event.kind {
-                    EventKind::Create(_) => {
-                        let is_dir = event_path.is_dir();
-                        let _ = app_handle.emit(
-                            "file:created",
-                            serde_json::json!({
-                                "path": path_str,
-                                "isDir": is_dir,
-                                "origin": created_origin(event_path),
-                            }),
-                        );
+            for emit in filter.route(&event, &watch_filter::RealProbe) {
+                let _ = match emit {
+                    watch_filter::Emit::Created {
+                        path,
+                        is_dir,
+                        origin,
+                    } => app_handle.emit(
+                        "file:created",
+                        serde_json::json!({ "path": path, "isDir": is_dir, "origin": origin }),
+                    ),
+                    watch_filter::Emit::Deleted { path } => {
+                        app_handle.emit("file:deleted", serde_json::json!({ "path": path }))
                     }
-                    // Rename: macOS FSEvents reports atomic-write rename
-                    // and external moves as Modify(Name), not Create/Remove
-                    EventKind::Modify(ModifyKind::Name(_)) => {
-                        if event_path.exists() {
-                            let is_dir = event_path.is_dir();
-                            let _ = app_handle.emit(
-                                "file:created",
-                                serde_json::json!({
-                                    "path": path_str,
-                                    "isDir": is_dir,
-                                    "origin": created_origin(event_path),
-                                }),
-                            );
-                        } else {
-                            let _ = app_handle
-                                .emit("file:deleted", serde_json::json!({ "path": path_str }));
-                        }
-                    }
-                    EventKind::Modify(_) => {
-                        // §Phase2: include mtime so frontend can detect external changes
-                        let mtime = mtime_ms(event_path);
-                        // §313 앱 자신의 쓰기인지 여기서 답한다. 프론트엔드는 이 값으로
-                        // "외부 변경"과 "우리가 방금 한 일"을 가른다 — 토스트를 띄울지,
-                        // 실행 취소 스택을 버릴지가 여기서 갈린다.
-                        let origin = if is_app_write(event_path, mtime) {
-                            "app"
-                        } else {
-                            "external"
-                        };
-                        let _ = app_handle.emit(
-                            "file:changed",
-                            serde_json::json!({ "path": path_str, "mtime": mtime, "origin": origin }),
-                        );
-                    }
-                    EventKind::Remove(_) => {
-                        let _ = app_handle
-                            .emit("file:deleted", serde_json::json!({ "path": path_str }));
-                    }
-                    _ => {}
-                }
+                    watch_filter::Emit::Changed {
+                        path,
+                        mtime,
+                        origin,
+                    } => app_handle.emit(
+                        "file:changed",
+                        serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
+                    ),
+                };
             }
         }
     });
@@ -1511,6 +1494,59 @@ mod app_write_tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         panic!("mtime이 바뀌지 않았다 — 파일시스템 해상도를 확인할 것");
+    }
+
+    /// Issue 795: the watcher can see a write the moment the rename lands, so the
+    /// record that says "this mtime is ours" has to exist before it — observed here
+    /// from inside the rename step itself. Applies to a new file too, whose path has
+    /// no canonical form yet when the record is made.
+    // 이것을 실패시키는 것: `note_app_write_at` 을 rename 뒤로 옮긴다.
+    #[tokio::test]
+    async fn the_app_write_record_exists_before_the_rename_lands() {
+        let d = TempDir::new().unwrap();
+        for name in ["new.md", "existing.md"] {
+            let p = d.path().join(name);
+            if name == "existing.md" {
+                std::fs::write(&p, "old\n").unwrap();
+            }
+            let seen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let probe = std::sync::Arc::clone(&seen);
+            let mtime = write_file_with(p.to_str().unwrap(), "body\n", |from, to| async move {
+                let tmp_mtime = mtime_ms(&from);
+                probe.store(
+                    is_app_write(&to, tmp_mtime),
+                    std::sync::atomic::Ordering::SeqCst,
+                );
+                tokio::fs::rename(from, to).await
+            })
+            .await
+            .unwrap();
+            assert!(seen.load(std::sync::atomic::Ordering::SeqCst), "{name}");
+            // The answer is the target's mtime after the write, what the watcher reports.
+            assert_eq!(mtime, mtime_ms(&p), "{name}");
+            assert!(is_app_write(&p, mtime), "{name}");
+        }
+    }
+
+    // 이것을 실패시키는 것: rename 이 실패했을 때 `forget_app_write` 를 부르지 않는다.
+    #[tokio::test]
+    async fn a_failed_rename_takes_the_app_write_record_back() {
+        let d = TempDir::new().unwrap();
+        let p = d.path().join("note.md");
+        let tmp_mtime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let probe = std::sync::Arc::clone(&tmp_mtime);
+        let result = write_file_with(p.to_str().unwrap(), "body\n", |from, _to| async move {
+            probe.store(mtime_ms(&from), std::sync::atomic::Ordering::SeqCst);
+            Err(std::io::Error::other("rename refused"))
+        })
+        .await;
+        assert!(result.is_err());
+        let mtime = tmp_mtime.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(mtime > 0);
+        assert!(!is_app_write(&p, mtime));
+        // The intermediate is cleaned up too.
+        let left: Vec<_> = std::fs::read_dir(d.path()).unwrap().collect();
+        assert!(left.is_empty(), "{left:?}");
     }
 
     #[tokio::test]

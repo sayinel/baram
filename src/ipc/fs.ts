@@ -248,6 +248,14 @@ export async function setVaultRoot(path: string): Promise<void> {
   return invoke<void>("set_vault_root", { path });
 }
 
+/**
+ * §3.2 Tell the watcher which files are open. It drops events below excluded folders
+ * (`build/`, `target/`, …) except for these (issue 795).
+ */
+export async function setOpenFiles(paths: string[]): Promise<void> {
+  return invoke<void>("set_open_files", { paths });
+}
+
 export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }
@@ -260,10 +268,15 @@ export async function writeBinaryFile(
   return invoke<void>("write_binary_file", { path, data });
 }
 
-export function writeFile(path: string, content: string): Promise<void> {
+/**
+ * Write `path` atomically, after any write to it already queued (#798). Resolves to the
+ * written file's mtime — what the watcher reports for this write (issue 795); a tab's
+ * own save records it through `asTabSave` (src/utils/editor/tab-save-in-flight.ts).
+ */
+export function writeFile(path: string, content: string): Promise<number> {
   const previous = pendingWrites.get(path) ?? Promise.resolve();
   const write = previous.then(() =>
-    invoke<void>("write_file", { path, content }),
+    invoke<number>("write_file", { path, content }),
   );
   const settled = write.then(
     () => undefined,
