@@ -122,6 +122,9 @@ describe("PhotoGalleryThumb", () => {
     expect(img.getAttribute("src")).not.toContain(PHOTO.absolutePath);
     expect(img.getAttribute("decoding")).toBe("async");
     expect(img.getAttribute("data-thumb-source")).toBe("cache");
+    // 갤러리는 320 계층을 쓴다(`journal-photos` 격자의 640 과 갈린 뒤에도, 이슈 793).
+    // 이것을 실패시키는 것: `useVisibleThumb` 의 `maxPx` 기본값을 바꾸는 것.
+    expect(photoThumbnail).toHaveBeenCalledWith(PHOTO.absolutePath, 320);
   });
 
   test("warms the lightbox-sized preview when the cell is hovered", async () => {

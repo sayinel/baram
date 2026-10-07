@@ -16,6 +16,16 @@ import { photoThumbnail } from "../../ipc/thumbnail";
 export const GALLERY_THUMB_PX = 320;
 
 /**
+ * §56f `journal-photos` 블록의 격자 칸(이슈 793). 칸은 정사각형이고 `object-fit: cover`라
+ * 칸을 채우는 것은 사진의 **짧은 변**이다. 기본 4열은 에디터 폭(~900px)에서 칸이 ~215px,
+ * 2배 밀도 화면에서 ~430 device px인데, 320 썸네일의 짧은 변(4:3 사진이면 240px)으로는
+ * 1.8배 늘어나 흐려진다. 640이면 짧은 변이 480px라 그 칸을 덮는다. 디코드는 640×480×4 =
+ * 1.2 MB로 12 MP 원본(48 MB)의 1/40이다. 한 줄 배치(80px 칸)는 갤러리와 같은
+ * `GALLERY_THUMB_PX`를 써서 캐시 항목을 함께 쓴다.
+ */
+export const JOURNAL_GRID_THUMB_PX = 640;
+
+/**
  * 사진 한 장을 크게 보여주는 두 곳 — 라이트박스와 **에디터 본문** — 이 함께 쓰는 크기.
  *
  * 하나의 값인 것이 요점이다: 둘이 같은 크기를 요구하면 캐시 항목도 하나이므로, 갤러리에서

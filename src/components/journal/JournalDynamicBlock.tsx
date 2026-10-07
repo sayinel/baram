@@ -1,15 +1,18 @@
 // §56f Journal Dynamic Code Block — renders journal-list / journal-photos
 import { useCallback, useEffect, useState } from "react";
 
-import { convertFileSrc } from "@tauri-apps/api/core";
-
 import { INTL_LOCALES } from "../../i18n";
 import { useTranslation } from "../../i18n/useTranslation";
 import { listDir, readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import {
+  GALLERY_THUMB_PX,
+  JOURNAL_GRID_THUMB_PX,
+} from "../../utils/journal/photo-thumbnail";
 import { basename } from "../../utils/path-utils";
+import { JournalPhotoCell } from "./JournalPhotoCell";
 
 export type JournalBlockLanguage = "journal-list" | "journal-photos";
 
@@ -281,12 +284,11 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
   return (
     <div className="journal-photos-grid" style={gridStyle}>
       {photos.map((photo) => (
-        <img
+        <JournalPhotoCell
+          absolutePath={photo.absolutePath}
           alt={photo.filename}
-          className="journal-photos-thumb"
           key={photo.absolutePath}
-          loading="lazy"
-          src={convertFileSrc(photo.absolutePath)}
+          maxPx={layout === "strip" ? GALLERY_THUMB_PX : JOURNAL_GRID_THUMB_PX}
           title={`${photo.date} — ${photo.filename}`}
         />
       ))}
