@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: UI 와 Shadow DOM 격리"
-sourceHash: "468ef6b06f3b"
+sourceHash: "3a78d5d2f8eb"
 ---
 
 ## `context.ui`
@@ -61,7 +61,7 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
   프로토콜로 서빙되는 그 파일이고(`refreshKey`로 이미 캐시가 무효화돼 있습니다), `zoomLevel`은
   공유되는 에디터 배율입니다(Cmd+= / Cmd+- / Cmd+0, Ctrl+휠) — 그것에 맞춰 내용을 확대·축소하는
   것은 뷰어의 몫입니다. `onUpdate`는 붙어 있는 동안 컨텍스트가 바뀌면 발생합니다(배율, 저장,
-  외부 재적재). **텍스트** 확장자에서는 앱이 미리보기 ↔ 소스 전환을 유지합니다 — 여러분의 뷰어가
+  외부 재적재). 편집 마운트(아래 편집 가능한 파일 뷰어 페이지)에는 자기 자신의 저장이 전달되지 않습니다. **텍스트** 확장자에서는 앱이 미리보기 ↔ 소스 전환을 유지합니다 — 여러분의 뷰어가
   미리보기 쪽을, CodeMirror가 소스 쪽을 렌더합니다. **바이너리** 확장자는 뷰어 전용이고, 앱의
   바이너리 가드(UTF-8 읽기 금지, 텍스트 저장 금지)는 그 플러그인이 켜져 있든 아니든 적용됩니다.
   내장 `media-viewer` 플러그인(`src/plugins/builtin/media-viewer.ts`)이 참조 구현입니다.

@@ -51,7 +51,7 @@ without it and should only draw.
 
 - The viewer was registered with `editable: true`.
 - The file is text Baram can write back: not markdown, not HTML (Baram's own preview shows HTML),
-  not an image or a PDF.
+  not a raster image or a PDF (an `.svg` is text and qualifies).
 - The tab's text has loaded. Until then nothing is mounted, not even a read-only view.
 
 `ctx.edit` carries:

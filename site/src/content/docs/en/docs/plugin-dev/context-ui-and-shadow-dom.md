@@ -62,7 +62,8 @@ Notes:
   `asset:` protocol (already cache-busted with `refreshKey`), and `zoomLevel`
   is the shared editor zoom (Cmd+= / Cmd+- / Cmd+0, Ctrl+wheel) — scaling
   your content with it is your viewer's job. `onUpdate` fires when the
-  context changes while mounted (zoom, save, external reload). For **text**
+  context changes while mounted (zoom, save, external reload); an editing mount
+  (see the editable viewers page below) is not sent its own save. For **text**
   extensions the app keeps its preview ↔ source toggle: your viewer renders
   the preview side, CodeMirror the source side. **Binary** extensions are
   viewer-only, and the app's binary guards (no UTF-8 reads, no text saves)

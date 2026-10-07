@@ -1,6 +1,6 @@
 ---
 title: "편집 가능한 파일 뷰어"
-sourceHash: "421738a92f0c"
+sourceHash: "4c9f8079ef55"
 ---
 
 파일 뷰어(`context.ui.registerFileViewer`, [컨텍스트: UI 와 Shadow DOM 격리](/ko/docs/plugin-dev/context-ui-and-shadow-dom/)
@@ -48,10 +48,10 @@ ctx.ui.registerFileViewer({
 `onMount` 는 아래가 모두 맞을 때만 `ctx.edit` 을 받습니다. 아니면 같은 뷰어가 그것 없이 마운트되고, 그리기만
 해야 합니다.
 
-- 뷰어를 `editable: true` 로 등록했다.
-- 파일이 Baram 이 다시 쓸 수 있는 텍스트다 — 마크다운, HTML(Baram 자신의 미리보기가 HTML 을 그립니다), 이미지,
-  PDF 가 아니다.
-- 탭의 텍스트를 읽어 왔다. 그 전에는 아무것도, 읽기 전용 화면도 마운트되지 않는다.
+- 뷰어를 `editable: true` 로 등록했습니다.
+- 파일이 Baram 이 다시 쓸 수 있는 텍스트입니다 — 마크다운, HTML(Baram 자신의 미리보기가 HTML 을 그립니다), 래스터
+  이미지, PDF 가 아닙니다(`.svg` 는 텍스트라서 해당됩니다).
+- 탭의 텍스트를 읽어 왔습니다. 그 전에는 아무것도, 읽기 전용 화면도 마운트되지 않습니다.
 
 `ctx.edit` 에 실리는 것:
 
