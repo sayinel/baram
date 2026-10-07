@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { onFirstVisible } from "../../extensions/nodes/views/lazy-visible";
 import {
   cachedThumbUrl,
+  GALLERY_THUMB_PX,
   PREVIEW_MAX_PX,
   resolveThumbUrl,
   type ThumbUrl,
@@ -18,9 +19,14 @@ import {
  * 채우면서 디코드를 199 MPix에서 4 MPix로 줄인다. 화면에 들어오는 것을 기다리지 않는다:
  * 이 훅이 마운트되는 시점이 곧 사용자가 그 사진을 연 시점이다.
  */
-export function usePhotoPreview(absolutePath: null | string): null | ThumbUrl {
+export function usePhotoPreview(
+  absolutePath: null | string,
+  revision = "",
+): null | ThumbUrl {
   const [thumb, setThumb] = useState<null | ThumbUrl>(() =>
-    absolutePath ? cachedThumbUrl(absolutePath, PREVIEW_MAX_PX) : null,
+    absolutePath
+      ? cachedThumbUrl(absolutePath, PREVIEW_MAX_PX, revision)
+      : null,
   );
 
   useEffect(() => {
@@ -31,18 +37,18 @@ export function usePhotoPreview(absolutePath: null | string): null | ThumbUrl {
       setThumb(null);
       return;
     }
-    const cached = cachedThumbUrl(absolutePath, PREVIEW_MAX_PX);
+    const cached = cachedThumbUrl(absolutePath, PREVIEW_MAX_PX, revision);
     setThumb(cached);
     if (cached) return;
 
     let alive = true;
-    resolveThumbUrl(absolutePath, PREVIEW_MAX_PX).then((r) => {
+    resolveThumbUrl(absolutePath, PREVIEW_MAX_PX, revision).then((r) => {
       if (alive) setThumb(r);
     });
     return () => {
       alive = false;
     };
-  }, [absolutePath]);
+  }, [absolutePath, revision]);
 
   return thumb;
 }
@@ -82,17 +88,23 @@ export function useVisibleOnce(
  * 한꺼번에 요청하지 않는 이유가 성능만은 아니다. 사진 177장이면 IPC 요청 177건이 큐에 쌓이고,
  * 그 뒤에 사용자가 누른 "일기 보기"의 readFile이 선다 — 저널이 몇 초 뒤에 뜨는 증상이 그것이다.
  * `onFirstVisible`은 idle 틱마다 한 건씩 흘리므로 보이는 칸이 먼저, 하나씩 채워진다.
+ *
+ * `maxPx`는 칸의 크기에 맞춘 계층이다 — 갤러리는 `GALLERY_THUMB_PX`, `journal-photos`
+ * 블록의 격자는 `JOURNAL_GRID_THUMB_PX`(이슈 793). `revision`(`sourceRevision`)이 바뀌면
+ * 같은 경로라도 다시 묻는다 — 사진을 같은 이름으로 바꿔 넣은 경우다.
  */
 export function useVisibleThumb(
   holderRef: React.RefObject<HTMLElement | null>,
   absolutePath: string,
+  maxPx: number = GALLERY_THUMB_PX,
+  revision = "",
 ): null | ThumbUrl {
   const [thumb, setThumb] = useState<null | ThumbUrl>(() =>
-    cachedThumbUrl(absolutePath),
+    cachedThumbUrl(absolutePath, maxPx, revision),
   );
 
   useEffect(() => {
-    const cached = cachedThumbUrl(absolutePath);
+    const cached = cachedThumbUrl(absolutePath, maxPx, revision);
     if (cached) {
       setThumb(cached);
       return;
@@ -104,7 +116,7 @@ export function useVisibleThumb(
 
     let alive = true;
     const dispose = onFirstVisible(el, () => {
-      resolveThumbUrl(absolutePath).then((r) => {
+      resolveThumbUrl(absolutePath, maxPx, revision).then((r) => {
         if (alive) setThumb(r);
       });
     });
@@ -112,7 +124,7 @@ export function useVisibleThumb(
       alive = false;
       dispose();
     };
-  }, [absolutePath, holderRef]);
+  }, [absolutePath, holderRef, maxPx, revision]);
 
   return thumb;
 }

@@ -853,12 +853,34 @@
   overflow-x: auto;
 }
 
+/* The cell holds its square before the thumbnail exists (issue 793): no image is
+   mounted until then, and the empty cell shows the gallery's empty-cell surface. */
+.journal-photos-cell {
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-default);
+}
+
+/* An exported cell whose photo could not be read: its name, not a broken image. */
+.journal-photos-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-1);
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: center;
+  word-break: break-all;
+}
+
 .journal-photos-thumb {
   display: block;
   width: 100%;
-  aspect-ratio: 1;
+  height: 100%;
   object-fit: cover;
-  border-radius: var(--radius-default);
 }
 
 /* journal source edit textarea */

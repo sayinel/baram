@@ -16,6 +16,16 @@ import { photoThumbnail } from "../../ipc/thumbnail";
 export const GALLERY_THUMB_PX = 320;
 
 /**
+ * §56f `journal-photos` 블록의 격자 칸(이슈 793). 칸은 정사각형이고 `object-fit: cover`라
+ * 칸을 채우는 것은 사진의 **짧은 변**이다. 기본 4열은 에디터 폭(~900px)에서 칸이 ~215px,
+ * 2배 밀도 화면에서 ~430 device px인데, 320 썸네일의 짧은 변(4:3 사진이면 240px)으로는
+ * 1.8배 늘어나 흐려진다. 640이면 짧은 변이 480px라 그 칸을 덮는다. 디코드는 640×480×4 =
+ * 1.2 MB로 12 MP 원본(48 MB)의 1/40이다. 한 줄 배치(80px 칸)는 갤러리와 같은
+ * `GALLERY_THUMB_PX`를 써서 캐시 항목을 함께 쓴다.
+ */
+export const JOURNAL_GRID_THUMB_PX = 640;
+
+/**
  * 사진 한 장을 크게 보여주는 두 곳 — 라이트박스와 **에디터 본문** — 이 함께 쓰는 크기.
  *
  * 하나의 값인 것이 요점이다: 둘이 같은 크기를 요구하면 캐시 항목도 하나이므로, 갤러리에서
@@ -52,22 +62,67 @@ export function formatClipDuration(seconds: number): null | string {
     : `${minutes}:${ss}`;
 }
 
-/** absolutePath|maxPx → 결과. 세션 내 재요청은 IPC를 타지 않는다. */
+/**
+ * How many resolved thumbnails the session keeps (issue 793). Each entry is a URL, so the
+ * bound is about the map not growing for the life of the process — every tier and every
+ * photo ever shown would otherwise stay. An evicted photo asks Rust again, which answers
+ * from its disk cache without decoding.
+ */
+export const MAX_RESOLVED_THUMBS = 2048;
+
+/** How many recent failures `__baramThumbStats()` keeps. */
+export const MAX_THUMB_FAILURES = 100;
+
+/**
+ * absolutePath|maxPx|revision → 결과. 세션 내 재요청은 IPC를 타지 않는다. revision 이 key 의
+ * 일부라, revision 을 아는 호출자(갤러리 · 라이트박스 · `journal-photos` 블록)와 모르는
+ * 호출자(에디터 이미지 프리뷰, revision "")가 같은 경로·계층에서 서로의 항목을 밀어내지 않는다.
+ * 같은 파일의 새 revision 이 오면 그 경로·계층의 옛 revision 항목은 지운다(`latestRevision`).
+ * Map 의 순서가 최근 사용 순서다(맨 앞이 가장 오래 쓰지 않은 것).
+ */
 const resolved = new Map<string, ThumbUrl>();
+/** absolutePath|maxPx → the last non-empty revision stored under it. */
+const latestRevision = new Map<string, string>();
 /** 같은 사진을 그리드와 라이트박스가 동시에 요청할 수 있어 진행 중인 약속을 공유한다. */
 const inFlight = new Map<string, Promise<ThumbUrl>>();
 
 /**
- * 폴백으로 떨어진 사진들. 개발자 콘솔에서 `__baramThumbStats()`로 읽는다 — 갤러리가 여전히
- * 느릴 때 "썸네일이 안 만들어지고 있다"와 "썸네일은 되는데 다른 게 느리다"를 가르는 값이다.
+ * 폴백으로 떨어진 최근 사진들. 개발자 콘솔에서 `__baramThumbStats()`로 읽는다 — 갤러리가
+ * 여전히 느릴 때 "썸네일이 안 만들어지고 있다"와 "썸네일은 되는데 다른 게 느리다"를 가르는 값이다.
  */
 const failures: { error: string; path: string }[] = [];
 
 /** 테스트 격리용 — 모듈 캐시를 비운다. */
 export function _resetThumbCache(): void {
   resolved.clear();
+  latestRevision.clear();
   inFlight.clear();
   failures.length = 0;
+}
+
+/** 테스트용 — 지금 들고 있는 항목 수. */
+export function _thumbCacheSizes(): {
+  failures: number;
+  resolved: number;
+  revisions: number;
+} {
+  return {
+    failures: failures.length,
+    resolved: resolved.size,
+    revisions: latestRevision.size,
+  };
+}
+
+/**
+ * A file's revision for the thumbnail caches: its modification time and size, the two
+ * facts the Rust cache key also reads. A photo replaced at the same path gets a new
+ * revision, so the session asks Rust again and Rust makes a new thumbnail.
+ */
+export function sourceRevision(file: {
+  modifiedAt: number;
+  size: number;
+}): string {
+  return `${file.modifiedAt}:${file.size}`;
 }
 
 /** 지금까지의 썸네일 성적. 개발자 콘솔에서 `__baramThumbStats()`로 부른다. */
@@ -94,19 +149,27 @@ if (typeof window !== "undefined") {
 export function cachedThumbUrl(
   absolutePath: string,
   maxPx: number = GALLERY_THUMB_PX,
+  revision = "",
 ): null | ThumbUrl {
-  return resolved.get(cacheKey(absolutePath, maxPx)) ?? null;
+  const key = cacheKey(absolutePath, maxPx, revision);
+  const hit = resolved.get(key);
+  if (!hit) return null;
+  // Most recently used goes to the back.
+  resolved.delete(key);
+  resolved.set(key, hit);
+  return hit;
 }
 
 export async function resolveThumbUrl(
   absolutePath: string,
   maxPx: number = GALLERY_THUMB_PX,
+  revision = "",
 ): Promise<ThumbUrl> {
-  const key = cacheKey(absolutePath, maxPx);
-  const hit = resolved.get(key);
+  const hit = cachedThumbUrl(absolutePath, maxPx, revision);
   if (hit) return hit;
 
-  const pending = inFlight.get(key);
+  const flightKey = cacheKey(absolutePath, maxPx, revision);
+  const pending = inFlight.get(flightKey);
   if (pending) return pending;
 
   const request = photoThumbnail(absolutePath, maxPx)
@@ -119,6 +182,7 @@ export async function resolveThumbUrl(
       // 거는 것이 바로 그 버그였다). 조용히 넘어가면 "고쳤는데 그대로다"와 "고친 코드가
       // 애초에 안 돌았다"를 화면만 보고는 구분할 수 없다.
       failures.push({ error: String(e), path: absolutePath });
+      if (failures.length > MAX_THUMB_FAILURES) failures.shift();
       console.warn(
         `[§56d] 썸네일 생성 실패 — 원본으로 폴백합니다(느립니다): ${absolutePath}`,
         e,
@@ -126,15 +190,54 @@ export async function resolveThumbUrl(
       return { url: convertFileSrc(absolutePath), isOriginal: true };
     })
     .then((result) => {
-      resolved.set(key, result);
-      inFlight.delete(key);
+      remember(absolutePath, maxPx, revision, result);
+      inFlight.delete(flightKey);
       return result;
     });
 
-  inFlight.set(key, request);
+  inFlight.set(flightKey, request);
   return request;
 }
 
-function cacheKey(absolutePath: string, maxPx: number): string {
-  return `${absolutePath}|${maxPx}`;
+function cacheKey(
+  absolutePath: string,
+  maxPx: number,
+  revision: string,
+): string {
+  return `${absolutePath}|${maxPx}|${revision}`;
+}
+
+/**
+ * Store as most recently used, evicting the least recently used past the bound. A new
+ * revision of a file drops the one stored before it under the same path and tier.
+ */
+function remember(
+  absolutePath: string,
+  maxPx: number,
+  revision: string,
+  result: ThumbUrl,
+): void {
+  const key = cacheKey(absolutePath, maxPx, revision);
+  if (revision !== "") {
+    const slot = `${absolutePath}|${maxPx}`;
+    const previous = latestRevision.get(slot);
+    if (previous !== undefined && previous !== revision) {
+      resolved.delete(cacheKey(absolutePath, maxPx, previous));
+    }
+    latestRevision.set(slot, revision);
+  }
+  resolved.delete(key);
+  resolved.set(key, result);
+  while (resolved.size > MAX_RESOLVED_THUMBS) {
+    const oldest = resolved.keys().next().value;
+    if (oldest === undefined) break;
+    resolved.delete(oldest);
+  }
+  // `latestRevision` holds one short string per slot; it is cut with the cache so it
+  // cannot outgrow it.
+  while (latestRevision.size > MAX_RESOLVED_THUMBS) {
+    const oldest = latestRevision.keys().next().value;
+    if (oldest === undefined) break;
+    latestRevision.delete(oldest);
+  }
 }

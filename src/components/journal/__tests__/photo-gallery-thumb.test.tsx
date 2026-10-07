@@ -48,6 +48,7 @@ const PHOTO: PhotoGalleryEntry = {
   journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
   kind: "image",
   relativePath: "assets/20260805-101500-a.jpg",
+  revision: "1:1",
 };
 
 const CLIP: PhotoGalleryEntry = {
@@ -59,6 +60,7 @@ const CLIP: PhotoGalleryEntry = {
   journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
   kind: "video-file",
   relativePath: "assets/20260805-102000-c.mp4",
+  revision: "1:1",
 };
 
 /** 화면에 들어온 것으로 만들고, idle 큐가 흐르게 한다.
@@ -122,6 +124,29 @@ describe("PhotoGalleryThumb", () => {
     expect(img.getAttribute("src")).not.toContain(PHOTO.absolutePath);
     expect(img.getAttribute("decoding")).toBe("async");
     expect(img.getAttribute("data-thumb-source")).toBe("cache");
+    // 갤러리는 320 계층을 쓴다(`journal-photos` 격자의 640 과 갈린 뒤에도, 이슈 793).
+    // 이것을 실패시키는 것: `useVisibleThumb` 의 `maxPx` 기본값을 바꾸는 것.
+    expect(photoThumbnail).toHaveBeenCalledWith(PHOTO.absolutePath, 320);
+  });
+
+  /** 이슈 793: 같은 경로에 사진을 바꿔 넣으면(새 revision) 다시 묻는다 — 옛 썸네일을 세션 내내
+   *  보여 주지 않는다. 이것을 실패시키는 것: 갤러리 칸이 `photo.revision` 을 넘기지 않는 것. */
+  test("asks again for a photo replaced at the same path", async () => {
+    const view = render(<PhotoGalleryThumb onOpen={vi.fn()} photo={PHOTO} />);
+    await scrollIntoView();
+    await waitFor(() => screen.getByRole("img"));
+    expect(photoThumbnail).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    render(
+      <PhotoGalleryThumb
+        onOpen={vi.fn()}
+        photo={{ ...PHOTO, revision: "2:2" }}
+      />,
+    );
+    expect(screen.queryByRole("img")).toBeNull();
+    await scrollIntoView();
+    await waitFor(() => expect(photoThumbnail).toHaveBeenCalledTimes(2));
   });
 
   test("warms the lightbox-sized preview when the cell is hovered", async () => {

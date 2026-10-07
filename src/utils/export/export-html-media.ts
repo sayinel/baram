@@ -17,7 +17,9 @@ export async function convertImagesToDataURIs(
   clone: HTMLElement,
   dom: HTMLElement,
 ): Promise<void> {
-  const imgPromises: Promise<void>[] = [];
+  // Issue 793: a few at a time. All at once held every image's bytes and its base64 copy
+  // in memory together — hundreds of photos for a journal export.
+  const jobs: (() => Promise<void>)[] = [];
   for (const img of clone.querySelectorAll("img")) {
     const src = img.getAttribute("src") || "";
     if (
@@ -29,15 +31,24 @@ export async function convertImagesToDataURIs(
         `img[src="${CSS.escape(src)}"]`,
       ) as HTMLImageElement | null;
       const fetchUrl = originalImg?.src || src;
-      imgPromises.push(
+      jobs.push(() =>
         imageToDataURI(fetchUrl).then((dataUri) => {
           img.setAttribute("src", dataUri);
         }),
       );
     }
   }
-  await Promise.all(imgPromises);
+  let next = 0;
+  const worker = async () => {
+    while (next < jobs.length) await jobs[next++]();
+  };
+  await Promise.all(
+    Array.from({ length: IMAGE_CONVERSION_CONCURRENCY }, worker),
+  );
 }
+
+/** How many images `convertImagesToDataURIs` reads at once. */
+export const IMAGE_CONVERSION_CONCURRENCY = 4;
 
 /**
  * Videos: asset URL을 상대경로로 되돌린다 ────────────────────────
