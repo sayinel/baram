@@ -1,7 +1,8 @@
 // §44 AI Chat Session Store
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
+import { createCoalescingStorage } from "../system/coalescing-storage";
 import { tauriStorage } from "../system/tauri-storage";
 
 export interface ChatMessage {
@@ -33,6 +34,37 @@ interface ChatState {
   sessions: ChatSession[];
   setActiveSession: (id: string) => void;
   updateLastMessage: (sessionId: string, content: string) => void;
+}
+
+type PersistedChat = Pick<ChatState, "activeSessionId" | "sessions">;
+
+/**
+ * §44 Chat history is saved at most once per this many ms (#800). A streamed reply updates
+ * the last message on every token, and each save stringifies every session and rewrites
+ * `config.json`; coalescing makes that a handful of saves per reply instead of one per token.
+ */
+export const CHAT_SAVE_INTERVAL_MS = 250;
+
+const chatStorage = createCoalescingStorage<PersistedChat>(
+  tauriStorage,
+  CHAT_SAVE_INTERVAL_MS,
+);
+
+/**
+ * Save the chat history now instead of at the next interval. Called where a change must not
+ * wait: a reply ending (done, error, cancel), a message added or a session deleted, and
+ * before the app quits or reloads. Resolves once the save has been written.
+ */
+export function flushChatPersist(): Promise<void> {
+  return chatStorage.flush();
+}
+
+// Best effort when the page goes away without passing through the quit path (an error
+// screen's reload button, a dev reload). The write is async, so it may not finish.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    void flushChatPersist();
+  });
 }
 
 export const useChatStore = create<ChatState>()(
@@ -84,9 +116,15 @@ export const useChatStore = create<ChatState>()(
               : s,
           ),
         }));
+        void flushChatPersist();
       },
 
       updateLastMessage: (sessionId, content) => {
+        // §44 Equality gate (#800): every streamed token comes through here. Nothing to change
+        // → no `set`, because each one schedules a save and wakes every subscriber.
+        const session = get().sessions.find((s) => s.id === sessionId);
+        const last = session?.messages.at(-1);
+        if (!last || last.content === content) return;
         set((state) => ({
           sessions: state.sessions.map((s) =>
             s.id === sessionId && s.messages.length > 0
@@ -108,6 +146,7 @@ export const useChatStore = create<ChatState>()(
           activeSessionId:
             state.activeSessionId === id ? null : state.activeSessionId,
         }));
+        void flushChatPersist();
       },
 
       getActiveSession: () => {
@@ -117,7 +156,7 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: "baram:chat-sessions",
-      storage: createJSONStorage(() => tauriStorage),
+      storage: chatStorage,
       partialize: (state) => ({
         sessions: state.sessions,
         activeSessionId: state.activeSessionId,

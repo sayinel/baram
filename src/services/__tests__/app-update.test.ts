@@ -7,6 +7,13 @@ const openUrlMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: checkMock }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: relaunchMock }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));
+const flushChatPersistMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
+vi.mock("../../stores/ai/chat", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../stores/ai/chat")>()),
+  flushChatPersist: flushChatPersistMock,
+}));
 
 import { useSettingsStore } from "../../stores/settings/store";
 import { useAppUpdateStore } from "../../stores/system/app-update";
@@ -152,6 +159,47 @@ describe("installAppUpdate — platform branching", () => {
       downloaded: 100,
       total: 100,
     });
+  });
+
+  // §44 The relaunch takes the webview with it, so the chat history is saved first (#800).
+  // 이것을 실패시키는 것: app-update.ts 가 `relaunchApp()` 대신 plugin 의 `relaunch()` 를 바로 부르면 저장
+  // 없이 다시 시작한다.
+  it("saves the chat history before relaunching", async () => {
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+    });
+    await checkForAppUpdate(true);
+    flushChatPersistMock.mockClear();
+
+    await installAppUpdate();
+
+    expect(flushChatPersistMock).toHaveBeenCalledOnce();
+    expect(relaunchMock).toHaveBeenCalledOnce();
+    expect(flushChatPersistMock.mock.invocationCallOrder[0]).toBeLessThan(
+      relaunchMock.mock.invocationCallOrder[0],
+    );
+  });
+
+  // §44 A failure after the install is not an install failure: the releases page would only
+  // offer the version that is already installed (#800).
+  // 이것을 실패시키는 것: app-update.ts 에서 relaunchApp() 을 설치와 같은 try 로 되돌리면 재시작 실패가 설치
+  // 실패로 보고되고 releases 페이지가 열린다.
+  it("a failed relaunch after a good install asks for a manual restart", async () => {
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+    });
+    await checkForAppUpdate(true);
+    relaunchMock.mockRejectedValueOnce(new Error("relaunch refused"));
+
+    await installAppUpdate();
+
+    expect(openUrlMock).not.toHaveBeenCalled();
+    expect(useAppUpdateStore.getState().status).toBe("installed");
+    expect(useAppUpdateStore.getState().fallbackOpened).toBe(false);
   });
 
   // The fallback is platform-independent: if the in-place install throws on

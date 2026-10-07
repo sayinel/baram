@@ -70,6 +70,34 @@ describe("UpdateDialog — the primary action names what it does", () => {
   });
 });
 
+// §44 The update is installed but the relaunch failed (#800): say so, and do not offer to
+// install again.
+// 이것을 실패시키는 것: UpdateDialog 의 primary 버튼에서 `|| status === "installed"` 를 지우면 다시 설치를 권한다.
+describe("UpdateDialog — installed, restart by hand", () => {
+  it("asks for a manual restart and disables Install & Restart", () => {
+    useAppUpdateStore.setState({
+      availableVersion: "0.7.1",
+      dialogOpen: true,
+      status: "installed",
+    });
+
+    render(<UpdateDialog />);
+
+    expect(
+      screen.getByText(
+        "The update is installed. Quit and reopen Baram to finish.",
+      ),
+    ).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Install & Restart",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+});
+
 describe("UpdateDialog — §206-review FIX 1: busy close-guard", () => {
   it("Escape does NOT close the dialog while downloading", () => {
     useAppUpdateStore.setState({
