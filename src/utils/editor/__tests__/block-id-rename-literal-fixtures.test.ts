@@ -9,7 +9,13 @@ import { describe, expect, it } from "vitest";
 import { renameBlockIdInMarkdown } from "../block-id-rename-markdown";
 
 interface Fixtures {
-  cases: { expected: string; markdown: string; name: string }[];
+  cases: {
+    expected: string;
+    markdown: string;
+    name: string;
+    /** spec 0069 D5 — a case may name its own target, read in place of the top-level one. */
+    target?: string;
+  }[];
   new: string;
   old: string;
   target: string;
@@ -23,14 +29,25 @@ const fixtures = JSON.parse(
 ) as Fixtures;
 
 describe("the rename fixtures shared with the backend", () => {
-  it.each(fixtures.cases)("$name", ({ expected, markdown }) => {
+  it.each(fixtures.cases)("$name", ({ expected, markdown, target }) => {
     expect(
       renameBlockIdInMarkdown(
         markdown,
-        fixtures.target,
+        target ?? fixtures.target,
         fixtures.old,
         fixtures.new,
       ),
     ).toBe(expected);
+  });
+
+  it("names its own target only for a note stored decomposed (NFD)", () => {
+    // spec 0069 §7: the input is not NFC, asserted before anything leans on it.
+    // What fails this: an own target written composed, as an editor or a copy
+    // could leave it.
+    const own = fixtures.cases.flatMap((c) =>
+      c.target === undefined ? [] : [c.target],
+    );
+    expect(own.length).toBeGreaterThan(0);
+    for (const target of own) expect(target.normalize("NFC")).not.toBe(target);
   });
 });
