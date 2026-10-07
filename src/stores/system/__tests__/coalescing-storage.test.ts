@@ -96,21 +96,40 @@ describe("§44 coalescing persist storage (#800)", () => {
   it("starts a write only after the previous one settled, and writes the newest value then", async () => {
     const storage = createCoalescingStorage<S>(backing, 250);
     storage.setItem("k", value(1));
-    const first = storage.flush();
+    void storage.flush();
     await settle();
     storage.setItem("k", value(2));
-    const second = storage.flush();
+    void storage.flush();
     storage.setItem("k", value(3));
     await settle();
     expect(writes).toHaveLength(1);
 
     writes[0].finish();
-    await first;
     await settle();
     expect(writes).toHaveLength(2);
     expect(JSON.parse(writes[1].value)).toEqual(value(3));
+  });
+
+  // 이것을 실패시키는 것: writePending 이 시작할 때의 map 만 돌게 하면(`for (... of [...pending])`) 쓰는 사이
+  // 들어온 B 가 남은 채 flush 가 끝나, 종료 직전의 flush 가 B 를 잃는다.
+  it("flush is a barrier: a value set while its write runs is on disk before it resolves", async () => {
+    const storage = createCoalescingStorage<S>(backing, 250);
+    storage.setItem("k", value(1));
+    let resolved = false;
+    const flushed = storage.flush().then(() => {
+      resolved = true;
+    });
+    await settle();
+    storage.setItem("k", value(2));
+    writes[0].finish();
+    await settle();
+
+    expect(resolved).toBe(false);
+    expect(writes).toHaveLength(2);
+    expect(JSON.parse(writes[1].value)).toEqual(value(2));
     writes[1].finish();
-    await second;
+    await flushed;
+    expect(resolved).toBe(true);
   });
 
   // 이것을 실패시키는 것: enqueue 의 `.catch` 를 지우면 한 번의 실패가 줄을 끊어 다음 쓰기가 가지 않는다.
@@ -145,5 +164,23 @@ describe("§44 coalescing persist storage (#800)", () => {
     const storage = createCoalescingStorage<S>(backing, 250);
     expect(await storage.getItem("k")).toEqual(value(7));
     expect(await storage.getItem("k")).toBeNull();
+  });
+
+  // 이것을 실패시키는 것: flush 가 걸려 있던 timer 를 지우지 않으면, flush 뒤의 변경이 새 구간이 아니라 옛
+  // timer 의 시각에 저장된다 — 옛 timer 가 남아 setItem 이 새 timer 를 걸지 못하기 때문이다.
+  it("starts a fresh interval for the first change after a flush", async () => {
+    const storage = createCoalescingStorage<S>(backing, 250);
+    storage.setItem("k", value(1));
+    await vi.advanceTimersByTimeAsync(200);
+    void storage.flush();
+    await settle();
+    writes[0].finish();
+    await settle();
+    storage.setItem("k", value(2));
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(writes).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(150);
+    expect(writes).toHaveLength(2);
   });
 });

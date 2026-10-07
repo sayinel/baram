@@ -29,6 +29,8 @@ export interface CoalescingStorage<S> extends PersistStorage<S> {
  *   calls, so a long stream still saves every `intervalMs` rather than only at its end.
  * - Writes run one at a time, each after the previous one settles, and each writes the
  *   newest value at the moment it starts — an older write cannot land after a newer one.
+ * - `flush()` drains: it resolves once nothing is left pending, including values set while
+ *   its writes were running.
  * - `removeItem` drops a pending value for that key and is queued behind earlier writes.
  */
 export function createCoalescingStorage<S>(
@@ -46,15 +48,29 @@ export function createCoalescingStorage<S>(
     return chain;
   };
 
+  // Drain until nothing is pending: a value set while a write is awaited is written by the
+  // same drain, so `flush()` resolves only once every value set before it RESOLVES is on
+  // disk — a barrier, not a snapshot. Updates that never stop (a stream still running)
+  // keep it going; the exit path bounds its wait (`services/app-exit.ts`).
   const writePending = async () => {
-    for (const [name, value] of [...pending]) {
+    for (let next = pending.entries().next(); !next.done;) {
+      const [name, value] = next.value;
       pending.delete(name);
       await storage.setItem(name, JSON.stringify(value));
+      next = pending.entries().next();
     }
   };
 
-  // A timer still armed after a flush fires on an empty map and writes nothing.
-  const flush = (): Promise<void> => enqueue(writePending);
+  // The drain below writes what the timer would have, so the timer goes. Left armed it
+  // would only fire on an empty map — but it would also keep `setItem` from arming a fresh
+  // one, so the next change would be saved on the OLD timer's schedule.
+  const flush = (): Promise<void> => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    return enqueue(writePending);
+  };
 
   return {
     flush,
