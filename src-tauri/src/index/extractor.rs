@@ -448,9 +448,13 @@ pub async fn walk_vault(
     root: &str,
     exclusion: &crate::fs::VaultExclusion,
 ) -> Result<(Vec<String>, Vec<String>), IndexError> {
-    let found = crate::fs::walk_vault(std::path::Path::new(root), exclusion)
-        .await
-        .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
+    let found = crate::fs::walk_vault(
+        std::path::Path::new(root),
+        exclusion,
+        crate::fs::Collect::Both,
+    )
+    .await
+    .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
     let strings = |paths: Vec<std::path::PathBuf>| -> Vec<String> {
         paths
             .into_iter()

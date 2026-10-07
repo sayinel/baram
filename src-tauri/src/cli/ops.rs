@@ -169,7 +169,9 @@ pub(crate) async fn index_failure(vault: &Vault) -> CliError {
         Ok(exclusion) => exclusion,
         Err(e) => return unreadable_directory(vault, Some(e)),
     };
-    let failed = crate::fs::walk_vault(&vault.root, &exclusion).await.err();
+    let failed = crate::fs::walk_vault(&vault.root, &exclusion, crate::fs::Collect::Markdown)
+        .await
+        .err();
     unreadable_directory(vault, failed)
 }
 

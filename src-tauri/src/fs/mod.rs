@@ -10,7 +10,7 @@ pub use copy_dir::{copy_dir_all, CopyDirReport};
 #[cfg(test)]
 pub(crate) use exclusion::{note_folder_read, take_folders_read};
 pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
-pub use walk::{collect_all_files, collect_md_files, walk_vault};
+pub use walk::{collect_all_files, collect_md_files, walk_vault, Collect};
 
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
