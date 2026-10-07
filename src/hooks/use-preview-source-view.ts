@@ -8,6 +8,7 @@ import { matchFileViewer, usePluginUIStore } from "../plugins/plugin-ui-store";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
+import { asTabSave } from "../utils/editor/tab-save-in-flight";
 import {
   isBinaryViewerFile,
   isHtmlFile,
@@ -46,9 +47,9 @@ export function usePreviewSourceView({
     if (leavingSourceView && tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
       const content = getSourceBuffer(tab.id);
-      void writeFile(filePath, content)
-        .then(() => {
-          useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+      void asTabSave(filePath, () => writeFile(filePath, content))
+        .then((savedAt) => {
+          useFileStore.getState().updateLastSaveMtime(filePath, savedAt);
           // §3.5 Typed again while the write ran → that text is not on disk (#798).
           if (getSourceBuffer(tab.id) !== content) return;
           useFileStore.getState().setFileContent(filePath, content);

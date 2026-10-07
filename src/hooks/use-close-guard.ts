@@ -15,6 +15,7 @@ import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
 import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
+import { asTabSave } from "../utils/editor/tab-save-in-flight";
 import { isMarkdownFile } from "../utils/file-type";
 import { basename } from "../utils/path-utils";
 
@@ -137,8 +138,11 @@ export async function saveDirtyTab(
     const content = fromBuffer
       ? sourceBufferAccess.getSourceBuffer(tab.id)
       : (useFileStore.getState().openFiles.get(tab.filePath) ?? "");
-    await writeFile(tab.filePath, content);
-    useFileStore.getState().updateLastSaveMtime(tab.filePath, Date.now());
+    const filePath = tab.filePath;
+    const savedAt = await asTabSave(filePath, () =>
+      writeFile(filePath, content),
+    );
+    useFileStore.getState().updateLastSaveMtime(filePath, savedAt);
     // §3.5 What it holds may have moved on while the write ran (a block ID rename or a
     // task edit landing in a background tab). Then the file has the older text and the
     // tab is not saved: report that, so the caller keeps it open instead of closing it
@@ -174,8 +178,8 @@ export async function saveDirtyTab(
   if (!savePath) return false;
 
   const content = useFileStore.getState().openFiles.get(tab.id) ?? "";
-  await writeFile(savePath, content);
-  useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
+  const savedAt = await asTabSave(savePath, () => writeFile(savePath, content));
+  useFileStore.getState().updateLastSaveMtime(savePath, savedAt);
   // §3.5 The file exists now; the tab is clean only if it still holds what was written,
   // and the caller must not close it otherwise (#798).
   const clean =

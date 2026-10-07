@@ -34,6 +34,7 @@ import type { EditorTab } from "../../stores/editor/editor";
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 import { useFileWatcher } from "../use-file-watcher";
 
 const OPEN = "/v/build/README.md";
@@ -103,6 +104,35 @@ describe("useFileWatcher registers the open files with the watcher", () => {
     renderHook(() => useFileWatcher());
     await settle();
     expect(watchDir).toHaveBeenCalledWith("/v");
+  });
+
+  // The watcher then filters nothing (watch_filter.rs) — safe, but not silent.
+  // 이것을 실패시키는 것: `registerOpenFiles` 의 실패 갈래에서 toast 를 지운다 — 또는 실패마다 띄운다.
+  it("says once that registration failed, and again only after it recovered", async () => {
+    const warnings: string[] = [];
+    const stop = useUIStore.subscribe((state, prev) => {
+      if (state.toast !== prev.toast && state.toast?.type === "warning") {
+        warnings.push(state.toast.message);
+      }
+    });
+    tabs(OPEN);
+    renderHook(() => useFileWatcher());
+    await settle(); // a success first, whatever an earlier test left behind
+    setOpenFiles.mockRejectedValue(new Error("ipc"));
+    act(() => tabs(OPEN, "/v/notes/a.md"));
+    await settle();
+    act(() => tabs("/v/notes/a.md"));
+    await settle();
+    expect(warnings).toHaveLength(1);
+
+    setOpenFiles.mockResolvedValue(undefined);
+    act(() => tabs(OPEN));
+    await settle();
+    setOpenFiles.mockRejectedValue(new Error("ipc"));
+    act(() => tabs());
+    await settle();
+    expect(warnings).toHaveLength(2);
+    stop();
   });
 });
 

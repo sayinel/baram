@@ -12,6 +12,11 @@ import defaultExcludedDirs from "../../src-tauri/src/fs/default-excluded-dirs.js
 import { setOpenFiles, watchDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
+import { useUIStore } from "../stores/ui/ui";
+import {
+  afterTabSaves,
+  tabSaveInFlight,
+} from "../utils/editor/tab-save-in-flight";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 
@@ -92,6 +97,84 @@ export function useFileWatcher() {
       debounceRef.current = setTimeout(flush, 300);
     };
 
+    // §3.2 The change of an open file, decided once per (path, mtime) (issue 795).
+    const handleChanged = (payload: ChangedPayload) => {
+      const filePath = payload.path;
+      const externalMtime = payload.mtime;
+      if (!useFileStore.getState().openFiles.has(filePath)) return;
+
+      // Ignore self-write echoes: an atomic save (tmp + rename) can surface
+      // as a file:changed event. If the reported mtime is not newer than our
+      // own last save, this was almost certainly triggered by our own write.
+      const prevMtime = useFileStore.getState().getFileMtime(filePath);
+      if (
+        prevMtime &&
+        externalMtime > 0 &&
+        externalMtime <= prevMtime.lastSaveMtime
+      ) {
+        return;
+      }
+      // One write can arrive twice — the rename of an atomic save and its data
+      // flag. The first one decided it.
+      if (
+        externalMtime > 0 &&
+        prevMtime?.handledMtime !== undefined &&
+        externalMtime <= prevMtime.handledMtime
+      ) {
+        return;
+      }
+
+      // Record the external mtime
+      useFileStore.getState().updateCanReloadMtime(filePath, externalMtime);
+      if (externalMtime > 0) {
+        useFileStore.getState().markChangeHandled(filePath, externalMtime);
+      }
+
+      // Check dirty state
+      const tabs = useEditorStore.getState().tabs;
+      const tab = tabs.find((t) => t.filePath === filePath);
+      const isDirty = tab?.isDirty ?? false;
+
+      if (!isDirty) {
+        // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
+        // 버리는 재구축도 하지 않는다. dirty 탭은 아래 그대로다: 앱이 디스크에
+        // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
+        // 버릴 수 없고, 그 판단은 충돌 모달이 사용자에게 묻는다.
+        triggerAutoReload(filePath, externalMtime, {
+          appOrigin: payload.origin === "app",
+        }).catch((err) =>
+          logger.warn("useFileWatcher: triggerAutoReload failed", err),
+        );
+      } else {
+        // Capture the pre-external content (last synced) as the 3-way base.
+        const base = useFileStore.getState().openFiles.get(filePath) ?? "";
+        showConflictModal(filePath, externalMtime, base);
+      }
+    };
+
+    // The newest change of each path whose tab save is still running — the one
+    // with the highest mtime, so an earlier echo cannot hide a later edit.
+    const held = new Map<string, ChangedPayload>();
+    const holdForTabSave = (payload: ChangedPayload) => {
+      const prev = held.get(payload.path);
+      if (prev && prev.mtime >= payload.mtime) return;
+      held.set(payload.path, payload);
+      if (prev) return;
+      void afterTabSaves(payload.path).then((savedAt) => {
+        const latest = held.get(payload.path);
+        held.delete(payload.path);
+        if (!latest) return;
+        // The save's own write: it is on disk because the tab put it there.
+        if (
+          savedAt !== undefined &&
+          latest.mtime > 0 &&
+          latest.mtime <= savedAt
+        )
+          return;
+        handleChanged(latest);
+      });
+    };
+
     // Listen for events — use async IIFE so unlistenFns is populated before
     // cleanup can run, closing the race window when rootPath changes quickly.
     let cleanedUp = false;
@@ -126,51 +209,16 @@ export function useFileWatcher() {
             scheduleFlush();
           }),
           listen<ChangedPayload>("file:changed", (event) => {
-            const filePath = event.payload.path;
-            const externalMtime = event.payload.mtime;
-
             // Ignore changes to files that are not open
-            const isOpen = useFileStore.getState().openFiles.has(filePath);
-            if (!isOpen) return;
-
-            // Ignore self-write echoes: an atomic save (tmp + rename) can surface
-            // as a file:changed event. If the reported mtime is not newer than our
-            // own last save, this was almost certainly triggered by our own write.
-            const prevMtime = useFileStore.getState().getFileMtime(filePath);
-            if (
-              prevMtime &&
-              externalMtime > 0 &&
-              externalMtime <= prevMtime.lastSaveMtime
-            ) {
+            const filePath = event.payload.path;
+            if (!useFileStore.getState().openFiles.has(filePath)) return;
+            // §3.2 The tab is saving this file itself: hold the change until the save
+            // settles, then judge it against the save's own mtime (issue 795).
+            if (tabSaveInFlight(filePath)) {
+              holdForTabSave(event.payload);
               return;
             }
-
-            // Record the external mtime
-            useFileStore
-              .getState()
-              .updateCanReloadMtime(filePath, externalMtime);
-
-            // Check dirty state
-            const tabs = useEditorStore.getState().tabs;
-            const tab = tabs.find((t) => t.filePath === filePath);
-            const isDirty = tab?.isDirty ?? false;
-
-            if (!isDirty) {
-              // §313 앱 자신의 쓰기는 외부 변경이 아니다 — 토스트도, 실행 취소를
-              // 버리는 재구축도 하지 않는다. dirty 탭은 아래 그대로다: 앱이 디스크에
-              // 쓴 것과 사용자가 버퍼에 친 것이 갈라져 있으므로 동의 없이 어느 한쪽을
-              // 버릴 수 없고, 그 판단은 충돌 모달이 사용자에게 묻는다.
-              triggerAutoReload(filePath, externalMtime, {
-                appOrigin: event.payload.origin === "app",
-              }).catch((err) =>
-                logger.warn("useFileWatcher: triggerAutoReload failed", err),
-              );
-            } else {
-              // Capture the pre-external content (last synced) as the 3-way base.
-              const base =
-                useFileStore.getState().openFiles.get(filePath) ?? "";
-              showConflictModal(filePath, externalMtime, base);
-            }
+            handleChanged(event.payload);
           }),
         ]);
 
@@ -275,12 +323,28 @@ function parentDir(path: string): string {
   return idx > 0 ? path.substring(0, idx) : path;
 }
 
-/** §3.2 `setOpenFiles`, logged on failure — the watch starts either way. */
+/**
+ * §3.2 `setOpenFiles`. The watch starts either way. A refused call leaves the watcher
+ * with no known open set, which makes it filter nothing (watch_filter.rs, issue 795):
+ * safe for an open file, at the cost of build-output events reaching the webview until
+ * the next change of the open set retries. That is said once per failure streak.
+ */
+let registrationFailing = false;
 async function registerOpenFiles(paths: string[]): Promise<void> {
   try {
     await setOpenFiles(paths);
+    registrationFailing = false;
   } catch (err) {
-    logger.warn("useFileWatcher: setOpenFiles failed", err);
+    logger.error("useFileWatcher: setOpenFiles failed", err);
+    if (!registrationFailing) {
+      registrationFailing = true;
+      useUIStore
+        .getState()
+        .showToast(
+          "Couldn't tell the file watcher which files are open — it will report every change until this succeeds",
+          "warning",
+        );
+    }
   }
 }
 

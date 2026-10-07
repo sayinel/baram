@@ -268,10 +268,15 @@ export async function writeBinaryFile(
   return invoke<void>("write_binary_file", { path, data });
 }
 
-export function writeFile(path: string, content: string): Promise<void> {
+/**
+ * Write `path` atomically, after any write to it already queued (#798). Resolves to the
+ * written file's mtime — what the watcher reports for this write (issue 795); a tab's
+ * own save records it through `asTabSave` (src/utils/editor/tab-save-in-flight.ts).
+ */
+export function writeFile(path: string, content: string): Promise<number> {
   const previous = pendingWrites.get(path) ?? Promise.resolve();
   const write = previous.then(() =>
-    invoke<void>("write_file", { path, content }),
+    invoke<number>("write_file", { path, content }),
   );
   const settled = write.then(
     () => undefined,

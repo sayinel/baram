@@ -16,6 +16,7 @@ import { useSnapshotStore } from "../../stores/editor/snapshot";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
+import { asTabSave } from "../../utils/editor/tab-save-in-flight";
 import { logger } from "../../utils/logger";
 import { SmartTemplateDialogWrapper } from "../ai/SmartTemplateDialogWrapper";
 import { UnsavedChangesModal } from "../editor/UnsavedChangesModal";
@@ -221,9 +222,11 @@ export function AppDialogs({
             const fp = mergeState.filePath;
             void (async () => {
               try {
-                await writeFile(fp, merged);
+                const savedAt = await asTabSave(fp, () =>
+                  writeFile(fp, merged),
+                );
                 useFileStore.getState().setFileContent(fp, merged);
-                useFileStore.getState().updateLastSaveMtime(fp, Date.now());
+                useFileStore.getState().updateLastSaveMtime(fp, savedAt);
                 useEditorStore.getState().requestContentRefresh();
                 const { activeTabId: tid } = useEditorStore.getState();
                 if (tid) markDirty(tid, false);

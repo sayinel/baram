@@ -29,6 +29,13 @@ export interface FileEntry {
 export interface FileMtimeEntry {
   /** mtime reported by the most recent file:changed event (ms since epoch, 0 = unknown) */
   canReloadMtime: number;
+  /**
+   * §3.2 The newest file:changed mtime the change listener already acted on — a reload
+   * or the conflict modal (issue 795). One write can be reported more than once (an
+   * atomic save's rename and its data flag), and each (path, mtime) is handled once.
+   * Its own field: `canReloadMtime` also gates auto-save (`shouldDeferSave`).
+   */
+  handledMtime?: number;
   /** mtime at the time of the last save (ms since epoch, 0 = unknown) */
   lastSaveMtime: number;
 }
@@ -61,6 +68,8 @@ interface FileState {
   initFileMtime: (path: string) => void;
   /** §4.3 Non-null when the last file-tree load failed (permission or other) */
   loadError: FileTreeLoadError | null;
+  /** §3.2 Record that the change listener acted on `mtime` for `path` (issue 795). */
+  markChangeHandled: (path: string, mtime: number) => void;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
   openFiles: Map<string, string>; // path → content
@@ -225,6 +234,17 @@ export const useFileStore = create<FileState>((set, get) => ({
         canReloadMtime: 0,
       };
       fileMtimes.set(path, { ...existing, canReloadMtime: mtime });
+      return { fileMtimes };
+    }),
+
+  markChangeHandled: (path, mtime) =>
+    set((state) => {
+      const fileMtimes = new Map(state.fileMtimes);
+      const existing = fileMtimes.get(path) ?? {
+        lastSaveMtime: 0,
+        canReloadMtime: 0,
+      };
+      fileMtimes.set(path, { ...existing, handledMtime: mtime });
       return { fileMtimes };
     }),
 
