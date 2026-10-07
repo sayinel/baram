@@ -125,29 +125,33 @@ describe("previewSourceTabs (§6.6 · §7.4)", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  // Tabs a · b · c are all unpinned and all in context "c"; the set starts as ["a", "c"].
   it.each([
-    ["closeTab", () => useEditorStore.getState().closeTab("a")],
-    ["closeOtherTabs", () => useEditorStore.getState().closeOtherTabs("c")],
-    ["closeTabsToRight", () => useEditorStore.getState().closeTabsToRight("c")],
+    ["closeTab", () => useEditorStore.getState().closeTab("a"), ["c"]],
+    [
+      "closeOtherTabs",
+      () => useEditorStore.getState().closeOtherTabs("c"),
+      ["c"],
+    ],
+    [
+      "closeTabsToRight",
+      () => useEditorStore.getState().closeTabsToRight("a"),
+      ["a"],
+    ],
     [
       "closeTabsForContexts",
       () => useEditorStore.getState().closeTabsForContexts(new Set(["c"])),
+      [],
     ],
-    ["closeAllTabs", () => useEditorStore.getState().closeAllTabs()],
-  ] as const)("%s drops the ids of the tabs it closed", (name, close) => {
-    // closeTabsToRight("c") closes nothing ("c" is last) — the positive control that the set
-    // keeps an open tab's id.
-    useEditorStore.setState({ previewSourceTabs: ["a", "c"] });
-    close();
-    const open = new Set(useEditorStore.getState().tabs.map((t) => t.id));
-    const kept = useEditorStore.getState().previewSourceTabs;
-    expect(
-      kept.every((id) => open.has(id)),
-      name,
-    ).toBe(true);
-    if (name === "closeTabsToRight") expect(kept).toEqual(["a", "c"]);
-    else expect(kept).not.toContain("a");
-  });
+    ["closeAllTabs", () => useEditorStore.getState().closeAllTabs(), []],
+  ] as const)(
+    "%s drops the ids of the tabs it closed and keeps the rest",
+    (_name, close, expected) => {
+      useEditorStore.setState({ previewSourceTabs: ["a", "c"] });
+      close();
+      expect(useEditorStore.getState().previewSourceTabs).toEqual(expected);
+    },
+  );
 });
 
 describe("flushViewerEdits (§6.6 · §7.2)", () => {
@@ -175,6 +179,7 @@ describe("flushViewerEdits (§6.6 · §7.2)", () => {
 describe("a path change takes the change first (§6.6 · §7.1)", () => {
   it("renameTab reads the tab while it still has its old path, then moves it", () => {
     viewerMount("a");
+    viewerMount("b"); // pending too, but not the renamed tab — pins the predicate
     useEditorStore.getState().renameTab("/v/a.strokes", "/v/a.txt", "a.txt");
     expect(reads).toEqual([{ path: "/v/a.strokes", tabId: "a" }]);
     expect(useEditorStore.getState().tabs[0].filePath).toBe("/v/a.txt");

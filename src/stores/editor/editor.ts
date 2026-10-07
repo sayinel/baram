@@ -552,9 +552,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!tab || tab.isDirty === dirty) return state;
       // §392 spec 0071 D15 — a change the tab's editable viewer reported and no read has taken
       // is in no write: not in one that finished while it was reported, and in none at all when
-      // the caller wrote nothing (`snapshot.ts`'s restore reloads instead). Lowering dirty here
-      // would leave a clean-looking tab holding unwritten text, which Cmd+W and quit close
-      // without saving. The next read takes the change and the next save clears it.
+      // the caller wrote nothing from the viewer (the close guard's background-tab save,
+      // `saveDirtyTab`, and the conflict modal's merge apply in `AppDialogs.tsx`). Lowering
+      // dirty here would leave a clean-looking tab holding unwritten text, which Cmd+W and quit
+      // close without saving. The next read takes the change and the next save clears it.
       if (!dirty && hasPendingViewerEdit(tabId)) return state;
       return {
         tabs: state.tabs.map((t) =>
