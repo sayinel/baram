@@ -12,12 +12,15 @@ import {
 } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { requestCloseTabs } from "../../hooks/use-close-guard";
 import { useTranslation } from "../../i18n/useTranslation";
 import { switchContext } from "../../services/vault-context-loader";
 import { useContextStore } from "../../stores/context/context";
 import {
   isFileTab,
   isTabUnsaved,
+  otherTabIds,
+  tabIdsToRight,
   useEditorStore,
 } from "../../stores/editor/editor";
 import { useUIStore } from "../../stores/ui/ui";
@@ -39,8 +42,6 @@ export function TabBar() {
     closeTab,
     reorderTab,
     togglePinTab,
-    closeOtherTabs,
-    closeTabsToRight,
     sourceEditedTabs,
   } = useEditorStore(
     useShallow((s) => ({
@@ -50,8 +51,6 @@ export function TabBar() {
       closeTab: s.closeTab,
       reorderTab: s.reorderTab,
       togglePinTab: s.togglePinTab,
-      closeOtherTabs: s.closeOtherTabs,
-      closeTabsToRight: s.closeTabsToRight,
       sourceEditedTabs: s.sourceEditedTabs,
     })),
   );
@@ -439,7 +438,8 @@ export function TabBar() {
               <div
                 className="tab-context-item"
                 onClick={() => {
-                  closeOtherTabs(tab.id);
+                  // §38 Unsaved tabs among them are asked about first (#798).
+                  void requestCloseTabs(otherTabIds(tabs, tab.id), tab.id);
                   setContextMenu(null);
                 }}
               >
@@ -448,7 +448,7 @@ export function TabBar() {
               <div
                 className="tab-context-item"
                 onClick={() => {
-                  closeTabsToRight(tab.id);
+                  void requestCloseTabs(tabIdsToRight(tabs, tab.id), tab.id);
                   setContextMenu(null);
                 }}
               >

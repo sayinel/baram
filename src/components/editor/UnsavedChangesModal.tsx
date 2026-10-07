@@ -14,6 +14,7 @@ import { useShallow } from "zustand/shallow";
 import {
   saveAllDirtyForQuit,
   saveDirtyTab,
+  saveDirtyTabsByIds,
   saveDirtyTabsForContexts,
 } from "../../hooks/use-close-guard";
 import { useTranslation } from "../../i18n/useTranslation";
@@ -35,6 +36,7 @@ import { useUIStore } from "../../stores/ui/ui";
 const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.closeContextMessage",
   closeTab: "unsavedChanges.closeMessage",
+  closeTabs: "unsavedChanges.closeTabsMessage",
   closeWorkspace: "unsavedChanges.closeWorkspaceMessage",
   quit: "unsavedChanges.quitMessage",
   reload: "unsavedChanges.reloadMessage",
@@ -43,6 +45,7 @@ const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
 const PRIMARY_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.saveAndCloseContext",
   closeTab: "unsavedChanges.saveAndClose",
+  closeTabs: "unsavedChanges.saveAndCloseTabs",
   closeWorkspace: "unsavedChanges.saveAndCloseWorkspace",
   quit: "unsavedChanges.saveAndQuit",
   reload: "unsavedChanges.saveAndReload",
@@ -61,13 +64,17 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
   // varies with which intent is showing.
   const scopedContextIds =
     unsavedModal?.intent === "closeContext" ? unsavedModal.contextIds : null;
+  // §38 `closeTabs` likewise answers only for the tabs it lists (#798).
+  const scopedTabIds =
+    unsavedModal?.intent === "closeTabs" ? unsavedModal.tabIds : null;
   const dirtyCount = useEditorStore(
     (s) =>
       s.tabs.filter(
         (tab) =>
           isTabUnsaved(tab, s.sourceEditedTabs) &&
           (scopedContextIds === null ||
-            scopedContextIds.includes(tab.contextId)),
+            scopedContextIds.includes(tab.contextId)) &&
+          (scopedTabIds === null || scopedTabIds.includes(tab.id)),
       ).length,
   );
   const [saving, setSaving] = useState(false);
@@ -115,6 +122,10 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
       useFileStore.getState().closeFolder();
     } else if (unsavedModal.intent === "closeContext") {
       await closeContexts(unsavedModal.contextIds);
+    } else if (unsavedModal.intent === "closeTabs") {
+      useEditorStore
+        .getState()
+        .closeTabsById(unsavedModal.tabIds, unsavedModal.anchorTabId);
     } else {
       useEditorStore.getState().closeTab(unsavedModal.tabId);
     }
@@ -134,6 +145,9 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
     }
     if (unsavedModal.intent === "closeContext") {
       return saveDirtyTabsForContexts(unsavedModal.contextIds, deps);
+    }
+    if (unsavedModal.intent === "closeTabs") {
+      return saveDirtyTabsByIds(unsavedModal.tabIds, deps);
     }
     return saveAllDirtyForQuit(deps);
   };

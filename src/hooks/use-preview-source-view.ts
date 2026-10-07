@@ -61,6 +61,8 @@ export function usePreviewSourceView({
       void writeFile(filePath, content)
         .then(() => {
           useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+          // §3.5 Typed again while the write ran → that text is not on disk (#798).
+          if (getSourceBuffer(tab.id) !== content) return;
           useFileStore.getState().setFileContent(filePath, content);
           // §392 spec 0071 D17 — dirty comes down only while the buffer still holds what was
           // written. The preview this toggle puts up can be an editing mount, and a change it

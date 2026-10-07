@@ -24,7 +24,11 @@ import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
-import { isMarkdownFile, isViewerEditableFile } from "../utils/file-type";
+import {
+  isEditableTextPath,
+  isMarkdownFile,
+  isViewerEditableFile,
+} from "../utils/file-type";
 
 export interface UseCodeAutoSaveOptions {
   /**
@@ -106,12 +110,11 @@ export function useCodeAutoSave({
 
     if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
     codeAutoSaveTimer.current = setTimeout(() => {
-      void saveFromBuffer(
-        tab.id,
-        tab.filePath!,
-        { getSourceBuffer, markDirty, setFileContent },
-        { reindexLinks: markdownInSourceMode },
-      );
+      void saveSourceTab(tab.id, {
+        getSourceBuffer,
+        markDirty,
+        setFileContent,
+      });
     }, autoSaveDelay);
 
     return () => {
@@ -162,10 +165,18 @@ export function useCodeAutoSave({
 }
 
 /**
- * The one save sequence both timers here run — the effect's, and the one `rearmForViewerEdit`
- * arms through `saveViewerTab` — so a change to it reaches both: read the buffer, write it,
- * record the save's mtime and the file's content, then lower dirty only while the buffer
- * still holds what was written (spec 0071 D17). A failed write keeps the dirty state.
+ * The one save sequence both timers here run — the effect's, through `saveSourceTab`, and the one
+ * `rearmForViewerEdit` arms through `saveViewerTab` — so a change to it reaches both: read the
+ * buffer, write it, then record the save.
+ *
+ * - The save's mtime is recorded while the tab still shows `filePath` (#798): a tab closed, or
+ *   renamed or moved, while the write ran no longer stands for this file.
+ * - The content, dirty and the source-edited flag are recorded only while the buffer still holds
+ *   what was written (spec 0071 D17, and #798 for the cache and the source-edited flag): text
+ *   typed, or a viewer change taken by another read, while the write ran is not on disk, and a
+ *   markdown tab in source mode keeps its unsaved state in the source-edited flag, not in dirty.
+ *
+ * A failed write keeps the dirty state.
  */
 async function saveFromBuffer(
   tabId: string,
@@ -176,13 +187,18 @@ async function saveFromBuffer(
   try {
     const content = deps.getSourceBuffer(tabId);
     await writeFile(filePath, content);
-    useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
-    deps.setFileContent(filePath, content);
-    // §392 D17 — this line only. The read takes a viewer change still pending, so that is
-    // compared too. `markSourceEdited` below is a separate flag, out of D17's scope (plan 0121
-    // P17).
-    if (deps.getSourceBuffer(tabId) === content) deps.markDirty(tabId, false);
-    useEditorStore.getState().markSourceEdited(tabId, false);
+    const stillShown = useEditorStore
+      .getState()
+      .tabs.some((t) => t.id === tabId && t.filePath === filePath);
+    if (stillShown) {
+      useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+    }
+    // The read takes a viewer change still pending, so that is compared too (§392 D17).
+    if (stillShown && deps.getSourceBuffer(tabId) === content) {
+      deps.setFileContent(filePath, content);
+      deps.markDirty(tabId, false);
+      useEditorStore.getState().markSourceEdited(tabId, false);
+    }
     // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
     useSnapshotStore.getState().markPendingAutoSnapshot();
     // Markdown carries links; leaving the index stale after an auto-save is
@@ -195,6 +211,27 @@ async function saveFromBuffer(
   } catch {
     // Save failed — keep dirty state
   }
+}
+
+/**
+ * The write the effect schedules, judged when it fires (#798): the tab still exists, and its
+ * CURRENT path still belongs to this writer — an editable text file, or markdown while that tab
+ * is in source mode. A rename or move while the timer waited is written under the new path; a
+ * rename to a markdown name outside source mode leaves the file to the WYSIWYG document. The
+ * effect's dependencies do not include the active tab, so its cleanup is no guarantee that a
+ * closed tab's timer is gone; a closed tab's buffer reads as "" and would empty the file.
+ */
+async function saveSourceTab(
+  tabId: string,
+  deps: BufferSaveDeps,
+): Promise<void> {
+  const { sourceModeTabs, tabs } = useEditorStore.getState();
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab?.filePath) return;
+  const path = tab.filePath;
+  const sourceMarkdown = isMarkdownFile(path) && sourceModeTabs.includes(tabId);
+  if (!isEditableTextPath(path) && !sourceMarkdown) return;
+  await saveFromBuffer(tabId, path, deps, { reindexLinks: sourceMarkdown });
 }
 
 /**

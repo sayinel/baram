@@ -191,11 +191,15 @@ describe("source → preview: the flush (D17)", () => {
     expect(hook.result.current.sm.getSourceBuffer(TAB)).toBe("T10");
     expect(m.pending).toBe(false);
     release();
-    // `setFileContent` runs in the same callback, just before the D17 line — once the cache
-    // holds T9, that line has run.
+    // `updateLastSaveMtime` runs first in the same callback — once it is recorded, the D17 line
+    // has run. The cache keeps what it had: the buffer moved on, so the written T9 is not what
+    // the tab holds (#798).
     await vi.waitFor(() =>
-      expect(useFileStore.getState().openFiles.get(PATH)).toBe("T9"),
+      expect(
+        useFileStore.getState().fileMtimes.get(PATH)?.lastSaveMtime,
+      ).toBeGreaterThan(0),
     );
     expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
+    expect(useFileStore.getState().openFiles.get(PATH)).not.toBe("T9");
   });
 });

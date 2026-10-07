@@ -64,6 +64,11 @@ interface FileState {
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
   openFiles: Map<string, string>; // path → content
+  /**
+   * §3.5 닫힌 탭이 쓰던 원문과 수정 시각 기록을 한 번에 내려놓는다(#798). 지울 것이 없으면
+   * state 를 그대로 둔다 — 탭 배열은 dirty 표시만 바뀌어도 새로 만들어지므로 이 호출이 잦다.
+   */
+  releaseFileContents: (keys: readonly string[]) => void;
   removeFileContent: (path: string) => void;
   /** Remove a file/folder entry by path */
   removeFileEntry: (path: string) => void;
@@ -177,6 +182,21 @@ export const useFileStore = create<FileState>((set, get) => ({
       return { openFiles, fileMtimes };
     }),
 
+  releaseFileContents: (keys) =>
+    set((state) => {
+      const held = keys.filter(
+        (k) => state.openFiles.has(k) || state.fileMtimes.has(k),
+      );
+      if (held.length === 0) return state;
+      const openFiles = new Map(state.openFiles);
+      const fileMtimes = new Map(state.fileMtimes);
+      for (const k of held) {
+        openFiles.delete(k);
+        fileMtimes.delete(k);
+      }
+      return { openFiles, fileMtimes };
+    }),
+
   getFileMtime: (path) => get().fileMtimes.get(path),
 
   initFileMtime: (path) =>
@@ -211,6 +231,9 @@ export const useFileStore = create<FileState>((set, get) => ({
   renameFileEntry: (oldPath, newPath, newName) =>
     set((state) => ({
       openFiles: rekeyOpenFilesPrefix(state.openFiles, oldPath, newPath),
+      // §3.5 수정 시각 기록도 원문과 같은 key 를 따른다 — 옛 key 에 남으면 닫힌 탭의 release 가
+      // 새 경로로 찾지 못해 영영 남는다(폴더를 옮기면 그 아래 파일마다, #798).
+      fileMtimes: rekeyOpenFilesPrefix(state.fileMtimes, oldPath, newPath),
       fileTree: renameInTree(state.fileTree, oldPath, newPath, newName),
     })),
 
@@ -264,6 +287,11 @@ export const useFileStore = create<FileState>((set, get) => ({
       return {
         openFiles: rekeyOpenFilesPrefix(
           state.openFiles,
+          oldPath,
+          moved.newPath,
+        ),
+        fileMtimes: rekeyOpenFilesPrefix(
+          state.fileMtimes,
           oldPath,
           moved.newPath,
         ),
