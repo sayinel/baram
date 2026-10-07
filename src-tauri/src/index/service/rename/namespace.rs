@@ -109,17 +109,19 @@ pub(crate) async fn commit_namespace_rename(
     // A move across the boundary is refused before anything is written: notes moving
     // OUT of what the walk leaves out were never walked, so their own relative links
     // would enter the index unchecked; notes moving INTO it would leave every link to
-    // them rewritten to a folder the index no longer reads.
-    let left_out_before = exclusion.walk_skips(Path::new(old_dir), true);
-    if left_out_before != exclusion.walk_skips(Path::new(new_dir), true) {
+    // them rewritten to a folder the index no longer reads. Judged entry by entry, not
+    // by the two folders: `/archive/*.md` excludes neither `notes` nor `archive`, yet
+    // every note in `notes` crosses when it becomes `archive`.
+    if let Some((entry, left_out_before)) = first_crossing(exclusion, old_dir, new_dir).await? {
         let (from, to) = if left_out_before {
-            ("a folder Baram leaves out", "one it reads")
+            ("what Baram leaves out", "what it reads")
         } else {
-            ("a folder Baram reads", "one it leaves out")
+            ("what Baram reads", "what it leaves out")
         };
         return Err(format!(
-            "{old_dir} -> {new_dir} would move notes from {from} to {to} \
+            "{old_dir} -> {new_dir} would move {} from {from} to {to} \
              (hidden names, the default list or {}); change {} first or pick another name",
+            entry.display(),
             crate::fs::BARAMIGNORE,
             crate::fs::BARAMIGNORE
         ));
@@ -194,6 +196,46 @@ pub(crate) async fn commit_namespace_rename(
         // Decided by `settle_namespace_rebuild` once the rebuild has run.
         index_rebuilt: false,
     })
+}
+
+/// The first entry at or below `old_dir` that `exclusion` puts on the other side once it
+/// is spelled under `new_dir`, with whether it was left out before the move; `None` when
+/// none changes side. Costs one more walk of the subtree before the move, unpruned by
+/// either side's rules alone: a folder is skipped only when it is left out BEFORE and
+/// AFTER, because `walk_skips` judges top-down and nothing below such a folder can be
+/// read on either side. Symlinks are judged as entries and not followed (the walkers do
+/// not follow them either). A folder that cannot be listed is an `Err`, like the walk.
+async fn first_crossing(
+    exclusion: &crate::fs::VaultExclusion,
+    old_dir: &str,
+    new_dir: &str,
+) -> Result<Option<(std::path::PathBuf, bool)>, String> {
+    let (old_root, new_root) = (Path::new(old_dir), Path::new(new_dir));
+    let mut pending = vec![(old_root.to_path_buf(), true)];
+    while let Some((old_path, is_dir)) = pending.pop() {
+        let moved = match old_path.strip_prefix(old_root) {
+            Ok(rel) if rel.as_os_str().is_empty() => new_root.to_path_buf(),
+            Ok(rel) => new_root.join(rel),
+            Err(_) => continue,
+        };
+        let before = exclusion.walk_skips(&old_path, is_dir);
+        if before != exclusion.walk_skips(&moved, is_dir) {
+            return Ok(Some((old_path, before)));
+        }
+        if !is_dir || before {
+            continue;
+        }
+        #[cfg(test)]
+        crate::fs::note_folder_read(&old_path);
+        let unreadable =
+            |e: std::io::Error| format!("{} could not be read: {e}", old_path.display());
+        let mut entries = tokio::fs::read_dir(&old_path).await.map_err(unreadable)?;
+        while let Some(entry) = entries.next_entry().await.map_err(unreadable)? {
+            let kind = entry.file_type().await.map_err(unreadable)?;
+            pending.push((entry.path(), kind.is_dir()));
+        }
+    }
+    Ok(None)
 }
 
 /// Once a namespace rename has moved its files, the command reports the move

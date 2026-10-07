@@ -6,6 +6,8 @@ mod exclusion;
 pub mod media;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
+#[cfg(test)]
+pub(crate) use exclusion::{note_folder_read, take_folders_read};
 pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
 
 use crate::commands::fs_cmd::FileEntry;
@@ -82,7 +84,7 @@ pub async fn collect_all_files(
         source,
     };
     #[cfg(test)]
-    self::exclusion::note_folder_read(root);
+    note_folder_read(root);
     let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
     while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -118,7 +120,7 @@ pub async fn collect_md_files(
         source,
     };
     #[cfg(test)]
-    self::exclusion::note_folder_read(root);
+    note_folder_read(root);
     let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
     while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();

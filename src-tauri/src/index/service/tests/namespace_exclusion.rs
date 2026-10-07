@@ -161,3 +161,59 @@ async fn a_note_rename_across_what_the_walk_leaves_out_is_refused() {
     .unwrap();
     assert!(dir.path().join("top2.md").exists());
 }
+
+/// What `.baramignore` says about entries BELOW the two folders counts too, both ways:
+/// `/archive/*.md` excludes neither `notes` nor `archive` but every note crossing into
+/// `archive`; `/archive/secret/` only the child of that name; `/drafts/*.md` the notes
+/// that would leave `drafts`. A source with no entry that changes side moves.
+/// 이것을 실패시키는 것: `first_crossing` 이 `old_dir` 하나만 판정하고 그 아래를 보지 않는 것
+/// — 앞의 세 rename 이 성공한다.
+#[tokio::test]
+async fn a_folder_rename_is_refused_when_any_entry_below_it_changes_side() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) =
+        fixture(&ctx, Some("/archive/*.md\n/vault/secret/\n/drafts/*.md\n")).await;
+    write(dir.path(), "notes/a.md", "a");
+    write(dir.path(), "keep/secret/x.md", "x");
+    write(dir.path(), "drafts/d.md", "d");
+    write(dir.path(), "misc/m.md", "m");
+
+    // Each case is tried before any is asserted, so a failure names every one that moved.
+    let mut moved = Vec::new();
+    for (from, to) in [("notes", "archive"), ("keep", "vault"), ("drafts", "ideas")] {
+        match rename(&state, &ctx, &root, from, to).await {
+            Err(err) if err.contains("leaves out") && dir.path().join(from).exists() => {}
+            other => moved.push(format!("{from} -> {to}: {other:?}")),
+        }
+    }
+    assert!(moved.is_empty(), "{moved:#?}");
+
+    // `misc/m.md` -> `vault/m.md`: only `vault/secret/` is left out there.
+    rename(&state, &ctx, &root, "misc", "vault").await.unwrap();
+    assert!(dir.path().join("vault/m.md").exists());
+}
+
+/// The extra walk does not enter a folder left out on BOTH sides — nothing below it can
+/// be read on either. Counted: `ns/node_modules` is not listed, `ns` is.
+/// 이것을 실패시키는 것: `first_crossing` 의 `|| before` 가지치기를 지우는 것.
+#[tokio::test]
+async fn the_boundary_walk_does_not_enter_a_folder_left_out_on_both_sides() {
+    let ctx = ContextManager::new();
+    let (dir, root, _state) = fixture(&ctx, None).await;
+    write(dir.path(), "ns/node_modules/pkg/index.md", "x");
+
+    crate::fs::take_folders_read();
+    let ns = format!("{root}/ns");
+    let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap();
+    commit_namespace_rename(&ns, &format!("{root}/ns2"), &root, &exclusion)
+        .await
+        .unwrap();
+    let read = crate::fs::take_folders_read();
+    assert!(read.contains(&std::path::PathBuf::from(&ns)), "{read:?}");
+    assert!(
+        !read
+            .iter()
+            .any(|d| d.starts_with(format!("{ns}/node_modules"))),
+        "{read:?}"
+    );
+}
