@@ -22,9 +22,7 @@ use thiserror::Error;
 
 // Re-export public API consumed by `service/` and the IPC layer
 pub(crate) use extractor::file_stem_from_path;
-pub use extractor::{
-    collect_all_files, collect_md_files, find_unlinked_mentions, UnlinkedMentionResult,
-};
+pub use extractor::{collect_md_files, find_unlinked_mentions, UnlinkedMentionResult};
 pub(crate) use filing::{filing_key, keys_for, root_relative_key, FilingKey, LocalAlias};
 pub(crate) use judgement::{root_places, BlockTarget, KnownPaths, RenameTarget, RootNotes};
 pub(crate) use read_back::{index_reads_the_rename_back, reads_a_link_under};
@@ -188,8 +186,8 @@ impl LinkIndex {
         let mut files_indexed: u32 = 0;
         let mut links_found: u32 = 0;
 
-        // Collect all .md files
-        let md_files = collect_md_files(root_path, &self.exclusion).await?;
+        // Issue 796: one walk; the markdown and every file come out of it together.
+        let (md_files, all_files) = extractor::walk_vault(root_path, &self.exclusion).await?;
 
         // Build file maps for wikilink target resolution
         for file_path in &md_files {
@@ -198,8 +196,8 @@ impl LinkIndex {
 
         // §278 Non-markdown files are link TARGETS only — registered after the markdown
         // pass so that where the two could collide, markdown is already in place.
-        for file_path in collect_all_files(root_path, &self.exclusion).await? {
-            self.register_link_target(&file_path, root_path);
+        for file_path in &all_files {
+            self.register_link_target(file_path, root_path);
         }
 
         for file_path in &md_files {
@@ -1192,16 +1190,10 @@ mod build_bench {
 
         let started = std::time::Instant::now();
         let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap();
-        let md = collect_md_files(&root, &exclusion).await.unwrap();
+        let (md, all) = extractor::walk_vault(&root, &exclusion).await.unwrap();
         println!(
-            "{label} collect_md_files -> {} in {:?}",
+            "{label} walk_vault -> {} markdown, {} files in {:?}",
             md.len(),
-            started.elapsed()
-        );
-        let started = std::time::Instant::now();
-        let all = collect_all_files(&root, &exclusion).await.unwrap();
-        println!(
-            "{label} collect_all_files -> {} in {:?}",
             all.len(),
             started.elapsed()
         );

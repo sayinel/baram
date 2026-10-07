@@ -225,22 +225,49 @@ fn defaults(root: &Path) -> GitignoreBuilder {
     builder
 }
 
+/// Every folder a walk listed, recorded for the test that started it — what discovery
+/// costs, counted rather than timed. The record belongs to the test's thread; a walk
+/// that runs on a blocking thread (`walk::walk_vault`) records into its caller's through
+/// `folder_reads_handle` / `record_into`, so tests running side by side do not mix.
+#[cfg(test)]
+type FolderReads = std::sync::Arc<std::sync::Mutex<Vec<PathBuf>>>;
+
 #[cfg(test)]
 thread_local! {
-    /// Every folder the two `fs` walkers listed on this thread — what discovery costs,
-    /// counted rather than timed. Per thread, so tests running side by side do not mix.
-    static FOLDERS_READ: std::cell::RefCell<Vec<PathBuf>> = const { std::cell::RefCell::new(Vec::new()) };
+    static FOLDERS_READ: std::cell::RefCell<Option<FolderReads>> = const { std::cell::RefCell::new(None) };
+}
+
+/// This thread's record, made on first use.
+#[cfg(test)]
+pub(crate) fn folder_reads_handle() -> FolderReads {
+    FOLDERS_READ.with(|r| r.borrow_mut().get_or_insert_with(Default::default).clone())
+}
+
+/// Record into `reads` on this thread until the guard drops.
+#[cfg(test)]
+pub(crate) fn record_into(reads: FolderReads) -> impl Drop {
+    struct Restore(Option<FolderReads>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let previous = self.0.take();
+            FOLDERS_READ.with(|r| *r.borrow_mut() = previous);
+        }
+    }
+    Restore(FOLDERS_READ.with(|r| r.borrow_mut().replace(reads)))
 }
 
 #[cfg(test)]
 pub(crate) fn note_folder_read(dir: &Path) {
-    FOLDERS_READ.with(|r| r.borrow_mut().push(dir.to_path_buf()));
+    folder_reads_handle()
+        .lock()
+        .unwrap()
+        .push(dir.to_path_buf());
 }
 
-/// The folders listed so far on this thread, emptying the record.
+/// The folders listed so far for this thread, emptying the record.
 #[cfg(test)]
 pub(crate) fn take_folders_read() -> Vec<PathBuf> {
-    FOLDERS_READ.with(|r| std::mem::take(&mut *r.borrow_mut()))
+    std::mem::take(&mut *folder_reads_handle().lock().unwrap())
 }
 
 #[cfg(test)]

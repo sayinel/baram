@@ -162,24 +162,14 @@ fn unreadable_directory(vault: &Vault, failed: Option<FsError>) -> CliError {
     }
 }
 
-/// The same for the link index, which walks TWICE: `LinkIndex::build` collects the
-/// markdown files and then every file (non-markdown link targets, §278). The two
-/// walkers skip the same things, and they are re-run in the order the build ran them.
+/// The same for the link index: `LinkIndex::build` walks the vault once with
+/// `fs::walk_vault` (issue 796), and the same walk is re-run here.
 pub(crate) async fn index_failure(vault: &Vault) -> CliError {
-    let mut sink = Vec::new();
     let exclusion = match crate::fs::VaultExclusion::load(&vault.root) {
         Ok(exclusion) => exclusion,
         Err(e) => return unreadable_directory(vault, Some(e)),
     };
-    let mut failed = crate::fs::collect_md_files(&vault.root, &exclusion, &mut sink)
-        .await
-        .err();
-    if failed.is_none() {
-        sink.clear();
-        failed = crate::fs::collect_all_files(&vault.root, &exclusion, &mut sink)
-            .await
-            .err();
-    }
+    let failed = crate::fs::walk_vault(&vault.root, &exclusion).await.err();
     unreadable_directory(vault, failed)
 }
 

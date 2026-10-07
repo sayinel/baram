@@ -4,11 +4,13 @@ pub(crate) mod archive;
 mod copy_dir;
 mod exclusion;
 pub mod media;
+mod walk;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
 #[cfg(test)]
 pub(crate) use exclusion::{note_folder_read, take_folders_read};
 pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
+pub use walk::{collect_all_files, collect_md_files, walk_vault};
 
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -58,94 +60,6 @@ pub enum FsError {
     /// wrapper parses it.
     #[error("ALREADY_EXISTS:{0}")]
     AlreadyExists(String),
-}
-
-/// §278 Recursively collect EVERY file under `root`, skipping hidden entries and what
-/// `exclusion` leaves out (issue 794: the default list and the vault's `.baramignore`).
-/// `root` may be a folder below the vault root; `exclusion` judges against the vault root.
-///
-/// The link index scans only markdown for outgoing links, but a wikilink may *point* at
-/// any file — `[[Paper.pdf]]`. Those targets have to be registered somewhere or the link
-/// shows up as a dangling node in the graph and produces no backlink.
-///
-/// ‼️ No extension filter, deliberately. Enumerating the viewable types here would put a
-/// second copy of a list that already lives in the frontend (`utils/file-type.ts`), and a
-/// rule kept in two places is one that eventually only gets updated in one — the 1%
-/// quantisation defect in the zoom path was exactly that. A target map entry for a file
-/// nobody links to costs a string; it can only ever be reached by someone writing that
-/// exact name.
-pub async fn collect_all_files(
-    root: &Path,
-    exclusion: &VaultExclusion,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), FsError> {
-    let unreadable = |source: std::io::Error| FsError::ReadDir {
-        path: root.to_path_buf(),
-        source,
-    };
-    #[cfg(test)]
-    note_folder_read(root);
-    let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
-    while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue;
-        }
-        let metadata = match entry.metadata().await {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        if exclusion.excludes_entry(&path, metadata.is_dir()) {
-            continue;
-        }
-        if metadata.is_dir() {
-            Box::pin(collect_all_files(&path, exclusion, files)).await?;
-        } else if metadata.is_file() {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
-/// Recursively collect all .md file paths under `root`, skipping hidden entries and what
-/// `exclusion` leaves out — the same rule as `collect_all_files`.
-pub async fn collect_md_files(
-    root: &Path,
-    exclusion: &VaultExclusion,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), FsError> {
-    let unreadable = |source: std::io::Error| FsError::ReadDir {
-        path: root.to_path_buf(),
-        source,
-    };
-    #[cfg(test)]
-    note_folder_read(root);
-    let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
-    while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
-        let name = entry.file_name().to_string_lossy().to_string();
-
-        // Skip hidden files/dirs
-        if name.starts_with('.') {
-            continue;
-        }
-
-        let metadata = match entry.metadata().await {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-
-        let path = entry.path();
-        if exclusion.excludes_entry(&path, metadata.is_dir()) {
-            continue;
-        }
-        if metadata.is_dir() {
-            Box::pin(collect_md_files(&path, exclusion, files)).await?;
-        } else if metadata.is_file() && (name.ends_with(".md") || name.ends_with(".markdown")) {
-            files.push(path);
-        }
-    }
-    Ok(())
 }
 
 /// Validate a user-supplied path: reject null bytes and non-absolute paths.
