@@ -27,9 +27,13 @@ import { useSettingsStore } from "../stores/settings/store";
 import { isMarkdownFile, isViewerEditableFile } from "../utils/file-type";
 
 export interface UseCodeAutoSaveOptions {
-  /** §perf-large-file: bumps whenever the active tab's source buffer is
-   * rewritten, so the debounce effect re-arms even when the tab id itself
-   * didn't change. */
+  /**
+   * §perf-large-file: bumps on every `setSourceBuffer`, whichever tab it writes (its one bump
+   * site in `use-source-mode.ts`), so the debounce effect re-runs even when the active tab id
+   * didn't change. A write to another tab's buffer re-runs it too, and §392 relies on that
+   * (plan 0121 P4): the re-run arms the active tab's save, if that tab is unsaved, on the timer
+   * a viewer re-arm shares.
+   */
   bufferVersion: number;
   getSourceBuffer: (tabId: string) => string;
   isEditableTextFile: boolean;
@@ -47,6 +51,10 @@ export interface UseCodeAutoSaveReturn {
    * §392 spec 0071 §6.2 step 3 — re-arm the debounce from THIS call, for `tabId`'s editable
    * viewer. Renders nothing: the settings are read when it is called. It and the effect hold
    * one timer ref and each clears it before arming, so at most one save is scheduled at a time.
+   * A call for a tab that is not the active one does nothing — this hook saves the active tab,
+   * and clearing the shared timer for another tab would cancel the active tab's save. Its
+   * identity changes only when one of the three functions it closes over does, not on a buffer
+   * write.
    */
   rearmForViewerEdit: (tabId: string) => void;
 }
@@ -125,6 +133,9 @@ export function useCodeAutoSave({
       const { autoSave: enabled, autoSaveDelay: delay } =
         useSettingsStore.getState();
       if (!enabled) return;
+      // Before the clear below: that clear would cancel a save the effect armed for the
+      // active tab.
+      if (tabId !== useEditorStore.getState().activeTabId) return;
       if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
       codeAutoSaveTimer.current = setTimeout(() => {
         void saveViewerTab(tabId, {
@@ -135,6 +146,16 @@ export function useCodeAutoSave({
       }, delay);
     },
     [getSourceBuffer, markDirty, setFileContent],
+  );
+
+  // §392 — the effect above clears the shared timer in its cleanup only when its last run armed
+  // it, so a timer `rearmForViewerEdit` armed after a run that returned early has no cleanup.
+  // This one clears it when the hook unmounts.
+  useEffect(
+    () => () => {
+      if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
+    },
+    [],
   );
 
   return { rearmForViewerEdit };

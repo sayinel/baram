@@ -177,6 +177,78 @@ describe("a viewer change re-arms auto-save (§6.2 · D8)", () => {
   });
 });
 
+describe("the re-armed save is judged when it fires (§6.2 · P4)", () => {
+  // Neither `setState` below goes through `setSourceBuffer`, so `bufferVersion` does not move
+  // and the effect does not run again: the only timer is the re-arm's. "one call alone" above is
+  // the positive twin — the same re-arm with the tab left as it was writes.
+  it("a tab made clean without markDirty (which D15 does not see) is not written", async () => {
+    const hook = setup();
+    act(() => markChanged(hook.result.current.auto.rearmForViewerEdit, "T1"));
+    act(() =>
+      useEditorStore.setState({
+        tabs: useEditorStore
+          .getState()
+          .tabs.map((t) => (t.id === TAB ? { ...t, isDirty: false } : t)),
+      }),
+    );
+    await advance(2000);
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("a tab whose path is no longer a file a viewer may edit (a.strokes → a.md) is not written", async () => {
+    const hook = setup();
+    act(() => markChanged(hook.result.current.auto.rearmForViewerEdit, "T1"));
+    act(() =>
+      useEditorStore.setState({
+        tabs: useEditorStore
+          .getState()
+          .tabs.map((t) => (t.id === TAB ? { ...t, filePath: "/v/a.md" } : t)),
+      }),
+    );
+    await advance(2000);
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("the re-arm and the hook's one timer (P4)", () => {
+  it("a re-arm for a tab that is not active leaves the active tab's scheduled save alone", async () => {
+    // The active tab is a code tab whose save the effect armed; the re-arm names another tab.
+    unregisterViewerEditMount(mount);
+    useEditorStore.setState({
+      tabs: useEditorStore
+        .getState()
+        .tabs.map((t) => (t.id === TAB ? { ...t, filePath: "/v/a.ts" } : t)),
+    });
+    const hook = setup();
+    act(() => {
+      hook.result.current.sm.setSourceBuffer(TAB, "C1");
+      useEditorStore.getState().markDirty(TAB, true);
+    });
+    await advance(500);
+    act(() => hook.result.current.auto.rearmForViewerEdit("t2"));
+    await advance(10_000);
+    expect(writeFile.mock.calls).toEqual([["/v/a.ts", "C1"]]);
+  });
+
+  it("is the same function after a buffer write re-renders the hook", () => {
+    const hook = setup();
+    const before = hook.result.current.auto.rearmForViewerEdit;
+    const version = hook.result.current.sm.bufferVersion;
+    act(() => hook.result.current.sm.setSourceBuffer("t2", "B1"));
+    // The write did re-render the hook — `result.current` is from the render after it.
+    expect(hook.result.current.sm.bufferVersion).not.toBe(version);
+    expect(hook.result.current.auto.rearmForViewerEdit).toBe(before);
+  });
+
+  it("a re-arm's timer does not outlive the hook", async () => {
+    const hook = setup();
+    act(() => markChanged(hook.result.current.auto.rearmForViewerEdit, "T1"));
+    hook.unmount();
+    await advance(10_000);
+    expect(writeFile).not.toHaveBeenCalled();
+  });
+});
+
 describe("a change during the save's write (D15 · D17)", () => {
   it("keeps the tab dirty after the write, and the next save writes the later text", async () => {
     const hook = setup();
