@@ -98,6 +98,15 @@ export function showConflictModal(
   useUIStore.getState().openConflictModal(filePath, externalMtime, base);
 }
 
+/** §3.5 The newest auto-reload started per path; an older one that finishes later stands down. */
+const reloadGenerations = new Map<string, number>();
+let reloadCounter = 0;
+
+/** How many paths have an auto-reload still reading — for tests. */
+export function pendingReloadPaths(): number {
+  return reloadGenerations.size;
+}
+
 /**
  * Auto-reload a file from disk when an external change is detected and the tab
  * is not dirty. Updates openFiles, syncs mtime, and triggers editor refresh via
@@ -108,10 +117,42 @@ export async function triggerAutoReload(
   externalMtime: number,
   options: AutoReloadOptions = {},
 ): Promise<void> {
+  // §3.5 이 리로드가 읽기를 기다리는 사이 세상이 바뀌었으면 결과를 쓰지 않는다(#798). 읽기를 시작할 때
+  // 이 파일을 보던 탭이 모두 닫혔으면 그 원문은 이미 내려놓았으므로, 여기서 쓰면 되살린다 — 그 사이
+  // 같은 파일을 새 탭으로 다시 열었다면 그 탭이 읽은 내용을 이 리로드의 옛 내용으로 덮는다. 같은 파일의
+  // 리로드가 겹치면 마지막에 시작한 것만 쓴다. 시작할 때 보던 탭이 없던 캐시 항목은 예전처럼 갱신한다.
+  const owners = new Set(
+    useEditorStore
+      .getState()
+      .tabs.filter((t) => t.filePath === filePath)
+      .map((t) => t.id),
+  );
+  // 경로마다가 아니라 전체에서 증가하는 번호다 — 경로의 항목은 끝나면 지우므로, 경로마다 1 부터 다시 세면
+  // 먼저 시작한 리로드와 나중 리로드가 같은 번호를 받을 수 있다.
+  const generation = ++reloadCounter;
+  reloadGenerations.set(filePath, generation);
+
   // PDFs are binary — keep the "" cache sentinel; the mtime bump below
   // refreshes the viewer iframe instead.
   const isBinary = isBinaryViewerFile(filePath);
-  const freshContent = isBinary ? "" : await readFile(filePath);
+  let freshContent: string;
+  try {
+    freshContent = isBinary ? "" : await readFile(filePath);
+  } catch (e) {
+    if (reloadGenerations.get(filePath) === generation) {
+      reloadGenerations.delete(filePath);
+    }
+    throw e;
+  }
+  // 늦게 시작한 리로드가 있으면 그것이 이 자리를 맡는다 — 먼저 끝나 자리를 비웠어도 마찬가지다.
+  if (reloadGenerations.get(filePath) !== generation) return;
+  reloadGenerations.delete(filePath);
+  const ownerLeft =
+    owners.size > 0 &&
+    !useEditorStore
+      .getState()
+      .tabs.some((t) => owners.has(t.id) && t.filePath === filePath);
+  if (ownerLeft) return;
 
   // §312 ‼️ 캐시를 덮기 **전에** 잡는다. 이 값이 "버퍼가 갈라졌는가"의 유일한 기준선인데,
   // setFileContent가 먼저 돌면 그 자리에 이미 새 내용이 들어와 모든 버퍼가 갈라져 보인다.
