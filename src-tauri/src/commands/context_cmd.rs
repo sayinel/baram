@@ -76,12 +76,15 @@ pub async fn add_context<R: tauri::Runtime>(
 
     let added = state.add(info).await?;
     register_asset_scope(&app, &added);
+    // §3.2 A watch refused for want of this context may be allowed now (#797).
+    super::watch_cmd::may_retry(&app);
     Ok(added)
 }
 
 #[tauri::command]
-pub async fn remove_context(
+pub async fn remove_context<R: tauri::Runtime>(
     context_id: String,
+    app: tauri::AppHandle<R>,
     state: tauri::State<'_, ContextManager>,
     vault_root: tauri::State<'_, crate::VaultRootState>,
     link_index: tauri::State<'_, crate::index::service::LinkIndexState>,
@@ -91,7 +94,7 @@ pub async fn remove_context(
     // issue 263: the link index of a removed context must not outlive it — a
     // re-registration of the same path builds its own. The incarnation lets
     // the index ignore this call if that re-registration already happened.
-    if let Some((path, incarnation)) = registration {
+    if let Some((path, incarnation)) = registration.clone() {
         link_index.forget(&path, incarnation).await;
     }
 
@@ -108,6 +111,13 @@ pub async fn remove_context(
             let mut root = vault_root.0.write().await;
             *root = None;
         }
+    }
+
+    // §3.2 The watches it authorized end with it, unless another context covers them (#797).
+    if let Some((path, _)) = registration {
+        let removed = crate::context::manager::resolve_canonical(&path)
+            .unwrap_or_else(|_| std::path::PathBuf::from(&path));
+        super::watch_cmd::after_context_removed(&app, &removed).await;
     }
 
     Ok(())

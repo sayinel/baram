@@ -14,7 +14,7 @@ pub struct FileEntry {
 }
 
 /// Validate path at IPC boundary: reject null bytes and non-absolute paths.
-fn check(path: &str) -> Result<(), String> {
+pub(crate) fn check(path: &str) -> Result<(), String> {
     crate::fs::validate_path(path).map_err(|e| e.to_string())
 }
 
@@ -49,7 +49,10 @@ async fn check_vault(
 /// flows (`openFolder`, `ensureFileContext`) register a context or vault root BEFORE
 /// issuing any file IPC, so this only blocks stray access (e.g. a compromised webview
 /// probing arbitrary absolute paths on launch), not normal usage.
-fn vault_fallback_decision(root: Option<&std::path::Path>, path: &str) -> Result<(), String> {
+pub(crate) fn vault_fallback_decision(
+    root: Option<&std::path::Path>,
+    path: &str,
+) -> Result<(), String> {
     match root {
         Some(root) => {
             let canonical_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
@@ -325,23 +328,6 @@ pub async fn import_dir(
     crate::fs::copy_dir_all(&from, &to)
         .await
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn watch_dir(
-    path: String,
-    app_handle: tauri::AppHandle,
-    watcher_state: tauri::State<'_, crate::WatcherState>,
-) -> Result<(), String> {
-    check(&path)?;
-    // No check_vault here — watching a directory only monitors events,
-    // it doesn't read/write files. Security is enforced on file operations.
-    let new_watcher = crate::fs::start_watching(&path, app_handle).map_err(|e| e.to_string())?;
-    // Key by PATH (not context ID) to prevent watcher accumulation
-    // when context IDs change due to dedup or restart
-    let mut guard = watcher_state.0.lock().map_err(|e| e.to_string())?;
-    guard.insert(path.clone(), new_watcher);
-    Ok(())
 }
 
 /// §3.2 The files open in the editor. The watcher drops events below an excluded

@@ -6,6 +6,7 @@ mod exclusion;
 pub mod media;
 mod walk;
 mod watch_filter;
+pub(crate) mod watch_registry;
 pub use watch_filter::set_open_files;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
@@ -15,7 +16,7 @@ pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
 pub use walk::{collect_all_files, collect_md_files, walk_vault, Collect};
 
 use crate::commands::fs_cmd::FileEntry;
-use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::UNIX_EPOCH;
@@ -792,18 +793,25 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 /// Returns the watcher, which must be kept alive by the caller.
 /// Dropping the returned watcher closes the internal channel, causing the
 /// background thread to exit naturally (RAII cleanup — no thread leak).
-pub fn start_watching(
-    path: &str,
-    app_handle: tauri::AppHandle,
+pub(crate) fn start_watching<R: tauri::Runtime>(
+    spec: &watch_registry::WatchSpec,
+    app_handle: tauri::AppHandle<R>,
+    on_end: Box<dyn Fn() + Send>,
 ) -> Result<RecommendedWatcher, FsError> {
-    let path = path.to_string();
+    let path = spec.root.clone();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
     let mut watcher: RecommendedWatcher = Watcher::new(tx, notify::Config::default())
         .map_err(|e| FsError::WatchError(e.to_string()))?;
 
+    // §3.2 A folder watched for one file's sake looks at its own entries only (#797).
+    let mode = if spec.recursive {
+        RecursiveMode::Recursive
+    } else {
+        RecursiveMode::NonRecursive
+    };
     watcher
-        .watch(Path::new(&path), RecursiveMode::Recursive)
+        .watch(Path::new(&path), mode)
         .map_err(|e| FsError::WatchError(e.to_string()))?;
 
     // Spawn a thread to receive file system events and emit to frontend.
@@ -812,9 +820,34 @@ pub fn start_watching(
     // tx is dropped, rx becomes disconnected, and this thread exits on its own.
     // §3.2 Which events reach the webview is `watch_filter`'s call (issue 795): the
     // vault walk's exclusion, judged relative to this root, before any metadata read.
-    let mut filter = watch_filter::WatchFilter::new(Path::new(&path));
+    // ‼️ Events go to every window (`AppHandle::emit`), as they did before leases
+    // (#797): a vault's watcher already reported to file windows, which keep only their
+    // own file's events. A file window's lease served by a vault's watcher therefore
+    // sees nothing it did not before — `watch_filter_tests.rs` pins that the host
+    // reports no path its vault's own watch would not.
+    let mut filter = watch_filter::WatchFilter::for_watch(
+        Path::new(&path),
+        spec.recursive,
+        spec.focus.clone(),
+        spec.spellings.clone(),
+    );
+    let root = spec.key.clone();
+    let spelled_root = PathBuf::from(&path);
     std::thread::spawn(move || {
-        for event in rx.into_iter().flatten() {
+        for result in rx {
+            // §3.2 A watcher that errors, or whose folder is removed, has stopped
+            // watching (#797): say so, so its registry entry is not taken for a live
+            // watch, and stop routing.
+            let event = match result {
+                Ok(event) => event,
+                Err(e) => {
+                    log::warn!("§3.2 watcher on {}: {e}; ended", root.display());
+                    on_end();
+                    return;
+                }
+            };
+            let root_removed = matches!(event.kind, EventKind::Remove(_))
+                && event.paths.iter().any(|p| p == &root || p == &spelled_root);
             for emit in filter.route(&event, &watch_filter::RealProbe) {
                 let _ = match emit {
                     watch_filter::Emit::Created {
@@ -837,6 +870,14 @@ pub fn start_watching(
                         serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
                     ),
                 };
+            }
+            if root_removed {
+                log::warn!(
+                    "§3.2 watched folder {} was removed; watch ended",
+                    root.display()
+                );
+                on_end();
+                return;
             }
         }
     });

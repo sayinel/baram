@@ -184,6 +184,22 @@ export function lastPathSegment(path: string): string {
 }
 
 /**
+ * The folder holding `path`, split the way `lastPathSegment` splits — so a Windows
+ * path (a drive letter or a UNC root) also splits at `\`. `""` when the path has no
+ * folder part. `dirname` reads `/` alone, which vault-relative and POSIX callers want.
+ */
+export function containingFolder(path: string): string {
+  const name = lastPathSegment(path);
+  if (name === path) return "";
+  const folder = path.substring(0, path.length - name.length - 1);
+  // `/a.md` and `C:\a.md`: the root itself, with its separator.
+  if (folder === "" || /^[A-Za-z]:$/.test(folder)) {
+    return path.substring(0, path.length - name.length);
+  }
+  return folder;
+}
+
+/**
  * Collapse `.`, `..` and empty segments in a POSIX-style path.
  *
  * ‼️ Two callers used to inline this loop, and the third — the one that

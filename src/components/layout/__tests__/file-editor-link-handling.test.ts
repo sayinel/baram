@@ -87,3 +87,18 @@ describe("§384 (C) FileEditorLayout's dirty listener gates on isEphemeralOnlyUp
     expect(gateLine).toMatch(/return;\s*$/);
   });
 });
+
+// §3.2 #797 — same reasoning: the window's folder watch is `useFileWindowWatch`'s
+// (pinned on its own), asked for only after the window's file context is registered —
+// the very promise the load awaits, not a second `ensureFileContext` racing it.
+describe("§3.2 standalone window's folder watch", () => {
+  // 이것을 실패시키는 것: 창이 `watchDir` 를 직접 부른다 — 또는 watch 와 load 가 서로 다른 등록을 기다린다.
+  it("waits on the load's own registration before watching", () => {
+    expect(SOURCE.match(/watchDir\(/g) ?? []).toHaveLength(0);
+    expect(
+      SOURCE.match(/useFileWindowWatch\(filePath, registered\)/g) ?? [],
+    ).toHaveLength(1);
+    expect(SOURCE.match(/await registered\(\)/g) ?? []).toHaveLength(1);
+    expect(SOURCE.match(/ensureFileContext\(/g) ?? []).toHaveLength(1);
+  });
+});

@@ -45,7 +45,7 @@ fn written(path: &Path) -> [Event; 2] {
 
 /// A filter whose registry knows no file is open.
 fn filter(root: &Path) -> WatchFilter {
-    WatchFilter::with_open_files(root, known(&[]))
+    WatchFilter::with_open_files(root, true, known(&[]), Focus::default())
 }
 
 fn route_all(filter: &mut WatchFilter, events: &[Event], probe: &CountingProbe) -> Vec<Emit> {
@@ -99,7 +99,7 @@ fn an_open_file_below_an_excluded_folder_keeps_every_event() {
     // 이것을 실패시키는 것: `route` 가 열린 파일 집합을 보지 않는다.
     let dir = tempfile::tempdir().unwrap();
     let note = dir.path().join("build/README.md");
-    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&note]));
+    let mut f = WatchFilter::with_open_files(dir.path(), true, known(&[&note]), Focus::default());
     let probe = CountingProbe::default();
     let changed =
         Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(note.clone());
@@ -238,7 +238,7 @@ fn each_routed_path_is_read_once_and_a_rename_reports_one_snapshot() {
     // 이것을 실패시키는 것: Modify(Name) 갈래가 Changed 를 위해 다시 `stat` 한다.
     let dir = tempfile::tempdir().unwrap();
     let note = dir.path().join("build/README.md");
-    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&note]));
+    let mut f = WatchFilter::with_open_files(dir.path(), true, known(&[&note]), Focus::default());
     let probe = CountingProbe::default();
     let replaced =
         Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any))).add_path(note.clone());
@@ -267,7 +267,7 @@ fn a_path_gone_by_the_time_it_is_read_is_reported_deleted_never_changed() {
     // 이것을 실패시키는 것: `stat` 이 `None` 일 때 Deleted 대신 mtime 0 의 Changed/Created 를 낸다.
     let dir = tempfile::tempdir().unwrap();
     let note = dir.path().join("notes/a.md");
-    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&note]));
+    let mut f = WatchFilter::with_open_files(dir.path(), true, known(&[&note]), Focus::default());
     let probe = CountingProbe::default();
     probe.gone.borrow_mut().insert(note.clone());
     let kinds = [
@@ -319,7 +319,8 @@ fn an_open_file_named_like_a_tmp_file_keeps_its_events() {
     // 이것을 실패시키는 것: 열린 파일이라도 `.tmp` 로 끝나면 버린다.
     let dir = tempfile::tempdir().unwrap();
     let scratch = dir.path().join("build/scratch.tmp");
-    let mut f = WatchFilter::with_open_files(dir.path(), known(&[&scratch]));
+    let mut f =
+        WatchFilter::with_open_files(dir.path(), true, known(&[&scratch]), Focus::default());
     let probe = CountingProbe::default();
     assert_eq!(route_all(&mut f, &written(&scratch), &probe).len(), 2);
     // Its unopened neighbour below `build/` is dropped by the folder rule.
@@ -334,7 +335,8 @@ fn an_unknown_open_set_drops_nothing_but_baram_s_intermediates() {
     // open file's changes.
     // 이것을 실패시키는 것: `may_be_open` 이 `Unknown` 을 "열려 있지 않음" 으로 읽는다.
     let dir = tempfile::tempdir().unwrap();
-    let mut f = WatchFilter::with_open_files(dir.path(), OpenFiles::default());
+    let mut f =
+        WatchFilter::with_open_files(dir.path(), true, OpenFiles::default(), Focus::default());
     let probe = CountingProbe::default();
     let out = dir.path().join("build/out.md");
     assert_eq!(route_all(&mut f, &written(&out), &probe).len(), 2);
@@ -375,4 +377,284 @@ fn set_open_files_accepts_its_limits_and_refuses_one_past_them() {
     assert!(replace_open_files(&open, &[long]).is_ok());
     assert!(replace_open_files(&open, &at_count).is_ok());
     assert!(holds(&open, "/v/0.md"));
+}
+
+/// A non-recursive watch's filter, for `focus` files (#797).
+fn folder_filter(root: &Path, focus: &[&Path]) -> WatchFilter {
+    let set: HashSet<PathBuf> = focus.iter().map(|p| p.to_path_buf()).collect();
+    WatchFilter::with_open_files(root, false, known(&[]), Arc::new(RwLock::new(set)))
+}
+
+#[test]
+fn a_folder_watch_takes_its_focus_files_for_open_ones() {
+    // A file window has no editor store, so nothing registers its file as open; the
+    // lease's focus does. An atomic replace of it is then reported as a change.
+    // 이것을 실패시키는 것: `may_be_open` 이 focus 집합을 보지 않는다.
+    let dir = tempfile::tempdir().unwrap();
+    let note = dir.path().join("n.md");
+    let mut f = folder_filter(dir.path(), &[&note]);
+    let probe = CountingProbe::default();
+    let replaced =
+        Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any))).add_path(note.clone());
+    let emitted = route_all(&mut f, std::slice::from_ref(&replaced), &probe);
+    assert!(
+        matches!(emitted[..], [Emit::Created { .. }, Emit::Changed { .. }]),
+        "{emitted:?}"
+    );
+    // Another file of that folder is not open: a rename onto it is only a creation.
+    let other = dir.path().join("o.md");
+    let emitted = route_all(
+        &mut f,
+        &[Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Any))).add_path(other)],
+        &probe,
+    );
+    assert!(matches!(emitted[..], [Emit::Created { .. }]), "{emitted:?}");
+}
+
+#[test]
+fn a_folder_watch_reads_no_baramignore_and_ignores_the_editor_open_set() {
+    // The folder is not a vault: a `.baramignore` there means nothing to Baram, and the
+    // editor's open set is the vault's business.
+    // 이것을 실패시키는 것: 비재귀 watch 도 `load_or_defaults` 로 `.baramignore` 를 읽는다.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(BARAMIGNORE), "*.md\n").unwrap();
+    let mut f = folder_filter(dir.path(), &[]);
+    let probe = CountingProbe::default();
+    let note = dir.path().join("n.md");
+    assert_eq!(route_all(&mut f, &written(&note), &probe).len(), 2);
+    // An unknown editor open set does not open it up either: the default list still
+    // applies to what it routes.
+    // 이것을 실패시키는 것: 비재귀 watch 의 `may_be_open` 이 편집기의 열린 파일 집합(Unknown)을 본다.
+    let mut f =
+        WatchFilter::with_open_files(dir.path(), false, OpenFiles::default(), Focus::default());
+    assert!(route_all(&mut f, &written(&dir.path().join("build/out.o")), &probe).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_vault_registered_through_a_symlink_judges_paths_in_either_spelling() {
+    // The registry keys watches by canonical path, but the filter keeps the vault root
+    // as registered; the watcher reports the resolved spelling.
+    // 이것을 실패시키는 것: `VaultExclusion::relative` 가 적힌 root 로만 경로를 떼어 낸다.
+    let real = tempfile::tempdir().unwrap();
+    let real_root = std::fs::canonicalize(real.path()).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let alias = links.path().join("vault");
+    std::os::unix::fs::symlink(&real_root, &alias).unwrap();
+    let mut f = WatchFilter::with_open_files(&alias, true, known(&[]), Focus::default());
+    let probe = CountingProbe::default();
+    for root in [&alias, &real_root] {
+        assert!(
+            route_all(&mut f, &written(&root.join("build/out.o")), &probe).is_empty(),
+            "{root:?}"
+        );
+        assert_eq!(
+            route_all(&mut f, &written(&root.join("note.md")), &probe).len(),
+            2,
+            "{root:?}"
+        );
+    }
+}
+
+#[test]
+fn an_atomic_replace_in_a_non_recursive_folder_reaches_the_open_file() {
+    // Issue 797's last criterion, with the real watcher: write a tmp file beside the
+    // open one and rename it over it, in a folder watched non-recursively. A change in
+    // a subfolder is outside the watch.
+    // 이것을 실패시키는 것: focus 를 열린 파일로 보지 않는다(rename 이 Created 로만 끝난다).
+    use notify::{RecursiveMode, Watcher};
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::create_dir(root.join("sub")).unwrap();
+    let note = root.join("n.md");
+    std::fs::write(&note, "v1").unwrap();
+    let (tx, rx) = std::sync::mpsc::channel::<notify::Result<Event>>();
+    let mut watcher: notify::RecommendedWatcher =
+        notify::Watcher::new(tx, notify::Config::default()).unwrap();
+    watcher.watch(&root, RecursiveMode::NonRecursive).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let tmp = root.join(".n.md.swp");
+    std::fs::write(&tmp, "v2").unwrap();
+    std::fs::rename(&tmp, &note).unwrap();
+    std::fs::write(root.join("sub/deep.md"), "x").unwrap();
+
+    let mut f = folder_filter(&root, &[&note]);
+    let (mut changed, mut deep) = (0, 0);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline && changed == 0 {
+        let Ok(Ok(event)) = rx.recv_timeout(std::time::Duration::from_millis(500)) else {
+            continue;
+        };
+        for emit in f.route(&event, &RealProbe) {
+            match emit {
+                Emit::Changed { path, .. } if Path::new(&path) == note => changed += 1,
+                Emit::Created { path, .. } | Emit::Changed { path, .. }
+                    if path.contains("/sub/") =>
+                {
+                    deep += 1
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(changed > 0, "no change reported for the replaced open file");
+    assert_eq!(deep, 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_event_is_reported_in_every_spelling_the_leases_registered() {
+    // The OS reports the resolved spelling (`/private/var/…` on macOS); a tab opened
+    // under the alias compares paths byte for byte and must get its own.
+    // 이것을 실패시키는 것: `route` 가 `respell` 없이 OS 의 표기를 그대로 낸다.
+    let real = tempfile::tempdir().unwrap();
+    let real_root = std::fs::canonicalize(real.path()).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let alias = links.path().join("vault");
+    std::os::unix::fs::symlink(&real_root, &alias).unwrap();
+    let spellings: Spellings = Arc::new(RwLock::new(vec![(real_root.clone(), alias.clone())]));
+    let mut f = WatchFilter::for_watch(&alias, true, Focus::default(), Arc::clone(&spellings));
+    let probe = CountingProbe::default();
+    let note = real_root.join("note.md");
+    let emitted = route_all(&mut f, &written(&note), &probe);
+    let paths: Vec<&str> = emitted.iter().map(Emit::path).collect();
+    let expected = alias.join("note.md").to_string_lossy().into_owned();
+    assert_eq!(paths, vec![expected.as_str(), expected.as_str()]);
+
+    // Two spellings registered: each gets the event.
+    spellings
+        .write()
+        .unwrap()
+        .push((real_root.clone(), real_root.clone()));
+    let emitted = route_all(&mut f, &[written(&note)[1].clone()], &probe);
+    let mut paths: Vec<String> = emitted.iter().map(|e| e.path().to_string()).collect();
+    paths.sort();
+    let mut want = vec![expected, note.to_string_lossy().into_owned()];
+    want.sort();
+    assert_eq!(paths, want);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_folder_served_by_an_ancestors_watch_gets_its_events_in_its_own_spelling() {
+    // A file window's folder inside the vault, opened through another link: its tab
+    // compares paths under that link. Events outside the folder are not respelled
+    // into it.
+    // 이것을 실패시키는 것: `respell` 이 폴더가 event 를 담는지 보지 않고 spelling 마다 낸다.
+    let real = tempfile::tempdir().unwrap();
+    let real_root = std::fs::canonicalize(real.path()).unwrap();
+    std::fs::create_dir(real_root.join("sub")).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let sub_alias = links.path().join("sub");
+    std::os::unix::fs::symlink(real_root.join("sub"), &sub_alias).unwrap();
+    let spellings: Spellings = Arc::new(RwLock::new(vec![
+        (real_root.clone(), real_root.clone()),
+        (real_root.join("sub"), sub_alias.clone()),
+    ]));
+    let mut f = WatchFilter::for_watch(&real_root, true, Focus::default(), spellings);
+    let probe = CountingProbe::default();
+    let inside = real_root.join("sub/n.md");
+    let mut paths: Vec<String> = route_all(&mut f, &[written(&inside)[1].clone()], &probe)
+        .iter()
+        .map(|e| e.path().to_string())
+        .collect();
+    paths.sort();
+    let mut want = vec![
+        inside.to_string_lossy().into_owned(),
+        sub_alias.join("n.md").to_string_lossy().into_owned(),
+    ];
+    want.sort();
+    assert_eq!(paths, want);
+    let top = real_root.join("top.md");
+    let paths: Vec<String> = route_all(&mut f, &[written(&top)[1].clone()], &probe)
+        .iter()
+        .map(|e| e.path().to_string())
+        .collect();
+    assert_eq!(paths, vec![top.to_string_lossy().into_owned()]);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_focus_file_reported_in_the_hosts_other_spelling_still_passes_an_excluded_folder() {
+    // A watcher reports paths in the spelling it was started with (inotify does); a
+    // file window's focus file below the host's `build/` must pass in it too.
+    // 이것을 실패시키는 것: `may_be_open` 이 focus 를 보고된 표기로만 찾는다.
+    let real = tempfile::tempdir().unwrap();
+    let real_root = std::fs::canonicalize(real.path()).unwrap();
+    std::fs::create_dir(real_root.join("build")).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let alias = links.path().join("vault");
+    std::os::unix::fs::symlink(&real_root, &alias).unwrap();
+    let focus: Focus = Arc::new(RwLock::new(
+        [real_root.join("build/out.md")].into_iter().collect(),
+    ));
+    let spellings: Spellings = Arc::new(RwLock::new(vec![(real_root.clone(), alias.clone())]));
+    // The editor's open set is known and holds neither file: only the focus lets one in.
+    let mut f = WatchFilter::with_open_files(&alias, true, known(&[]), focus);
+    f.spellings = spellings;
+    let probe = CountingProbe::default();
+    let reported = alias.join("build/out.md");
+    std::fs::write(real_root.join("build/out.md"), "x").unwrap();
+    let emitted = route_all(&mut f, &[written(&reported)[1].clone()], &probe);
+    assert_eq!(emitted.len(), 1);
+    // Not vacuous: another file there is dropped.
+    let other = alias.join("build/other.md");
+    std::fs::write(real_root.join("build/other.md"), "x").unwrap();
+    assert!(route_all(&mut f, &[written(&other)[1].clone()], &probe).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_host_serving_a_file_window_reports_nothing_beyond_its_vault() {
+    // #797: a file window's folder inside a vault is served by the vault's watcher.
+    // Events reach every window, as the vault's own watcher's always did, so what the
+    // host reports must be what the vault alone would report — the file window's folder
+    // adds a spelling of those files, never another file.
+    // 이것을 실패시키는 것: `respell` 이 폴더가 event 를 담는지 보지 않고 spelling 마다 낸다.
+    let real = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(real.path()).unwrap();
+    std::fs::create_dir(root.join("sub")).unwrap();
+    let links = tempfile::tempdir().unwrap();
+    let sub_alias = links.path().join("sub");
+    std::os::unix::fs::symlink(root.join("sub"), &sub_alias).unwrap();
+    let vault_only: Spellings = Arc::new(RwLock::new(vec![(root.clone(), root.clone())]));
+    let hosting: Spellings = Arc::new(RwLock::new(vec![
+        (root.clone(), root.clone()),
+        (root.join("sub"), sub_alias.clone()),
+    ]));
+    let focus: Focus = Arc::new(RwLock::new(
+        [sub_alias.join("a.md"), root.join("sub/a.md")]
+            .into_iter()
+            .collect(),
+    ));
+    let mut alone = WatchFilter::with_open_files(&root, true, known(&[]), Focus::default());
+    alone.spellings = vault_only;
+    let mut host = WatchFilter::with_open_files(&root, true, known(&[]), focus);
+    host.spellings = hosting;
+    let probe = CountingProbe::default();
+    let files = [
+        root.join("top.md"),
+        root.join("sub/a.md"),
+        root.join("sub/b.md"),
+    ];
+    for f in &files {
+        std::fs::write(f, "x").unwrap();
+    }
+    let canonical = |emits: Vec<Emit>| -> std::collections::BTreeSet<PathBuf> {
+        emits
+            .iter()
+            .map(|e| {
+                let p = PathBuf::from(e.path());
+                p.strip_prefix(&sub_alias)
+                    .map(|r| root.join("sub").join(r))
+                    .unwrap_or(p)
+            })
+            .collect()
+    };
+    for f in &files {
+        let event = [written(f)[1].clone()];
+        let by_host = canonical(route_all(&mut host, &event, &probe));
+        let by_vault = canonical(route_all(&mut alone, &event, &probe));
+        assert_eq!(by_host, by_vault, "{}", f.display());
+    }
 }

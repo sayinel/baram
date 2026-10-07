@@ -23,6 +23,7 @@ vi.mock("../../../ipc/invoke", () => ({
   refreshIndex: vi.fn().mockResolvedValue(undefined),
   syncWatchedPaths: vi.fn(async (paths: string[]) => ({
     applied: paths.length,
+    distinct: paths.length,
     failed: [],
   })),
   updateFileIndex: vi.fn().mockResolvedValue(undefined),

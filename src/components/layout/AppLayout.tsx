@@ -13,6 +13,7 @@ import { ChromeReveal } from "./chrome-reveal";
 import { ContextTabBar } from "./ContextTabBar";
 import { Sidebar } from "./Sidebar";
 import { Splitter } from "./Splitter";
+import { WatchWarning } from "./WatchWarning";
 
 const AIChatPanel = lazy(() =>
   import("../ai/AIChatPanel").then((m) => ({
@@ -123,6 +124,8 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
           It stays up for a single one so the "+" that adds the next is reachable;
           `ContextTabBar` returns null on `visibleContexts.length === 0`. */}
       <ContextTabBar />
+      {/* §3.2 A wanted folder watch that is not held (#797). */}
+      <WatchWarning />
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">
         {/* Activity Bar — hidden when no folder open, or when §370 hides the surface */}

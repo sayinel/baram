@@ -23,9 +23,10 @@ import { CircleSmall } from "lucide-react";
 
 import { createBaramExtensions } from "../../extensions";
 import { useAutoSave } from "../../hooks/use-auto-save";
+import { useFileWindowWatch } from "../../hooks/use-file-window-watch";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { useTranslation } from "../../i18n/useTranslation";
-import { readFile, watchDir, writeFile } from "../../ipc/invoke";
+import { readFile, writeFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useContextStore } from "../../stores/context/context";
@@ -34,8 +35,8 @@ import { isMarkdownHref } from "../../utils/editor/local-link-nav";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { isEphemeralOnlyUpdate } from "../../utils/editor/syntax-reveal-ephemeral";
 import { logger } from "../../utils/logger";
-import { dirname } from "../../utils/path-utils";
 import { MergeView } from "../editor/MergeView";
+import { WatchWarning } from "./WatchWarning";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
 
@@ -89,6 +90,22 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     immediatelyRender: false,
   });
 
+  // §89 The file's context, registered once per path: the load and the folder watch
+  // (#797) both wait on this one promise.
+  const registration = useRef<null | {
+    path: string;
+    promise: Promise<unknown>;
+  }>(null);
+  const registered = useCallback(() => {
+    if (registration.current?.path !== filePath) {
+      registration.current = {
+        path: filePath,
+        promise: useContextStore.getState().ensureFileContext(filePath),
+      };
+    }
+    return registration.current.promise;
+  }, [filePath]);
+
   // Load file content on mount
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +113,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     (async () => {
       try {
         // §89 Register FileContext before reading
-        await useContextStore.getState().ensureFileContext(filePath);
+        await registered();
         const content = await readFile(filePath);
         if (cancelled) return;
         contentRef.current = content;
@@ -134,7 +151,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [filePath, editor, fileName]);
+  }, [filePath, editor, fileName, registered]);
 
   // §89 Auto-save, theme, and settings effects
   useAutoSave(editor);
@@ -185,8 +202,6 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     if (!editor) return;
     let cancelled = false;
     let unlisten: undefined | UnlistenFn;
-    const dir = dirname(filePath);
-    if (dir) watchDir(dir).catch(() => {});
     (async () => {
       const fn = await listen<{ mtime: number; path: string }>(
         "file:changed",
@@ -220,6 +235,9 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       unlisten?.();
     };
   }, [editor, filePath]);
+  // §3.2 The folder watch those events come from (#797): after the file context is
+  // registered — the load's own promise — and kept asking while this window is open.
+  useFileWindowWatch(filePath, registered);
 
   // Save handler
   const handleSave = useCallback(async () => {
@@ -336,6 +354,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
 
   return (
     <div className="file-editor-layout">
+      <WatchWarning />
       <div className="file-editor-pathbar">
         <span className="file-editor-pathbar__name">
           {isDirty && (

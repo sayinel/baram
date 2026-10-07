@@ -9,10 +9,8 @@ import type { FileEntry } from "../stores/file/file";
 import { useShallow } from "zustand/shallow";
 
 import defaultExcludedDirs from "../../src-tauri/src/fs/default-excluded-dirs.json";
-import { setOpenFiles, watchDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
-import { useUIStore } from "../stores/ui/ui";
 import {
   afterTabSaves,
   ownSaveCovers,
@@ -20,6 +18,7 @@ import {
 } from "../utils/editor/tab-save-in-flight";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
+import { useWatchLeases } from "./use-watch-leases";
 
 /**
  * Directories whose events the file tree ignores — the default list `list_dir` skips, read
@@ -61,7 +60,6 @@ export function useFileWatcher() {
   const rootPath = useFileStore((s) => s.rootPath);
   const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const pendingRef = useRef<Map<string, PendingEntry>>(new Map());
-  const externalDirsRef = useRef<Set<string>>(new Set());
   // Paths of currently open file tabs — drives out-of-vault watching below.
   const openFilePaths = useEditorStore(useShallow((s) => openPathsOf(s.tabs)));
 
@@ -287,54 +285,8 @@ export function useFileWatcher() {
     };
   }, []);
 
-  // Watch the vault root directory whenever a vault is open.
-  //
-  // §3.2 The Rust watcher drops events below excluded folders (`build/`, `target/`, …)
-  // except for the open files (issue 795), so the open set is sent FIRST: tabs
-  // restored inside such a folder are registered before the watch that would drop
-  // their events starts. The open set's own effect below keeps it current.
-  useEffect(() => {
-    if (!rootPath) return;
-    void registerOpenFiles(currentOpenFilePaths()).finally(() =>
-      watchDir(rootPath).catch((err) =>
-        logger.warn("useFileWatcher: watchDir failed", err),
-      ),
-    );
-  }, [rootPath]);
-
-  // §3.2 Sent on every change of the open set. A tab opened while a watch runs is
-  // registered one IPC round trip after it appears in the store: a change to it
-  // inside an excluded folder in that window is not reported.
-  useEffect(() => {
-    void registerOpenFiles(openFilePaths);
-  }, [openFilePaths]);
-
-  // §3.6 Out-of-vault files: when the vault is open (so the watcher listeners
-  // above are active), also watch the parent directory of any open file that
-  // lives outside the vault root, so external edits to it are detected too.
-  // Rust WatcherState dedups by path; we also track dirs locally to avoid
-  // re-issuing watch_dir on every tab change.
-  useEffect(() => {
-    for (const filePath of openFilePaths) {
-      if (
-        rootPath &&
-        (filePath === rootPath || filePath.startsWith(rootPath + "/"))
-      )
-        continue;
-      const dir = parentDir(filePath);
-      if (!dir || dir === filePath || externalDirsRef.current.has(dir))
-        continue;
-      externalDirsRef.current.add(dir);
-      watchDir(dir).catch((err) =>
-        logger.warn("useFileWatcher: external watchDir failed", err),
-      );
-    }
-  }, [openFilePaths, rootPath]);
-}
-
-/** The open set, read now — the same selection `openFilePaths` makes. */
-function currentOpenFilePaths(): string[] {
-  return openPathsOf(useEditorStore.getState().tabs);
+  // §3.2 The watches this window holds and the open-file registration (#795, #797).
+  useWatchLeases(rootPath, openFilePaths);
 }
 
 function fileName(path: string): string {
@@ -349,31 +301,6 @@ function openPathsOf(tabs: ReadonlyArray<{ filePath: string }>): string[] {
 function parentDir(path: string): string {
   const idx = path.lastIndexOf("/");
   return idx > 0 ? path.substring(0, idx) : path;
-}
-
-/**
- * §3.2 `setOpenFiles`. The watch starts either way. A refused call leaves the watcher
- * with no known open set, which makes it filter nothing (watch_filter.rs, issue 795):
- * safe for an open file, at the cost of build-output events reaching the webview until
- * the next change of the open set retries. That is said once per failure streak.
- */
-let registrationFailing = false;
-async function registerOpenFiles(paths: string[]): Promise<void> {
-  try {
-    await setOpenFiles(paths);
-    registrationFailing = false;
-  } catch (err) {
-    logger.error("useFileWatcher: setOpenFiles failed", err);
-    if (!registrationFailing) {
-      registrationFailing = true;
-      useUIStore
-        .getState()
-        .showToast(
-          "Couldn't tell the file watcher which files are open — it will report every change until this succeeds",
-          "warning",
-        );
-    }
-  }
 }
 
 function shouldSkip(path: string, isDir = false): boolean {

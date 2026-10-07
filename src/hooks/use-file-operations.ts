@@ -97,6 +97,12 @@ export function showConflictModal(
   externalMtime: number,
   base: string,
 ): void {
+  // §3.2 One write can be reported twice — FSEvents' rename and data flag, or two
+  // watchers of one folder while its scope changes (#797). The modal already asking
+  // about that write stays as it is; the base it took first is the one to keep.
+  const open = useUIStore.getState().conflictModal;
+  if (open?.filePath === filePath && open.externalMtime === externalMtime)
+    return;
   useUIStore.getState().openConflictModal(filePath, externalMtime, base);
 }
 

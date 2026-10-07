@@ -268,8 +268,15 @@ pub fn list_approved_roots(app: tauri::AppHandle) -> Result<Vec<approval::Approv
 }
 
 #[tauri::command]
-pub fn revoke_approved_root(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    approval::revoke(&app, &path)
+pub fn revoke_approved_root<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+) -> Result<(), String> {
+    approval::revoke(&app, &path)?;
+    // §3.2 A watch the approval allowed ends with it (#797) — in every window, before the
+    // frontend closes the contexts.
+    super::watch_cmd::after_approval_revoked(&app, &path);
+    Ok(())
 }
 
 #[cfg(test)]

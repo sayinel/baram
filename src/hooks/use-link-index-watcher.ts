@@ -7,6 +7,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { FileCreatedPayload, FileWriteOrigin } from "../ipc/types";
 
 import { syncWatchedPaths } from "../ipc/invoke";
+import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { logger } from "../utils/logger";
 
@@ -23,8 +24,10 @@ const FLUSH_DELAY_MS = 300;
  * 판정한다.
  *
  * - flush 는 하나씩 돈다 — 다음 flush 는 앞의 것이 끝난 뒤에 시작한다.
- * - 경로 하나만 담긴 flush 는 `invalidate(path)` 로 그 경로를 알린다 — 보고 있는 노트의 저장
- *   메아리가 Backlinks 의 mention 검색을 다시 부르지 않게(#791). 그 밖에는 `invalidate()`.
+ * - 파일 하나만 담긴 flush 는 `invalidate(path)` 로 그 경로를 알린다 — 보고 있는 노트의 저장
+ *   메아리가 Backlinks 의 mention 검색을 다시 부르지 않게(#791). 한 파일의 여러 표기(#797)도
+ *   파일 하나다 — Rust 가 canonical 로 센 `distinct` 로 판정하고, 활성 탭의 표기로 알린다.
+ *   그 밖에는 `invalidate()`.
  * - 반영하지 못한 경로는 다음 flush 에서 한 번만 다시 시도하고, 또 실패하면 버린다.
  *
  * 남는 것: 쓰기는 이벤트가 여기를 거쳐 Rust 에 닿은 뒤에야(약 300 ms) index 에 들어간다 — 그
@@ -45,10 +48,12 @@ export function useLinkIndexWatcher(): void {
       if (paths.length === 0) return;
       let failed: string[];
       let applied = 0;
+      let distinct = paths.length;
       try {
         const result = await syncWatchedPaths(paths);
         failed = result.failed;
         applied = result.applied;
+        distinct = result.distinct;
       } catch (err) {
         logger.error("§29 useLinkIndexWatcher: sync failed", err);
         failed = paths;
@@ -64,9 +69,21 @@ export function useLinkIndexWatcher(): void {
         }
       }
       if (applied === 0) return;
-      if (paths.length === 1) useLinkStore.getState().invalidate(paths[0]);
+      if (distinct === 1)
+        useLinkStore.getState().invalidate(spellingShown(paths));
       else useLinkStore.getState().invalidate();
     };
+
+    /**
+     * One file reported in several spellings (#797: once per spelling the watch leases
+     * registered) is still one file's flush — named in the spelling the active tab
+     * uses, which is what Backlinks compares with.
+     */
+    function spellingShown(paths: string[]): string {
+      const { activeTabId, tabs } = useEditorStore.getState();
+      const active = tabs.find((t) => t.id === activeTabId)?.filePath;
+      return paths.find((p) => p === active) ?? paths[0];
+    }
 
     function schedule(path: string): void {
       pending.add(path);

@@ -170,28 +170,81 @@ pub(crate) enum Emit {
     },
 }
 
+/// The files one watch is for — what its leases name as `focus` (issue 797), each as
+/// spelled and as it resolves. Shared with `fs::watch_registry`, which updates it as
+/// leases come and go.
+pub(crate) type Focus = Arc<RwLock<HashSet<PathBuf>>>;
+
+/// The folders the leases of one watch registered, each as (canonical, as spelled)
+/// (#797). The watcher reports paths in the spelling the OS gives (on macOS
+/// `/private/var/…` for a folder opened as `/var/…`), while the frontend compares paths
+/// byte for byte with the ones it opened — so an event is reported once per spelling
+/// whose folder holds it. A lease served by an ancestor's watcher registers its own
+/// folder here.
+pub(crate) type Spellings = Arc<RwLock<Vec<(PathBuf, PathBuf)>>>;
+
 /// The drop rule of one watched root.
+///
+/// A recursive watch is a vault's: it judges by that vault's `VaultExclusion` and the
+/// editor's open files (`set_open_files`). A non-recursive watch is a folder watched
+/// for the files one tab or file window shows (#797): that folder is not a vault, so it
+/// judges by the default list alone — no `.baramignore` read from, say, `$HOME` — and
+/// its focus files are the open ones. Focus files count as open for a recursive watch
+/// too.
 pub(crate) struct WatchFilter {
     root: PathBuf,
+    recursive: bool,
     exclusion: VaultExclusion,
     open: OpenFiles,
+    focus: Focus,
+    spellings: Spellings,
 }
 
 impl WatchFilter {
-    pub(crate) fn new(root: &Path) -> Self {
-        Self::with_open_files(root, Arc::clone(&OPEN_FILES))
+    /// The filter of a watch on `root` as spelled — for a vault, the root as the context
+    /// registered it, so the root-relative judgement holds whichever spelling the
+    /// watcher reports paths in (`VaultExclusion::relative`).
+    pub(crate) fn for_watch(
+        root: &Path,
+        recursive: bool,
+        focus: Focus,
+        spellings: Spellings,
+    ) -> Self {
+        let mut filter = Self::with_open_files(root, recursive, Arc::clone(&OPEN_FILES), focus);
+        filter.spellings = spellings;
+        filter
     }
 
-    fn with_open_files(root: &Path, open: OpenFiles) -> Self {
+    fn with_open_files(root: &Path, recursive: bool, open: OpenFiles, focus: Focus) -> Self {
         Self {
+            spellings: Spellings::default(),
             root: root.to_path_buf(),
-            exclusion: load_or_defaults(root),
+            recursive,
+            exclusion: if recursive {
+                load_or_defaults(root)
+            } else {
+                VaultExclusion::defaults_only(root)
+            },
             open,
+            focus,
         }
     }
 
-    /// Whether `path` may be open: it is in the set, or the set is unknown.
+    /// Whether `path` may be open: a focus file of this watch — as reported, or read
+    /// back to canonical through the spelling it came in — or, for a vault's watch, in
+    /// the editor's open set, or that set is unknown.
     fn may_be_open(&self, path: &Path) -> bool {
+        let canonical = self.canonical_of(path);
+        if self
+            .focus
+            .read()
+            .is_ok_and(|focus| focus.contains(path) || focus.contains(&canonical))
+        {
+            return true;
+        }
+        if !self.recursive {
+            return false;
+        }
         match self.open.read().as_deref() {
             Ok(OpenSet::Known(set)) => set.contains(path),
             Ok(OpenSet::Unknown) | Err(_) => true,
@@ -208,9 +261,11 @@ impl WatchFilter {
         folders_skipped || self.exclusion.excludes_entry(path, false)
     }
 
-    /// Reload the matcher when the event names this root's `.baramignore`.
+    /// Reload the matcher when the event names this root's `.baramignore` — a vault's
+    /// only; a non-recursive watch never reads one.
     fn notice(&mut self, path: &Path) {
-        if path.file_name().is_some_and(|n| n == BARAMIGNORE)
+        if self.recursive
+            && path.file_name().is_some_and(|n| n == BARAMIGNORE)
             && path.parent().is_some_and(|p| self.is_root(p))
         {
             self.exclusion = load_or_defaults(&self.root);
@@ -287,7 +342,82 @@ impl WatchFilter {
                 }),
             }
         }
+        self.respell(out)
+    }
+
+    /// Each event once per registered spelling whose folder holds it, the path rebuilt
+    /// below that spelling. The event's path is first read back to canonical through
+    /// whichever spelling it came in. With no spelling holding it, the OS spelling stands.
+    fn respell(&self, emits: Vec<Emit>) -> Vec<Emit> {
+        let spellings = self.spellings.read().map(|s| s.clone()).unwrap_or_default();
+        if spellings.is_empty() {
+            return emits;
+        }
+        let mut out = Vec::new();
+        for emit in emits {
+            let path = PathBuf::from(emit.path());
+            let canonical = self.canonical_of(&path);
+            let mut seen = HashSet::new();
+            for (folder, spelled) in &spellings {
+                let Ok(relative) = canonical.strip_prefix(folder) else {
+                    continue;
+                };
+                let respelled = if relative.as_os_str().is_empty() {
+                    spelled.clone()
+                } else {
+                    spelled.join(relative)
+                };
+                if seen.insert(respelled.clone()) {
+                    out.push(emit.with_path(respelled.to_string_lossy().into_owned()));
+                }
+            }
+            if seen.is_empty() {
+                out.push(emit);
+            }
+        }
         out
+    }
+}
+
+impl WatchFilter {
+    /// `path` read back to canonical through the registered spelling it lies under; as
+    /// given when it lies under none.
+    fn canonical_of(&self, path: &Path) -> PathBuf {
+        self.spellings
+            .read()
+            .ok()
+            .and_then(|spellings| {
+                spellings
+                    .iter()
+                    .find_map(|(c, spelled)| path.strip_prefix(spelled).ok().map(|r| c.join(r)))
+            })
+            .unwrap_or_else(|| path.to_path_buf())
+    }
+}
+
+impl Emit {
+    fn path(&self) -> &str {
+        match self {
+            Emit::Created { path, .. } | Emit::Deleted { path } | Emit::Changed { path, .. } => {
+                path
+            }
+        }
+    }
+
+    fn with_path(&self, path: String) -> Emit {
+        match self {
+            Emit::Created { is_dir, origin, .. } => Emit::Created {
+                path,
+                is_dir: *is_dir,
+                origin,
+            },
+            Emit::Deleted { .. } => Emit::Deleted { path },
+            Emit::Changed { mtime, origin, .. } => Emit::Changed {
+                path,
+                mtime: *mtime,
+                origin,
+            },
+        }
     }
 }
 

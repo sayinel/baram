@@ -15,6 +15,7 @@ vi.mock("../../ipc/invoke", () => ({
 
 import { listen } from "@tauri-apps/api/event";
 
+import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useLinkIndexWatcher } from "../use-link-index-watcher";
 
@@ -46,6 +47,7 @@ beforeEach(() => {
   unlistened.length = 0;
   syncWatchedPaths.mockReset().mockImplementation(async (paths: string[]) => ({
     applied: paths.length,
+    distinct: paths.length,
     failed: [],
   }));
   vi.mocked(listen).mockImplementation(async (event, handler) => {
@@ -102,9 +104,38 @@ describe("useLinkIndexWatcher", () => {
     expect(useLinkStore.getState().savedPath).toBe("/v/a.md");
   });
 
+  // One file in two spellings is one file's flush (#797), named as the active tab spells
+  // it so Backlinks recognises its own save.
+  // 이것을 실패시키는 것: 단일 파일 판정을 `distinct` 가 아니라 `paths.length === 1` 로 한다 — 또는 활성 탭의 표기를 고르지 않는다.
+  it("names one file reported in two spellings by the active tab's spelling", async () => {
+    syncWatchedPaths.mockImplementation(async () => ({
+      applied: 1,
+      distinct: 1,
+      failed: [],
+    }));
+    useEditorStore.setState({
+      activeTabId: "t",
+      tabs: [{ filePath: "/var/v/a.md", id: "t" } as never],
+    });
+    renderHook(() => useLinkIndexWatcher());
+    await settle();
+
+    emit("file:changed", {
+      mtime: 1,
+      origin: "app",
+      path: "/private/var/v/a.md",
+    });
+    emit("file:changed", { mtime: 1, origin: "app", path: "/var/v/a.md" });
+    await settle();
+
+    expect(syncWatchedPaths).toHaveBeenCalledTimes(1);
+    expect(version()).toBe(1);
+    expect(useLinkStore.getState().savedPath).toBe("/var/v/a.md");
+  });
+
   // 이것을 실패시키는 것: `if (applied === 0) return;` 을 지운다.
   it("does not bump indexVersion when no path reached an index", async () => {
-    syncWatchedPaths.mockResolvedValue({ applied: 0, failed: [] });
+    syncWatchedPaths.mockResolvedValue({ applied: 0, distinct: 1, failed: [] });
     renderHook(() => useLinkIndexWatcher());
     await settle();
 
@@ -125,7 +156,12 @@ describe("useLinkIndexWatcher", () => {
     syncWatchedPaths.mockImplementationOnce(
       (paths: string[]) =>
         new Promise((resolve) => {
-          release = () => resolve({ applied: paths.length, failed: [] });
+          release = () =>
+            resolve({
+              applied: paths.length,
+              distinct: paths.length,
+              failed: [],
+            });
         }),
     );
     renderHook(() => useLinkIndexWatcher());
@@ -148,6 +184,7 @@ describe("useLinkIndexWatcher", () => {
   it("retries a failed path once, then drops it", async () => {
     syncWatchedPaths.mockImplementation(async (paths: string[]) => ({
       applied: paths.length,
+      distinct: paths.length,
       failed: paths.filter((p) => p === "/v/bad.md"),
     }));
     renderHook(() => useLinkIndexWatcher());
@@ -168,6 +205,7 @@ describe("useLinkIndexWatcher", () => {
     const outcomes = [true, false, true, false];
     syncWatchedPaths.mockImplementation(async (paths: string[]) => ({
       applied: paths.length,
+      distinct: paths.length,
       failed: outcomes.shift() ? paths : [],
     }));
     renderHook(() => useLinkIndexWatcher());

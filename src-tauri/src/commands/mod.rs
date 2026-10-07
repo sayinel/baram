@@ -19,3 +19,4 @@ pub mod tag_cmd;
 pub mod task_cmd;
 pub mod theme_cmd;
 pub mod thumbnail_cmd;
+pub mod watch_cmd;

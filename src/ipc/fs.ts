@@ -256,8 +256,57 @@ export async function setOpenFiles(paths: string[]): Promise<void> {
   return invoke<void>("set_open_files", { paths });
 }
 
-export async function watchDir(path: string): Promise<void> {
-  return invoke<void>("watch_dir", { path });
+/**
+ * §3.2 Watch `path` for this window and answer the lease that holds the watch (#797).
+ * A vault is watched recursively (the default); a folder watched for one file is not,
+ * and names that file as `focus` so an atomic replace of it reports a change. Give the
+ * lease back with `unwatchDir`. A refusal is read with `watchRefusal`.
+ */
+export async function watchDir(
+  path: string,
+  options: { focus?: string; recursive?: boolean } = {},
+): Promise<number> {
+  const page = await beginPage();
+  return invoke<number>("watch_dir", {
+    focus: options.focus ?? null,
+    page,
+    path,
+    recursive: options.recursive ?? true,
+  });
+}
+
+/** Why `watch_dir` refused — the prefix `watch_registry.rs` puts on its message. */
+export type WatchRefusal = "capacity" | "other" | "stale" | "unauthorized";
+
+export function watchRefusal(err: unknown): WatchRefusal {
+  const message = String(err);
+  if (message.startsWith("watch-capacity:")) return "capacity";
+  if (message.startsWith("watch-unauthorized:")) return "unauthorized";
+  if (message.startsWith("watch-stale-page:")) return "stale";
+  return "other";
+}
+
+/**
+ * §3.2 Once per page load, before this page watches anything: give back what an earlier
+ * page of this window still holds, and learn this page's number, which every
+ * `watch_dir` carries so one the earlier page still had in flight is refused (#797). A
+ * reload or navigation keeps the window — no `Destroyed` — and need not run the old
+ * page's cleanups. A failed call is asked again by the next watch.
+ */
+let pageNumber: null | Promise<number> = null;
+function beginPage(): Promise<number> {
+  pageNumber ??= invoke<number>("release_window_watches").catch(
+    (err: unknown) => {
+      pageNumber = null;
+      throw err;
+    },
+  );
+  return pageNumber;
+}
+
+/** §3.2 Give back a watch lease this window holds (#797). */
+export async function unwatchDir(lease: number): Promise<void> {
+  return invoke<void>("unwatch_dir", { lease });
 }
 
 /** §56d Write binary data to a file (for images, etc.) — vault-confined. */

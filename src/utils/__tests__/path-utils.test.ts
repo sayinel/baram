@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  containingFolder,
   decodePercent,
   extractNamespace,
   getRelativePath,
@@ -188,6 +189,20 @@ describe("lastPathSegment (issue 595)", () => {
     expect(lastPathSegment("\\\\server\\share\\ns")).toBe("ns");
     // A drive-relative `C:foo` is not spelled as a Windows path here.
     expect(lastPathSegment("C:foo")).toBe("C:foo");
+  });
+});
+
+describe("containingFolder (issue 797)", () => {
+  // 이것을 실패시키는 것: 폴더를 `/` 로만 나눈다 — 또는 루트 바로 아래 파일에서 구분자를 떼어 `C:` 나 빈 문자열을 낸다.
+  test("names the folder a file is in, on either platform's separators", () => {
+    expect(containingFolder("/v/notes/a.md")).toBe("/v/notes");
+    expect(containingFolder("D:\\Notes\\a.md")).toBe("D:\\Notes");
+    expect(containingFolder("\\\\server\\share\\a.md")).toBe(
+      "\\\\server\\share",
+    );
+    expect(containingFolder("/a.md")).toBe("/");
+    expect(containingFolder("C:\\a.md")).toBe("C:\\");
+    expect(containingFolder("a.md")).toBe("");
   });
 });
 
