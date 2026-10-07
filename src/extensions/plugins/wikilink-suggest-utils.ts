@@ -407,6 +407,7 @@ export function shouldBlockCompletedWikilink(matchText: string): boolean {
 
 /** §278.2 `foo` → `foo.md`, but `foo.md` stays `foo.md`. */
 export function withMarkdownExtension(target: string): string {
+  // eslint-disable-next-line no-restricted-properties -- a file extension compared with an ASCII literal, not a name
   const lower = target.toLowerCase();
   return lower.endsWith(".md") || lower.endsWith(".markdown")
     ? target
@@ -422,6 +423,7 @@ function badgeExtension(fileName: string): string | undefined {
   const dot = fileName.lastIndexOf(".");
   // 0번째 점은 확장자가 아니라 숨김 파일 표시다(".gitignore").
   if (dot <= 0) return undefined;
+  // eslint-disable-next-line no-restricted-properties -- a file extension compared with an ASCII literal, not a name
   const ext = fileName.slice(dot + 1).toLowerCase();
   if (ext === "md" || ext === "markdown") return undefined;
   return ext.toUpperCase();
@@ -434,5 +436,6 @@ function isHiddenPath(relativePath: string): boolean {
 
 /** `.json` 판정. 확장자 하나뿐이라 file-type.ts에 술어를 세우지 않는다. */
 function isJsonFile(fileName: string): boolean {
+  // eslint-disable-next-line no-restricted-properties -- a file extension compared with an ASCII literal, not a name
   return fileName.toLowerCase().endsWith(".json");
 }

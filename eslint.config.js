@@ -110,4 +110,36 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // §390 spec 0069 D6 — link names compare under `foldName`
+    // (src/utils/name-fold.ts): NFC, lowercase, NFC. A bare lowercase misses a
+    // name the disk stores decomposed (NFD). These globs hold link-name
+    // comparisons; a comparison of something that is not a name (a heading,
+    // a font family, a file extension) says so in an `eslint-disable-next-line`
+    // with its reason. Not guarded: a byte-for-byte `===` or `startsWith`
+    // (this rule looks only for `toLowerCase` and `toLocaleLowerCase`), and
+    // files outside the globs that compare names (QuickSwitcher.tsx,
+    // WikilinkMenu.tsx, zettel-index.ts, file-tree-clipboard.ts, …).
+    files: [
+      "src/utils/editor/**/*.{ts,tsx}",
+      "src/extensions/plugins/wikilink-*.{ts,tsx}",
+      "src/utils/file-search.ts",
+    ],
+    ignores: ["**/__tests__/**"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          message:
+            "compare link names with foldName (src/utils/name-fold.ts) — a bare lowercase misses names stored decomposed (NFD). Not a name? eslint-disable-next-line with the reason (spec 0069 D6)",
+          property: "toLowerCase",
+        },
+        {
+          message:
+            "compare link names with foldName (src/utils/name-fold.ts) — a bare lowercase misses names stored decomposed (NFD). Not a name? eslint-disable-next-line with the reason (spec 0069 D6)",
+          property: "toLocaleLowerCase",
+        },
+      ],
+    },
+  },
 );
