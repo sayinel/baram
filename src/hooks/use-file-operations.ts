@@ -291,8 +291,8 @@ export function useFileOperations({
         }
         // ‼️ §82 "저장 안 됨"의 답은 두 곳에 산다. `isDirty`만 내리면 소스 모드로 고친
         // 탭은 저장한 뒤에도 계속 점이 켜져 있고, 닫을 때마다 확인창이 뜬다 — 방금
-        // 디스크에 쓴 바로 그 내용을 두고. `md` 자체가 그 버퍼에서 나왔다(위 `isCode ||
-        // sourceModeTabs.has(...)` 갈래).
+        // 디스크에 쓴 바로 그 내용을 두고. `md` 자체가 그 버퍼에서 나왔다(위 `fromBuffer`
+        // 갈래).
         useEditorStore.getState().markSourceEdited(saveTab.id, false);
         notifyFileSave(saveTab.filePath);
         // §56 Refresh journal sidebars in real time on a manual save.
@@ -527,8 +527,8 @@ export function useFileOperations({
  * §312 Push freshly-read disk content into the source buffers that show it.
  *
  * ‼️ `openFiles` + `contentRefreshKey`만 갱신하면 소스 표면은 낡은 채로 남는다. 그 탭의
- * 저장 경로는 openFiles가 아니라 이 버퍼를 읽으므로(`handleSave`의 `isCode ||
- * sourceModeTabs.has(...)` 갈래), 리로드 직후의 Cmd+S가 **낡은 버퍼로 디스크의 변경을
+ * 저장 경로는 openFiles가 아니라 이 버퍼를 읽으므로(`handleSave`의 `fromBuffer`
+ * 갈래), 리로드 직후의 Cmd+S가 **낡은 버퍼로 디스크의 변경을
  * 덮는다.**
  *
  * 조건이 `handleSave`의 읽기 조건과 **같아야** 한다 — 저장이 버퍼를 읽는 탭에서만

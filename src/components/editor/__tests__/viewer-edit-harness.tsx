@@ -3,12 +3,15 @@
 // (`useSourceMode`), the re-arm (`useCodeAutoSave`), the preview ↔ source toggle
 // (`usePreviewSourceView`), the save paths (`useFileOperations`), the surface decision
 // (`useActiveTabSurface` + `resolveSurfaceKind`) and the host are the real ones. Two pieces of
-// App are stood in for:
+// App are stood in for, and a third is written out again here rather than imported:
 // - the retained code surface, by `CodeProbe`, which reads the buffer IN RENDER the way
 //   `tab-surface-renderers.tsx` passes `content={deps.getSourceBuffer(tabId)}` — the read D16
 //   is about;
 // - the tab activation's buffer fill (`use-tab-switching.ts`), by `fill` in
-//   `viewer-edit-fixtures.ts`, which a test calls itself — this harness switches no tabs.
+//   `viewer-edit-fixtures.ts`, which a test calls itself — this harness switches no tabs;
+// - EditorArea's branch condition for when the host is drawn (`kind` is `image` or `preview`
+//   and the tab has a plugin viewer), re-implemented in the component below, with the two
+//   inputs App would supply fixed: `isSourceMode: false` and `rootPath: "/v"`.
 // A test file using this mocks `ipc/invoke` and `@tauri-apps/api/core` itself.
 import { useMemo } from "react";
 

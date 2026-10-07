@@ -36,8 +36,8 @@ export interface ViewerEditHostDeps {
   /** The read that takes a pending viewer change first (spec 0071 §6.3). */
   getSourceBuffer: (tabId: string) => string;
   /**
-   * Spec §5 condition 4. Its identity changes on every buffer write (it follows `bufferVersion`
-   * in `use-source-mode.ts`); the write that fills this tab's buffer is what re-renders this
+   * Spec §5 condition 4. Its identity changes on every `setSourceBuffer` call (it follows `bufferVersion`
+   * in `use-source-mode.ts`, which that call bumps; a take does not); the write that fills this tab's buffer is what re-renders this
    * host so it can mount.
    */
   hasSourceBuffer: (tabId: string) => boolean;

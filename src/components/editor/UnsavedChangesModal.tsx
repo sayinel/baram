@@ -147,7 +147,9 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
         closeUnsavedModal();
         await proceed();
       }
-      // ok === false: a Save As was cancelled — stay open, changes preserved.
+      // ok === false: a Save As was cancelled, the save gave up or failed, or (§392 D15 · D17)
+      // the text changed during the write and the save left the tab dirty — stay open, changes
+      // preserved.
     } finally {
       setSaving(false);
     }

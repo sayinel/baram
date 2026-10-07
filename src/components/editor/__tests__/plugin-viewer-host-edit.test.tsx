@@ -352,6 +352,10 @@ describe("on the way down (§7)", () => {
     usePluginUIStore.getState().registerFileViewer(double.viewer);
     const view = render(<ViewerEditHarness {...harnessProps(probe)} />);
     act(() => fill(TAB, "T0"));
+    // The host is in the tree (the mount was attempted) and holds nothing the viewer drew.
+    const host = view.container.querySelector(".plugin-viewer-host");
+    expect(host).not.toBeNull();
+    expect(host?.childElementCount).toBe(0);
     act(() => probe.toggle());
     expect(view.container.querySelector("pre.code-probe")?.textContent).toBe(
       "T0",

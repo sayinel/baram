@@ -294,8 +294,8 @@ export interface PluginFileViewerContext {
     assetUrl: string;
     /**
      * §392 Present only on a mount where editing is allowed: the viewer registered as
-     * `editable`, the file is text the host can write back (not markdown, HTML, an image or a
-     * PDF), and the tab's text has loaded. Absent, the viewer only draws — as every viewer did
+     * `editable`, the file is text the host can write back (not markdown, HTML, a raster image or
+     * a PDF), and the tab's text has loaded. Absent, the viewer only draws — as every viewer did
      * before §392.
      */
     edit?: PluginFileViewerEdit;

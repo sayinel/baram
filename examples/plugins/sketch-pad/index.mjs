@@ -21,6 +21,9 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const WIDTH = 800;
 const HEIGHT = 600;
+const NOT_A_DRAWING =
+  "This file is not a Sketch Pad drawing. It is shown read-only and will not be changed.";
+const LOAD_FAILED = "Could not load the file.";
 const PEN_WIDTHS = [1, 3, 6];
 const DEFAULT_PEN = 3;
 
@@ -107,6 +110,7 @@ function draw(view) {
       return line;
     }),
   );
+  view.notice.textContent = view.loadFailed ? LOAD_FAILED : NOT_A_DRAWING;
   view.notice.hidden = !view.readOnly;
   for (const button of view.toolbar.querySelectorAll("button")) {
     button.setAttribute(
@@ -118,6 +122,7 @@ function draw(view) {
 
 /** Show `text`: a drawing when it parses, read-only otherwise. */
 function load(view, text) {
+  view.loadFailed = false;
   const model = parse(text);
   view.readOnly = model === null;
   view.model = model ?? { strokes: [], version: 1 };
@@ -132,7 +137,9 @@ function fetchAndLoad(el, view, url) {
       if (views.get(el) === view) load(view, text);
     })
     .catch(() => {
+      if (views.get(el) !== view) return;
       view.readOnly = true;
+      view.loadFailed = true;
       draw(view);
     });
 }
@@ -148,6 +155,9 @@ function toDrawing(view, event) {
 function startStroke(view, event) {
   if (!view.edit || view.readOnly || event.button !== 0) return;
   event.preventDefault();
+  // preventDefault on pointerdown can stop the browser moving focus here, and Mod+Z only
+  // reaches the viewer while its root has focus — so take focus explicitly.
+  view.svg.closest(".sketch-pad")?.focus({ preventScroll: true });
   try {
     view.svg.setPointerCapture(event.pointerId);
   } catch {
@@ -191,8 +201,6 @@ function onMount(el, ctx) {
   toolbar.hidden = !ctx.edit;
   const notice = document.createElement("p");
   notice.className = "sketch-pad-notice";
-  notice.textContent =
-    "This file is not a Sketch Pad drawing. It is shown read-only and will not be changed.";
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", `0 0 ${WIDTH} ${HEIGHT}`);
   svg.classList.add("sketch-pad-canvas");
@@ -203,6 +211,7 @@ function onMount(el, ctx) {
     ctx,
     current: null,
     edit: ctx.edit,
+    loadFailed: false,
     model: { strokes: [], version: 1 },
     notice,
     readOnly: false,

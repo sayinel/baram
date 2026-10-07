@@ -326,7 +326,7 @@ function App() {
   });
 
   // §392 What an editable viewer's mount reads and re-arms (spec 0071 §6). A new object on every
-  // buffer write, because `hasSourceBuffer` follows `bufferVersion` — the write that fills the
+  // `setSourceBuffer` call, because `hasSourceBuffer` follows `bufferVersion` — the write that fills the
   // tab's buffer is how the host learns it can mount. The host is in the tree only while a tab a
   // plugin viewer draws is active, so typing in a code tab never re-renders it.
   const viewerEdit = useMemo(

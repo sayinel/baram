@@ -109,6 +109,38 @@ describe("editing (§9)", () => {
     );
   });
 
+  it.each([
+    ["a version other than 1", '{"version":2,"strokes":[]}'],
+    [
+      "a stroke with an odd number of coordinates",
+      '{"version":1,"strokes":[[1,2,3]]}',
+    ],
+  ])(
+    "shows JSON of the wrong shape (%s) read-only and never overwrites it",
+    (_name, text) => {
+      const { el, markChanged } = mounted(text);
+      pointer(el, "pointerdown", 10, 10);
+      pointer(el, "pointermove", 20, 20);
+      expect(markChanged).not.toHaveBeenCalled();
+      expect(textOf(el)).toBe(text);
+      expect(
+        el.querySelector(".sketch-pad-notice")?.hasAttribute("hidden"),
+      ).toBe(false);
+      // The same machinery edits a well-formed file, so the refusal above is the shape check.
+      const ok = mounted('{"version":1,"strokes":[[1,2,3,4]]}');
+      pointer(ok.el, "pointerdown", 10, 10);
+      expect(ok.markChanged).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("moves focus to the viewer on a stroke, so Mod+Z reaches it (pointerdown is default-prevented)", () => {
+    const { el } = mounted(TWO);
+    const root = el.querySelector<HTMLElement>(".sketch-pad");
+    expect(document.activeElement).not.toBe(root);
+    pointer(el, "pointerdown", 10, 10);
+    expect(document.activeElement).toBe(root);
+  });
+
   it("treats an empty file as an empty drawing it can edit", () => {
     const { el, markChanged } = mounted("");
     expect(lines(el)).toHaveLength(0);
@@ -180,5 +212,31 @@ describe("without ctx.edit (§9 — older app, or a file editing is not open for
     expect(
       el.querySelector(".sketch-pad-toolbar")?.hasAttribute("hidden"),
     ).toBe(true);
+  });
+
+  it("says the file could not be loaded when the fetch fails, not that it is not a drawing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+    const { el } = mounted(null);
+    const notice = el.querySelector(".sketch-pad-notice");
+    await vi.waitFor(() => expect(notice?.hasAttribute("hidden")).toBe(false));
+    expect(notice?.textContent).toBe("Could not load the file.");
+    pointer(el, "pointerdown", 10, 10);
+    expect(lines(el)).toHaveLength(0);
+  });
+
+  it("keeps the not-a-drawing notice for text that fetched fine but is not a drawing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ text: async () => "not a drawing" })),
+    );
+    const { el } = mounted(null);
+    const notice = el.querySelector(".sketch-pad-notice");
+    await vi.waitFor(() => expect(notice?.hasAttribute("hidden")).toBe(false));
+    expect(notice?.textContent).toMatch(/not a Sketch Pad drawing/);
   });
 });
