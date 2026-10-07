@@ -106,8 +106,8 @@ export function fuzzyMatch(query: string, text: string): boolean {
  * Score a fuzzy match — lower is better. Returns Infinity if no match.
  * Rewards: consecutive matches, start-of-string, start-of-word (after separator).
  * Both are folded first, as in `fuzzyMatch` (§390) — so score each candidate
- * once and sort on the scores; a sort comparator that calls this folds twice
- * per comparison.
+ * once and sort on the scores; a sort comparator that scores calls this twice
+ * per comparison, and each call folds both strings.
  */
 export function fuzzyScore(query: string, text: string): number {
   return fuzzyScoreLower(foldName(query), foldName(text));

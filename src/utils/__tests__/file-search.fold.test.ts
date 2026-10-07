@@ -31,4 +31,13 @@ describe("§390 fuzzy matching across normalization", () => {
     expect(composed).toBeLessThan(Infinity);
     expect(fuzzyScore("회의", `${MEETING_NFD}.md`)).toBe(composed);
   });
+
+  it("fuzzyScore scores a query typed decomposed as it scores the composed one", () => {
+    // What fails this: fuzzyScore folding the query by toLowerCase alone while
+    // it folds the text — the half fold the decomposed-name test above lets
+    // through, as every query in it is composed.
+    const composed = fuzzyScore("회의", `${MEETING}.md`);
+    expect(composed).toBeLessThan(Infinity);
+    expect(fuzzyScore("회의".normalize("NFD"), `${MEETING}.md`)).toBe(composed);
+  });
 });

@@ -23,7 +23,7 @@ describe("§390 the file tree's search", () => {
   it("scores each match once", () => {
     // What fails this: `searchResults` sorting with a comparator that calls
     // fuzzyScore — two calls per comparison. The names' scores cycle (the gap
-    // before `note` grows), so no stretch is already sorted.
+    // before `note` grows), so no long stretch is already sorted.
     useFileStore.setState({
       fileTree: Array.from({ length: COUNT }, (_, i) => {
         const name = `${"x".repeat(i % 7)}note-${i}.md`;
