@@ -29,8 +29,12 @@ export interface CoalescingStorage<S> extends PersistStorage<S> {
  *   calls, so a long stream still saves every `intervalMs` rather than only at its end.
  * - Writes run one at a time, each after the previous one settles, and each writes the
  *   newest value at the moment it starts — an older write cannot land after a newer one.
- * - `flush()` drains: it resolves once nothing is left pending, including values set while
- *   its writes were running.
+ * - Each drain writes what is pending when it STARTS — the newest value per key at that
+ *   point — and returns. A value that arrives during it waits for the next interval, so a
+ *   continuous stream is written about once per interval, not as fast as the IPC allows.
+ * - `flush()` is a barrier for everything set before it is called: its drain is queued
+ *   behind any drain already running and starts no earlier than the call, so it sees those
+ *   values. Values set after the call are not waited for.
  * - `removeItem` drops a pending value for that key and is queued behind earlier writes.
  */
 export function createCoalescingStorage<S>(
@@ -48,16 +52,16 @@ export function createCoalescingStorage<S>(
     return chain;
   };
 
-  // Drain until nothing is pending: a value set while a write is awaited is written by the
-  // same drain, so `flush()` resolves only once every value set before it RESOLVES is on
-  // disk — a barrier, not a snapshot. Updates that never stop (a stream still running)
-  // keep it going; the exit path bounds its wait (`services/app-exit.ts`).
+  // One drain: take what is pending now, write it, return. Chasing values that arrive
+  // during the awaited writes would keep a drain running for a whole streamed reply and
+  // make an exit wait for its bound; those values are left for the next interval instead —
+  // `setItem` arms a fresh timer for them, because the timer that started this drain (or
+  // the flush) has already cleared itself.
   const writePending = async () => {
-    for (let next = pending.entries().next(); !next.done;) {
-      const [name, value] = next.value;
-      pending.delete(name);
+    const batch = [...pending];
+    pending.clear();
+    for (const [name, value] of batch) {
       await storage.setItem(name, JSON.stringify(value));
-      next = pending.entries().next();
     }
   };
 

@@ -110,17 +110,18 @@ describe("§44 coalescing persist storage (#800)", () => {
     expect(JSON.parse(writes[1].value)).toEqual(value(3));
   });
 
-  // 이것을 실패시키는 것: writePending 이 시작할 때의 map 만 돌게 하면(`for (... of [...pending])`) 쓰는 사이
-  // 들어온 B 가 남은 채 flush 가 끝나, 종료 직전의 flush 가 B 를 잃는다.
-  it("flush is a barrier: a value set while its write runs is on disk before it resolves", async () => {
+  // 이것을 실패시키는 것: flush 가 자기 drain 을 줄에 세우지 않고 앞 drain 만 기다리게 하면(`return chain`)
+  // 앞 drain 이 쓰는 사이 들어온 B 가 디스크에 없는 채로 flush 가 끝난다.
+  it("flush is a barrier for everything set before it is called", async () => {
     const storage = createCoalescingStorage<S>(backing, 250);
     storage.setItem("k", value(1));
+    void storage.flush();
+    await settle();
+    storage.setItem("k", value(2));
     let resolved = false;
     const flushed = storage.flush().then(() => {
       resolved = true;
     });
-    await settle();
-    storage.setItem("k", value(2));
     writes[0].finish();
     await settle();
 
@@ -130,6 +131,49 @@ describe("§44 coalescing persist storage (#800)", () => {
     writes[1].finish();
     await flushed;
     expect(resolved).toBe(true);
+  });
+
+  // 이것을 실패시키는 것: drain 이 쓰는 사이 들어온 값까지 쫓아 쓰게 하면(쓰기마다 map 을 다시 읽는 loop)
+  // flush 가 그 값을 쓸 때까지 끝나지 않는다.
+  it("flush does not wait for values that arrive after it was called", async () => {
+    const storage = createCoalescingStorage<S>(backing, 250);
+    storage.setItem("k", value(1));
+    let resolved = false;
+    const flushed = storage.flush().then(() => {
+      resolved = true;
+    });
+    await settle();
+    storage.setItem("k", value(2));
+    writes[0].finish();
+    await flushed;
+
+    expect(resolved).toBe(true);
+    expect(writes).toHaveLength(1);
+    // 그 값은 새 구간에 쓰인다.
+    await vi.advanceTimersByTimeAsync(250);
+    expect(writes).toHaveLength(2);
+    expect(JSON.parse(writes[1].value)).toEqual(value(2));
+  });
+
+  // 이것을 실패시키는 것: 위와 같은 loop 로 되돌리면 쓰기가 IPC 가 끝나는 대로 이어져 구간 수보다 훨씬 많아진다.
+  it("writes about once per interval while a stream runs, whatever the write latency", async () => {
+    const slow = {
+      ...backing,
+      setItem: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 30);
+          }),
+      ),
+    };
+    const storage = createCoalescingStorage<S>(slow, 250);
+    // 10 ms 마다 token 하나, 2,500 ms 동안 — 구간 10개.
+    for (let t = 0; t < 2_500; t += 10) {
+      storage.setItem("k", value(t));
+      await vi.advanceTimersByTimeAsync(10);
+    }
+    expect(slow.setItem.mock.calls.length).toBeGreaterThanOrEqual(9);
+    expect(slow.setItem.mock.calls.length).toBeLessThanOrEqual(11);
   });
 
   // 이것을 실패시키는 것: enqueue 의 `.catch` 를 지우면 한 번의 실패가 줄을 끊어 다음 쓰기가 가지 않는다.
