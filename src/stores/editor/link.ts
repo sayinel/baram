@@ -31,8 +31,12 @@ interface LinkState {
   error: null | string;
   /** Monotonic counter — incremented when the Rust index changes, triggers refetch */
   indexVersion: number;
-  /** Signal that the Rust index was updated — triggers Backlinks refetch */
-  invalidate: () => void;
+  /**
+   * Signal that the Rust index was updated — triggers Backlinks refetch.
+   * `savedPath`: the one file whose save caused it, when the caller knows
+   * (issue 791); omitted means "unknown", and listeners treat it as such.
+   */
+  invalidate: (savedPath?: string) => void;
 
   /** Whether backlinks are being loaded */
   loading: boolean;
@@ -66,6 +70,11 @@ interface LinkState {
   pendingScrollPath: null | string;
   /** §313 Monotonic — bumped by every addressed request so an already-active tab sees one. */
   pendingScrollRequest: number;
+  /**
+   * The file whose save raised `indexVersion` last, or `null` when the last
+   * bump came from anything else. Read with `indexVersion`, never alone.
+   */
+  savedPath: null | string;
   /** Set backlinks data (called after IPC response) */
   setBacklinks: (path: string, entries: BacklinkEntry[]) => void;
   /** Set error state */
@@ -95,6 +104,7 @@ export const useLinkStore = create<LinkState>((set, get) => ({
   error: null,
   cachedPath: null,
   indexVersion: 0,
+  savedPath: null,
 
   setBacklinks: (path, entries) =>
     set({ backlinks: entries, cachedPath: path, loading: false, error: null }),
@@ -114,7 +124,8 @@ export const useLinkStore = create<LinkState>((set, get) => ({
       cachedPath: null,
     }),
 
-  invalidate: () => set({ indexVersion: get().indexVersion + 1 }),
+  invalidate: (savedPath) =>
+    set({ indexVersion: get().indexVersion + 1, savedPath: savedPath ?? null }),
 
   pendingScrollLine: null,
   setPendingScrollLine: (line) => set({ pendingScrollLine: line }),

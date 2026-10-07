@@ -20,6 +20,7 @@ import type { CloseGuardDeps } from "../use-close-guard";
 
 import { confirmQuit, writeFile } from "../../ipc/invoke";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
+import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import {
@@ -70,7 +71,14 @@ beforeEach(() => {
   });
   useFileStore.setState({ openFiles: new Map() });
   useUIStore.setState({ unsavedModal: null });
+  useLinkStore.setState({ savedPath: null });
 });
+
+/** §34 issue 791 — the file this save named on the indexVersion bump, once the index update resolved. */
+async function namedOnBump(): Promise<null | string> {
+  await new Promise((r) => setTimeout(r, 0));
+  return useLinkStore.getState().savedPath;
+}
 
 // ── saveDirtyTab ─────────────────────────────────────────────────────────────
 
@@ -110,6 +118,8 @@ describe("saveDirtyTab", () => {
 
     expect(writeFile).toHaveBeenCalledWith("/vault/bg.md", "# hello");
     expect(ok).toBe(true);
+    // 이것을 실패시키는 것: use-close-guard.ts 의 `invalidate(tab.filePath)` 에서 인자를 뺀다.
+    expect(await namedOnBump()).toBe("/vault/bg.md");
     expect(
       useEditorStore.getState().tabs.find((t) => t.id === "bg")?.isDirty,
     ).toBe(false);
@@ -128,6 +138,8 @@ describe("saveDirtyTab", () => {
     expect(save).toHaveBeenCalledOnce();
     expect(writeFile).toHaveBeenCalledWith("/vault/new.md", "draft body");
     expect(ok).toBe(true);
+    // 이것을 실패시키는 것: use-close-guard.ts 의 `invalidate(savePath)` 에서 인자를 뺀다.
+    expect(await namedOnBump()).toBe("/vault/new.md");
     const updated = useEditorStore
       .getState()
       .tabs.find((t) => t.id === "untitled-1");

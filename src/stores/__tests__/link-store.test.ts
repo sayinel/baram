@@ -90,4 +90,16 @@ describe("linkStore", () => {
     expect(useLinkStore.getState().backlinks).toHaveLength(2);
     expect(useLinkStore.getState().cachedPath).toBe("/b.md");
   });
+
+  // §34 issue 791 — Backlinks skips its mention search only when the LAST bump
+  // came from saving the viewed note.
+  // 이것을 실패시키는 것: `invalidate` 가 인자 없는 호출에서 이전 `savedPath` 를 남긴다.
+  it("invalidate records the saved file, and forgets it when the cause is unknown", () => {
+    useLinkStore.setState({ indexVersion: 0, savedPath: null });
+    useLinkStore.getState().invalidate("/v/a.md");
+    expect(useLinkStore.getState().savedPath).toBe("/v/a.md");
+    useLinkStore.getState().invalidate();
+    expect(useLinkStore.getState().savedPath).toBeNull();
+    expect(useLinkStore.getState().indexVersion).toBe(2);
+  });
 });

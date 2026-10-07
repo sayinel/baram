@@ -16,6 +16,7 @@ vi.mock("../../ipc/invoke", async (importOriginal) => ({
 }));
 
 import { useEditorStore } from "../../stores/editor/editor";
+import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useCodeAutoSave } from "../use-code-auto-save";
@@ -40,6 +41,7 @@ function mount(over: Partial<Parameters<typeof useCodeAutoSave>[0]> = {}) {
 beforeEach(() => {
   vi.useFakeTimers();
   writeFile.mockClear();
+  useLinkStore.setState({ savedPath: null });
   useSettingsStore.setState({ autoSave: true, autoSaveDelay: 500 } as never);
   useFileStore.setState({ fileMtimes: new Map(), openFiles: new Map() });
   useEditorStore.setState({
@@ -71,6 +73,9 @@ describe("auto-save for markdown edited in source mode", () => {
 
     expect(writeFile).toHaveBeenCalledWith(PATH, BUFFER);
     expect(useEditorStore.getState().sourceEditedTabs).toEqual([]);
+    // §34 issue 791 — the save names its file on the indexVersion bump.
+    // 이것을 실패시키는 것: use-code-auto-save.ts 의 `invalidate(tab.filePath!)` 에서 인자를 뺀다.
+    expect(useLinkStore.getState().savedPath).toBe(PATH);
     h.unmount();
   });
 
