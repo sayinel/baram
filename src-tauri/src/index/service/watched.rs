@@ -6,8 +6,12 @@
 //! The frontend sends what the watcher saw and nothing else; the rule for
 //! what each path means lives here:
 //!
-//! - a path a vault build would not walk (a hidden component, `SKIP_DIRS`) is
-//!   ignored;
+//! - a path a vault build would not walk is ignored — judged per containing
+//!   context by that root's `VaultExclusion` (issue 794: a hidden component, the
+//!   default list, the root's `.baramignore`), the judgement the build's walk uses.
+//!   A context whose `.baramignore` cannot be used gets nothing and the path is
+//!   reported failed, as a build of that context fails: never judged by the
+//!   defaults alone;
 //! - an existing note is re-read through `update_file_index_inner`;
 //! - an existing non-markdown file is registered as a link target (§278);
 //! - an existing directory with files in it — moved in from elsewhere —
@@ -27,10 +31,11 @@
 //! Rust for every writer.
 
 use std::collections::HashMap;
-use std::path::{Component, Path};
+use std::path::Path;
 
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
+use crate::fs::VaultExclusion;
 
 use super::build::{prepare_index_build, rebuild_and_publish};
 use super::keys::buildable;
@@ -57,26 +62,42 @@ pub(crate) async fn sync_watched_paths_inner(
     let mut failed: Vec<String> = Vec::new();
     // Key → (the registration to rebuild, the paths that asked for it).
     let mut rebuilds: HashMap<String, (Registered, Vec<String>)> = HashMap::new();
+    // Key → that root's matcher, read once per sync; `None` when its
+    // `.baramignore` cannot be used.
+    let mut exclusions: HashMap<String, Option<VaultExclusion>> = HashMap::new();
     for path in paths {
         let Ok(canonical) = resolve_canonical(path) else {
             failed.push(path.clone());
             continue;
         };
-        let contexts: Vec<Registered> = buildable(&ctx_mgr.contexts_containing(path).await)
-            .into_iter()
-            .filter(|ctx| walked_under(&ctx.canonical_path, &canonical))
-            .collect();
+        let metadata = tokio::fs::metadata(path).await;
+        let is_dir = metadata.as_ref().is_ok_and(|m| m.is_dir());
+        let mut contexts: Vec<(Registered, VaultExclusion)> = Vec::new();
+        for ctx in buildable(&ctx_mgr.contexts_containing(path).await) {
+            let exclusion = exclusions
+                .entry(ctx.info.path.clone())
+                .or_insert_with(|| VaultExclusion::load(Path::new(&ctx.info.path)).ok());
+            match exclusion {
+                None => failed.push(path.clone()),
+                Some(exclusion) if !exclusion.walk_skips(&canonical, is_dir) => {
+                    contexts.push((ctx, exclusion.clone()));
+                }
+                Some(_) => {}
+            }
+        }
         if contexts.is_empty() {
             continue;
         }
         applied += 1;
-        let structural: Vec<Registered> = match tokio::fs::metadata(path).await {
+        let structural: Vec<Registered> = match metadata {
             Ok(meta) if meta.is_dir() => {
-                if holds_files(path).await {
-                    contexts
-                } else {
-                    Vec::new()
+                let mut holding = Vec::new();
+                for (ctx, exclusion) in contexts {
+                    if holds_files(path, &exclusion).await {
+                        holding.push(ctx);
+                    }
                 }
+                holding
             }
             Ok(_) if is_note(path) => {
                 if update_file_index_inner(state, ctx_mgr, path).await.is_err() {
@@ -87,7 +108,7 @@ pub(crate) async fn sync_watched_paths_inner(
             Ok(_) => {
                 match Mutation::target(path) {
                     Ok(m) => {
-                        for ctx in &contexts {
+                        for (ctx, _) in &contexts {
                             state.apply(&ctx.info.path, vec![m.clone()]).await;
                         }
                     }
@@ -97,7 +118,7 @@ pub(crate) async fn sync_watched_paths_inner(
             }
             Err(_) => {
                 let mut holding = Vec::new();
-                for ctx in contexts {
+                for (ctx, _) in contexts {
                     if state
                         .holds_under(&ctx.info.path, ctx.incarnation, &canonical)
                         .await
@@ -144,26 +165,10 @@ fn is_note(path: &str) -> bool {
     path.ends_with(".md") || path.ends_with(".markdown")
 }
 
-/// Whether a vault build rooted at `root` would walk to `canonical`: no
-/// component below the root is hidden or one of `SKIP_DIRS` — the rule
-/// `fs::collect_md_files` and `fs::collect_all_files` apply on the way down.
-fn walked_under(root: &Path, canonical: &Path) -> bool {
-    let Ok(relative) = canonical.strip_prefix(root) else {
-        return false;
-    };
-    relative.components().all(|c| match c {
-        Component::Normal(name) => {
-            let name = name.to_string_lossy();
-            !name.starts_with('.') && !crate::fs::SKIP_DIRS.contains(&name.as_ref())
-        }
-        _ => true,
-    })
-}
-
 /// Whether a directory holds any file a vault build would register.
-async fn holds_files(dir: &str) -> bool {
+async fn holds_files(dir: &str, exclusion: &VaultExclusion) -> bool {
     let mut files = Vec::new();
-    crate::fs::collect_all_files(Path::new(dir), &mut files)
+    crate::fs::collect_all_files(Path::new(dir), exclusion, &mut files)
         .await
         .is_ok()
         && !files.is_empty()
