@@ -16,7 +16,7 @@ import {
   pluginSandboxDeregister,
   pluginSandboxRegister,
 } from "../ipc/plugin-invoke";
-import { useEditorStore } from "../stores/editor/editor";
+import { flushViewerEdits, useEditorStore } from "../stores/editor/editor";
 import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
@@ -198,6 +198,10 @@ export class PluginLoader {
   async unloadPlugin(id: string): Promise<void> {
     const plugin = this.loaded.get(id);
     if (!plugin) return;
+
+    // §392 spec 0071 §7.3 (D11) — take the plugin's editable viewers' changes before
+    // `deactivate`, which may tear their screens down first.
+    flushViewerEdits((mount) => mount.pluginId === id);
 
     // Call deactivate
     if (typeof plugin.module.deactivate === "function") {

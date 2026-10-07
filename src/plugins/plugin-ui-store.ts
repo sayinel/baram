@@ -4,6 +4,8 @@ import type { PluginContributions, PluginFileViewerContext } from "./types";
 
 import { create } from "zustand";
 
+import { flushViewerEdits } from "../stores/editor/editor";
+
 /** §391 — a command a plugin declared, as the entry points need it. */
 export interface PluginEntryCommand {
   id: string;
@@ -147,10 +149,15 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
   registerFileViewer: (viewer) =>
     set((state) => ({ fileViewers: [...state.fileViewers, viewer] })),
 
-  removeFileViewer: (viewerId) =>
+  removeFileViewer: (viewerId) => {
+    // §392 spec 0071 §6.6 — take the viewer's pending changes BEFORE the list changes: the tab it
+    // leaves shows the code surface in the same render, and that surface reads the buffer in
+    // render (D16).
+    flushViewerEdits((mount) => mount.viewerId === viewerId);
     set((state) => ({
       fileViewers: state.fileViewers.filter((v) => v.viewerId !== viewerId),
-    })),
+    }));
+  },
 
   registerStatusBarItem: (item) =>
     set((state) => ({ statusBarItems: [...state.statusBarItems, item] })),
@@ -228,7 +235,10 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
 
   setActivePluginPanelId: (id) => set({ activePluginPanelId: id }),
 
-  unregisterPlugin: (pluginId) =>
+  unregisterPlugin: (pluginId) => {
+    // §392 spec 0071 §6.6 — the same take as `removeFileViewer`, for every viewer of the plugin.
+    // This is also the step that covers an unload without `deactivate` (`unwindAfterActivate`).
+    flushViewerEdits((mount) => mount.pluginId === pluginId);
     set((state) => {
       // Namespace-prefix check, NOT array-membership: by the time this
       // "belt-and-suspenders" sweep runs, the plugin's own addSidebarPanel
@@ -266,5 +276,6 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
           (i) => i.pluginId !== pluginId,
         ),
       };
-    }),
+    });
+  },
 }));

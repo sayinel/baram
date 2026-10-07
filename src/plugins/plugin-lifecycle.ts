@@ -10,6 +10,7 @@ import type {
 import { type Locale, t } from "../i18n";
 import { pluginPrepareScopes } from "../ipc/plugin-invoke";
 import { contextRootOf, useContextStore } from "../stores/context/context";
+import { flushViewerEdits } from "../stores/editor/editor";
 import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
@@ -355,6 +356,10 @@ function sortByDependencies(plugins: InstalledPlugin[]): InstalledPlugin[] {
  * so the user would be told something went wrong and never what.
  */
 async function teardownBuiltin(active: ActiveBuiltin): Promise<void> {
+  // §392 spec 0071 §7.3 (D11) — before `deactivate`, as `unloadPlugin` does. Outside the failure
+  // collection below: a take that fails is handled where it happens (the tab goes to source and
+  // the user is told — §7.4) and does not throw.
+  flushViewerEdits((mount) => mount.pluginId === active.id);
   const failures: string[] = [];
   try {
     await active.module.deactivate?.();

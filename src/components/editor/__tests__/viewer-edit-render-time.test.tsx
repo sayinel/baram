@@ -98,6 +98,27 @@ describe("no take in render (D16 · §6.6)", () => {
     expect(lastEdit(double).text).toBe("T1");
     expect(double.contexts.at(-1)?.filePath).toBe("/v/b.strokes");
   });
+
+  it.each([
+    [
+      "removeFileViewer",
+      () => usePluginUIStore.getState().removeFileViewer("sketch:pad"),
+    ],
+    [
+      "unregisterPlugin",
+      () => usePluginUIStore.getState().unregisterPlugin("sketch"),
+    ],
+  ] as const)(
+    "%s: getText once inside the store action, 0 while the code surface renders",
+    (_name, leave) => {
+      const double = mountedSketch();
+      act(() => draw(double, "T1"));
+      act(() => leave());
+      expect(events).toEqual(["getText", "render:code", "onUnmount"]);
+      expect(codeText()).toBe("T1");
+      expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
+    },
+  );
 });
 
 describe("markChanged from the host's editing mount (§6.2 · D8)", () => {
