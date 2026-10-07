@@ -138,6 +138,10 @@ pub(crate) fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> 
         FsError::ReadDir { source, .. } => {
             format!("directory \"{caller_path}\" could not be read: {source}")
         }
+        // issue 794 Same swap: `reason` is path-free by construction (`fs::exclusion`).
+        FsError::BaramIgnore { reason, .. } => {
+            format!("the .baramignore of \"{caller_path}\" could not be used: {reason}")
+        }
         // The `ReadError` that `list_dir` makes wraps an OS `io::Error`, whose text is a
         // message and a code with no path. `TrashError` and `WatchError` carry no such
         // guarantee (see the doc above); they pass through because `fs::list_dir`, the

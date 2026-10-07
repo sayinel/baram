@@ -139,6 +139,9 @@ pub struct LinkIndex {
     incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
+    /// What the build's walk left out below `root_path` (issue 794) — kept so a save is
+    /// judged by the same matcher and a note the walk never sees does not enter on save.
+    exclusion: crate::fs::VaultExclusion,
     /// Normalized file stem (folded by `fold_name`, no extension) → list of absolute file paths
     /// Used to resolve [[name]] style wikilinks to actual file locations in subdirectories
     file_map: HashMap<String, Vec<String>>,
@@ -171,6 +174,8 @@ impl LinkIndex {
     /// Build the full index by scanning all .md files under root_path
     pub async fn build(&mut self, root_path: &str) -> Result<IndexStats, IndexError> {
         let start = std::time::Instant::now();
+        self.exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(root_path))
+            .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
         self.root_path = Some(root_path.to_string());
         self.outgoing.clear();
         self.incoming.clear();
@@ -184,7 +189,7 @@ impl LinkIndex {
         let mut links_found: u32 = 0;
 
         // Collect all .md files
-        let md_files = collect_md_files(root_path).await?;
+        let md_files = collect_md_files(root_path, &self.exclusion).await?;
 
         // Build file maps for wikilink target resolution
         for file_path in &md_files {
@@ -193,7 +198,7 @@ impl LinkIndex {
 
         // §278 Non-markdown files are link TARGETS only — registered after the markdown
         // pass so that where the two could collide, markdown is already in place.
-        for file_path in collect_all_files(root_path).await? {
+        for file_path in collect_all_files(root_path, &self.exclusion).await? {
             self.register_link_target(&file_path, root_path);
         }
 
@@ -456,9 +461,21 @@ impl LinkIndex {
         results
     }
 
+    /// What this index's build left out (issue 794) — the matcher a save, and a file
+    /// rename's boundary check, are judged by.
+    pub(crate) fn exclusion(&self) -> &crate::fs::VaultExclusion {
+        &self.exclusion
+    }
+
     /// Update index for a single file using already-read content (sync, no I/O)
     pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
         self.remove_file(file_path);
+        if self
+            .exclusion
+            .walk_skips(std::path::Path::new(file_path), false)
+        {
+            return;
+        }
 
         // Re-register in file maps for target resolution
         if let Some(root) = self.root_path.clone() {
@@ -1174,14 +1191,15 @@ mod build_bench {
         }
 
         let started = std::time::Instant::now();
-        let md = collect_md_files(&root).await.unwrap();
+        let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap();
+        let md = collect_md_files(&root, &exclusion).await.unwrap();
         println!(
             "{label} collect_md_files -> {} in {:?}",
             md.len(),
             started.elapsed()
         );
         let started = std::time::Instant::now();
-        let all = collect_all_files(&root).await.unwrap();
+        let all = collect_all_files(&root, &exclusion).await.unwrap();
         println!(
             "{label} collect_all_files -> {} in {:?}",
             all.len(),

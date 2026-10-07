@@ -107,7 +107,9 @@ pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> 
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(&root, &mut md_files)
+    let exclusion =
+        crate::fs::VaultExclusion::load(&root).map_err(|e| TagError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(&root, &exclusion, &mut md_files)
         .await
         .map_err(|e| TagError::Custom(e.to_string()))?;
 
@@ -161,7 +163,9 @@ pub async fn get_files_by_tag(root_path: &str, tag: &str) -> Result<Vec<String>,
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(&root, &mut md_files)
+    let exclusion =
+        crate::fs::VaultExclusion::load(&root).map_err(|e| TagError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(&root, &exclusion, &mut md_files)
         .await
         .map_err(|e| TagError::Custom(e.to_string()))?;
 
@@ -352,7 +356,9 @@ pub async fn rename_tag(
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(&root, &mut md_files)
+    let exclusion =
+        crate::fs::VaultExclusion::load(&root).map_err(|e| TagError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(&root, &exclusion, &mut md_files)
         .await
         .map_err(|e| TagError::Custom(e.to_string()))?;
 

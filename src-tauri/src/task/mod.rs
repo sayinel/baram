@@ -120,7 +120,9 @@ fn rel_to_root(path: &Path, root: &Path) -> String {
 
 async fn collect(root: &Path, exclude: &[String]) -> Result<Vec<TaskEntry>, TaskError> {
     let mut files: Vec<PathBuf> = Vec::new();
-    crate::fs::collect_md_files(root, &mut files)
+    let exclusion =
+        crate::fs::VaultExclusion::load(root).map_err(|e| TaskError::Custom(e.to_string()))?;
+    crate::fs::collect_md_files(root, &exclusion, &mut files)
         .await
         .map_err(|e| TaskError::Custom(e.to_string()))?;
 
@@ -155,13 +157,18 @@ pub async fn get_vault_tasks(
 /// 증분 갱신용 — 파일 하나만 다시 읽는다. `path`는 절대 경로.
 /// `root_path`가 주어지면 vault 전체 스캔과 같은 `is_excluded` 규칙을 적용한다 —
 /// 그러지 않으면 exclude 설정이 워처 기반 증분 경로에서만 조용히 무시된다(I1).
+/// 스캔이 들어가지 않는 폴더(`VaultExclusion`, 이슈 794)도 같은 이유로 여기서 거른다.
 pub async fn get_file_tasks(
     path: &str,
     root_path: Option<&str>,
     exclude: &[String],
 ) -> Result<Vec<TaskEntry>, TaskError> {
     if let Some(root) = root_path {
-        if is_excluded(&rel_to_root(Path::new(path), Path::new(root)), exclude) {
+        let exclusion = crate::fs::VaultExclusion::load(Path::new(root))
+            .map_err(|e| TaskError::Custom(e.to_string()))?;
+        if is_excluded(&rel_to_root(Path::new(path), Path::new(root)), exclude)
+            || exclusion.walk_skips(Path::new(path), false)
+        {
             return Ok(Vec::new());
         }
     }
@@ -303,6 +310,76 @@ mod scan_tests {
 
         let tasks = get_file_tasks(&p, None, &[]).await.unwrap();
         assert_eq!(tasks.len(), 2);
+    }
+
+    /// 이슈 794: 스캔이 들어가지 않는 폴더(`build/`)의 파일은 증분 갱신으로도 들어오지 않고,
+    /// 그 밖의 파일은 들어온다. 이것을 실패시키는 것: `get_file_tasks` 의 `walk_skips` 조건을
+    /// 지우는 것.
+    #[tokio::test]
+    async fn get_file_tasks_leaves_out_what_the_vault_walk_leaves_out() {
+        let d = TempDir::new().unwrap();
+        let skipped = write(&d, "build/out.md", "- [ ] 빌드 산출물\n").await;
+        let kept = write(&d, "notes/a.md", "- [ ] 노트\n").await;
+        let root = d.path().to_str().unwrap();
+
+        let scanned: Vec<String> = get_vault_tasks(root, &[])
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|t| t.path)
+            .collect();
+        assert_eq!(scanned, vec![kept.clone()]);
+        assert_eq!(
+            get_file_tasks(&skipped, Some(root), &[])
+                .await
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            get_file_tasks(&kept, Some(root), &[]).await.unwrap().len(),
+            1
+        );
+    }
+
+    /// 이슈 794: 루트와 다른 표기(`/var` ↔ `/private/var`)로 온 경로도 같은 판정을 받고,
+    /// 루트 밖의 경로는 vault 의 것이 아니므로 태스크를 내지 않는다. 이것을 실패시키는 것:
+    /// `VaultExclusion::relative` 가 적힌 root 표기만 보는 것(canonical 단계와 resolve 단계를
+    /// 둘 다 지우는 것), 그리고 `walk_skips` 가 root 밖을 "포함" 으로 답하는 것.
+    #[tokio::test]
+    async fn get_file_tasks_judges_another_spelling_and_refuses_outside_the_root() {
+        let d = TempDir::new().unwrap();
+        let other = TempDir::new().unwrap();
+        write(&d, "build/out.md", "- [ ] 빌드 산출물\n").await;
+        let outside = write(&other, "a.md", "- [ ] 밖\n").await;
+        let root = d.path().to_str().unwrap();
+        let canonical = std::fs::canonicalize(d.path()).unwrap();
+        let respelled = canonical
+            .join("build/out.md")
+            .to_string_lossy()
+            .into_owned();
+        write(&d, "notes/a.md", "- [ ] 노트\n").await;
+        let kept = canonical.join("notes/a.md").to_string_lossy().into_owned();
+        assert_eq!(
+            get_file_tasks(&kept, Some(root), &[]).await.unwrap().len(),
+            1
+        );
+
+        assert_eq!(
+            get_file_tasks(&respelled, Some(root), &[])
+                .await
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            get_file_tasks(&outside, Some(root), &[])
+                .await
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(get_file_tasks(&outside, None, &[]).await.unwrap().len(), 1);
     }
 
     #[tokio::test]

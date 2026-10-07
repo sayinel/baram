@@ -336,7 +336,9 @@ pub async fn find_unlinked_mentions(
         return Ok(Vec::new());
     }
 
-    let md_files = collect_md_files(root_path).await?;
+    let exclusion = crate::fs::VaultExclusion::load(Path::new(root_path))
+        .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
+    let md_files = collect_md_files(root_path, &exclusion).await?;
     let mut results = Vec::new();
 
     // Build a word-boundary regex for the stem (case-insensitive). §390 The
@@ -424,10 +426,14 @@ pub async fn find_unlinked_mentions(
     Ok(results)
 }
 
-/// Recursively collect all .md files under a root path
-pub async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexError> {
+/// Recursively collect all .md files under a root path, leaving out what `exclusion`
+/// leaves out (`crate::fs::VaultExclusion`).
+pub async fn collect_md_files(
+    root: &str,
+    exclusion: &crate::fs::VaultExclusion,
+) -> Result<Vec<String>, IndexError> {
     let mut path_bufs = Vec::new();
-    crate::fs::collect_md_files(std::path::Path::new(root), &mut path_bufs)
+    crate::fs::collect_md_files(std::path::Path::new(root), exclusion, &mut path_bufs)
         .await
         .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
     Ok(path_bufs
@@ -440,9 +446,12 @@ pub async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexError> {
 ///
 /// Only markdown is scanned for outgoing links; this exists so a link pointing at a
 /// non-markdown file (`[[Paper.pdf]]`) resolves to a real node instead of dangling.
-pub async fn collect_all_files(root: &str) -> Result<Vec<String>, IndexError> {
+pub async fn collect_all_files(
+    root: &str,
+    exclusion: &crate::fs::VaultExclusion,
+) -> Result<Vec<String>, IndexError> {
     let mut path_bufs = Vec::new();
-    crate::fs::collect_all_files(std::path::Path::new(root), &mut path_bufs)
+    crate::fs::collect_all_files(std::path::Path::new(root), exclusion, &mut path_bufs)
         .await
         .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
     Ok(path_bufs

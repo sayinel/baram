@@ -342,6 +342,7 @@ async fn a_folder_rename_rewrites_the_links_typed_composed_into_it() {
         &format!("{root}/{folder_on_disk}"),
         &format!("{root}/archive"),
         &root,
+        &crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap(),
     )
     .await
     .unwrap();

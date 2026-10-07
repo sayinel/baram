@@ -54,7 +54,9 @@ async fn a_watched_sequence_leaves_the_index_a_fresh_build_would_publish() {
     std::fs::write(d.join("paper.pdf"), [0u8, 1, 2]).unwrap();
     std::fs::remove_file(d.join("img.png")).unwrap();
     // Paths a vault build does not walk.
-    // 이것을 실패시키는 것: `walked_under` 필터를 지운다(`.hidden/x.md` 가 노트로 들어간다).
+    // 노트인 `.hidden/x.md` 는 sync 필터를 지워도 index 의 저장 관문(`LinkIndex::exclusion`)이
+    // 다시 막는다 — 필터 자체는 `a_watched_path_is_judged_by_the_roots_baramignore` 가 대상
+    // 파일로 고정한다.
     std::fs::create_dir(d.join(".hidden")).unwrap();
     std::fs::write(d.join(".hidden/x.md"), "see [[a]]").unwrap();
     std::fs::write(d.join(".DS_Store"), "junk").unwrap();
@@ -188,4 +190,58 @@ async fn a_structural_rebuild_never_coalesces_onto_a_build_that_read_the_old_lay
     assert!(task.await.unwrap().failed.is_empty());
     let graph = get_link_index_inner(&state, &ctx, None).await.unwrap();
     assert!(graph.nodes.contains(&format!("{root}/moved/m.md")));
+}
+
+/// Issue 794: a watched path is judged by the context root's `VaultExclusion`, the
+/// matcher the build's walk uses. A link target under `build/` is ignored by default,
+/// and applied once the root's `.baramignore` says `!build/` — either way the index
+/// equals a fresh build. A target, not a note: a note's save is gated again by the
+/// index's own matcher, so only a target shows the sync's filter on its own.
+/// 이것을 실패시키는 것: 필터를 지우는 것(첫 vault 에 `build/paper.pdf` 가 대상으로
+/// 들어간다), 필터를 기본 이름 목록만 보는 옛 판정으로 되돌리는 것(둘째 vault 에서 빠진다).
+#[tokio::test]
+async fn a_watched_path_is_judged_by_the_roots_baramignore() {
+    for (baramignore, applied) in [(None, false), (Some("!build/\n"), true)] {
+        let ctx = ContextManager::new();
+        let (dir, root) = vault_with_a_link(&ctx, "ctx-w", true).await;
+        let d = dir.path();
+        if let Some(text) = baramignore {
+            std::fs::write(d.join(crate::fs::BARAMIGNORE), text).unwrap();
+        }
+        std::fs::write(d.join("a.md"), "see [[paper.pdf]]").unwrap();
+        let state = LinkIndexState::new();
+        refresh_index_inner(&state, &ctx, &root).await.unwrap();
+        let target = format!("{root}/build/paper.pdf");
+        std::fs::create_dir(d.join("build")).unwrap();
+        std::fs::write(&target, [0u8, 1, 2]).unwrap();
+
+        sync(&state, &ctx, std::slice::from_ref(&target)).await;
+
+        let synced = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
+        assert_eq!(synced, fresh_shape(&root).await, "{baramignore:?}");
+        let edge = (format!("{root}/a.md"), target.clone());
+        assert_eq!(synced.1.contains(&edge), applied, "{baramignore:?}");
+    }
+}
+
+/// A context whose `.baramignore` cannot be used gets nothing from a sync, and the path
+/// is reported failed — as a build of that context fails — never judged by the defaults.
+/// 이것을 실패시키는 것: 쓸 수 없는 `.baramignore` 에서 `VaultExclusion::default()` 나
+/// 기본 목록으로 물러나는 것(경로가 적용되고 failed 가 빈다).
+#[tokio::test]
+async fn a_root_with_an_unusable_baramignore_takes_nothing_and_reports_the_path() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-w", true).await;
+    let d = dir.path();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    std::fs::write(d.join(crate::fs::BARAMIGNORE), "{unclosed\n").unwrap();
+    std::fs::write(d.join("b.md"), "back to [[a]]").unwrap();
+    let path = format!("{root}/b.md");
+
+    let result = sync_watched_paths_inner(&state, &ctx, std::slice::from_ref(&path)).await;
+    assert_eq!(result.failed, vec![path.clone()]);
+    assert_eq!(result.applied, 0);
+    let graph = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
+    assert!(!graph.1.contains(&(path, format!("{root}/a.md"))));
 }

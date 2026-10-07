@@ -48,7 +48,23 @@ pub async fn search_files<R: tauri::Runtime>(
         None => SearchOptions::default(),
     };
 
-    search::search_files(&root_path, &query, &opts).await
+    // issue 794: `root_path` is where the search STARTS — a context, or a folder below one
+    // (the journal directory). What it leaves out is the vault's: judged from the innermost
+    // context holding it, with that context's `.baramignore`, so an anchored `/drafts/`
+    // means the vault's top-level `drafts` wherever the search starts.
+    let vault_root = {
+        use tauri::Manager;
+        app.state::<crate::context::ContextManager>()
+            .contexts_containing(&root_path)
+            .await
+            .into_iter()
+            .max_by_key(|c| c.canonical_path.components().count())
+            .map(|c| c.info.path)
+            .unwrap_or_else(|| root_path.clone())
+    };
+    let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&vault_root))
+        .map_err(|e| e.to_string())?;
+    search::search_files(&root_path, &exclusion, &query, &opts).await
 }
 
 #[cfg(test)]
@@ -108,6 +124,58 @@ mod tests {
             err.contains("outside all registered contexts"),
             "unexpected error: {err}"
         );
+    }
+
+    /// issue 794: a search that starts below the vault root is judged by the vault's
+    /// `.baramignore` — an anchored `/journal/drafts/` applies — not by a `.baramignore`
+    /// in the start folder. When that folder is a context of its own (nested roots), its
+    /// own file is the one that applies, as in its index.
+    /// 이것을 실패시키는 것: matcher 를 `root_path` 로 짓는 것(첫 단언), 가장 바깥 context 를
+    /// 고르는 것(둘째 단언).
+    #[tokio::test]
+    async fn a_search_below_the_root_is_judged_by_the_innermost_context() {
+        let app = app_with_states();
+        let vault = TempDir::new().unwrap();
+        let root = vault.path();
+        std::fs::create_dir_all(root.join("journal/drafts")).unwrap();
+        std::fs::write(root.join(crate::fs::BARAMIGNORE), "/journal/drafts/\n").unwrap();
+        std::fs::write(root.join("journal").join(crate::fs::BARAMIGNORE), "b.md\n").unwrap();
+        std::fs::write(root.join("journal/drafts/a.md"), "the needle").unwrap();
+        std::fs::write(root.join("journal/b.md"), "the needle").unwrap();
+        let contexts = app.state::<crate::context::ContextManager>();
+        contexts
+            .add(folder_context(root.to_str().unwrap()))
+            .await
+            .unwrap();
+        let start = root.join("journal").to_string_lossy().into_owned();
+        let found = |hits: Vec<search::SearchResult>| {
+            hits.iter()
+                .map(|h| {
+                    std::path::Path::new(&h.file_path)
+                        .strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let hits = search_files(start.clone(), "needle".into(), None, app.handle().clone())
+            .await
+            .unwrap();
+        assert_eq!(found(hits), vec!["journal/b.md"]);
+
+        contexts
+            .add(ContextInfo {
+                id: "ctx-journal".to_string(),
+                ..folder_context(&start)
+            })
+            .await
+            .unwrap();
+        let hits = search_files(start, "needle".into(), None, app.handle().clone())
+            .await
+            .unwrap();
+        assert_eq!(found(hits), vec!["journal/drafts/a.md"]);
     }
 
     #[tokio::test]
