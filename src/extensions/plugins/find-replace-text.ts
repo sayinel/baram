@@ -1,7 +1,102 @@
-// §5.6 Find/Replace — 문서를 검색할 한 줄 문자열로 펴고, 글자마다 문서 위치를 적는다.
-// 정규식 검색과 decoration 은 find-replace.ts 가 한다.
+// §5.6 Find/Replace — 문서를 검색할 한 줄 문자열로 펴고, 글자마다 문서 위치를 적어
+// match 의 문서 범위를 구한다. plugin 상태와 decoration 은 find-replace.ts 가 한다.
 
 import type { Node as PmNode } from "@tiptap/pm/model";
+
+export interface FindReplaceMatch {
+  from: number;
+  to: number;
+}
+
+/** Maximum character length for user-supplied regex patterns (ReDoS mitigation) */
+const MAX_REGEX_PATTERN_LENGTH = 500;
+
+/** Build a regex from the search options */
+export function buildSearchRegex(
+  term: string,
+  caseSensitive: boolean,
+  useRegex: boolean,
+  wholeWord: boolean,
+): null | RegExp {
+  if (!term) return null;
+
+  let pattern: string;
+  if (useRegex) {
+    // Reject overly long patterns to prevent ReDoS (catastrophic backtracking)
+    if (term.length > MAX_REGEX_PATTERN_LENGTH) return null;
+    try {
+      // Validate the regex by trying to compile it
+      new RegExp(term);
+      pattern = term;
+    } catch {
+      return null; // Invalid regex
+    }
+  } else {
+    // Escape special regex characters for literal search
+    pattern = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  if (wholeWord) {
+    pattern = `\\b${pattern}\\b`;
+  }
+
+  const flags = caseSensitive ? "g" : "gi";
+  try {
+    return new RegExp(pattern, flags);
+  } catch {
+    return null;
+  }
+}
+
+/** Find all matches in the document */
+export function findMatches(
+  doc: PmNode,
+  searchTerm: string,
+  caseSensitive: boolean,
+  useRegex: boolean,
+  wholeWord: boolean,
+): FindReplaceMatch[] {
+  const regex = buildSearchRegex(
+    searchTerm,
+    caseSensitive,
+    useRegex,
+    wholeWord,
+  );
+  if (!regex) return [];
+
+  const { text, posMap } = extractTextWithPositions(doc);
+  const matches: FindReplaceMatch[] = [];
+
+  let m: null | RegExpExecArray;
+  while ((m = regex.exec(text)) !== null) {
+    const start = m.index;
+    const end = start + m[0].length;
+
+    // Skip matches that span block boundaries (contain sentinel positions)
+    let valid = true;
+    for (let i = start; i < end; i++) {
+      if (posMap[i] === -1) {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid) continue;
+
+    if (start < posMap.length && end - 1 < posMap.length) {
+      matches.push({
+        from: posMap[start],
+        to: posMap[end - 1] + 1,
+      });
+    }
+
+    // Prevent infinite loop for zero-length matches
+    if (m[0].length === 0) {
+      regex.lastIndex++;
+    }
+  }
+
+  return matches;
+}
 
 /** Extract all text content from ProseMirror doc with position mapping.
  *  Includes text representation of inline atom nodes (tag, wikilink, etc.)

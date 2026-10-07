@@ -4,8 +4,10 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { Schema } from "@tiptap/pm/model";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { findMatches } from "../plugins/find-replace";
-import { extractTextWithPositions } from "../plugins/find-replace-text";
+import {
+  extractTextWithPositions,
+  findMatches,
+} from "../plugins/find-replace-text";
 
 // getAtomText 는 type.name 으로 가르므로 atom 이름을 앱과 똑같이 짓는다.
 const schema = new Schema({
