@@ -1,9 +1,9 @@
 // §28 A wikilink that resolves to nothing creates its note — and never overwrites one.
 //
-// "Resolves to nothing" is no evidence the path is free: a note whose name is stored
-// decomposed (NFD) is not matched by the composed (NFC) link text, yet on APFS both
-// spellings open the same file, so creating the note with `writeFile` emptied that
-// note to its heading line.
+// "Resolves to nothing" is no evidence the path is free: the resolver reads the file
+// tree, not the disk. Before §390 a note whose name was stored decomposed (NFD) was not
+// matched by the composed (NFC) link text, yet on APFS both spellings open the same
+// file, so creating the note with `writeFile` emptied that note to its heading line.
 import type { Editor } from "@tiptap/core";
 
 import { renderHook, waitFor } from "@testing-library/react";
@@ -14,13 +14,16 @@ vi.mock("../../components/editor/pdf/pdf-highlight-store", () => ({
   readSidecar,
 }));
 
-// Both exports: use-navigation imports `findAliasContext` from this module too.
+// Every export use-navigation imports from this module (`findAliasContext`,
+// `findNoteByStem`, `resolveWikilinkTarget`): vitest throws on reading a
+// missing one, and the async IIFE's `try` in use-navigation swallows that.
 const { findAliasContext, resolveWikilinkTarget } = vi.hoisted(() => ({
   findAliasContext: vi.fn(),
   resolveWikilinkTarget: vi.fn(),
 }));
 vi.mock("../../utils/editor/wikilink-nav", () => ({
   findAliasContext,
+  findNoteByStem: vi.fn(() => null),
   resolveWikilinkTarget,
 }));
 

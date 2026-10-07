@@ -10,6 +10,7 @@ import { isActiveContextJournal, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { flattenFileTree } from "../file-search";
 import { isDateString, resolveJournalDir } from "../journal/journal";
+import { foldName } from "../name-fold";
 import { normalizePath } from "../path-utils";
 
 /**
@@ -37,7 +38,8 @@ export function resolveRelativeTarget(
 
 /**
  * Resolve a wikilink target (e.g. "architecture") to a file path.
- * Case-insensitive exact match on filename stem (without .md extension).
+ * Exact match on the filename stem (without .md extension) under `foldName`:
+ * case and Unicode normalization ignored (§390).
  *
  * §87 Cross-vault resolution: when vaultAlias is set, resolve in that context.
  * §61 Namespace-aware resolution order:
@@ -88,15 +90,21 @@ export function resolveWikilinkTarget(
     if (sourcePath) {
       const candidate = resolveRelativeTarget(target, sourcePath);
       if (candidate) {
-        const candidateLower = candidate.toLowerCase();
-        const match = flat.find((f) => f.path.toLowerCase() === candidateLower);
+        // §390 Case and Unicode normalization ignored (spec 0069 §3.3): the
+        // candidate joins the open note's folder as stored with the name as
+        // typed.
+        const wanted = foldName(candidate);
+        const match = flat.find((f) => foldName(f.path) === wanted);
         if (match) return { path: match.path, name: match.name };
       }
     }
     return null; // Relative paths don't fall back to global search
   }
 
-  const targetLower = target.toLowerCase();
+  // §390 Names compare under foldName — case and Unicode normalization
+  // ignored (spec 0069 §3.3): a note the disk stores decomposed (NFD)
+  // answers to the composed name typed.
+  const targetKey = foldName(target);
 
   // §56l Journal-aware: try notes/ first when journal-scoped
   if (isJournalScoped) {
@@ -104,18 +112,24 @@ export function resolveWikilinkTarget(
       useSettingsStore.getState();
     const journalDir = resolveJournalDir(rootPath, journalDirectory);
     if (journalDir) {
-      const notesDir = `${journalDir}/notes`;
+      // §390 The settings spell the journal's paths and the disk spells the
+      // tree's, so the notes/ loop and the date lookup below compare them
+      // composed (NFC), case as written — paths, not names (spec 0069 D4).
+      // `rel` is cut from the composed path at a length measured on the
+      // composed folder, never from `f.path`, a spelling it was not measured on.
+      const notesDir = `${journalDir}/notes`.normalize("NFC");
 
       // Try notes/name.md (supports folder/name too)
       for (const f of flat) {
-        if (!f.path.startsWith(notesDir)) continue;
-        const stem = f.name.endsWith(".md") ? f.name.slice(0, -3) : f.name;
-        if (stem.toLowerCase() === targetLower) {
+        const path = f.path.normalize("NFC");
+        if (!path.startsWith(notesDir)) continue;
+        const noteStem = f.name.endsWith(".md") ? f.name.slice(0, -3) : f.name;
+        if (foldName(noteStem) === targetKey) {
           return { path: f.path, name: f.name };
         }
         // Also match folder/name patterns
-        const relPath = f.path.slice(notesDir.length + 1).replace(/\.md$/, "");
-        if (relPath.toLowerCase() === targetLower) {
+        const rel = path.slice(notesDir.length + 1).replace(/\.md$/, "");
+        if (foldName(rel) === targetKey) {
           return { path: f.path, name: f.name };
         }
       }
@@ -123,10 +137,12 @@ export function resolveWikilinkTarget(
       // Try date string → daily path
       if (isDateString(target)) {
         const [y, m] = target.split("-");
-        const dailyPath = journalUseHierarchy
-          ? `${journalDir}/daily/${y}/${m}/${target}.md`
-          : `${journalDir}/${target}.md`;
-        const match = flat.find((f) => f.path === dailyPath);
+        const dailyPath = (
+          journalUseHierarchy
+            ? `${journalDir}/daily/${y}/${m}/${target}.md`
+            : `${journalDir}/${target}.md`
+        ).normalize("NFC");
+        const match = flat.find((f) => f.path.normalize("NFC") === dailyPath);
         if (match) return { path: match.path, name: match.name };
       }
     }
@@ -140,7 +156,7 @@ export function resolveWikilinkTarget(
       ? f.name.slice(0, -9)
       : f.name.slice(0, -3);
 
-    if (stem.toLowerCase() === targetLower) {
+    if (foldName(stem) === targetKey) {
       return { path: f.path, name: f.name };
     }
 
@@ -154,13 +170,13 @@ export function resolveWikilinkTarget(
       const relStem = f.relativePath.endsWith(".markdown")
         ? f.relativePath.slice(0, -9)
         : f.relativePath.replace(/\.md$/i, "");
-      if (relStem.toLowerCase() === targetLower) {
+      if (foldName(relStem) === targetKey) {
         return { path: f.path, name: f.name };
       }
     }
   }
 
-  return resolveByExactFileName(flat, targetLower, target.includes("/"));
+  return resolveByExactFileName(flat, targetKey, target.includes("/"));
 }
 
 /**
@@ -178,7 +194,8 @@ export function resolveWikilinkTarget(
  *
  * ‼️ 확장자 목록도, "확장자가 있는가" 판별도 두지 않는다. 판별을 패턴으로 하면
  * `[[v1.2 회의록]]`처럼 이름에 점이 든 노트가 확장자로 오인된다. 그냥 트리의 실제
- * 파일명과 정확히 같은지만 본다 — 그래서 §69의 새 뷰어 타입(이미지·SVG·HTML)이
+ * 파일명과 같은지만 본다(대소문자와 유니코드 정규화는 무시 — `foldName`, §390) —
+ * 그래서 §69의 새 뷰어 타입(이미지·SVG·HTML)이
  * 자동으로 따라오고, 열거를 갱신하지 않아 조용히 빠지는 일이 없다.
  *
  * 열기는 이미 준비돼 있다: 네비게이션은 확장자를 보고 뷰어로 보낸다
@@ -186,16 +203,16 @@ export function resolveWikilinkTarget(
  */
 function resolveByExactFileName(
   flat: { name: string; path: string; relativePath: string }[],
-  targetLower: string,
+  targetKey: string,
   targetHasPath: boolean,
 ): null | { name: string; path: string } {
   for (const f of flat) {
-    if (f.name.toLowerCase() === targetLower) {
+    if (foldName(f.name) === targetKey) {
       return { path: f.path, name: f.name };
     }
     // 경로를 적은 타깃만 상대경로와 대조한다 — bare 타깃까지 여기서 맞추면
     // 위 stem 규칙(경로 세그먼트가 있을 때만 경로 대조)과 어긋난다.
-    if (targetHasPath && f.relativePath.toLowerCase() === targetLower) {
+    if (targetHasPath && foldName(f.relativePath) === targetKey) {
       return { path: f.path, name: f.name };
     }
   }
@@ -224,29 +241,54 @@ const SPACE_ALIASES: Partial<Record<VaultType, string>> = {
 /**
  * §317 Find the context an `alias::` prefix refers to.
  *
- * ‼️ This lookup lives here as ONE ruler because it has two callers: the
- * synchronous path below, and `use-navigation.ts`'s §87 async fallback. When
- * they were two copies, widening one would have made `[[Journal::x]]` resolve
- * on the sync path only — i.e. only for files in the currently open vault.
+ * ‼️ This lookup lives here as ONE ruler: every place that reads an `alias::`
+ * prefix must agree on what it names. When the synchronous path below and
+ * `use-navigation.ts`'s §87 async fallback were two copies, widening one
+ * would have made `[[Journal::x]]` resolve on the sync path only — i.e. only
+ * for files in the currently open vault.
  */
 export function findAliasContext(alias: string): ContextInfo | null {
-  const aliasLower = alias.toLowerCase();
+  // §390 An alias defaults to its folder's name, which the disk may store
+  // decomposed (NFD) while the link was typed composed: aliases fold, as
+  // names do.
+  const key = foldName(alias);
+  const isKey = (name: string | undefined): boolean =>
+    name !== undefined && foldName(name) === key;
   const contexts = useContextStore.getState().contexts;
 
   // ‼️ Two passes, not one predicate. An explicit alias always outranks a
   // canonical space name: a vault the user actually named "Journal" is what
   // `[[Journal::…]]` should mean, whatever order the contexts happen to sit in.
   // One `find` over an OR would decide that by array position instead.
-  const explicit = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
+  const explicit = contexts.find((c) => isKey(c.alias));
   if (explicit) return explicit;
 
   return (
     contexts.find(
-      (c) =>
-        c.vaultType !== undefined &&
-        SPACE_ALIASES[c.vaultType]?.toLowerCase() === aliasLower,
+      (c) => c.vaultType !== undefined && isKey(SPACE_ALIASES[c.vaultType]),
     ) ?? null
   );
+}
+
+/**
+ * §87 The first markdown note in `files` whose stem is `target` under
+ * `foldName` (§390). One lookup for the two cross-vault paths — the
+ * synchronous one below and `use-navigation.ts`'s async fallback — so the two
+ * fold alike.
+ */
+export function findNoteByStem<T extends { name: string }>(
+  files: T[],
+  target: string,
+): null | T {
+  const wanted = foldName(target);
+  for (const f of files) {
+    if (!f.name.endsWith(".md") && !f.name.endsWith(".markdown")) continue;
+    const stem = f.name.endsWith(".markdown")
+      ? f.name.slice(0, -9)
+      : f.name.slice(0, -3);
+    if (foldName(stem) === wanted) return f;
+  }
+  return null;
 }
 
 /**
@@ -266,20 +308,13 @@ function resolveCrossVaultTarget(
   // Only resolve synchronously if the alias context is the active context
   if (rootPath === ctx.path && fileTree.length > 0) {
     const flat = flattenFileTree(fileTree, rootPath);
-    const targetLower = target.toLowerCase();
 
     // Try exact stem match
-    for (const f of flat) {
-      if (!f.name.endsWith(".md") && !f.name.endsWith(".markdown")) continue;
-      const stem = f.name.endsWith(".markdown")
-        ? f.name.slice(0, -9)
-        : f.name.slice(0, -3);
-      if (stem.toLowerCase() === targetLower) {
-        return { path: f.path, name: f.name };
-      }
-    }
+    const byStem = findNoteByStem(flat, target);
+    if (byStem) return { path: byStem.path, name: byStem.name };
 
     // Try path match (e.g., "skills/analyzer")
+    const targetKey = foldName(target);
     for (const f of flat) {
       const rel = f.path.slice(rootPath.length + 1);
       const relNoExt = rel.endsWith(".md")
@@ -287,7 +322,7 @@ function resolveCrossVaultTarget(
         : rel.endsWith(".markdown")
           ? rel.slice(0, -9)
           : rel;
-      if (relNoExt.toLowerCase() === targetLower) {
+      if (foldName(relNoExt) === targetKey) {
         return { path: f.path, name: f.name };
       }
     }
@@ -307,8 +342,8 @@ function resolveInSameFolder(
   sourceFilePath: string,
 ): null | { name: string; path: string } {
   const dir = sourceFilePath.substring(0, sourceFilePath.lastIndexOf("/"));
-  const targetLower = target.toLowerCase();
-  const candidateName = targetLower.endsWith(".md") ? target : `${target}.md`;
+  const key = foldName(target);
+  const candidateName = key.endsWith(".md") ? target : `${target}.md`;
   const candidatePath = `${dir}/${candidateName}`;
 
   // Try to find in file tree if available (some other context may cover this folder)
@@ -322,7 +357,7 @@ function resolveInSameFolder(
       if (relFromDir.includes("/")) continue;
 
       const stem = f.name.endsWith(".md") ? f.name.slice(0, -3) : f.name;
-      if (stem.toLowerCase() === targetLower) {
+      if (foldName(stem) === key) {
         return { path: f.path, name: f.name };
       }
     }
