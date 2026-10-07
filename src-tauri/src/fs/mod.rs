@@ -6,6 +6,7 @@ mod exclusion;
 pub mod media;
 mod walk;
 mod watch_filter;
+pub(crate) mod watch_registry;
 pub use watch_filter::set_open_files;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
@@ -792,18 +793,24 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 /// Returns the watcher, which must be kept alive by the caller.
 /// Dropping the returned watcher closes the internal channel, causing the
 /// background thread to exit naturally (RAII cleanup — no thread leak).
-pub fn start_watching(
-    path: &str,
+pub(crate) fn start_watching(
+    spec: &watch_registry::WatchSpec,
     app_handle: tauri::AppHandle,
 ) -> Result<RecommendedWatcher, FsError> {
-    let path = path.to_string();
+    let path = spec.root.clone();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
     let mut watcher: RecommendedWatcher = Watcher::new(tx, notify::Config::default())
         .map_err(|e| FsError::WatchError(e.to_string()))?;
 
+    // §3.2 A folder watched for one file's sake looks at its own entries only (#797).
+    let mode = if spec.recursive {
+        RecursiveMode::Recursive
+    } else {
+        RecursiveMode::NonRecursive
+    };
     watcher
-        .watch(Path::new(&path), RecursiveMode::Recursive)
+        .watch(Path::new(&path), mode)
         .map_err(|e| FsError::WatchError(e.to_string()))?;
 
     // Spawn a thread to receive file system events and emit to frontend.
@@ -812,7 +819,8 @@ pub fn start_watching(
     // tx is dropped, rx becomes disconnected, and this thread exits on its own.
     // §3.2 Which events reach the webview is `watch_filter`'s call (issue 795): the
     // vault walk's exclusion, judged relative to this root, before any metadata read.
-    let mut filter = watch_filter::WatchFilter::new(Path::new(&path));
+    let mut filter =
+        watch_filter::WatchFilter::for_watch(Path::new(&path), spec.recursive, spec.focus.clone());
     std::thread::spawn(move || {
         for event in rx.into_iter().flatten() {
             for emit in filter.route(&event, &watch_filter::RealProbe) {

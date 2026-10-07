@@ -86,15 +86,30 @@
     {
       "name": "watch_dir",
       "input": {
-        "path": "string"
+        "path": "string",
+        "recursive": "boolean | null (default true)",
+        "focus": "string | null"
       },
-      "output": "void",
+      "output": "number (lease id)",
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "description": "디렉토리 변경 감시 시작 (notify crate)"
+      "description": "디렉토리 감시를 호출한 창의 lease 로 잡는다 (notify crate). 같은 폴더의 watcher 는 하나이고 재귀 lease 가 있으면 재귀, 아니면 비재귀다. focus 는 그 lease 가 지켜보는 파일로, 그 watch 의 필터가 열린 파일로 다룬다. 창이 닫히면 그 창의 lease 를 모두 돌려준다 (issue 797)"
+    },
+    {
+      "name": "unwatch_dir",
+      "input": {
+        "lease": "number"
+      },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 3,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "호출한 창이 가진 감시 lease 를 돌려준다. 다른 창의 lease 는 거부한다. 폴더의 마지막 lease 가 떠나면 watcher 를 내린다 (issue 797)"
     },
     {
       "name": "set_open_files",

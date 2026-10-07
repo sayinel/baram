@@ -148,6 +148,7 @@
     "allow-theme-read-stored-css",
     "allow-theme-stage-read",
     "allow-theme-uninstall",
+    "allow-unwatch-dir",
     "allow-update-context-alias",
     "allow-update-context-color",
     "allow-update-context-label",

@@ -327,21 +327,48 @@ pub async fn import_dir(
         .map_err(|e| e.to_string())
 }
 
+/// §3.2 Watch `path` for the calling window and answer the lease that holds the watch
+/// (#797); `unwatch_dir` gives it back, and the window's destruction gives back every
+/// lease it holds. `recursive` (default true) is a vault's scope; a folder watched for
+/// one file is not, and names that file as `focus`.
 #[tauri::command]
 pub async fn watch_dir(
     path: String,
+    recursive: Option<bool>,
+    focus: Option<String>,
+    window: tauri::Window,
+    app_handle: tauri::AppHandle,
+    watcher_state: tauri::State<'_, crate::WatcherState>,
+) -> Result<u64, String> {
+    check(&path)?;
+    if let Some(f) = &focus {
+        check(f)?;
+    }
+    // No check_vault here — watching a directory only monitors events,
+    // it doesn't read/write files. Security is enforced on file operations.
+    let mut registry = watcher_state.0.lock().map_err(|e| e.to_string())?;
+    registry.acquire(
+        window.label(),
+        &path,
+        recursive.unwrap_or(true),
+        focus.as_deref(),
+        &|spec| crate::fs::start_watching(spec, app_handle.clone()),
+    )
+}
+
+/// §3.2 Give back a watch lease the calling window holds (#797). Another window's
+/// lease is refused.
+#[tauri::command]
+pub async fn unwatch_dir(
+    lease: u64,
+    window: tauri::Window,
     app_handle: tauri::AppHandle,
     watcher_state: tauri::State<'_, crate::WatcherState>,
 ) -> Result<(), String> {
-    check(&path)?;
-    // No check_vault here — watching a directory only monitors events,
-    // it doesn't read/write files. Security is enforced on file operations.
-    let new_watcher = crate::fs::start_watching(&path, app_handle).map_err(|e| e.to_string())?;
-    // Key by PATH (not context ID) to prevent watcher accumulation
-    // when context IDs change due to dedup or restart
-    let mut guard = watcher_state.0.lock().map_err(|e| e.to_string())?;
-    guard.insert(path.clone(), new_watcher);
-    Ok(())
+    let mut registry = watcher_state.0.lock().map_err(|e| e.to_string())?;
+    registry.release(window.label(), lease, &|spec| {
+        crate::fs::start_watching(spec, app_handle.clone())
+    })
 }
 
 /// §3.2 The files open in the editor. The watcher drops events below an excluded

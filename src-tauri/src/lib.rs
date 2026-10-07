@@ -46,11 +46,12 @@ struct PendingOpenFiles(Mutex<Vec<String>>);
 /// None means no vault is open yet (cold start); all paths are allowed until set.
 pub struct VaultRootState(pub tokio::sync::RwLock<Option<std::path::PathBuf>>);
 
-/// Per-context directory watchers. Keyed by context id (or path as fallback).
-/// Dropping a value closes the internal event channel and causes the watcher thread to exit naturally (RAII).
-pub struct WatcherState(
-    pub std::sync::Mutex<std::collections::HashMap<String, notify::RecommendedWatcher>>,
-);
+/// §3.2 The directory watches and the leases that hold them (`fs::watch_registry`,
+/// #797). Dropping a watcher closes its event channel and its thread exits (RAII).
+pub struct WatcherState(pub(crate) std::sync::Mutex<WatchLeases>);
+
+/// The registry `WatcherState` guards.
+pub(crate) type WatchLeases = crate::fs::watch_registry::WatchRegistry<notify::RecommendedWatcher>;
 
 /// Unsaved-changes guard for app close/quit. When false, close/quit is
 /// intercepted and the frontend is asked to confirm (via the `app://close-requested`
@@ -292,9 +293,7 @@ pub fn run() {
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .manage(QuitGuard(AtomicBool::new(false)))
         .manage(VaultRootState(tokio::sync::RwLock::new(None)))
-        .manage(WatcherState(std::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )))
+        .manage(WatcherState(std::sync::Mutex::new(Default::default())))
         .manage(context::ContextManager::new())
         .manage(index::service::LinkIndexState::new())
         .manage(llm::cancel::CancelRegistry::new())
@@ -319,6 +318,7 @@ pub fn run() {
             fs_cmd::import_dir,
             fs_cmd::import_file,
             fs_cmd::watch_dir,
+            fs_cmd::unwatch_dir,
             fs_cmd::set_open_files,
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
@@ -464,6 +464,16 @@ pub fn run() {
         // Unsaved-changes guard: intercept the window close (red X) and ask the
         // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.
         .on_window_event(|window, event| {
+            // §3.2 A window that is gone holds no watch (#797) — also one whose page
+            // never ran its cleanup.
+            if let tauri::WindowEvent::Destroyed = event {
+                let app = window.app_handle().clone();
+                if let Ok(mut registry) = window.state::<WatcherState>().0.lock() {
+                    registry.release_window(window.label(), &|spec| {
+                        crate::fs::start_watching(spec, app.clone())
+                    });
+                }
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let guard = window.state::<QuitGuard>();
                 if close_action(window.label(), guard.0.load(Ordering::Relaxed))

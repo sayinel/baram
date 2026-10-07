@@ -170,28 +170,58 @@ pub(crate) enum Emit {
     },
 }
 
+/// The files one watch is for — what its leases name as `focus` (issue 797), each as
+/// spelled and as it resolves. Shared with `fs::watch_registry`, which updates it as
+/// leases come and go.
+pub(crate) type Focus = Arc<RwLock<HashSet<PathBuf>>>;
+
 /// The drop rule of one watched root.
+///
+/// A recursive watch is a vault's: it judges by that vault's `VaultExclusion` and the
+/// editor's open files (`set_open_files`). A non-recursive watch is a folder watched
+/// for the files one tab or file window shows (#797): that folder is not a vault, so it
+/// judges by the default list alone — no `.baramignore` read from, say, `$HOME` — and
+/// its focus files are the open ones. Focus files count as open for a recursive watch
+/// too.
 pub(crate) struct WatchFilter {
     root: PathBuf,
+    recursive: bool,
     exclusion: VaultExclusion,
     open: OpenFiles,
+    focus: Focus,
 }
 
 impl WatchFilter {
-    pub(crate) fn new(root: &Path) -> Self {
-        Self::with_open_files(root, Arc::clone(&OPEN_FILES))
+    /// The filter of a watch on `root` as spelled — for a vault, the root as the context
+    /// registered it, so the root-relative judgement holds whichever spelling the
+    /// watcher reports paths in (`VaultExclusion::relative`).
+    pub(crate) fn for_watch(root: &Path, recursive: bool, focus: Focus) -> Self {
+        Self::with_open_files(root, recursive, Arc::clone(&OPEN_FILES), focus)
     }
 
-    fn with_open_files(root: &Path, open: OpenFiles) -> Self {
+    fn with_open_files(root: &Path, recursive: bool, open: OpenFiles, focus: Focus) -> Self {
         Self {
             root: root.to_path_buf(),
-            exclusion: load_or_defaults(root),
+            recursive,
+            exclusion: if recursive {
+                load_or_defaults(root)
+            } else {
+                VaultExclusion::defaults_only(root)
+            },
             open,
+            focus,
         }
     }
 
-    /// Whether `path` may be open: it is in the set, or the set is unknown.
+    /// Whether `path` may be open: a focus file of this watch, or — for a vault's
+    /// watch — in the editor's open set, or that set is unknown.
     fn may_be_open(&self, path: &Path) -> bool {
+        if self.focus.read().is_ok_and(|focus| focus.contains(path)) {
+            return true;
+        }
+        if !self.recursive {
+            return false;
+        }
         match self.open.read().as_deref() {
             Ok(OpenSet::Known(set)) => set.contains(path),
             Ok(OpenSet::Unknown) | Err(_) => true,
@@ -208,9 +238,11 @@ impl WatchFilter {
         folders_skipped || self.exclusion.excludes_entry(path, false)
     }
 
-    /// Reload the matcher when the event names this root's `.baramignore`.
+    /// Reload the matcher when the event names this root's `.baramignore` — a vault's
+    /// only; a non-recursive watch never reads one.
     fn notice(&mut self, path: &Path) {
-        if path.file_name().is_some_and(|n| n == BARAMIGNORE)
+        if self.recursive
+            && path.file_name().is_some_and(|n| n == BARAMIGNORE)
             && path.parent().is_some_and(|p| self.is_root(p))
         {
             self.exclusion = load_or_defaults(&self.root);
