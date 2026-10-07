@@ -90,10 +90,17 @@ export function useCodeAutoSave({
       try {
         const content = getSourceBuffer(tab.id);
         await writeFile(path, content);
-        useFileStore.getState().updateLastSaveMtime(path, Date.now());
-        setFileContent(path, content);
-        markDirty(tab.id, false);
-        useEditorStore.getState().markSourceEdited(tab.id, false);
+        // §3.5 쓰는 사이 탭이 닫혔거나 옮겨졌으면 결과를 탭의 기록에 남기지 않는다 — use-auto-save 와
+        // 같은 이유다(#798).
+        const stillShown = useEditorStore
+          .getState()
+          .tabs.some((t) => t.id === tab.id && t.filePath === path);
+        if (stillShown) {
+          useFileStore.getState().updateLastSaveMtime(path, Date.now());
+          setFileContent(path, content);
+          markDirty(tab.id, false);
+          useEditorStore.getState().markSourceEdited(tab.id, false);
+        }
         // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
         useSnapshotStore.getState().markPendingAutoSnapshot();
         // Markdown carries links; leaving the index stale after an auto-save is
