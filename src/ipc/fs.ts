@@ -208,7 +208,34 @@ export async function listDir(
 }
 
 // §3.2 File System commands
+
+/**
+ * §3.5 The settled tail of the writes still running per path (#798).
+ *
+ * Two writes to one path used to run concurrently, so the one that STARTED first could
+ * land last: an auto-save still in flight while its tab closed, the file reopened under a
+ * new tab and saved again, put the older text back on disk. Each write now waits for the
+ * previous write to that path to settle — success or failure, so one failed write does
+ * not block the next — and a read of the path waits too, so a reopen sees the write that
+ * was already under way. An entry is removed once its tail settles with no later write
+ * queued behind it.
+ *
+ * ‼️ The cost: a write that never settles holds back every later read and write of that
+ * path. Writes Rust does on its own (link rewrites, task edits) are not in this queue.
+ *
+ * ‼️ Webview-only, and keyed by the path as spelled: `renameFile`, Rust-side writers and a
+ * second spelling of the same file all pass it by. Serializing by the file's canonical
+ * identity belongs in Rust — #824.
+ */
+const pendingWrites = new Map<string, Promise<void>>();
+
+/** How many paths still have a write queued or running — for tests. */
+export function pendingWritePaths(): number {
+  return pendingWrites.size;
+}
+
 export async function readFile(path: string): Promise<string> {
+  await pendingWrites.get(path);
   return invoke<string>("read_file", { path });
 }
 
@@ -233,6 +260,18 @@ export async function writeBinaryFile(
   return invoke<void>("write_binary_file", { path, data });
 }
 
-export async function writeFile(path: string, content: string): Promise<void> {
-  return invoke<void>("write_file", { path, content });
+export function writeFile(path: string, content: string): Promise<void> {
+  const previous = pendingWrites.get(path) ?? Promise.resolve();
+  const write = previous.then(() =>
+    invoke<void>("write_file", { path, content }),
+  );
+  const settled = write.then(
+    () => undefined,
+    () => undefined,
+  );
+  pendingWrites.set(path, settled);
+  void settled.then(() => {
+    if (pendingWrites.get(path) === settled) pendingWrites.delete(path);
+  });
+  return write;
 }

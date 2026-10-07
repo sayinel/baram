@@ -65,6 +65,21 @@ export function isTextFile(filePath: string | undefined): boolean {
   return ext !== undefined && PLAIN_TEXT_EXTENSIONS.has(ext);
 }
 
+/**
+ * May the text editor (the source buffer, auto-saved by use-code-auto-save) write this path?
+ * Not markdown — the WYSIWYG document owns that unless the tab is in source mode — and not a
+ * binary viewer file, whose bytes the buffer does not hold. Asked by name so the next writer
+ * does not re-derive it (use-active-tab-surface's `isEditableTextFile` is this, for the
+ * active tab).
+ */
+export function isEditableTextPath(
+  filePath: null | string | undefined,
+): boolean {
+  return (
+    !!filePath && !isMarkdownFile(filePath) && !isBinaryViewerFile(filePath)
+  );
+}
+
 const HTML_EXTENSIONS = new Set(["htm", "html"]);
 
 /** Returns true for .html / .htm files — they get a rendered preview + source toggle. */

@@ -220,11 +220,11 @@ export function moveInTree(
  * Rewrite `openFiles` keys under `oldPrefix` to `newPrefix` — shared by
  * rename (parent unchanged, name/path changed) and move (parent changed).
  */
-export function rekeyOpenFilesPrefix(
-  openFiles: Map<string, string>,
+export function rekeyOpenFilesPrefix<V>(
+  openFiles: Map<string, V>,
   oldPrefix: string,
   newPrefix: string,
-): Map<string, string> {
+): Map<string, V> {
   const next = new Map(openFiles);
   for (const [key, value] of openFiles) {
     // issue 595: the boundary after the prefix is the separator the prefix

@@ -13,7 +13,7 @@ import { matchFileViewer, usePluginUIStore } from "../plugins/plugin-ui-store";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import {
-  isBinaryViewerFile,
+  isEditableTextPath,
   isHtmlFile,
   isImageFile,
   isMarkdownFile,
@@ -77,8 +77,7 @@ export function useActiveTabSurface(): ActiveSurfaceSnapshot {
   // Named rather than inlined at the one call site on purpose: the next effect that
   // writes files must be able to ask this question by name instead of rediscovering it.
   // Guarding call sites one by one is what leaves the following one exposed.
-  const isEditableTextFile =
-    isCodeFile && !isBinaryViewerFile(activeTabFilePath);
+  const isEditableTextFile = isEditableTextPath(activeTabFilePath);
 
   // PDF file viewer — read-only, built-in (PDF.js)
   const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);

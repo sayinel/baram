@@ -61,8 +61,17 @@ export async function saveDirtyTabsForContexts(
   return saveDirtyTabsWhere((t) => wanted.has(t.contextId), deps);
 }
 
+/** §38 Save exactly these tabs' unsaved work — the bulk tab close's "Save" (#798). */
+export async function saveDirtyTabsByIds(
+  tabIds: readonly string[],
+  deps: CloseGuardDeps,
+): Promise<boolean> {
+  const wanted = new Set(tabIds);
+  return saveDirtyTabsWhere((t) => wanted.has(t.id), deps);
+}
+
 /**
- * The shared body of the two save-many helpers: dirty file tabs matching `match`,
+ * The shared body of the save-many helpers: dirty file tabs matching `match`,
  * active one first so its live editor is flushed before the cached-content writes.
  */
 async function saveDirtyTabsWhere(
@@ -130,18 +139,28 @@ export async function saveDirtyTab(
       : (useFileStore.getState().openFiles.get(tab.filePath) ?? "");
     await writeFile(tab.filePath, content);
     useFileStore.getState().updateLastSaveMtime(tab.filePath, Date.now());
-    // Keep the cache in step with what just went to disk, so a later read of
-    // `openFiles` does not hand back the pre-edit text.
-    if (fromBuffer)
-      useFileStore.getState().setFileContent(tab.filePath, content);
-    useEditorStore.getState().markDirty(tab.id, false);
-    useEditorStore.getState().markSourceEdited(tab.id, false);
+    // §3.5 What it holds may have moved on while the write ran (a block ID rename or a
+    // task edit landing in a background tab). Then the file has the older text and the
+    // tab is not saved: report that, so the caller keeps it open instead of closing it
+    // over the newer text (#798).
+    const holdsNow = fromBuffer
+      ? sourceBufferAccess.getSourceBuffer(tab.id)
+      : (useFileStore.getState().openFiles.get(tab.filePath) ?? "");
+    const clean = holdsNow === content;
+    if (clean) {
+      // Keep the cache in step with what just went to disk, so a later read of
+      // `openFiles` does not hand back the pre-edit text.
+      if (fromBuffer)
+        useFileStore.getState().setFileContent(tab.filePath, content);
+      useEditorStore.getState().markDirty(tab.id, false);
+      useEditorStore.getState().markSourceEdited(tab.id, false);
+    }
     if (isMarkdownFile(tab.filePath)) {
       updateFileIndex(tab.filePath)
         .then(() => useLinkStore.getState().invalidate(tab.filePath))
         .catch(() => {});
     }
-    return true;
+    return clean;
   }
 
   // Non-active Untitled tab — prompt for a destination path.
@@ -157,13 +176,17 @@ export async function saveDirtyTab(
   const content = useFileStore.getState().openFiles.get(tab.id) ?? "";
   await writeFile(savePath, content);
   useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
+  // §3.5 The file exists now; the tab is clean only if it still holds what was written,
+  // and the caller must not close it otherwise (#798).
+  const clean =
+    (useFileStore.getState().openFiles.get(tab.id) ?? "") === content;
   useEditorStore.setState((state) => ({
     tabs: state.tabs.map((t) =>
       t.id === tab.id
         ? {
             ...t,
             filePath: savePath,
-            isDirty: false,
+            isDirty: clean ? false : t.isDirty,
             title: basename(savePath),
           }
         : t,
@@ -175,7 +198,7 @@ export async function saveDirtyTab(
       .then(() => useLinkStore.getState().invalidate(savePath))
       .catch(() => {});
   }
-  return true;
+  return clean;
 }
 
 /**
@@ -217,6 +240,33 @@ export async function requestCloseWorkspace(): Promise<void> {
     return;
   }
   useUIStore.getState().openUnsavedModal({ intent: "closeWorkspace" });
+}
+
+/**
+ * §38 The tab context menu's Close Others and Close Tabs to the Right. Nothing unsaved
+ * among `tabIds` → close them; otherwise ask once, scoped to exactly those tabs (#798).
+ *
+ * ‼️ These used to call the store action directly and closed a dirty background tab
+ * without a word. Once its tab is gone, the closed-tab release drops the cached text and
+ * source buffer that held the unsaved edits, so the prompt has to come first.
+ */
+export async function requestCloseTabs(
+  tabIds: readonly string[],
+  anchorTabId: string,
+): Promise<void> {
+  if (tabIds.length === 0) return;
+  const wanted = new Set(tabIds);
+  // issue 594: same barrier as the other closes.
+  await awaitBlockIdRenames();
+  if (unsavedTabs((t) => wanted.has(t.id)).length === 0) {
+    useEditorStore.getState().closeTabsById(tabIds, anchorTabId);
+    return;
+  }
+  useUIStore.getState().openUnsavedModal({
+    anchorTabId,
+    intent: "closeTabs",
+    tabIds: [...tabIds],
+  });
 }
 
 /**

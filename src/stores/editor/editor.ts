@@ -105,6 +105,12 @@ interface EditorState {
   closeOtherTabs: (tabId: string) => void;
   closeTab: (tabId: string) => void;
   /**
+   * §38 Close exactly `ids` (pinned ones are skipped); if the active tab is among them,
+   * `anchorId` becomes active. `closeOtherTabs` and `closeTabsToRight` delegate here, and the
+   * unsaved-changes guard closes the same list it asked about (#798).
+   */
+  closeTabsById: (ids: readonly string[], anchorId: string) => void;
+  /**
    * §82 Close every tab belonging to these contexts — PINNED ONES INCLUDED.
    *
    * ‼️ `closeTab` refuses a pinned tab (§38), but the context it belongs to is being
@@ -286,6 +292,14 @@ export function contextSwitchNeeded(contextId: string): boolean {
   return !(tabCtx && activeCtx && tabCtx.path === activeCtx.path);
 }
 
+/** §38 The tabs "Close Others" closes: every unpinned tab but `tabId`. */
+export function otherTabIds(
+  tabs: readonly EditorTab[],
+  tabId: string,
+): string[] {
+  return tabs.filter((t) => !t.isPinned && t.id !== tabId).map((t) => t.id);
+}
+
 /**
  * A type predicate, not just a boolean: callers that pass the result as a gate — "return
  * unless this is a file tab" — then get `filePath` narrowed for free, which is what makes
@@ -294,6 +308,16 @@ export function contextSwitchNeeded(contextId: string): boolean {
  */
 export function isFileTab(tab: EditorTab | undefined): tab is EditorTab {
   return !!tab && (!tab.type || tab.type === "file");
+}
+
+/** §38 The tabs "Close Tabs to the Right" closes: unpinned tabs after `tabId`. */
+export function tabIdsToRight(
+  tabs: readonly EditorTab[],
+  tabId: string,
+): string[] {
+  const idx = tabs.findIndex((t) => t.id === tabId);
+  if (idx === -1) return [];
+  return tabs.filter((t, i) => i > idx && !t.isPinned).map((t) => t.id);
 }
 
 /**
@@ -455,12 +479,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     });
 
-    // Clean up original doc tracking for dirty detection
-    if (target && !target.isPinned) {
-      import("../../utils/editor/programmatic-update").then(
-        ({ clearOriginalDoc }) => clearOriginalDoc(tabId),
-      );
-    }
+    // 닫힌 탭의 원문 · dirty 기준 문서는 closed-tab-release.ts 가 탭 배열의 변화를 보고 내려놓는다(#798).
 
     // §89 Auto-remove FileContext when its last tab is closed
     if (target && !target.isPinned && target.contextId) {
@@ -598,68 +617,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   closeOtherTabs: (tabId) =>
-    set((state) => {
-      // §38 Keep pinned tabs + the specified tab; close all other unpinned tabs
-      const tabs = state.tabs.filter((t) => t.isPinned || t.id === tabId);
-      const closedIds = new Set(
-        state.tabs
-          .filter((t) => !t.isPinned && t.id !== tabId)
-          .map((t) => t.id),
-      );
-      const activeTabId = closedIds.has(state.activeTabId ?? "")
-        ? tabId
-        : state.activeTabId;
-      const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
-      const closed = (id: string) => closedIds.has(id);
-      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
-      const sourceEditedTabs = withoutClosedTabs(
-        state.sourceEditedTabs,
-        closed,
-      );
-      const staleContentTabs = withoutClosedTabs(
-        state.staleContentTabs,
-        closed,
-      );
-      return {
-        tabs,
-        activeTabId,
-        mruOrder,
-        sourceEditedTabs,
-        sourceModeTabs,
-        staleContentTabs,
-      };
-    }),
+    get().closeTabsById(otherTabIds(get().tabs, tabId), tabId),
 
   closeTabsToRight: (tabId) =>
+    get().closeTabsById(tabIdsToRight(get().tabs, tabId), tabId),
+
+  closeTabsById: (ids, anchorId) =>
     set((state) => {
-      const idx = state.tabs.findIndex((t) => t.id === tabId);
-      if (idx === -1) return state;
-      // §38 Close unpinned tabs to the right of tabId
-      const tabs = state.tabs.filter((t, i) => i <= idx || t.isPinned);
+      // §38 Pinned tabs stay open whoever asked.
       const closedIds = new Set(
-        state.tabs.filter((t, i) => i > idx && !t.isPinned).map((t) => t.id),
+        state.tabs
+          .filter((t) => !t.isPinned && ids.includes(t.id))
+          .map((t) => t.id),
       );
+      if (closedIds.size === 0) return state;
+      const tabs = state.tabs.filter((t) => !closedIds.has(t.id));
       const activeTabId = closedIds.has(state.activeTabId ?? "")
-        ? tabId
+        ? anchorId
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
       const closed = (id: string) => closedIds.has(id);
-      const sourceModeTabs = withoutClosedTabs(state.sourceModeTabs, closed);
-      const sourceEditedTabs = withoutClosedTabs(
-        state.sourceEditedTabs,
-        closed,
-      );
-      const staleContentTabs = withoutClosedTabs(
-        state.staleContentTabs,
-        closed,
-      );
       return {
         tabs,
         activeTabId,
         mruOrder,
-        sourceEditedTabs,
-        sourceModeTabs,
-        staleContentTabs,
+        sourceEditedTabs: withoutClosedTabs(state.sourceEditedTabs, closed),
+        sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, closed),
+        staleContentTabs: withoutClosedTabs(state.staleContentTabs, closed),
       };
     }),
 
@@ -717,13 +701,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     });
 
-    // Same dirty-detection cleanup `closeTab` does. No §89 FileContext sweep here:
-    // every doomed tab belongs to a context the caller is removing outright.
-    import("../../utils/editor/programmatic-update").then(
-      ({ clearOriginalDoc }) => {
-        for (const id of ids) clearOriginalDoc(id);
-      },
-    );
+    // No §89 FileContext sweep here: every doomed tab belongs to a context the caller is
+    // removing outright. The dirty-detection cleanup is closed-tab-release.ts's (#798).
   },
 
   closeAllTabs: () =>

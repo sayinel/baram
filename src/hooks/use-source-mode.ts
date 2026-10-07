@@ -167,6 +167,24 @@ export function useSourceMode({
     };
   }, [getSourceBuffer, setSourceBuffer, registerSourceBufferAccess]);
 
+  // §3.5 닫힌 탭의 버퍼와 커서 위치를 내려놓는다(#798). 탭 id 는 열 때마다 새로 만들어지므로,
+  // 지우지 않으면 같은 파일을 다시 열 때마다 버퍼가 하나씩 쌓인다.
+  //
+  // ‼️ 구독이 아니라 passive effect 다. 코드 자동 저장(use-code-auto-save)의 timer 는 닫힌 탭의
+  // 버퍼를 읽어 디스크에 쓰는데, 없는 버퍼는 ""로 읽힌다. effect 는 같은 commit 의 cleanup
+  // 이 모두 끝난 뒤에 돌므로 store 가 바뀌는 순간 지우는 것보다 늦다 — 그 timer 의 관문은 그쪽에
+  // 따로 있다.
+  const openTabIds = useEditorStore(useShallow((s) => s.tabs.map((t) => t.id)));
+  useEffect(() => {
+    const open = new Set(openTabIds);
+    for (const id of buffersRef.current.keys()) {
+      if (!open.has(id)) buffersRef.current.delete(id);
+    }
+    for (const id of cursorOffsetsRef.current.keys()) {
+      if (!open.has(id)) cursorOffsetsRef.current.delete(id);
+    }
+  }, [openTabIds]);
+
   // Stable onChange for the ACTIVE surface's SourceCodeEditor. 탭 id를 클로저가 아니라
   // 호출 시점에 읽는다 — 이 콜백은 안정된 참조로 여러 렌더를 살아남기 때문이다.
   const handleSourceChange = useCallback(

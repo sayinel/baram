@@ -49,6 +49,8 @@ export function usePreviewSourceView({
       void writeFile(filePath, content)
         .then(() => {
           useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+          // §3.5 Typed again while the write ran → that text is not on disk (#798).
+          if (getSourceBuffer(tab.id) !== content) return;
           useFileStore.getState().setFileContent(filePath, content);
           markDirty(tab.id, false);
           useSnapshotStore.getState().markPendingAutoSnapshot();
