@@ -25,8 +25,12 @@ export interface PluginEntryContributions {
 }
 
 export interface PluginFileViewer {
+  /** §392 `true` only for a viewer registered as `editable` (with a `getText`). Absent otherwise. */
+  editable?: boolean;
   /** Normalized: lowercase, no leading dot. */
   extensions: string[];
+  /** §392 The registration's `getText` — present exactly when `editable` is. */
+  getText?: (el: HTMLElement) => string;
   onMount: (el: HTMLElement, ctx: PluginFileViewerContext) => void;
   onUnmount?: (el: HTMLElement) => void;
   onUpdate?: (el: HTMLElement, ctx: PluginFileViewerContext) => void;
