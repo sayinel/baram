@@ -197,3 +197,7 @@ panic = "abort"
 # [dependencies], or setting `resolver = "1"`, ships the mock runtime in the release
 # binary, and nothing in the build would say so.
 tauri = { version = "2", features = ["test"] }
+# The command inventory (`src/commands/index_freshness_inventory_tests.rs`) parses the
+# command files to check that each vault write sits inside its reconciling wrapper.
+# Already in the tree through the proc-macro crates, with these features.
+syn = { version = "2", features = ["full", "visit"] }

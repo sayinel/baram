@@ -334,6 +334,7 @@ dependencies = [
  "sha2",
  "shlex 2.0.1",
  "similar",
+ "syn 2.0.115",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
