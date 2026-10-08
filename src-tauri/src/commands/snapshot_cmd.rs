@@ -41,17 +41,26 @@ pub async fn get_snapshot_diff(
 }
 
 #[tauri::command]
-pub async fn restore_snapshot(
+pub async fn restore_snapshot<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     vault_path: String,
     snapshot_id: String,
     files: Option<Vec<String>>,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        crate::snapshot::io::restore_files(&vault_path, &snapshot_id, files)
+    // §29 #824 every file restored — also those before one that fails — is in the
+    // covering link indexes before this returns.
+    crate::index::service::committed(&app, move |log| async move {
+        tokio::task::spawn_blocking(move || {
+            crate::snapshot::io::restore_files_declaring(&vault_path, &snapshot_id, files, &|p| {
+                log.path(p)
+            })
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())
+    .result
 }
 
 #[tauri::command]

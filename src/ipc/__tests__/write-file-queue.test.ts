@@ -14,7 +14,12 @@ const calls: Call[] = [];
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: (cmd: string, args: Record<string, string>) =>
     new Promise((resolve, reject) => {
-      calls.push({ args, cmd, reject, resolve });
+      // #824 `write_file` answers a `WriteOutcome`; `writeFile` hands back its mtime.
+      const answer = (v?: unknown) =>
+        resolve(
+          cmd === "write_file" ? (v ?? { indexFresh: true, mtime: 0 }) : v,
+        );
+      calls.push({ args, cmd, reject, resolve: answer });
     }),
 }));
 
@@ -69,8 +74,9 @@ describe("§3.5 per-path write queue (#798)", () => {
     await expect(first).rejects.toBe("disk full");
     await flush();
     expect(calls).toHaveLength(2);
-    calls[1].resolve();
-    await expect(second).resolves.toBeUndefined();
+    calls[1].resolve({ indexFresh: true, mtime: 42 });
+    // `writeFile` hands back the mtime of the `WriteOutcome` (#824).
+    await expect(second).resolves.toBe(42);
   });
 
   // 이것을 실패시키는 것: 지우기 전의 `pendingWrites.get(path) === settled` 확인을 빼면 앞 쓰기의 tail 이

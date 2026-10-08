@@ -198,7 +198,8 @@ function route(command: string, args: Record<string, unknown> = {}): unknown {
     }
     case "write_file":
       backend.files.set(path, args.content as string);
-      return undefined;
+      // #824 `WriteOutcome`
+      return { indexFresh: true, mtime: 1 };
     default:
       return undefined;
   }

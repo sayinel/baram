@@ -96,6 +96,7 @@
 // unrelated tree under a vault's key.
 
 mod build;
+mod commit;
 mod keys;
 mod query;
 mod reconcile;
@@ -110,11 +111,15 @@ pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 
 pub(crate) use build::refresh_index_inner;
+pub(crate) use commit::{
+    committed, reconcile_effects, report, write_outcome, Effect, EffectLog, WriteOutcome,
+};
 pub(crate) use keys::{
     active_registration, graph_term_for, own_aliases, require_registered_root, space_name,
     AliasHolder,
 };
-pub(crate) use query::{get_backlinks_inner, get_link_index_inner, update_file_index_inner};
+pub(crate) use query::{get_backlinks_inner, get_link_index_inner};
+pub(crate) use reconcile::Reconciled;
 pub(crate) use rename::{
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner,
 };

@@ -17,12 +17,19 @@ pub async fn get_files_by_tag(root_path: String, tag: String) -> Result<Vec<Stri
 
 /// Rename (or merge) a tag across all .md files in the vault.
 #[tauri::command]
-pub async fn rename_tag(
+pub async fn rename_tag<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     root_path: String,
     old_tag: String,
     new_tag: String,
 ) -> Result<crate::tag::RenameTagResult, String> {
-    crate::tag::rename_tag(&root_path, &old_tag, &new_tag)
-        .await
-        .map_err(|e| e.to_string())
+    // §29 #824 each rewritten note is declared before it is written, and every one is in
+    // the covering link indexes before this returns — one `index:changed` for all.
+    crate::index::service::committed(&app, move |log| async move {
+        crate::tag::rename_tag_declaring(&root_path, &old_tag, &new_tag, &|path| log.path(path))
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .result
 }

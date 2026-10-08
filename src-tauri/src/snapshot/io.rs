@@ -240,10 +240,23 @@ fn is_safe_relative_path(path: &str) -> bool {
 /// 2. For each file to restore, find the snapshot data file and copy back
 /// 3. If file isn't directly in this snapshot's data dir, walk backwards
 ///    through older snapshots to find the most recent version
+#[cfg(test)]
 pub fn restore_files(
     vault_path: &str,
     snapshot_id: &str,
     files: Option<Vec<String>>,
+) -> Result<(), SnapshotError> {
+    restore_files_declaring(vault_path, snapshot_id, files, &|_| {})
+}
+
+/// `restore_files`, telling `declare` each vault file it is about to overwrite — before
+/// overwriting it — so the link index can be reconciled with every file it changed,
+/// also when a later file fails (#824).
+pub fn restore_files_declaring(
+    vault_path: &str,
+    snapshot_id: &str,
+    files: Option<Vec<String>>,
+    declare: &dyn Fn(&str),
 ) -> Result<(), SnapshotError> {
     let index = load_index(vault_path)?;
 
@@ -293,6 +306,7 @@ pub fn restore_files(
                     if let Some(parent) = dest.parent() {
                         std::fs::create_dir_all(parent)?;
                     }
+                    declare(&dest.to_string_lossy());
                     std::fs::copy(&data_file, &dest)?;
                     restored = true;
                     break;

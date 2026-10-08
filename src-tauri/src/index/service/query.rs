@@ -114,6 +114,7 @@ pub(crate) async fn get_link_index_inner(
 /// Re-index one file from disk (#824): the guarded unit every writer and the watcher
 /// sync use (`reconcile::reconcile_path`), so this cannot land an old read after a
 /// later write. A file no context knows is a no-op.
+#[cfg(test)]
 pub(crate) async fn update_file_index_inner(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,

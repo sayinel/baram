@@ -18,6 +18,29 @@ pub(crate) fn check(path: &str) -> Result<(), String> {
     crate::fs::validate_path(path).map_err(|e| e.to_string())
 }
 
+/// §29 #824 Run `op` as a commit that declares `paths` before it touches them
+/// (`index::service::committed`): every link index covering them reflects the disk
+/// before this returns, also when `op` fails part-way.
+pub(crate) async fn in_index<R, T, Fut>(
+    app: &tauri::AppHandle<R>,
+    paths: Vec<String>,
+    op: Fut,
+) -> Result<T, String>
+where
+    R: tauri::Runtime,
+    T: Send + 'static,
+    Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
+{
+    crate::index::service::committed(app, move |log| async move {
+        for path in &paths {
+            log.path(path);
+        }
+        op.await
+    })
+    .await
+    .result
+}
+
 /// §88 Validate that path is within a registered context (multi-vault aware).
 ///
 /// Tries ContextManager first (checks against ALL registered contexts so cross-context
@@ -172,16 +195,25 @@ pub async fn read_file(
 pub async fn write_file(
     path: String,
     content: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
-) -> Result<u64, String> {
+) -> Result<crate::index::service::WriteOutcome, String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
     // §3.2 The written file's mtime: what the watcher will report for this write, so
     // the frontend can tell its own save's echo from any other change (issue 795).
-    crate::fs::write_file_mtime(&path, &content)
-        .await
-        .map_err(|e| e.to_string())
+    // §29 #824 Every covering link index reflects it before this returns.
+    let done = crate::index::service::committed(&app, move |log| async move {
+        log.path(&path);
+        let mtime = crate::fs::write_file_mtime(&path, &content)
+            .await
+            .map_err(|e| e.to_string())?;
+        log.landed(mtime);
+        Ok(mtime)
+    })
+    .await;
+    crate::index::service::write_outcome(done)
 }
 
 /// §4.3 Create a NEW file holding `content` — refused with the `ALREADY_EXISTS:` sentinel,
@@ -191,14 +223,19 @@ pub async fn write_file(
 pub async fn create_file(
     path: String,
     content: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
-    crate::fs::create_file(&path, &content)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![path.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::create_file(&path, &content)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -219,6 +256,7 @@ pub async fn list_dir(
 pub async fn rename_file(
     from: String,
     to: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
@@ -226,22 +264,31 @@ pub async fn rename_file(
     check(&to)?;
     check_vault(&from, &state, &ctx_mgr).await?;
     check_vault(&to, &state, &ctx_mgr).await?;
-    crate::fs::rename_file(&from, &to)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![from.clone(), to.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::rename_file(&from, &to)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn delete_file(
     path: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
-    crate::fs::delete_file(&path)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![path.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::delete_file(&path)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -260,20 +307,26 @@ pub async fn create_dir(
 #[tauri::command]
 pub async fn delete_dir(
     path: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
-    crate::fs::delete_dir(&path)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![path.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::delete_dir(&path)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn copy_file(
     from: String,
     to: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
@@ -281,9 +334,13 @@ pub async fn copy_file(
     check(&to)?;
     check_vault(&from, &state, &ctx_mgr).await?;
     check_vault(&to, &state, &ctx_mgr).await?;
-    crate::fs::copy_file(&from, &to)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![to.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::copy_file(&from, &to)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// Import a file from any location into the vault.
@@ -293,15 +350,20 @@ pub async fn copy_file(
 pub async fn import_file(
     from: String,
     to: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&from)?;
     check(&to)?;
     check_vault(&to, &state, &ctx_mgr).await?;
-    crate::fs::copy_file(&from, &to)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![to.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::copy_file(&from, &to)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// §4.3 Import a whole directory from any location into the vault.
@@ -319,15 +381,20 @@ pub async fn import_file(
 pub async fn import_dir(
     from: String,
     to: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<Option<crate::fs::CopyDirReport>, String> {
     check(&from)?;
     check(&to)?;
     check_vault(&to, &state, &ctx_mgr).await?;
-    crate::fs::copy_dir_all(&from, &to)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![to.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::copy_dir_all(&from, &to)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// §3.2 The files open in the editor. The watcher drops events below an excluded
@@ -344,15 +411,20 @@ pub fn set_open_files(paths: Vec<String>) -> Result<(), String> {
 pub async fn extract_zip(
     zip_path: String,
     output_dir: String,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<Vec<String>, String> {
     check(&zip_path)?;
     check(&output_dir)?;
     check_vault(&output_dir, &state, &ctx_mgr).await?;
-    crate::fs::extract_zip(&zip_path, &output_dir)
-        .await
-        .map_err(|e| e.to_string())
+    let paths = vec![output_dir.clone()];
+    in_index(&app, paths, async move {
+        crate::fs::extract_zip(&zip_path, &output_dir)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// §56d 바이너리 파일 쓰기 — 이미지 등 비텍스트 파일용
@@ -360,19 +432,24 @@ pub async fn extract_zip(
 pub async fn write_binary_file(
     path: String,
     data: Vec<u8>,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
-    let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
-    tokio::fs::write(&tmp_path, &data)
-        .await
-        .map_err(|e| e.to_string())?;
-    tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        e.to_string()
+    let paths = vec![path.clone()];
+    in_index(&app, paths, async move {
+        let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
+        tokio::fs::write(&tmp_path, &data)
+            .await
+            .map_err(|e| e.to_string())?;
+        tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            e.to_string()
+        })
     })
+    .await
 }
 
 /// §5.1 사용자 지정 경로로 바이너리 내보내기 (예: SVG → PNG 다운로드).
@@ -403,16 +480,24 @@ pub async fn read_media_data_url(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn export_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
+pub async fn export_binary_file(
+    app: tauri::AppHandle,
+    path: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
     check(&path)?;
-    let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
-    tokio::fs::write(&tmp_path, &data)
-        .await
-        .map_err(|e| e.to_string())?;
-    tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
-        let _ = std::fs::remove_file(&tmp_path);
-        e.to_string()
+    // §29 #824 a destination the user chose inside a vault is reconciled like any write.
+    in_index(&app, vec![path.clone()], async move {
+        let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
+        tokio::fs::write(&tmp_path, &data)
+            .await
+            .map_err(|e| e.to_string())?;
+        tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            e.to_string()
+        })
     })
+    .await
 }
 
 #[cfg(test)]

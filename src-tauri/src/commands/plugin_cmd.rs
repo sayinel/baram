@@ -587,12 +587,18 @@ async fn execute_op(
                     "file \"{path}\" write is {len} bytes, over the {MAX_PLUGIN_FILE_BYTES}-byte limit"
                 ));
             }
-            crate::fs::write_file(authorized_path_str(&resolved)?, &content)
-                .await
-                // Report the caller's own path, not the resolved one (LOW-7): the read
-                // arm already did, and echoing the canonical target would tell a plugin
-                // where an in-vault symlink actually points.
-                .map_err(|_| format!("file \"{path}\" could not be written"))?;
+            let target = authorized_path_str(&resolved)?.to_string();
+            // §29 #824 in every covering link index before this answers. The plugin's
+            // result stays `nothing()` — the API is `Promise<void>`.
+            super::fs_cmd::in_index(app, vec![target.clone()], async move {
+                crate::fs::write_file(&target, &content)
+                    .await
+                    // Report the caller's own path, not the resolved one (LOW-7): the
+                    // read arm already did, and echoing the canonical target would tell
+                    // a plugin where an in-vault symlink actually points.
+                    .map_err(|_| format!("file \"{path}\" could not be written"))
+            })
+            .await?;
             Ok(BrokerResult::nothing())
         }
         FilesList { context, path } => {

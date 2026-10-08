@@ -1,5 +1,7 @@
 // §304 Vault-wide task index — IPC command (thin layer)
 
+use super::fs_cmd::in_index;
+
 #[tauri::command]
 pub async fn get_vault_tasks(
     root_path: String,
@@ -43,28 +45,37 @@ pub async fn get_tasks_linking_to(
 // IPC 경계라 인자가 곧 JS가 보내는 페이로드다 — `commands/*_cmd.rs`의 다른 커맨드들과
 // 같은 판단이다(`embedding_cmd`·`export_cmd`·`llm_cmd`).
 #[tauri::command]
-pub async fn set_task_state(
+pub async fn set_task_state<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
     line: u32,
     expected_raw: String,
     write: crate::task::StateWrite,
 ) -> Result<String, String> {
-    crate::task::set_task_state(&path, line, &expected_raw, write)
-        .await
-        .map_err(|e| e.to_string())
+    // §29 #824 the rewritten note is in every covering link index before this returns.
+    in_index(&app, vec![path.clone()], async move {
+        crate::task::set_task_state(&path, line, &expected_raw, write)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn set_task_field(
+pub async fn set_task_field<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
     line: u32,
     expected_raw: String,
     field: String,
     value: String,
 ) -> Result<String, String> {
-    crate::task::set_task_field(&path, line, &expected_raw, &field, &value)
-        .await
-        .map_err(|e| e.to_string())
+    in_index(&app, vec![path.clone()], async move {
+        crate::task::set_task_field(&path, line, &expected_raw, &field, &value)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// §305 열린 파일 경로 — 디스크를 건드리지 않고 상태 전이 결과 줄만 돌려준다.
@@ -99,16 +110,20 @@ pub fn preview_task_field_line(
 /// §312 태그 쓰기 — §303 canonical 순서상 태그는 이모지 필드 **앞**이다.
 /// `on=false`는 제거. 쓸 수 없는 태그 이름은 파일을 건드리기 전에 거절한다.
 #[tauri::command]
-pub async fn set_task_tag(
+pub async fn set_task_tag<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     path: String,
     line: u32,
     expected_raw: String,
     tag: String,
     on: bool,
 ) -> Result<String, String> {
-    crate::task::set_task_tag(&path, line, &expected_raw, &tag, on)
-        .await
-        .map_err(|e| e.to_string())
+    in_index(&app, vec![path.clone()], async move {
+        crate::task::set_task_tag(&path, line, &expected_raw, &tag, on)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// §305 열린 파일 경로 — 태그 토글 결과 줄.
@@ -123,10 +138,17 @@ pub fn preview_task_tag_line(raw: String, tag: String, on: bool) -> Result<Strin
 
 /// §312 수집함 append — 파일이 없으면 만들고 끝에 한 줄 붙인다.
 #[tauri::command]
-pub async fn append_task_line(path: String, line: String) -> Result<String, String> {
-    crate::task::append_line(&path, &line)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn append_task_line<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+    line: String,
+) -> Result<String, String> {
+    in_index(&app, vec![path.clone()], async move {
+        crate::task::append_line(&path, &line)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// §312 줄 삭제 — 이 커맨드는 **파괴적이고 되돌릴 수 없다**. 스냅샷(§71)은 파일 단위이고
@@ -138,10 +160,18 @@ pub async fn append_task_line(path: String, line: String) -> Result<String, Stri
 /// 줄 문법 지식이 필요 없어 TypeScript가 직접 한다(`removeLine`). 두 구현의 바이트
 /// 동등성은 `write.rs`와 `line-splice.test.ts`가 **같은 행렬**을 검사해 지킨다.
 #[tauri::command]
-pub async fn delete_task_line(path: String, line: u32, expected_raw: String) -> Result<(), String> {
-    crate::task::delete_line(&path, line, &expected_raw)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn delete_task_line<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+    line: u32,
+    expected_raw: String,
+) -> Result<(), String> {
+    in_index(&app, vec![path.clone()], async move {
+        crate::task::delete_line(&path, line, &expected_raw)
+            .await
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// §312 아카이브 — 완료 태스크를 `Archive/YYYY-MM.md`로 **옮긴다**(붙이고 나서 지운다).
@@ -157,21 +187,45 @@ pub async fn delete_task_line(path: String, line: u32, expected_raw: String) -> 
 ///
 /// `today`는 프런트가 로컬 시간대로 계산해 넘긴다(`set_task_state`와 같은 계약).
 #[tauri::command]
-pub async fn archive_task_lines(
+pub async fn archive_task_lines<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     tasks_home: String,
     items: Vec<crate::task::ArchiveItem>,
     today: String,
     after_days: u32,
 ) -> Result<crate::task::ArchiveOutcome, String> {
-    crate::task::archive_tasks(&tasks_home, &items, &today, after_days)
-        .await
-        .map_err(|e| e.to_string())
+    // §29 #824 The sources are declared before anything moves; the archive files the
+    // lines went to are known from the outcome. A refusal (`Err`) touches no file.
+    let sources: Vec<String> = items.iter().map(|i| i.path.clone()).collect();
+    crate::index::service::committed(&app, move |log| async move {
+        for source in &sources {
+            log.path(source);
+        }
+        let outcome = crate::task::archive_tasks(&tasks_home, &items, &today, after_days)
+            .await
+            .map_err(|e| e.to_string())?;
+        for path in &outcome.paths {
+            log.path(path);
+        }
+        Ok(outcome)
+    })
+    .await
+    .result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    /// An app with the link index state the commands reconcile through (#824).
+    fn app() -> tauri::App<tauri::test::MockRuntime> {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(crate::index::service::LinkIndexState::new());
+        app.manage(crate::context::ContextManager::new());
+        app
+    }
 
     async fn write_temp(d: &TempDir, body: &str) -> String {
         let p = d.path().join("a.md");
@@ -206,9 +260,15 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
-        let disk = set_task_state(p, 0, raw.to_string(), done_on("2026-08-24"))
-            .await
-            .unwrap();
+        let disk = set_task_state(
+            app().handle().clone(),
+            p,
+            0,
+            raw.to_string(),
+            done_on("2026-08-24"),
+        )
+        .await
+        .unwrap();
         let document = preview_task_state_line(raw.to_string(), done_on("2026-08-24")).unwrap();
 
         assert_eq!(disk, document);
@@ -225,6 +285,7 @@ mod tests {
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
         let disk = set_task_field(
+            app().handle().clone(),
             p,
             0,
             raw.to_string(),
@@ -250,9 +311,16 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
-        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
-            .await
-            .unwrap();
+        let disk = set_task_tag(
+            app().handle().clone(),
+            p,
+            0,
+            raw.to_string(),
+            "someday".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
         let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
 
         assert_eq!(disk, document);
@@ -267,9 +335,16 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
-        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
-            .await
-            .unwrap();
+        let disk = set_task_tag(
+            app().handle().clone(),
+            p,
+            0,
+            raw.to_string(),
+            "someday".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
         let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
 
         assert_eq!(disk, document);
@@ -285,9 +360,16 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
-        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
-            .await
-            .unwrap();
+        let disk = set_task_tag(
+            app().handle().clone(),
+            p,
+            0,
+            raw.to_string(),
+            "someday".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
         let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
 
         assert_eq!(disk, document);
@@ -308,9 +390,16 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
-        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), true)
-            .await
-            .unwrap();
+        let disk = set_task_tag(
+            app().handle().clone(),
+            p,
+            0,
+            raw.to_string(),
+            "someday".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
         let document = preview_task_tag_line(raw.to_string(), "someday".to_string(), true).unwrap();
 
         assert_eq!(disk, document);
@@ -323,9 +412,16 @@ mod tests {
         let d = TempDir::new().unwrap();
         let p = write_temp(&d, &format!("{}\n", raw)).await;
 
-        let disk = set_task_tag(p, 0, raw.to_string(), "someday".to_string(), false)
-            .await
-            .unwrap();
+        let disk = set_task_tag(
+            app().handle().clone(),
+            p,
+            0,
+            raw.to_string(),
+            "someday".to_string(),
+            false,
+        )
+        .await
+        .unwrap();
         let document =
             preview_task_tag_line(raw.to_string(), "someday".to_string(), false).unwrap();
 
@@ -342,9 +438,14 @@ mod tests {
         let original = "- [ ] 그 사이 바뀐 줄\n";
         let p = write_temp(&d, original).await;
 
-        let err = delete_task_line(p.clone(), 0, "- [ ] 예전 내용".to_string())
-            .await
-            .unwrap_err();
+        let err = delete_task_line(
+            app().handle().clone(),
+            p.clone(),
+            0,
+            "- [ ] 예전 내용".to_string(),
+        )
+        .await
+        .unwrap_err();
 
         assert_eq!(err, "stale");
         assert_eq!(tokio::fs::read_to_string(&p).await.unwrap(), original);
@@ -358,9 +459,16 @@ mod tests {
         let raw = "    - [ ] 중첩 📅2026-08-30";
         let p = write_temp(&d, &format!("# T\r\n{}", raw)).await;
 
-        let updated = set_task_tag(p.clone(), 1, raw.to_string(), "someday".to_string(), true)
-            .await
-            .unwrap();
+        let updated = set_task_tag(
+            app().handle().clone(),
+            p.clone(),
+            1,
+            raw.to_string(),
+            "someday".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(updated, "    - [ ] 중첩 #someday 📅2026-08-30");
         assert_eq!(
