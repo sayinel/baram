@@ -177,12 +177,14 @@ pub(crate) async fn report<R: Runtime>(app: &tauri::AppHandle<R>, done: Vec<Reco
 pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconciled]) {
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut rebuilt: Vec<String> = Vec::new();
-    // A path whose index had to be dropped is announced by that index's rebuild
-    // (`degrade`), not here: telling a window to re-read it now would read nothing.
-    for d in done.iter().filter(|d| d.reached && d.degrade.is_empty()) {
-        if !entries
-            .iter()
-            .any(|e| e["canonical"] == d.canonical.to_string_lossy().as_ref())
+    for d in done.iter().filter(|d| d.reached) {
+        // A path whose index had to be dropped is announced by that index's rebuild
+        // (`degrade`), not here: telling a window to re-read it now would read nothing.
+        // What else the same path rebuilt (a sibling registration) is announced now.
+        if d.degrade.is_empty()
+            && !entries
+                .iter()
+                .any(|e| e["canonical"] == d.canonical.to_string_lossy().as_ref())
         {
             entries.push(serde_json::json!({
                 "canonical": d.canonical.to_string_lossy(),

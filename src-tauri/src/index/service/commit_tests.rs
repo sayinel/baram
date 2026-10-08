@@ -2,6 +2,7 @@
 use super::*;
 use crate::context::{ContextInfo, ContextType};
 use crate::index::service::build::refresh_index_inner;
+use crate::index::service::reconcile::Reconciled;
 use std::sync::atomic::Ordering;
 use tauri::Listener;
 
@@ -377,4 +378,27 @@ async fn a_custom_export_that_fails_still_reconciles_what_it_wrote_in_the_vault(
         )
         .await
     );
+}
+
+#[tokio::test]
+async fn a_dropped_registration_does_not_hide_what_its_sibling_rebuilt() {
+    // Nested roots: the path's rebuild failed under one and published under the other.
+    // 이것을 실패시키는 것: degrade 가 있는 결과를 통째로 건너뛰어 형제의 `rebuilt` 까지 알리지 않는다.
+    let app = app();
+    let seen = changes(&app);
+    emit_changed(
+        app.handle(),
+        &[Reconciled {
+            canonical: "/v/sub/x".into(),
+            spellings: vec!["/v/sub/x".into()],
+            reached: true,
+            rebuilt: vec!["/v/sub".into()],
+            degrade: vec!["/v".into()],
+            ..Reconciled::default()
+        }],
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0]["rebuilt"], serde_json::json!(["/v/sub"]));
+    assert_eq!(seen[0]["entries"], serde_json::json!([]));
 }

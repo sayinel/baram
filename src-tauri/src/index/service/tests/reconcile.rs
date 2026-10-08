@@ -322,3 +322,34 @@ async fn a_unit_names_the_path_in_every_covering_index_s_spelling() {
         .contains(&resolved.to_string_lossy().into_owned()));
     assert!(done.spellings.contains(&format!("{root}/n.md")));
 }
+
+#[tokio::test]
+async fn a_path_covered_by_two_indexes_is_read_once() {
+    // Nested roots both index `sub/n.md`: one read serves both mutations.
+    // 이것을 실패시키는 것: covering registration 마다 파일을 다시 읽는다(`read` 를 나누지 않는다).
+    let outer = tempfile::tempdir().unwrap();
+    let v = outer.path().to_str().unwrap().to_string();
+    std::fs::create_dir(outer.path().join("sub")).unwrap();
+    let sub = format!("{v}/sub");
+    let ctx = ContextManager::new();
+    ctx.add(info("outer", &v, ContextType::Folder))
+        .await
+        .unwrap();
+    ctx.add(info("inner", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &v).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+    let n = format!("{sub}/n.md");
+    std::fs::write(&n, "see [[x]]").unwrap();
+    let before = state.note_reads.load(std::sync::atomic::Ordering::SeqCst);
+    reconcile_path(&state, &ctx, &n).await;
+    assert_eq!(
+        state.note_reads.load(std::sync::atomic::Ordering::SeqCst),
+        before + 1
+    );
+    // Both indexes got it.
+    assert!(graph(&state, &ctx, &v).await.0.contains(&n));
+    assert!(graph(&state, &ctx, &sub).await.0.contains(&n));
+}

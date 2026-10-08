@@ -220,6 +220,9 @@ pub struct LinkIndexState {
     /// Publications so far (tests): how many builds a reconciliation ran.
     #[cfg(test)]
     pub(crate) published: std::sync::atomic::AtomicUsize,
+    /// Notes a reconcile unit read (tests): one per path, however many indexes cover it.
+    #[cfg(test)]
+    pub(crate) note_reads: std::sync::atomic::AtomicUsize,
 }
 
 impl Default for LinkIndexState {
@@ -239,6 +242,8 @@ impl LinkIndexState {
             pause_after_read: std::sync::Mutex::new(None),
             #[cfg(test)]
             published: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            note_reads: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 

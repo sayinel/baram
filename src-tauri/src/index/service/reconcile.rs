@@ -114,7 +114,7 @@ pub(crate) async fn reconcile_path(
                 Ok(_) => match &read {
                     Some(point) => clone_point(point),
                     None => {
-                        let point = file_point(path).await;
+                        let point = file_point(state, path).await;
                         let copy = clone_point(&point);
                         read = Some(point);
                         copy
@@ -261,13 +261,19 @@ async fn directory_point(
 }
 
 /// A file on disk, read once for every covering index.
-async fn file_point(path: &str) -> Point {
+async fn file_point(state: &LinkIndexState, path: &str) -> Point {
     if !is_note(path) {
         return match Mutation::target(path) {
             Ok(m) => Point::Mutation(m),
             Err(_) => Point::Failed,
         };
     }
+    #[cfg(test)]
+    state
+        .note_reads
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    #[cfg(not(test))]
+    let _ = state;
     match tokio::fs::read_to_string(path).await {
         Ok(content) => match Mutation::update(path, content) {
             Ok(m) => Point::Mutation(m),
