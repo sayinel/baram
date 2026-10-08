@@ -112,7 +112,7 @@ pub use state::LinkIndexState;
 
 pub(crate) use build::refresh_index_inner;
 pub(crate) use commit::{
-    committed, reconcile_effects, report, write_outcome, Effect, EffectLog, WriteOutcome,
+    committed, degrade, reconcile_effects, report, write_outcome, Effect, EffectLog, WriteOutcome,
 };
 pub(crate) use keys::{
     active_registration, graph_term_for, own_aliases, require_registered_root, space_name,

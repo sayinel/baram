@@ -10,7 +10,7 @@
 
 use crate::context::ContextManager;
 use crate::index::service::{
-    get_backlinks_inner, get_link_index_inner, reconcile_effects, refresh_index_inner,
+    degrade, get_backlinks_inner, get_link_index_inner, reconcile_effects, refresh_index_inner,
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner, report,
     require_registered_root, sync_watched_paths_inner, Effect, LinkIndexState,
     NamespaceRenameResult, Reconciled, RenameResult, WatchedSync,
@@ -18,7 +18,7 @@ use crate::index::service::{
 use crate::index::{
     find_unlinked_mentions, BacklinkResult, IndexStats, LinkGraph, UnlinkedMentionResult,
 };
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 pub async fn get_backlinks(
@@ -135,19 +135,40 @@ pub async fn rename_namespace(
     ctx_mgr: State<'_, ContextManager>,
 ) -> Result<NamespaceRenameResult, String> {
     let result = rename_namespace_inner(&state, &ctx_mgr, &old_dir, &new_dir, &root_path).await;
-    // §29 #824 It rebuilds its root itself (and drops the other covering indexes, which
-    // the gate rebuilds when next needed); reconciling the moved directories would only
-    // rebuild it again. The windows are told once that rebuild has published.
-    if result.as_ref().is_ok_and(|r| r.index_rebuilt) {
-        report(
-            &app,
-            vec![Reconciled {
-                reached: true,
-                rebuilt: vec![root_path],
-                ..Reconciled::default()
-            }],
-        )
-        .await;
-    }
+    announce_namespace_rename(&app, &root_path, &result).await;
     result
+}
+
+/// §29 #824 A namespace rename rebuilds its root itself (and drops the other covering
+/// indexes, which the gate rebuilds when next needed); reconciling the moved directories
+/// would only rebuild it again. The windows are told once the root has an index of the
+/// new layout: now, when the rename rebuilt it, or once the rebuild `degrade` schedules
+/// has published, when the files moved but the rename's own rebuild did not publish. A
+/// root no longer registered at that incarnation is left to whoever registers it next.
+/// An `Err` moved nothing.
+pub(crate) async fn announce_namespace_rename<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    root_path: &str,
+    result: &Result<NamespaceRenameResult, String>,
+) {
+    match result {
+        Ok(done) if done.index_rebuilt => {
+            report(
+                app,
+                vec![Reconciled {
+                    reached: true,
+                    rebuilt: vec![root_path.to_string()],
+                    ..Reconciled::default()
+                }],
+            )
+            .await;
+        }
+        Ok(_) => {
+            let ctx_mgr = app.state::<ContextManager>();
+            if let Some(at) = ctx_mgr.context_registered_at(root_path).await {
+                degrade(app, root_path, at.incarnation).await;
+            }
+        }
+        Err(_) => {}
+    }
 }

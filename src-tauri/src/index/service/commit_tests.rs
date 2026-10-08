@@ -706,3 +706,34 @@ async fn a_healthy_nested_index_that_took_a_save_is_announced_beside_a_dropped_o
         .iter()
         .any(|s| s == note.as_str()));
 }
+
+#[tokio::test]
+async fn a_namespace_rename_whose_rebuild_did_not_publish_is_announced_once_one_has() {
+    // The files moved, the rename's own rebuild failed and dropped the root's index
+    // (`settle_namespace_rebuild`): the windows hear about it once a rebuild publishes.
+    // 이것을 실패시키는 것: `index_rebuilt == false` 인 결과를 알리지도 rebuild 하지도 않는다.
+    let app = app();
+    let (_dir, root) = vault(&app).await;
+    let state = app.state::<LinkIndexState>();
+    let at = app
+        .state::<ContextManager>()
+        .registration("v")
+        .await
+        .unwrap()
+        .1;
+    state.drop_index(&root).await;
+    let seen = changes(&app);
+    let moved = Ok(crate::index::service::NamespaceRenameResult {
+        updated_files: vec![],
+        skipped_files: vec![],
+        unchecked_files: vec![],
+        files_moved: 1,
+        index_rebuilt: false,
+    });
+    crate::commands::index_cmd::announce_namespace_rename(app.handle(), &root, &moved).await;
+    settle(&app, &root, at, &seen, 5).await;
+    assert!(state.with_index_for(&root, at, |i| i.is_some()).await);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0]["rebuilt"], serde_json::json!([root]));
+}

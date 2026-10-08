@@ -59,6 +59,7 @@ const RECONCILES: &[&str] = &[
     "after_rename(",
     "report(",
     "git_in_index(",
+    "announce_namespace_rename(",
 ];
 
 /// Commands that write somewhere no link index can cover, and why.
