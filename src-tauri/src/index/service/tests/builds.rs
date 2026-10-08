@@ -617,7 +617,9 @@ fn the_slot_map_is_locked_only_inside_state_rs() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn an_unreadable_but_present_file_leaves_the_index_unchanged() {
+async fn an_unreadable_but_present_file_ends_as_a_fresh_build_reads_it() {
+    // #824: a note that cannot be read keeps its place as a link target and loses its
+    // own links, as `LinkIndex::build` treats it — not the links it had before.
     use std::os::unix::fs::PermissionsExt;
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
@@ -629,17 +631,15 @@ async fn an_unreadable_but_present_file_leaves_the_index_unchanged() {
     update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
         .await
         .unwrap();
+    let fresh = super::watched::fresh_shape(&root).await;
+    let now = super::watched::shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
     std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o644)).unwrap();
     if !readable {
-        // Not gone, not emptied: the index still knows a.md links to b.md.
-        assert_eq!(
-            sources(
-                &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
-                    .await
-                    .unwrap()
-            ),
-            vec![format!("{root}/a.md")]
-        );
+        assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(now, fresh);
     }
 }
 

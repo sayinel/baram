@@ -98,6 +98,7 @@
 mod build;
 mod keys;
 mod query;
+mod reconcile;
 mod rename;
 mod state;
 mod watched;

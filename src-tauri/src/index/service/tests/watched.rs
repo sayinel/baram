@@ -3,7 +3,7 @@ use super::*;
 use crate::index::service::watched::sync_watched_paths_inner;
 
 /// The graph as a comparable value: sorted nodes and sorted (from, to) edges.
-fn shape(graph: &LinkGraph) -> (Vec<String>, Vec<(String, String)>) {
+pub(super) fn shape(graph: &LinkGraph) -> (Vec<String>, Vec<(String, String)>) {
     let mut nodes = graph.nodes.clone();
     nodes.sort();
     let mut edges: Vec<(String, String)> = graph
@@ -16,7 +16,7 @@ fn shape(graph: &LinkGraph) -> (Vec<String>, Vec<(String, String)>) {
 }
 
 /// What a vault build of the same tree publishes, from scratch.
-async fn fresh_shape(root: &str) -> (Vec<String>, Vec<(String, String)>) {
+pub(super) async fn fresh_shape(root: &str) -> (Vec<String>, Vec<(String, String)>) {
     let ctx = ContextManager::new();
     ctx.add(info("ctx-fresh", root, ContextType::Folder))
         .await
