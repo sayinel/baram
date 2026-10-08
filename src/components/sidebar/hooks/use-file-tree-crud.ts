@@ -13,7 +13,6 @@ import {
   isFileExistsError,
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
-import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
@@ -62,7 +61,7 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
             closeTab(tab.id);
         }
         removeFileEntry(path);
-        useLinkStore.getState().invalidate();
+        // §29 #824 the delete command announced the index change (`index:changed`).
       } catch (err) {
         logger.error("[FileTree] Delete failed:", err);
       }
@@ -108,7 +107,7 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
           failed.push(entry.name);
         }
       }
-      useLinkStore.getState().invalidate();
+      // §29 #824 each delete command announced its own index change.
       if (failed.length > 0) {
         await showAlert(`Failed to move to Trash: ${failed.join(", ")}`);
       }

@@ -83,6 +83,13 @@ async function bootstrap(): Promise<void> {
   }
 
   try {
+    // §29 #824 Before anything can write: Rust announces each write's index update
+    // once, and an event no one listens to yet is lost. A failed subscription leaves
+    // the views to refresh on their own next read; it does not stop the app.
+    const { installIndexChanges } = await import("./services/index-changes");
+    await installIndexChanges().catch((e: unknown) =>
+      console.error("[bootstrap] index:changed subscription failed", e),
+    );
     await import("./spaces");
     const { default: App } = await import("./App");
 

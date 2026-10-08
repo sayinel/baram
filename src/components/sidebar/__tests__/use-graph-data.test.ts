@@ -1,6 +1,6 @@
 // §30 Graph 는 저장마다 링크 index 를 다시 만들지 않고, 저장이 고쳐 둔 index 를 읽는다(issue 790).
 // 실제 seam 으로 센다 — useAutoSave(실제 Tiptap 에디터) → writeFile → (Rust) index 반영과
-// `index:changed` → useLinkIndexWatcher 의 invalidate → useGraphData 의 getLinkIndex (#824). Rust 는
+// `index:changed` → services/index-changes 의 invalidate → useGraphData 의 getLinkIndex (#824). Rust 는
 // 가짜다: writeFile 이 "디스크" 의 내용에서 링크를 읽어 index 에 두고 `index:changed` 를 낸다. 그래서
 // 쓰기가 index 를 고치지 않거나 그 이벤트가 invalidate 에 닿지 않으면 graph 에 링크가 나타나지 않는다.
 import type { LinkGraph } from "../../../ipc/types";
@@ -58,7 +58,7 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
 }));
 
 import { useAutoSave } from "../../../hooks/use-auto-save";
-import { useLinkIndexWatcher } from "../../../hooks/use-link-index-watcher";
+import { installIndexChanges } from "../../../services/index-changes";
 import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
@@ -140,9 +140,9 @@ describe("useGraphData — a save does not rebuild the link index", () => {
       handleNodeTap: () => {},
       simRef: { current: null },
     };
+    await installIndexChanges();
     const { result } = renderHook(() => {
       useAutoSave(editor);
-      useLinkIndexWatcher();
       return useGraphData(params);
     });
     await act(async () => {
@@ -166,7 +166,7 @@ describe("useGraphData — a save does not rebuild the link index", () => {
     expect(writeFile).toHaveBeenCalledTimes(20);
     expect(getLinkIndex).toHaveBeenCalledTimes(21);
     // 마지막 저장이 쓴 링크가 graph 에 나타난다 — 위의 0 이 graph 가 멈춰서가 아니다.
-    // 이것을 실패시키는 것: use-link-index-watcher.ts 가 `index:changed` 를 듣지 않는다(저장이 index 를
+    // 이것을 실패시키는 것: services/index-changes.ts 가 `index:changed` 를 듣지 않는다(저장이 index 를
     // 고쳐도 graph 가 다시 읽지 않는다).
     expect(edgesIn(stub.added)).toEqual([`${A}->${B}`]);
     expect(result.current.edgeCount).toBe(1);

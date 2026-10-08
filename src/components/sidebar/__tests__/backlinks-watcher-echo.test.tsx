@@ -35,6 +35,7 @@ vi.mock("../../../ipc/invoke", () => ({
 import type { EditorTab } from "../../../stores/editor/editor";
 
 import { useLinkIndexWatcher } from "../../../hooks/use-link-index-watcher";
+import { installIndexChanges } from "../../../services/index-changes";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
@@ -80,9 +81,10 @@ beforeEach(() => {
 });
 
 describe("Backlinks with the link-index watcher mounted", () => {
-  // 이것을 실패시키는 것: use-link-index-watcher.ts 가 항목 하나인 `index:changed` 에도 `invalidate()` 를
+  // 이것을 실패시키는 것: services/index-changes.ts 가 항목 하나인 `index:changed` 에도 `invalidate()` 를
   // 부른다(메아리가 원인 모를 신호가 되어 저장마다 검색한다).
   it("does not search again for a save of the viewed note or its watcher echo", async () => {
+    await installIndexChanges();
     render(<Backlinks />);
     renderHook(() => useLinkIndexWatcher());
     await settle();
