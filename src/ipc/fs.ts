@@ -1,7 +1,7 @@
 // §3.2 File System IPC commands
 import { invoke } from "@tauri-apps/api/core";
 
-import type { FileEntry } from "./types";
+import type { FileEntry, WriteOutcome } from "./types";
 
 /** §4.3 Sentinel emitted by the Rust `create_file` command when the path is taken. */
 const ALREADY_EXISTS_PREFIX = "ALREADY_EXISTS:";
@@ -225,7 +225,8 @@ export async function listDir(
  *
  * ‼️ Webview-only, and keyed by the path as spelled: `renameFile`, Rust-side writers and a
  * second spelling of the same file all pass it by. Serializing by the file's canonical
- * identity belongs in Rust — #824.
+ * identity belongs in Rust, as per-file write ordering — outside #824, which keeps the
+ * link index fresh but does not order the writes themselves.
  */
 const pendingWrites = new Map<string, Promise<void>>();
 
@@ -321,12 +322,16 @@ export async function writeBinaryFile(
  * Write `path` atomically, after any write to it already queued (#798). Resolves to the
  * written file's mtime — what the watcher reports for this write (issue 795); a tab's
  * own save records it through `asTabSave` (src/utils/editor/tab-save-in-flight.ts).
+ * Every covering link index reflects the write when this resolves (#824): the command
+ * answers `WriteOutcome`, and its `indexFresh` is for Rust's own bookkeeping — an index
+ * it could not update is dropped and rebuilt there, and `index:changed` follows.
  */
 export function writeFile(path: string, content: string): Promise<number> {
   const previous = pendingWrites.get(path) ?? Promise.resolve();
-  const write = previous.then(() =>
-    invoke<number>("write_file", { path, content }),
-  );
+  const write = previous.then(async () => {
+    const outcome = await invoke<WriteOutcome>("write_file", { content, path });
+    return outcome.mtime;
+  });
   const settled = write.then(
     () => undefined,
     () => undefined,

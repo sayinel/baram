@@ -113,6 +113,9 @@ pub(super) enum Mutation {
     Remove { path: PathBuf },
     /// §278 A non-markdown file appeared: a link target only (issue 790).
     Target { path: PathBuf },
+    /// #824 A note that exists but cannot be read: registered, without content — what
+    /// a fresh build makes of it (`LinkIndex::mark_unreadable`).
+    Unreadable { path: PathBuf },
 }
 
 impl Mutation {
@@ -139,9 +142,19 @@ impl Mutation {
         })
     }
 
+    /// A note under `path` that cannot be read — canonicalised outside any lock.
+    pub(super) fn unreadable(path: &str) -> Result<Self, String> {
+        Ok(Self::Unreadable {
+            path: crate::context::manager::resolve_canonical(path)?,
+        })
+    }
+
     fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) {
         let canonical_path = match self {
-            Self::Update { path, .. } | Self::Remove { path } | Self::Target { path } => path,
+            Self::Update { path, .. }
+            | Self::Remove { path }
+            | Self::Target { path }
+            | Self::Unreadable { path } => path,
         };
         let Some(spelled) = root.spell(canonical_path) else {
             return;
@@ -149,9 +162,34 @@ impl Mutation {
         match self {
             Self::Update { content, .. } => index.update_file_from_content(&spelled, content),
             Self::Remove { .. } => index.remove_file(&spelled),
-            Self::Target { .. } => index.register_link_target(&spelled, &root.spelling),
+            // #824 judged by this index's own exclusion, as `Update` is.
+            Self::Target { .. } => index.update_link_target(&spelled),
+            Self::Unreadable { .. } => index.mark_unreadable(&spelled),
         }
     }
+}
+
+/// What `apply_for` did with a mutation (#824).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ApplyOutcome {
+    /// It reached the index published for that registration, or the journal of the
+    /// build reading for it.
+    Applied,
+    /// Nothing is published or building for that registration yet: its first build
+    /// reads the file as it is after this.
+    NoIndex,
+    /// The slot belongs to a newer registration of the same path; the caller resolves
+    /// the covering registrations again.
+    Stale,
+}
+
+/// A test-only pause inside a reconcile unit: `reached` fires when the unit for
+/// `path` has read the file, then the unit waits for `release`.
+#[cfg(test)]
+pub(super) struct PauseAfterRead {
+    pub(super) path: PathBuf,
+    pub(super) reached: Arc<tokio::sync::Notify>,
+    pub(super) release: Arc<tokio::sync::Notify>,
 }
 
 /// Managed state: per-context in-memory link indexes, keyed by the context's
@@ -173,6 +211,33 @@ pub struct LinkIndexState {
     /// generation — and a `builds` entry could only be reclaimed under the
     /// map lock with a strong-count check; neither is worth it at that size.
     pub(super) removals: AtomicU64,
+    /// #824 One reconcile unit at a time per canonical path (`apply_guard`). A
+    /// `std` lock held only to find or create the entry; entries whose last holder is
+    /// gone are dropped on the next lookup.
+    apply_guards: std::sync::Mutex<HashMap<PathBuf, std::sync::Weak<Mutex<()>>>>,
+    #[cfg(test)]
+    pub(super) pause_after_read: std::sync::Mutex<Option<PauseAfterRead>>,
+    /// Publications so far (tests): how many builds a reconciliation ran.
+    #[cfg(test)]
+    pub(crate) published: std::sync::atomic::AtomicUsize,
+    /// Notes a reconcile unit read (tests): one per path, however many indexes cover it.
+    #[cfg(test)]
+    pub(crate) note_reads: std::sync::atomic::AtomicUsize,
+    /// `.baramignore` loads a reconcile batch made (tests): one per registration.
+    #[cfg(test)]
+    pub(crate) exclusion_loads: std::sync::atomic::AtomicUsize,
+    /// Rebuilds a degrade job attempted (tests).
+    #[cfg(test)]
+    pub(crate) rebuild_attempts: std::sync::atomic::AtomicUsize,
+    /// #824 The registration incarnations a background rebuild is already scheduled
+    /// for (`commit::degrade`): one job per incarnation, however many failures ask.
+    /// The background rebuild of each dropped registration incarnation (`commit::degrade`)
+    /// and the failure generation it rebuilds against.
+    rebuild_jobs: std::sync::Mutex<HashMap<(String, u64), u64>>,
+    /// A test-only pause in a rebuild worker, keyed by the registration's path: just
+    /// before it decides whether it is done (`finish_rebuild`).
+    #[cfg(test)]
+    pub(super) pause_before_finish: std::sync::Mutex<Option<PauseAfterRead>>,
 }
 
 impl Default for LinkIndexState {
@@ -187,7 +252,51 @@ impl LinkIndexState {
             slots: Mutex::new(HashMap::new()),
             builds: Mutex::new(HashMap::new()),
             removals: AtomicU64::new(0),
+            apply_guards: std::sync::Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            pause_after_read: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            published: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            note_reads: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            exclusion_loads: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            rebuild_attempts: std::sync::atomic::AtomicUsize::new(0),
+            rebuild_jobs: std::sync::Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            pause_before_finish: std::sync::Mutex::new(None),
         }
+    }
+
+    /// #824 The guard a reconcile unit holds for `canonical` from its stat to its last
+    /// apply (`reconcile::reconcile_path`): units on one path run one at a time, so
+    /// the last to run reads the disk after every commit before it.
+    pub(super) async fn apply_guard(&self, canonical: &Path) -> tokio::sync::OwnedMutexGuard<()> {
+        let lock = {
+            let mut map = self
+                .apply_guards
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            map.retain(|_, held| held.strong_count() > 0);
+            match map.get(canonical).and_then(std::sync::Weak::upgrade) {
+                Some(lock) => lock,
+                None => {
+                    let lock = Arc::new(Mutex::new(()));
+                    map.insert(canonical.to_path_buf(), Arc::downgrade(&lock));
+                    lock
+                }
+            }
+        };
+        lock.lock_owned().await
+    }
+
+    /// How many apply guards are alive (tests).
+    #[cfg(test)]
+    pub(super) fn apply_guards_alive(&self) -> usize {
+        let mut map = self.apply_guards.lock().unwrap();
+        map.retain(|_, held| held.strong_count() > 0);
+        map.len()
     }
 
     /// Hold the map lock (tests only): to park other tasks behind it and pin
@@ -247,6 +356,75 @@ impl LinkIndexState {
         };
         root.spell(canonical_dir)
             .is_some_and(|dir| index.holds_under(&dir))
+    }
+
+    /// #824 Apply `mutations` for registration `incarnation` of `key`. Every outcome
+    /// bumps the epoch, as `apply` does, so a refresh cannot coalesce onto a
+    /// publication older than this write (`published_since`).
+    pub(super) async fn apply_for(
+        &self,
+        key: &str,
+        incarnation: u64,
+        mutations: Vec<Mutation>,
+    ) -> ApplyOutcome {
+        let mut map = self.slots.lock().await;
+        let slot = map.entry(key.to_string()).or_default();
+        slot.epoch += 1;
+        let pending_incarnation = slot.pending.as_ref().map(|p| p.token.incarnation);
+        let newer = slot
+            .incarnation
+            .max(slot.published_incarnation)
+            .max(pending_incarnation.unwrap_or(0));
+        if newer > incarnation {
+            return ApplyOutcome::Stale;
+        }
+        let live = slot.published_incarnation == incarnation;
+        let journaled = pending_incarnation == Some(incarnation);
+        if !live && !journaled {
+            return ApplyOutcome::NoIndex;
+        }
+        let (index, live_root, pending) = (&mut slot.index, &slot.root, &mut slot.pending);
+        if live {
+            if let (Some(index), Some(live_root)) = (index.as_mut(), live_root.as_ref()) {
+                for mutation in &mutations {
+                    mutation.apply_to(index, live_root);
+                }
+            }
+        }
+        if let Some(pending) = pending.as_mut().filter(|_| journaled) {
+            pending.journal.extend(mutations);
+        }
+        ApplyOutcome::Applied
+    }
+
+    /// #824 Whether the index published for `incarnation` under `key` holds
+    /// `canonical_path` itself, as a note or a link target. `false` with no index.
+    pub(super) async fn holds_path(
+        &self,
+        key: &str,
+        incarnation: u64,
+        canonical_path: &Path,
+    ) -> bool {
+        let map = self.slots.lock().await;
+        let Some(slot) = map
+            .get(key)
+            .filter(|s| s.published_incarnation == incarnation)
+        else {
+            return false;
+        };
+        let (Some(index), Some(root)) = (slot.index.as_ref(), slot.root.as_ref()) else {
+            return false;
+        };
+        root.spell(canonical_path)
+            .is_some_and(|path| index.holds_path(&path))
+    }
+
+    /// The live index's spelling of `canonical_path` under `key`, if it has one.
+    pub(super) async fn spelling_of(&self, key: &str, canonical_path: &Path) -> Option<String> {
+        let map = self.slots.lock().await;
+        map.get(key)
+            .and_then(|s| s.root.as_ref())
+            .and_then(|root| root.spell(canonical_path))
     }
 
     /// Apply mutations under `key` while holding the lock; same discipline.
@@ -420,6 +598,8 @@ impl LinkIndexState {
         slot.index = Some(index);
         slot.stats = Some(stats);
         slot.root = Some(pending.root);
+        #[cfg(test)]
+        self.published.fetch_add(1, Ordering::SeqCst);
         Some(replayed)
     }
 
@@ -440,6 +620,77 @@ impl LinkIndexState {
             slot.pending = None;
             slot.epoch += 1;
         }
+    }
+
+    /// #824 `drop_index` for registration `incarnation` of `key` only: an index a newer
+    /// registration of the same path published, or is building, is left alone. Answers
+    /// whether it dropped.
+    pub(super) async fn drop_index_for(&self, key: &str, incarnation: u64) -> bool {
+        let mut map = self.slots.lock().await;
+        let Some(slot) = map.get_mut(key) else {
+            return false;
+        };
+        if slot.incarnation > incarnation || slot.published_incarnation > incarnation {
+            return false;
+        }
+        slot.index = None;
+        slot.stats = None;
+        slot.root = None;
+        slot.published_incarnation = 0;
+        slot.pending = None;
+        slot.epoch += 1;
+        true
+    }
+
+    /// #824 Ask for the background rebuild of `(key, incarnation)` after a failure dropped
+    /// its index. `true`: no worker runs for it and the caller starts one. `false`: the
+    /// running worker's generation moves on, so it rebuilds again before it finishes —
+    /// whatever it published so far may predate this drop.
+    pub(super) fn request_rebuild(&self, key: &str, incarnation: u64) -> bool {
+        let mut jobs = self
+            .rebuild_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match jobs.entry((key.to_string(), incarnation)) {
+            std::collections::hash_map::Entry::Occupied(mut job) => {
+                *job.get_mut() += 1;
+                false
+            }
+            std::collections::hash_map::Entry::Vacant(job) => {
+                job.insert(0);
+                true
+            }
+        }
+    }
+
+    /// The failure generation the worker for `(key, incarnation)` starts a rebuild from.
+    pub(super) fn rebuild_generation(&self, key: &str, incarnation: u64) -> u64 {
+        self.rebuild_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&(key.to_string(), incarnation))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The worker for `(key, incarnation)` ends — its entry removed — when no failure has
+    /// been requested since generation `seen` (`None`: end regardless, the registration
+    /// is gone). `false`: a newer failure landed, and the worker must go round again.
+    /// One lock: a failure either lands before this and is seen, or after it and starts
+    /// a worker of its own.
+    pub(super) fn finish_rebuild(&self, key: &str, incarnation: u64, seen: Option<u64>) -> bool {
+        let mut jobs = self
+            .rebuild_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let at = (key.to_string(), incarnation);
+        if let (Some(seen), Some(&now)) = (seen, jobs.get(&at)) {
+            if now != seen {
+                return false;
+            }
+        }
+        jobs.remove(&at);
+        true
     }
 
     /// The root spelling the live index under `key` was built from, if any.

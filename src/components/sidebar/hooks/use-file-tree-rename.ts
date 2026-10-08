@@ -12,7 +12,6 @@ import {
   renameNamespace,
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
-import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useUIStore } from "../../../stores/ui/ui";
@@ -136,7 +135,7 @@ export function useFileTreeRename(
             }
           }
         }
-        useLinkStore.getState().invalidate();
+        // §29 #824 the rename command announced the index change (`index:changed`).
       } catch (err) {
         logger.error(
           "[FileTree] Rename committed, local state update failed:",

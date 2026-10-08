@@ -34,13 +34,13 @@
         "path": "string",
         "content": "string"
       },
-      "output": "number (mtime ms)",
+      "output": "WriteOutcome { mtime: number (ms), indexFresh: boolean }",
       "module": "fs",
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "description": "파일 쓰기 (원자적 쓰기). 쓴 파일의 mtime 을 돌려준다 — 워처가 그 쓰기에 보고할 값 (issue 795)"
+      "description": "파일 쓰기 (원자적 쓰기). 쓴 파일의 mtime 을 돌려준다 — 워처가 그 쓰기에 보고할 값 (issue 795). 돌아오기 전에 그 파일을 담는 모든 링크 인덱스가 반영하고 index:changed 를 한 번 낸다; 반영하지 못한 인덱스는 내리고 다시 만든다(indexFresh false). 쓰기가 끝났으면 그 뒤의 실패는 쓰기 실패로 보고하지 않는다 (issue 824)"
     },
     {
       "name": "list_dir",
@@ -229,19 +229,6 @@
       "description": "인덱스 재구축 (전체 디렉토리 스캔)"
     },
     {
-      "name": "update_file_index",
-      "input": {
-        "filePath": "string"
-      },
-      "output": "void",
-      "module": "index",
-      "spec": "§29",
-      "phase": 2,
-      "milestone": "M7",
-      "status": "implemented",
-      "description": "단일 파일 인덱스 갱신 (incremental)"
-    },
-    {
       "name": "sync_watched_paths",
       "input": {
         "paths": "string[]"
@@ -252,7 +239,7 @@
       "phase": 3,
       "milestone": "M7",
       "status": "implemented",
-      "description": "워처가 보고한 경로를 그것을 담는 링크 인덱스에 반영 (노트·링크 대상·디렉터리 판정은 Rust, 재구축은 coalesce 없음). 반영한 파일 수 · 반영하지 못한 경로 · 경로가 가리킨 서로 다른 파일 수(distinct)를 돌려준다 — 한 파일의 여러 표기는 canonical 로 한 번만 반영한다 (issue 790, 797)"
+      "description": "워처가 보고한 경로를 그것을 담는 링크 인덱스에 반영 (노트·링크 대상·디렉터리 판정은 Rust, 재구축은 coalesce 없음). 반영한 파일 수 · 반영하지 못한 경로 · 경로가 가리킨 서로 다른 파일 수(distinct)를 돌려준다 — 한 파일의 여러 표기는 canonical 로 한 번만 반영한다. 파일마다 앱의 쓰기와 같은 guarded unit 으로 읽고 반영하며, 배치마다 index:changed 를 한 번 낸다 (issue 790, 797, 824)"
     },
     {
       "name": "rename_file_with_links",

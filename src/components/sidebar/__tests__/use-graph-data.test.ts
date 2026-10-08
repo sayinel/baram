@@ -1,8 +1,8 @@
 // §30 Graph 는 저장마다 링크 index 를 다시 만들지 않고, 저장이 고쳐 둔 index 를 읽는다(issue 790).
-// 실제 seam 으로 센다 — useAutoSave(실제 Tiptap 에디터) → writeFile → updateFileIndex → invalidate →
-// useGraphData 의 getLinkIndex. index 는 가짜다: updateFileIndex 가 "디스크" 의 내용에서 링크를
-// 읽어 두고, getLinkIndex 가 그것으로 graph 를 짓는다. 그래서 auto-save 가 index 를 고치지 않으면
-// graph 에 링크가 나타나지 않는다.
+// 실제 seam 으로 센다 — useAutoSave(실제 Tiptap 에디터) → writeFile → (Rust) index 반영과
+// `index:changed` → services/index-changes 의 invalidate → useGraphData 의 getLinkIndex (#824). Rust 는
+// 가짜다: writeFile 이 "디스크" 의 내용에서 링크를 읽어 index 에 두고 `index:changed` 를 낸다. 그래서
+// 쓰기가 index 를 고치지 않거나 그 이벤트가 invalidate 에 닿지 않으면 graph 에 링크가 나타나지 않는다.
 import type { LinkGraph } from "../../../ipc/types";
 import type { Core, ElementDefinition } from "cytoscape";
 
@@ -21,12 +21,27 @@ const getLinkIndex = vi.fn(
       nodes: [...indexed.keys()],
     }) as LinkGraph,
 );
-const updateFileIndex = vi.fn(async (path: string) => {
-  const links = [...(disk.get(path) ?? "").matchAll(/\[\[([^\]|]+)/g)];
+const handlers = new Map<string, (e: { payload: unknown }) => void>();
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(
+    async (event: string, handler: (e: { payload: unknown }) => void) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    },
+  ),
+}));
+/** What Rust's `write_file` does to the index before it answers, and the one event. */
+const writeFile = vi.fn(async (path: string, content: string) => {
+  disk.set(path, content);
+  const links = [...content.matchAll(/\[\[([^\]|]+)/g)];
   indexed.set(
     path,
     links.map((m) => m[1]),
   );
+  handlers.get("index:changed")?.({
+    payload: { entries: [{ canonical: path, spellings: [path] }], rebuilt: [] },
+  });
+  return 1;
 });
 vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../ipc/invoke")>()),
@@ -34,13 +49,16 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   getLinkIndex: () => getLinkIndex(),
   refreshIndex: (...a: unknown[]) => refreshIndex(...a),
   setConfig: vi.fn().mockResolvedValue(undefined),
-  updateFileIndex: (path: string) => updateFileIndex(path),
-  writeFile: vi.fn(async (path: string, content: string) => {
-    disk.set(path, content);
-  }),
+  syncWatchedPaths: vi.fn(async () => ({
+    applied: 0,
+    distinct: 0,
+    failed: [],
+  })),
+  writeFile: (path: string, content: string) => writeFile(path, content),
 }));
 
 import { useAutoSave } from "../../../hooks/use-auto-save";
+import { installIndexChanges } from "../../../services/index-changes";
 import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
@@ -86,7 +104,7 @@ beforeEach(() => {
   indexed.set(A, []);
   refreshIndex.mockReset().mockResolvedValue(undefined);
   getLinkIndex.mockClear();
-  updateFileIndex.mockClear();
+  writeFile.mockClear();
   useFileStore.setState({ rootPath: "/v" });
   useContextStore.setState({ contexts: [] });
   useLinkStore.setState({ indexVersion: 0, savedPath: null });
@@ -122,6 +140,7 @@ describe("useGraphData — a save does not rebuild the link index", () => {
       handleNodeTap: () => {},
       simRef: { current: null },
     };
+    await installIndexChanges();
     const { result } = renderHook(() => {
       useAutoSave(editor);
       return useGraphData(params);
@@ -144,11 +163,11 @@ describe("useGraphData — a save does not rebuild the link index", () => {
     // 이것을 실패시키는 것: use-graph-data.ts 단일 vault 분기에 `await refreshIndex(rootPath)` 를
     // 되돌린다.
     expect(refreshIndex).toHaveBeenCalledTimes(0);
-    expect(updateFileIndex).toHaveBeenCalledTimes(20);
+    expect(writeFile).toHaveBeenCalledTimes(20);
     expect(getLinkIndex).toHaveBeenCalledTimes(21);
     // 마지막 저장이 쓴 링크가 graph 에 나타난다 — 위의 0 이 graph 가 멈춰서가 아니다.
-    // 이것을 실패시키는 것: use-auto-save.ts 의 `updateFileIndex(pending.filePath)` 를
-    // `Promise.resolve()` 로 바꾼다(index 가 저장을 모른다).
+    // 이것을 실패시키는 것: services/index-changes.ts 가 `index:changed` 를 듣지 않는다(저장이 index 를
+    // 고쳐도 graph 가 다시 읽지 않는다).
     expect(edgesIn(stub.added)).toEqual([`${A}->${B}`]);
     expect(result.current.edgeCount).toBe(1);
 

@@ -505,6 +505,24 @@ export interface VaultConfig {
 
 export type VaultType = "general" | "journal" | "zettelkasten";
 
+/** §29 #824 What `write_file` answers — see ipc-registry.json. */
+export interface WriteOutcome {
+  /** Whether every covering link index reflects the write. */
+  indexFresh: boolean;
+  /** The written file's mtime, what the watcher reports for this write (#795). */
+  mtime: number;
+}
+
+/**
+ * §29 #824 `index:changed` — the link indexes already reflect these paths. One per
+ * command or watcher batch. `spellings` are the paths as written plus each covering
+ * index's spelling; `rebuilt` names registrations whose whole index was rebuilt.
+ */
+export interface IndexChanged {
+  entries: { canonical: string; spellings: string[] }[];
+  rebuilt: string[];
+}
+
 /** §29 `sync_watched_paths` — see ipc-registry.json. */
 export interface WatchedSync {
   /** Files that reached at least one link index — each spelling of one counted once. */

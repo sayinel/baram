@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../ipc/invoke", () => ({
   confirmQuit: vi.fn().mockResolvedValue(undefined),
-  updateFileIndex: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -75,12 +74,6 @@ beforeEach(() => {
   useLinkStore.setState({ savedPath: null });
 });
 
-/** §34 issue 791 — the file this save named on the indexVersion bump, once the index update resolved. */
-async function namedOnBump(): Promise<null | string> {
-  await new Promise((r) => setTimeout(r, 0));
-  return useLinkStore.getState().savedPath;
-}
-
 // ── saveDirtyTab ─────────────────────────────────────────────────────────────
 
 describe("saveDirtyTab", () => {
@@ -119,8 +112,8 @@ describe("saveDirtyTab", () => {
 
     expect(writeFile).toHaveBeenCalledWith("/vault/bg.md", "# hello");
     expect(ok).toBe(true);
-    // 이것을 실패시키는 것: use-close-guard.ts 의 `invalidate(tab.filePath)` 에서 인자를 뺀다.
-    expect(await namedOnBump()).toBe("/vault/bg.md");
+    // §34 #791 #824 the file is named on the bump by Rust's `index:changed` for this
+    // write (`use-link-index-watcher.test.ts`), not here.
     expect(
       useEditorStore.getState().tabs.find((t) => t.id === "bg")?.isDirty,
     ).toBe(false);
@@ -139,8 +132,6 @@ describe("saveDirtyTab", () => {
     expect(save).toHaveBeenCalledOnce();
     expect(writeFile).toHaveBeenCalledWith("/vault/new.md", "draft body");
     expect(ok).toBe(true);
-    // 이것을 실패시키는 것: use-close-guard.ts 의 `invalidate(savePath)` 에서 인자를 뺀다.
-    expect(await namedOnBump()).toBe("/vault/new.md");
     const updated = useEditorStore
       .getState()
       .tabs.find((t) => t.id === "untitled-1");

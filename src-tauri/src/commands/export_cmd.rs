@@ -4,27 +4,55 @@
 use crate::export::pandoc::{self, PandocAsset, PandocExportOptions};
 use crate::export::pandoc_images::{ImageStaging, PandocImageRequest};
 use crate::export::PdfOptions;
+use crate::index::service::{reconcile_effects, Effect};
 use std::collections::HashMap;
+
+/// §29 #824 An export can land inside a registered vault (the user chose the folder):
+/// whatever it wrote there is in the covering link indexes before the command answers,
+/// on success and on failure alike — an exporter that failed may have written part of
+/// its output. A destination outside every context reconciles to nothing.
+async fn exported<R: tauri::Runtime, T>(
+    app: &tauri::AppHandle<R>,
+    effects: Vec<Effect>,
+    result: Result<T, String>,
+) -> Result<T, String> {
+    reconcile_effects(app, &effects).await;
+    result
+}
 
 #[tauri::command]
 pub async fn export_pdf(
+    app: tauri::AppHandle,
     html_content: String,
     output_path: String,
     options: Option<PdfOptions>,
 ) -> Result<(), String> {
-    crate::export::generate_pdf(&html_content, &output_path, options)
+    let result = crate::export::generate_pdf(&html_content, &output_path, options)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+    exported(&app, vec![Effect::Path(output_path)], result).await
 }
 
 /// 통합 내보내기 커맨드 — format에 따라 PDF 또는 HTML 파일로 저장
 #[tauri::command]
 pub async fn export_document(
+    app: tauri::AppHandle,
     html_content: String,
     output_path: String,
     format: String,
     options: Option<serde_json::Value>,
 ) -> Result<(), String> {
+    let result = export_document_to(html_content, &output_path, format, options).await;
+    exported(&app, vec![Effect::Path(output_path)], result).await
+}
+
+async fn export_document_to(
+    html_content: String,
+    output_path: &str,
+    format: String,
+    options: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let output_path = output_path.to_string();
     match format.as_str() {
         "pdf" => {
             let pdf_options: Option<PdfOptions> = options
@@ -57,6 +85,7 @@ pub async fn detect_pandoc(pandoc_path: Option<String>) -> Result<pandoc::Pandoc
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn export_pandoc(
+    app: tauri::AppHandle,
     markdown_content: String,
     output_path: String,
     format: String,
@@ -111,7 +140,8 @@ pub async fn export_pandoc(
         Some((dir, root))
     };
 
-    tokio::task::spawn_blocking(move || {
+    let output = output_path.clone();
+    let result = tokio::task::spawn_blocking(move || {
         let staging = staging_paths.as_ref().map(|(dir, root)| ImageStaging {
             document_dir: dir,
             root,
@@ -127,18 +157,27 @@ pub async fn export_pandoc(
         )
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
-    .map_err(|e| e.to_string())
+    .map_err(|e| format!("Task join error: {}", e))
+    .and_then(|r| r.map_err(|e| e.to_string()));
+    exported(&app, vec![Effect::Path(output)], result).await
 }
 
 /// §55 커스텀 내보내기 — 사용자 정의 셸 명령 실행
 #[tauri::command]
-pub async fn run_custom_export(
+pub async fn run_custom_export<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     command: String,
     file_path: String,
     output_path: String,
     vault_dir: Option<String>,
 ) -> Result<(), String> {
+    // §29 #824 The command may write anywhere it is allowed to: its output, and inside
+    // the vault it was given. Both are reconciled after it exits, whatever its status —
+    // the vault as a whole, since what it wrote there is not known.
+    let mut effects = vec![Effect::Path(output_path.clone())];
+    if let Some(vault) = &vault_dir {
+        effects.push(Effect::Tree(vault.clone()));
+    }
     let mut vars = HashMap::new();
     vars.insert("file".to_string(), file_path.clone());
 
@@ -162,8 +201,9 @@ pub async fn run_custom_export(
         vars.insert("vault_dir".to_string(), vault);
     }
 
-    tokio::task::spawn_blocking(move || pandoc::run_custom_export(&command, &vars))
+    let result = tokio::task::spawn_blocking(move || pandoc::run_custom_export(&command, &vars))
         .await
-        .map_err(|e| format!("Task join error: {}", e))?
-        .map_err(|e| e.to_string())
+        .map_err(|e| format!("Task join error: {}", e))
+        .and_then(|r| r.map_err(|e| e.to_string()));
+    exported(&app, effects, result).await
 }

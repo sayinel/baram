@@ -9,9 +9,8 @@ import { useEffect, useRef } from "react";
 
 import { useShallow } from "zustand/shallow";
 
-import { updateFileIndex, writeFile } from "../ipc/invoke";
+import { writeFile } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
-import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
@@ -111,13 +110,7 @@ export function useCodeAutoSave({
         }
         // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
         useSnapshotStore.getState().markPendingAutoSnapshot();
-        // Markdown carries links; leaving the index stale after an auto-save is
-        // what `handleSave` already avoids on the manual path.
-        if (sourceMarkdown) {
-          updateFileIndex(path)
-            .then(() => useLinkStore.getState().invalidate(path))
-            .catch(() => {});
-        }
+        // §29 #824 a markdown file is in the link index once `writeFile` resolves.
       } catch {
         // Save failed — keep dirty state
       }

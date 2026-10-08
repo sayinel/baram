@@ -4,10 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use super::build::ensure_indexes;
-use super::keys::{
-    active_registration, buildable, keys_of, local_aliases_of, owning_contexts, owning_registration,
-};
-use super::state::{LinkIndexState, Mutation};
+use super::keys::{active_registration, local_aliases_of, owning_contexts, owning_registration};
+use super::state::LinkIndexState;
 
 /// Whether `file_path` is spelled under `root`: component-wise, so `/x/Vault`
 /// does not claim `/x/Vault-secret/a.md`, a trailing slash on the root does not
@@ -102,9 +100,9 @@ pub(crate) async fn get_link_index_inner(
     // registered without being opened — is built once here, through the same
     // gate the renames use: it joins a build already in flight instead of
     // scanning again, and once published every later read is a pure read.
-    // Writes that are not saves reach the index through `sync_watched_paths`,
-    // a watcher batch later; an index fresh at the moment a rename judges is
-    // #824.
+    // Every app write is in the index before its command returns (#824,
+    // `commit::committed`); a write by another program arrives through
+    // `sync_watched_paths`, a watcher batch later.
     ensure_indexes(state, ctx_mgr, std::slice::from_ref(&registered)).await?;
     Ok(state
         .with_index_for(&registered.info.path, registered.incarnation, |idx| {
@@ -113,43 +111,20 @@ pub(crate) async fn get_link_index_inner(
         .await)
 }
 
+/// Re-index one file from disk (#824): the guarded unit every writer and the watcher
+/// sync use (`reconcile::reconcile_path`), so this cannot land an old read after a
+/// later write. A file no context knows is a no-op.
+#[cfg(test)]
 pub(crate) async fn update_file_index_inner(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
     file_path: &str,
 ) -> Result<(), String> {
-    // A save of a file no context knows is nothing to the index: a no-op, so
-    // the caller's `.then(invalidate)` still runs. Only directory contexts
-    // hold an index; a File context's key would only grow an empty slot.
-    let keys = keys_of(&buildable(&owning_contexts(ctx_mgr, file_path).await));
-    if keys.is_empty() {
-        return Ok(());
-    }
-    // Read outside the lock. With no index yet this only bumps the epoch, so
-    // the initial build that is still reading cannot publish a state older
-    // than this save; it will read again. A file that cannot be read (deleted
-    // between the save and this call, unreadable) leaves the index instead of
-    // being recorded as a file without links; the next save brings it back.
-    // One canonical identity either way; each slot projects it into its own
-    // live and pending root spelling while holding the map lock.
-    let mutation = match tokio::fs::read_to_string(file_path).await {
-        Ok(content) => Mutation::update(file_path, content)?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            log::warn!("§29 update_file_index: {file_path} is gone, removing it from the index");
-            Mutation::remove(file_path)?
-        }
-        Err(e) => {
-            // Present but unreadable right now (permissions, a transient I/O
-            // error, invalid UTF-8): the index keeps what it knew — neither an
-            // empty file nor a removal is the truth — and the next save retries.
-            log::warn!(
-                "§29 update_file_index: {file_path} could not be read, index left unchanged: {e}"
-            );
-            return Ok(());
-        }
-    };
-    for key in &keys {
-        state.apply(key, vec![mutation.clone()]).await;
+    let done = super::reconcile::reconcile_path(state, ctx_mgr, file_path).await;
+    if done.failed {
+        return Err(format!(
+            "{file_path} could not be brought into the link index"
+        ));
     }
     Ok(())
 }

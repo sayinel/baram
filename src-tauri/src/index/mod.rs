@@ -537,6 +537,50 @@ impl LinkIndex {
         &self.exclusion
     }
 
+    /// #824 A note that exists but cannot be read right now (permissions, invalid UTF-8):
+    /// what a fresh build makes of it — `build` registers every walked note and link
+    /// target before reading and skips the content it cannot read — so its path still
+    /// resolves as a link target while its own links, tags and block ids are gone.
+    pub(crate) fn mark_unreadable(&mut self, file_path: &str) {
+        self.remove_file(file_path);
+        if self
+            .exclusion
+            .walk_skips(std::path::Path::new(file_path), false)
+        {
+            return;
+        }
+        if let Some(root) = self.root_path.clone() {
+            self.register_file_path(file_path, &root);
+            self.register_link_target(file_path, &root);
+        }
+    }
+
+    /// §278 #824 A non-markdown file as a link target, judged by this index's own
+    /// exclusion: one its build would not walk is taken out instead (#794).
+    pub(crate) fn update_link_target(&mut self, file_path: &str) {
+        let excluded = self
+            .exclusion
+            .walk_skips(std::path::Path::new(file_path), false);
+        match self.root_path.clone() {
+            Some(_) if excluded => self.remove_file(file_path),
+            Some(root) => self.register_link_target(file_path, &root),
+            None => {}
+        }
+    }
+
+    /// #824 Whether this index holds `file_path` itself — as a note or as a link target.
+    /// By the keys a registration files it under (as `remove_file` reads them), not by a
+    /// scan of the maps.
+    pub(crate) fn holds_path(&self, file_path: &str) -> bool {
+        let named =
+            |paths: Option<&Vec<String>>| paths.is_some_and(|p| p.iter().any(|p| p == file_path));
+        self.outgoing.contains_key(file_path)
+            || named(self.file_map.get(&normalize_file_path(file_path)))
+            || resolve::target_keys(file_path, self.root_path.as_deref())
+                .iter()
+                .any(|key| named(self.name_map.get(key)))
+    }
+
     /// Update index for a single file using already-read content (sync, no I/O)
     pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
         self.remove_file(file_path);

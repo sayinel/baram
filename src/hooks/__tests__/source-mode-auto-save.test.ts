@@ -11,7 +11,6 @@ const writeFile = vi.fn(async (_path: string, _content: string) => {});
 
 vi.mock("../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../ipc/invoke")>()),
-  updateFileIndex: vi.fn(async () => undefined),
   writeFile: (path: string, content: string) => writeFile(path, content),
 }));
 
@@ -73,9 +72,6 @@ describe("auto-save for markdown edited in source mode", () => {
 
     expect(writeFile).toHaveBeenCalledWith(PATH, BUFFER);
     expect(useEditorStore.getState().sourceEditedTabs).toEqual([]);
-    // §34 issue 791 — the save names its file on the indexVersion bump.
-    // 이것을 실패시키는 것: use-code-auto-save.ts 의 `invalidate(tab.filePath!)` 에서 인자를 뺀다.
-    expect(useLinkStore.getState().savedPath).toBe(PATH);
     h.unmount();
   });
 

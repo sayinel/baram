@@ -20,7 +20,10 @@ const writes: Array<(mtime: number) => void> = [];
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async (cmd: string) => {
     if (cmd === "write_file") {
-      return new Promise<number>((resolve) => writes.push(resolve));
+      // #824 `write_file` answers a `WriteOutcome`; the test settles it with the mtime.
+      return new Promise((resolve) =>
+        writes.push((mtime) => resolve({ indexFresh: true, mtime })),
+      );
     }
     return undefined;
   }),

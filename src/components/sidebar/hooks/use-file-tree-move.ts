@@ -3,7 +3,6 @@ import { useCallback } from "react";
 
 import { renameFile } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
-import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
 import { findEntryByPath } from "../../../stores/file/file-tree-ops";
 import { showAlert } from "../../../utils/confirm-dialog";
@@ -59,7 +58,7 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
           failed.push(from.split("/").pop() ?? from);
         }
       }
-      useLinkStore.getState().invalidate();
+      // §29 #824 each `rename_file` announced its own index change.
       if (failed.length > 0) {
         await showAlert(`Failed to move: ${failed.join(", ")}`);
       }

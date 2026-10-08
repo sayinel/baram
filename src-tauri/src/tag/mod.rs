@@ -336,10 +336,22 @@ fn rename_in_list(list: &str, old: &str, new: &str) -> (String, usize) {
 ///   - Frontmatter tags: block list `tags:\n  - tag1`
 ///
 /// Prefix rename: renaming `project` also renames `project/baram` → `new/baram`.
+#[cfg(test)]
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
     new_tag: &str,
+) -> Result<RenameTagResult, TagError> {
+    rename_tag_declaring(root_path, old_tag, new_tag, &|_| {}).await
+}
+
+/// `rename_tag`, telling `declare` each note it is about to write — before writing it —
+/// so the link index can be reconciled with every note it changed (#824).
+pub async fn rename_tag_declaring(
+    root_path: &str,
+    old_tag: &str,
+    new_tag: &str,
+    declare: &(dyn Fn(&str) + Send + Sync),
 ) -> Result<RenameTagResult, TagError> {
     let root = PathBuf::from(root_path);
     if !root.exists() {
@@ -398,6 +410,7 @@ pub async fn rename_tag(
         let new_content = after_fm_block.into_owned();
 
         if new_content != content {
+            declare(&file_path.to_string_lossy());
             if let Err(e) = crate::fs::write_file(&file_path.to_string_lossy(), &new_content).await
             {
                 log::warn!(

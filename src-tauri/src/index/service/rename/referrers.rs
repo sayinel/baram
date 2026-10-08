@@ -1,4 +1,12 @@
 //! The referrer rewrite the renames share — see rename/mod.rs.
+//!
+//! What a rename can promise (#824): it fixes every referrer the index knows when it
+//! judges, and every app write that returned before the rename started is in the index
+//! by then (`commit::committed`). A file another program writes at the same time, or one
+//! whose watcher event has not reached `sync_watched_paths` yet, can be missed. When the
+//! rewrite finds a named referrer whose lines no longer say what the index read (the
+//! "index was stale" branch below), that file goes to `skipped_files`; one the index
+//! never named is not seen at all.
 
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;

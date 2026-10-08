@@ -159,7 +159,6 @@ fn main() {
         "update_context_alias",
         "update_context_color",
         "update_context_label",
-        "update_file_index",
         "update_menu_enabled",
         "update_menu_locale",
         "update_recent_menu",

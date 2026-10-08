@@ -7,31 +7,28 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { FileCreatedPayload, FileWriteOrigin } from "../ipc/types";
 
 import { syncWatchedPaths } from "../ipc/invoke";
-import { useEditorStore } from "../stores/editor/editor";
-import { useLinkStore } from "../stores/editor/link";
 import { logger } from "../utils/logger";
 
 /** 같은 쓰기가 올리는 이벤트 여럿(FSEvents)과 git checkout 같은 일괄 변경을 한 번에 받는다. */
 const FLUSH_DELAY_MS = 300;
 
 /**
- * 워처가 보고한 경로를 `sync_watched_paths` 로 링크 index 에 반영하고 `indexVersion` 을 올린다.
+ * 워처가 보고한 경로를 `sync_watched_paths` 로 링크 index 에 반영한다. 반영된 것은 Rust 가
+ * `index:changed` 로 알린다.
  *
  * Graph 는 저장마다 index 를 통째로 다시 만들어서 다른 쓰기도 다음 저장에 따라왔다(issue 790).
- * 이제 Graph 는 index 를 읽기만 하므로 그 일을 여기서 한다. 앱 자신의 쓰기도 넘긴다 — 저장은
- * 스스로 `updateFileIndex` 를 부르지만 Quick Capture · 전역 검색 바꾸기 · journal 처럼 부르지 않는
- * 쓰기가 있다. 경로가 무엇인지(노트 · 링크 대상 · 디렉터리 · 빌드가 걷지 않는 경로)는 Rust 가
- * 판정한다.
+ * 이제 Graph 는 index 를 읽기만 한다. 앱 자신의 쓰기는 그 명령이 돌아오기 전에 Rust 가 index 에
+ * 넣고(#824) `index:changed` 를 한 번 낸다. 여기서 넘기는 것은 다른 프로그램의 쓰기다. 경로가
+ * 무엇인지(노트 · 링크 대상 · 디렉터리 · 빌드가 걷지 않는 경로)는 Rust 가 판정한다.
  *
  * - flush 는 하나씩 돈다 — 다음 flush 는 앞의 것이 끝난 뒤에 시작한다.
- * - 파일 하나만 담긴 flush 는 `invalidate(path)` 로 그 경로를 알린다 — 보고 있는 노트의 저장
- *   메아리가 Backlinks 의 mention 검색을 다시 부르지 않게(#791). 한 파일의 여러 표기(#797)도
- *   파일 하나다 — Rust 가 canonical 로 센 `distinct` 로 판정하고, 활성 탭의 표기로 알린다.
- *   그 밖에는 `invalidate()`.
+ * - `indexVersion` 은 `index:changed` 에서만 오른다 — 명령 하나, flush 하나마다 한 번. 그
+ *   리스너는 여기가 아니라 `services/index-changes.ts` 이고, 앱이 그리기 전에 `main.tsx` 가
+ *   건다(쓰기가 돌기 시작한 뒤 걸면 그 사이의 이벤트를 잃는다).
  * - 반영하지 못한 경로는 다음 flush 에서 한 번만 다시 시도하고, 또 실패하면 버린다.
  *
- * 남는 것: 쓰기는 이벤트가 여기를 거쳐 Rust 에 닿은 뒤에야(약 300 ms) index 에 들어간다 — 그
- * 사이에 rename 이 판정하면 그 쓰기를 모른다. #824 가 이 보장을 Rust 로 옮긴다.
+ * 남는 것: 다른 프로그램의 쓰기는 이벤트가 여기를 거쳐 Rust 에 닿은 뒤에야(약 300 ms) index 에
+ * 들어간다. Rust 쪽 applier 가 #824 의 다음 단계다.
  */
 export function useLinkIndexWatcher(): void {
   useEffect(() => {
@@ -47,13 +44,8 @@ export function useLinkIndexWatcher(): void {
       pending.clear();
       if (paths.length === 0) return;
       let failed: string[];
-      let applied = 0;
-      let distinct = paths.length;
       try {
-        const result = await syncWatchedPaths(paths);
-        failed = result.failed;
-        applied = result.applied;
-        distinct = result.distinct;
+        failed = (await syncWatchedPaths(paths)).failed;
       } catch (err) {
         logger.error("§29 useLinkIndexWatcher: sync failed", err);
         failed = paths;
@@ -68,22 +60,9 @@ export function useLinkIndexWatcher(): void {
           schedule(p);
         }
       }
-      if (applied === 0) return;
-      if (distinct === 1)
-        useLinkStore.getState().invalidate(spellingShown(paths));
-      else useLinkStore.getState().invalidate();
+      // #824 What reached the index is announced by Rust (`index:changed`,
+      // services/index-changes.ts).
     };
-
-    /**
-     * One file reported in several spellings (#797: once per spelling the watch leases
-     * registered) is still one file's flush — named in the spelling the active tab
-     * uses, which is what Backlinks compares with.
-     */
-    function spellingShown(paths: string[]): string {
-      const { activeTabId, tabs } = useEditorStore.getState();
-      const active = tabs.find((t) => t.id === activeTabId)?.filePath;
-      return paths.find((p) => p === active) ?? paths[0];
-    }
 
     function schedule(path: string): void {
       pending.add(path);

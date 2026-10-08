@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { NodeViewProps } from "@tiptap/react";
 
-import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
+import { readFile, writeFile } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { findBlockContent, findBlockPosById } from "../utils/editor/block-nav";
@@ -178,7 +178,6 @@ export function useEmbedSync({
 
         await writeFile(resolved.path, replaced);
         useFileStore.getState().setFileContent(resolved.path, replaced);
-        updateFileIndex(resolved.path).catch(() => {});
       }
     },
     [target, blockId, editor],

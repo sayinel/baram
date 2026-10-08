@@ -20,3 +20,7 @@ pub mod task_cmd;
 pub mod theme_cmd;
 pub mod thumbnail_cmd;
 pub mod watch_cmd;
+
+#[cfg(test)]
+#[path = "index_freshness_inventory_tests.rs"]
+mod index_freshness_inventory_tests;

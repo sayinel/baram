@@ -14,9 +14,8 @@ import type { EditorView } from "@tiptap/pm/view";
 import { PluginKey } from "@tiptap/pm/state";
 
 import { type Locale, t } from "../../i18n";
-import { readFile, renameBlockId, updateFileIndex } from "../../ipc/invoke";
+import { readFile, renameBlockId } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
@@ -291,16 +290,13 @@ export function commitBlockIdEdit(
               // file may have been deleted
             }
           }
-          updateFileIndex(updatedPath).catch(() => {});
         }
         if (heldBack > 0) {
           toast("blockId.rename.referrersUnsaved.toast", "warning", {
             count: String(heldBack),
           });
         }
-        if (result.updatedFiles.length > 0) {
-          useLinkStore.getState().invalidate();
-        }
+        // §29 #824 `rename_block_id` announced the rewritten files (`index:changed`).
       } catch (e) {
         // The backend already rewrote the references; only the local cache
         // refresh failed. Log it — this body owns its own errors because
