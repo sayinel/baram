@@ -492,7 +492,7 @@ async fn a_failure_of_an_old_registration_leaves_the_newer_ones_index_alone() {
 
 #[tokio::test]
 async fn failures_of_one_registration_share_one_rebuild_job() {
-    // 이것을 실패시키는 것: `claim_rebuild` 를 보지 않고 실패마다 rebuild 를 띄운다.
+    // 이것을 실패시키는 것: `request_rebuild` 를 보지 않고 실패마다 rebuild 를 띄운다.
     let app = app();
     let (_dir, root) = vault(&app).await;
     let state = app.state::<LinkIndexState>();
@@ -581,4 +581,104 @@ async fn a_rebuild_job_stops_once_its_registration_is_gone() {
     degrade(app.handle(), &root2, at2).await;
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     assert_eq!(state.rebuild_attempts.load(Ordering::SeqCst), 1);
+}
+
+/// Pause the rebuild worker of `root` just before it decides whether it is done.
+fn pause_worker(app: &App, root: &str) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+    let reached = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    *app.state::<LinkIndexState>()
+        .pause_before_finish
+        .lock()
+        .unwrap() = Some(crate::index::service::state::PauseAfterRead {
+        path: root.into(),
+        reached: Arc::clone(&reached),
+        release: Arc::clone(&release),
+    });
+    (reached, release)
+}
+
+/// Wait up to `secs` for an announcement and a published index under `root`.
+async fn settle(
+    app: &App,
+    root: &str,
+    at: u64,
+    seen: &Arc<Mutex<Vec<serde_json::Value>>>,
+    secs: u64,
+) {
+    let state = app.state::<LinkIndexState>();
+    for _ in 0..secs * 100 {
+        if !seen.lock().unwrap().is_empty() && state.with_index_for(root, at, |i| i.is_some()).await
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+#[tokio::test]
+async fn a_failure_between_a_rebuild_s_publish_and_its_end_is_rebuilt_too() {
+    // The worker has published; a second failure drops that index before the worker
+    // ends. It must not end — and announce — over the dropped index.
+    // 이것을 실패시키는 것: `finish_rebuild` 가 `seen` 을 보지 않고 끝낸다(불리언 claim 으로 되돌린다) —
+    // 두 번째 실패는 일하는 worker 를 보고 돌아서고, worker 는 내려간 index 위에서 알린다.
+    let app = app();
+    let (_dir, root) = vault(&app).await;
+    let state = app.state::<LinkIndexState>();
+    let at = app
+        .state::<ContextManager>()
+        .registration("v")
+        .await
+        .unwrap()
+        .1;
+    let seen = changes(&app);
+    let (reached, release) = pause_worker(&app, &root);
+    degrade(app.handle(), &root, at).await;
+    tokio::time::timeout(std::time::Duration::from_secs(5), reached.notified())
+        .await
+        .unwrap();
+    assert!(state.with_index_for(&root, at, |i| i.is_some()).await);
+    degrade(app.handle(), &root, at).await;
+    assert!(!state.with_index_for(&root, at, |i| i.is_some()).await);
+    let published = state.published.load(Ordering::SeqCst);
+    release.notify_one();
+    settle(&app, &root, at, &seen, 5).await;
+    assert!(state.with_index_for(&root, at, |i| i.is_some()).await);
+    assert_eq!(state.published.load(Ordering::SeqCst), published + 1);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0]["rebuilt"], serde_json::json!([root]));
+}
+
+#[tokio::test]
+async fn a_failure_while_a_worker_gives_up_keeps_a_worker() {
+    // Every attempt fails (an unusable `.baramignore`); a new failure lands just as the
+    // worker would give up, and the file is fixed. The worker goes round again.
+    // 이것을 실패시키는 것: 시도를 다 쓴 worker 가 generation 을 보지 않고 끝낸다(`finish_rebuild(.., None)`).
+    let app = app();
+    let (dir, root) = vault(&app).await;
+    let state = app.state::<LinkIndexState>();
+    let at = app
+        .state::<ContextManager>()
+        .registration("v")
+        .await
+        .unwrap()
+        .1;
+    let ignore = dir.path().join(crate::fs::BARAMIGNORE);
+    std::fs::write(&ignore, "{unclosed\n").unwrap();
+    let seen = changes(&app);
+    let (reached, release) = pause_worker(&app, &root);
+    degrade(app.handle(), &root, at).await;
+    tokio::time::timeout(std::time::Duration::from_secs(10), reached.notified())
+        .await
+        .unwrap();
+    // Not vacuous: the worker paused after spending its attempts, not after a publish.
+    assert_eq!(state.rebuild_attempts.load(Ordering::SeqCst), 3);
+    assert!(!state.with_index_for(&root, at, |i| i.is_some()).await);
+    degrade(app.handle(), &root, at).await;
+    std::fs::write(&ignore, "drafts/\n").unwrap();
+    release.notify_one();
+    settle(&app, &root, at, &seen, 5).await;
+    assert!(state.with_index_for(&root, at, |i| i.is_some()).await);
+    assert_eq!(seen.lock().unwrap().len(), 1);
 }

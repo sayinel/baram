@@ -231,7 +231,13 @@ pub struct LinkIndexState {
     pub(crate) rebuild_attempts: std::sync::atomic::AtomicUsize,
     /// #824 The registration incarnations a background rebuild is already scheduled
     /// for (`commit::degrade`): one job per incarnation, however many failures ask.
-    rebuild_jobs: std::sync::Mutex<std::collections::HashSet<(String, u64)>>,
+    /// The background rebuild of each dropped registration incarnation (`commit::degrade`)
+    /// and the failure generation it rebuilds against.
+    rebuild_jobs: std::sync::Mutex<HashMap<(String, u64), u64>>,
+    /// A test-only pause in a rebuild worker, keyed by the registration's path: just
+    /// before it decides whether it is done (`finish_rebuild`).
+    #[cfg(test)]
+    pub(super) pause_before_finish: std::sync::Mutex<Option<PauseAfterRead>>,
 }
 
 impl Default for LinkIndexState {
@@ -257,7 +263,9 @@ impl LinkIndexState {
             exclusion_loads: std::sync::atomic::AtomicUsize::new(0),
             #[cfg(test)]
             rebuild_attempts: std::sync::atomic::AtomicUsize::new(0),
-            rebuild_jobs: std::sync::Mutex::new(std::collections::HashSet::new()),
+            rebuild_jobs: std::sync::Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            pause_before_finish: std::sync::Mutex::new(None),
         }
     }
 
@@ -634,20 +642,55 @@ impl LinkIndexState {
         true
     }
 
-    /// Claim the background rebuild of `(key, incarnation)`; `false` when one is already
-    /// scheduled.
-    pub(super) fn claim_rebuild(&self, key: &str, incarnation: u64) -> bool {
-        self.rebuild_jobs
+    /// #824 Ask for the background rebuild of `(key, incarnation)` after a failure dropped
+    /// its index. `true`: no worker runs for it and the caller starts one. `false`: the
+    /// running worker's generation moves on, so it rebuilds again before it finishes —
+    /// whatever it published so far may predate this drop.
+    pub(super) fn request_rebuild(&self, key: &str, incarnation: u64) -> bool {
+        let mut jobs = self
+            .rebuild_jobs
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert((key.to_string(), incarnation))
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match jobs.entry((key.to_string(), incarnation)) {
+            std::collections::hash_map::Entry::Occupied(mut job) => {
+                *job.get_mut() += 1;
+                false
+            }
+            std::collections::hash_map::Entry::Vacant(job) => {
+                job.insert(0);
+                true
+            }
+        }
     }
 
-    pub(super) fn release_rebuild(&self, key: &str, incarnation: u64) {
+    /// The failure generation the worker for `(key, incarnation)` starts a rebuild from.
+    pub(super) fn rebuild_generation(&self, key: &str, incarnation: u64) -> u64 {
         self.rebuild_jobs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .remove(&(key.to_string(), incarnation));
+            .get(&(key.to_string(), incarnation))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The worker for `(key, incarnation)` ends — its entry removed — when no failure has
+    /// been requested since generation `seen` (`None`: end regardless, the registration
+    /// is gone). `false`: a newer failure landed, and the worker must go round again.
+    /// One lock: a failure either lands before this and is seen, or after it and starts
+    /// a worker of its own.
+    pub(super) fn finish_rebuild(&self, key: &str, incarnation: u64, seen: Option<u64>) -> bool {
+        let mut jobs = self
+            .rebuild_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let at = (key.to_string(), incarnation);
+        if let (Some(seen), Some(&now)) = (seen, jobs.get(&at)) {
+            if now != seen {
+                return false;
+            }
+        }
+        jobs.remove(&at);
+        true
     }
 
     /// The root spelling the live index under `key` was built from, if any.
