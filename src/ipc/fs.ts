@@ -225,7 +225,8 @@ export async function listDir(
  *
  * ‼️ Webview-only, and keyed by the path as spelled: `renameFile`, Rust-side writers and a
  * second spelling of the same file all pass it by. Serializing by the file's canonical
- * identity belongs in Rust — #824.
+ * identity belongs in Rust, as per-file write ordering — outside #824, which keeps the
+ * link index fresh but does not order the writes themselves.
  */
 const pendingWrites = new Map<string, Promise<void>>();
 
