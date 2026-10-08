@@ -339,6 +339,13 @@ impl ContextManager {
         let Ok(canonical) = resolve_canonical(path) else {
             return Vec::new();
         };
+        self.contexts_holding(&canonical).await
+    }
+
+    /// `contexts_containing` for a path already canonical — compared with the registered
+    /// canonical roots as it is, the filesystem not consulted (#824: a watcher identity
+    /// is never resolved again, so a retargeted alias cannot move it).
+    pub async fn contexts_holding(&self, canonical: &Path) -> Vec<Registered> {
         let map = self.contexts.read().await;
         let mut directories: Vec<&ContextState> = map
             .values()
@@ -360,6 +367,42 @@ impl ContextManager {
                 .collect();
         }
         directories.sort_by_key(|s| std::cmp::Reverse(s.canonical_path.as_os_str().len()));
+        directories
+            .into_iter()
+            .map(ContextState::registered)
+            .collect()
+    }
+
+    /// #824 The directory registrations a path that cannot be resolved may belong to:
+    /// those whose spelled or canonical root is a prefix of the path made absolute and
+    /// normalised lexically (`.` and `..` folded, no link followed). With none, every
+    /// directory registration — the path is somewhere, and an index it may have changed
+    /// must not be trusted.
+    pub async fn lexical_candidates(&self, path: &str) -> Vec<Registered> {
+        let normal = lexical_normal(Path::new(path));
+        let map = self.contexts.read().await;
+        let directories: Vec<&ContextState> = map
+            .values()
+            .filter(|s| {
+                matches!(
+                    s.info.context_type,
+                    ContextType::Vault | ContextType::Folder
+                )
+            })
+            .collect();
+        let holding: Vec<Registered> = directories
+            .iter()
+            .filter(|s| {
+                normal.as_ref().is_some_and(|n| {
+                    n.starts_with(&s.canonical_path)
+                        || lexical_normal(Path::new(&s.info.path)).is_some_and(|r| n.starts_with(r))
+                })
+            })
+            .map(|s| s.registered())
+            .collect();
+        if !holding.is_empty() {
+            return holding;
+        }
         directories
             .into_iter()
             .map(ContextState::registered)
@@ -549,6 +592,30 @@ impl Default for ContextManager {
 
 /// Canonicalize a path, walking up ancestors for paths that do not exist yet
 /// (same logic as `check_vault` in `fs_cmd.rs`).
+/// `path` made absolute against the working directory and normalised without touching
+/// the filesystem: `.` dropped, `..` pops a component. `None` when `..` climbs past the
+/// root or the working directory is unknown.
+fn lexical_normal(path: &Path) -> Option<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(path)
+    };
+    let mut out = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !out.pop() {
+                    return None;
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    Some(out)
+}
+
 pub fn resolve_canonical(path: &str) -> Result<PathBuf, String> {
     match std::fs::canonicalize(path) {
         Ok(p) => Ok(p),

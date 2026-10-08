@@ -250,7 +250,14 @@ async fn apply_for_tells_a_stale_registration_from_one_with_no_index_yet() {
     // No slot, no build: the first build reads the disk afterwards.
     let m = Mutation::update(&a, "see [[c]]".into()).unwrap();
     assert_eq!(
-        state.apply_for(&root, 3, vec![m.clone()]).await,
+        state
+            .apply_for(
+                &root,
+                3,
+                vec![m.clone()],
+                crate::index::service::state::tick()
+            )
+            .await,
         ApplyOutcome::NoIndex
     );
     let requested = state.version(&root).await;
@@ -260,7 +267,14 @@ async fn apply_for_tells_a_stale_registration_from_one_with_no_index_yet() {
         .unwrap();
     // A build reading for incarnation 3 journals it.
     assert_eq!(
-        state.apply_for(&root, 3, vec![m.clone()]).await,
+        state
+            .apply_for(
+                &root,
+                3,
+                vec![m.clone()],
+                crate::index::service::state::tick()
+            )
+            .await,
         ApplyOutcome::Applied
     );
     let mut index = LinkIndex::new();
@@ -284,7 +298,9 @@ async fn apply_for_tells_a_stale_registration_from_one_with_no_index_yet() {
     let before = state.epoch(&root).await;
     let old = Mutation::update(&a, "see [[old]]".into()).unwrap();
     assert_eq!(
-        state.apply_for(&root, 2, vec![old]).await,
+        state
+            .apply_for(&root, 2, vec![old], crate::index::service::state::tick())
+            .await,
         ApplyOutcome::Stale
     );
     assert_eq!(state.epoch(&root).await, before + 1);

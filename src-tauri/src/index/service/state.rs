@@ -58,12 +58,24 @@ pub(super) struct BuildToken {
     incarnation: u64,
 }
 
+/// #824 The clock every observation of the vault is stamped on: a watcher mark, the end
+/// of a reconcile unit's reads, a build's begin. Only the order matters.
+static CLOCK: AtomicU64 = AtomicU64::new(1);
+
+/// A fresh stamp on the clock: later than every stamp taken before it.
+pub(crate) fn tick() -> u64 {
+    CLOCK.fetch_add(1, Ordering::SeqCst)
+}
+
 /// The build currently reading a slot's vault: its exact root and the
 /// mutations that landed since it started, to replay onto its snapshot.
 struct PendingBuild {
     token: BuildToken,
     root: IndexRoot,
     journal: Vec<Mutation>,
+    /// #824 Stamped before the walk reads anything: the build reads the disk as it is
+    /// after every observation stamped earlier.
+    began_at: u64,
 }
 
 /// One context's slot (see the header). A slot can exist without an index — a
@@ -100,6 +112,9 @@ pub(super) struct Slot {
     root: Option<IndexRoot>,
     /// Present only while a build is reading (between begin_build and publish).
     pending: Option<PendingBuild>,
+    /// #824 The live index's incarnation and its build's `began_at`: an observation
+    /// stamped before it is older than what the index read.
+    covered_from: Option<(u64, u64)>,
 }
 
 /// An in-place change to an index — the unit that is applied, journaled and
@@ -119,33 +134,13 @@ pub(super) enum Mutation {
 }
 
 impl Mutation {
-    /// Canonicalises `path` — outside any lock (it touches the filesystem).
+    /// Canonicalises `path` — outside any lock (it touches the filesystem). Production
+    /// mutations are built by the reconcile unit from the identity it is guarded under.
+    #[cfg(test)]
     pub(super) fn update(path: &str, content: String) -> Result<Self, String> {
         Ok(Self::Update {
             path: crate::context::manager::resolve_canonical(path)?,
             content,
-        })
-    }
-
-    /// A file that is gone (or unreadable) under `path` — canonicalised outside
-    /// any lock, on the existing ancestor when the file itself is gone.
-    pub(super) fn remove(path: &str) -> Result<Self, String> {
-        Ok(Self::Remove {
-            path: crate::context::manager::resolve_canonical(path)?,
-        })
-    }
-
-    /// A non-markdown file under `path` — canonicalised outside any lock.
-    pub(super) fn target(path: &str) -> Result<Self, String> {
-        Ok(Self::Target {
-            path: crate::context::manager::resolve_canonical(path)?,
-        })
-    }
-
-    /// A note under `path` that cannot be read — canonicalised outside any lock.
-    pub(super) fn unreadable(path: &str) -> Result<Self, String> {
-        Ok(Self::Unreadable {
-            path: crate::context::manager::resolve_canonical(path)?,
         })
     }
 
@@ -238,6 +233,9 @@ pub struct LinkIndexState {
     /// before it decides whether it is done (`finish_rebuild`).
     #[cfg(test)]
     pub(super) pause_before_finish: std::sync::Mutex<Option<PauseAfterRead>>,
+    /// Paths a reconcile unit's resolver refuses (tests).
+    #[cfg(test)]
+    pub(crate) unresolvable: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 impl Default for LinkIndexState {
@@ -266,6 +264,8 @@ impl LinkIndexState {
             rebuild_jobs: std::sync::Mutex::new(HashMap::new()),
             #[cfg(test)]
             pause_before_finish: std::sync::Mutex::new(None),
+            #[cfg(test)]
+            unresolvable: std::sync::Mutex::new(std::collections::HashSet::new()),
         }
     }
 
@@ -361,11 +361,18 @@ impl LinkIndexState {
     /// #824 Apply `mutations` for registration `incarnation` of `key`. Every outcome
     /// bumps the epoch, as `apply` does, so a refresh cannot coalesce onto a
     /// publication older than this write (`published_since`).
+    ///
+    /// `observed` is the stamp (`tick`) taken after the reads the mutations describe.
+    /// A build that began after it reads a newer disk, so the mutations neither reach
+    /// that build's journal nor the index it published: replayed over its snapshot
+    /// they would put an older state back, and the event for the newer one may already
+    /// be covered by that build (`covered_since`).
     pub(super) async fn apply_for(
         &self,
         key: &str,
         incarnation: u64,
         mutations: Vec<Mutation>,
+        observed: u64,
     ) -> ApplyOutcome {
         let mut map = self.slots.lock().await;
         let slot = map.entry(key.to_string()).or_default();
@@ -383,15 +390,19 @@ impl LinkIndexState {
         if !live && !journaled {
             return ApplyOutcome::NoIndex;
         }
+        let newer_snapshot = slot.covered_from.is_some_and(|(_, began)| began > observed);
         let (index, live_root, pending) = (&mut slot.index, &slot.root, &mut slot.pending);
-        if live {
+        if live && !newer_snapshot {
             if let (Some(index), Some(live_root)) = (index.as_mut(), live_root.as_ref()) {
                 for mutation in &mutations {
                     mutation.apply_to(index, live_root);
                 }
             }
         }
-        if let Some(pending) = pending.as_mut().filter(|_| journaled) {
+        if let Some(pending) = pending
+            .as_mut()
+            .filter(|p| journaled && p.began_at < observed)
+        {
             pending.journal.extend(mutations);
         }
         ApplyOutcome::Applied
@@ -535,6 +546,7 @@ impl LinkIndexState {
             token,
             root,
             journal: Vec::new(),
+            began_at: tick(),
         });
         Ok(token)
     }
@@ -595,6 +607,7 @@ impl LinkIndexState {
         slot.epoch += 1;
         slot.published_at = slot.epoch;
         slot.published_incarnation = token.incarnation;
+        slot.covered_from = Some((token.incarnation, pending.began_at));
         slot.index = Some(index);
         slot.stats = Some(stats);
         slot.root = Some(pending.root);
@@ -614,6 +627,7 @@ impl LinkIndexState {
             slot.stats = None;
             slot.root = None;
             slot.published_incarnation = 0;
+            slot.covered_from = None;
             // A build that is reading right now read the layout this drop
             // invalidates; cancelling its token means `publish` rejects it
             // (the move it did not see is not a journaled mutation).
@@ -637,6 +651,7 @@ impl LinkIndexState {
         slot.stats = None;
         slot.root = None;
         slot.published_incarnation = 0;
+        slot.covered_from = None;
         slot.pending = None;
         slot.epoch += 1;
         true

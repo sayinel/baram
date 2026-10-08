@@ -43,7 +43,7 @@ use crate::fs::{VaultExclusion, BARAMIGNORE};
 
 use super::build::{prepare_index_build, rebuild_and_publish};
 use super::keys::buildable;
-use super::state::{ApplyOutcome, LinkIndexState, Mutation};
+use super::state::{tick, ApplyOutcome, LinkIndexState, Mutation};
 
 /// A registration, as the units name it: its key and the incarnation they resolved.
 pub(crate) type RegistrationAt = (String, u64);
@@ -147,23 +147,69 @@ pub(crate) async fn reconcile_path(
 }
 
 /// `reconcile_path` as one unit of `batch`: its rebuilds wait for `Batch::finish`.
+///
+/// A path that cannot be resolved names no index for sure, so every registration it may
+/// belong to by spelling is dropped (`ContextManager::lexical_candidates`) — all of them
+/// when none matches — rather than any left trusted.
 pub(crate) async fn reconcile_path_in(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
     path: &str,
     batch: &mut Batch,
 ) -> Reconciled {
-    let mut out = Reconciled {
-        spellings: vec![path.to_string()],
-        ..Reconciled::default()
+    let Ok(canonical) = resolve(state, path) else {
+        return Reconciled {
+            spellings: vec![path.to_string()],
+            failed: true,
+            degrade: buildable(&ctx_mgr.lexical_candidates(path).await)
+                .into_iter()
+                .map(|c| (c.info.path, c.incarnation))
+                .collect(),
+            ..Reconciled::default()
+        };
     };
-    let Ok(canonical) = resolve_canonical(path) else {
-        out.failed = true;
-        return out;
+    reconcile_at(
+        state,
+        ctx_mgr,
+        path,
+        canonical,
+        vec![path.to_string()],
+        batch,
+    )
+    .await
+}
+
+#[cfg(not(test))]
+fn resolve(_state: &LinkIndexState, path: &str) -> Result<PathBuf, String> {
+    resolve_canonical(path)
+}
+
+/// Tests make a path unresolvable (`LinkIndexState::unresolvable`).
+#[cfg(test)]
+fn resolve(state: &LinkIndexState, path: &str) -> Result<PathBuf, String> {
+    if state.unresolvable.lock().unwrap().contains(path) {
+        return Err(format!("{path} cannot be resolved"));
+    }
+    resolve_canonical(path)
+}
+
+/// The unit itself: `path` is where it stats and reads, `canonical` the identity it is
+/// guarded and judged under.
+async fn reconcile_at(
+    state: &LinkIndexState,
+    ctx_mgr: &ContextManager,
+    path: &str,
+    canonical: PathBuf,
+    spellings: Vec<String>,
+    batch: &mut Batch,
+) -> Reconciled {
+    let mut out = Reconciled {
+        spellings,
+        ..Reconciled::default()
     };
     out.canonical = canonical.clone();
     let _guard = state.apply_guard(&canonical).await;
-    let contexts = buildable(&ctx_mgr.contexts_containing(path).await);
+    let contexts = buildable(&ctx_mgr.contexts_holding(&canonical).await);
     if contexts.is_empty() {
         return out;
     }
@@ -196,7 +242,7 @@ pub(crate) async fn reconcile_path_in(
             Ok(_) => match &read {
                 Some(point) => clone_point(point),
                 None => {
-                    let point = file_point(state, path).await;
+                    let point = file_point(state, path, &canonical).await;
                     let copy = clone_point(&point);
                     read = Some(point);
                     copy
@@ -209,16 +255,19 @@ pub(crate) async fn reconcile_path_in(
                 {
                     Point::Rebuild
                 } else {
-                    match Mutation::remove(path) {
-                        Ok(m) => Point::Mutation(m),
-                        Err(_) => Point::Failed,
-                    }
+                    Point::Mutation(Mutation::Remove {
+                        path: canonical.clone(),
+                    })
                 }
             }
             Err(_) => Point::Failed,
         };
         points.push((ctx, point));
     }
+    // #824 Every read this unit makes is done: what it applies describes the disk as of
+    // here (`LinkIndexState::apply_for`). Before the test pause, which stands for a unit
+    // that is slow to apply.
+    let observed = tick();
     #[cfg(test)]
     pause_if_asked(state, &canonical).await;
     for (ctx, point) in points {
@@ -231,7 +280,7 @@ pub(crate) async fn reconcile_path_in(
                 // same path that replaced one of them since was registered after that
                 // commit, so its first build reads the disk as this unit did.
                 if state
-                    .apply_for(&ctx.info.path, ctx.incarnation, vec![m])
+                    .apply_for(&ctx.info.path, ctx.incarnation, vec![m], observed)
                     .await
                     == ApplyOutcome::Applied
                 {
@@ -252,7 +301,7 @@ pub(crate) async fn reconcile_path_in(
             Point::Nothing => {}
         }
     }
-    for ctx in buildable(&ctx_mgr.contexts_containing(path).await) {
+    for ctx in buildable(&ctx_mgr.contexts_holding(&canonical).await) {
         if let Some(spelled) = state.spelling_of(&ctx.info.path, &canonical).await {
             if !out.spellings.contains(&spelled) {
                 out.spellings.push(spelled);
@@ -352,12 +401,10 @@ async fn directory_point(
 }
 
 /// A file on disk, read once for every covering index.
-async fn file_point(state: &LinkIndexState, path: &str) -> Point {
+async fn file_point(state: &LinkIndexState, path: &str, canonical: &Path) -> Point {
+    let path_of = || canonical.to_path_buf();
     if !is_note(path) {
-        return match Mutation::target(path) {
-            Ok(m) => Point::Mutation(m),
-            Err(_) => Point::Failed,
-        };
+        return Point::Mutation(Mutation::Target { path: path_of() });
     }
     #[cfg(test)]
     state
@@ -366,25 +413,20 @@ async fn file_point(state: &LinkIndexState, path: &str) -> Point {
     #[cfg(not(test))]
     let _ = state;
     match tokio::fs::read_to_string(path).await {
-        Ok(content) => match Mutation::update(path, content) {
-            Ok(m) => Point::Mutation(m),
-            Err(_) => Point::Failed,
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => match Mutation::remove(path) {
-            Ok(m) => Point::Mutation(m),
-            Err(_) => Point::Failed,
-        },
+        Ok(content) => Point::Mutation(Mutation::Update {
+            path: path_of(),
+            content,
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Point::Mutation(Mutation::Remove { path: path_of() })
+        }
         // Permissions, invalid UTF-8 — or the entry changed shape since the stat.
         Err(_) => match tokio::fs::metadata(path).await {
             Ok(meta) if meta.is_dir() => Point::Rebuild,
-            Ok(_) => match Mutation::unreadable(path) {
-                Ok(m) => Point::Mutation(m),
-                Err(_) => Point::Failed,
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => match Mutation::remove(path) {
-                Ok(m) => Point::Mutation(m),
-                Err(_) => Point::Failed,
-            },
+            Ok(_) => Point::Mutation(Mutation::Unreadable { path: path_of() }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Point::Mutation(Mutation::Remove { path: path_of() })
+            }
             Err(_) => Point::Failed,
         },
     }
