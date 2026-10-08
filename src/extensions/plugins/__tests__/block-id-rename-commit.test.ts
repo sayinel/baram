@@ -217,7 +217,10 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     expect(focus).toHaveBeenCalledTimes(1);
     expect(showToast).not.toHaveBeenCalled();
     expect(setFileContent).toHaveBeenCalledWith("/vault/other.md", "reloaded");
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    // §29 `rename_block_id` announces the files it rewrote (`index:changed`);
+    // the caller's own bump would be a second one for the same rename.
+    // 이것을 실패시키는 것: block-id-widgets 에 `useLinkStore.getState().invalidate()` 를 되돌린다
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it("finds the block by its ID, not by where the edit started", async () => {
@@ -492,18 +495,23 @@ describe("commitBlockIdEdit — edits no other file can see apply at once", () =
 
 describe("commitBlockIdEdit — the toast belongs to the IPC rejection only (issue 263)", () => {
   it("stays silent and only logs when the local cache refresh throws", async () => {
-    // `invalidate` is the last statement of the success body and sits outside
-    // the pre-existing inner try, so it is what a local throw looks like from
-    // the handler's point of view. The backend has already rewritten the
-    // references by then — a failure toast here would be a lie.
+    // The open-files lookup sits outside the inner `readFile` try, so it is
+    // what a local throw looks like from the handler's point of view. The
+    // backend has already rewritten the references by then — a failure toast
+    // here would be a lie.
+    // 이것을 실패시키는 것: commitBlockIdEdit 의 바깥 try/catch 를 없앤다
     const errors = vi.spyOn(logger, "error").mockImplementation(() => {});
     vi.mocked(renameBlockId).mockResolvedValue({
       skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
-    invalidate.mockImplementation(() => {
-      throw new Error("boom");
-    });
+    useFileStore.setState({
+      openFiles: {
+        has: () => {
+          throw new Error("boom");
+        },
+      },
+    } as never);
 
     commitBlockIdEdit(makeView().view, 0, "fresh");
     await flush();
@@ -535,7 +543,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only (iss
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it("CONTROL: a clean rename refreshes the cache and toasts nothing", async () => {
+  it("CONTROL: a clean rename reloads the referrer and toasts nothing", async () => {
     vi.mocked(renameBlockId).mockResolvedValue({
       skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
@@ -545,7 +553,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only (iss
     await flush();
 
     expect(setFileContent).toHaveBeenCalledWith("/vault/other.md", "reloaded");
-    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).not.toHaveBeenCalled();
     expect(showToast).not.toHaveBeenCalled();
   });
 });
