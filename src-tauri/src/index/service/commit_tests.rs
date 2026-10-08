@@ -393,7 +393,7 @@ async fn a_dropped_registration_does_not_hide_what_its_sibling_rebuilt() {
             spellings: vec!["/v/sub/x".into()],
             reached: true,
             rebuilt: vec!["/v/sub".into()],
-            degrade: vec!["/v".into()],
+            degrade: vec![("/v".into(), 1)],
             ..Reconciled::default()
         }],
     );
@@ -401,4 +401,184 @@ async fn a_dropped_registration_does_not_hide_what_its_sibling_rebuilt() {
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0]["rebuilt"], serde_json::json!(["/v/sub"]));
     assert_eq!(seen[0]["entries"], serde_json::json!([]));
+}
+
+/// A vault `outer` holding the nested vault `outer/sub`, both registered and built.
+async fn nested(app: &App) -> (tempfile::TempDir, String, String) {
+    let dir = tempfile::tempdir().unwrap();
+    let v = dir.path().to_str().unwrap().to_string();
+    std::fs::create_dir(dir.path().join("sub")).unwrap();
+    std::fs::write(dir.path().join("sub/t.md"), "target").unwrap();
+    std::fs::write(dir.path().join("sub/n.md"), "see [[t]]").unwrap();
+    let sub = format!("{v}/sub");
+    let ctx = app.state::<ContextManager>();
+    for (id, path) in [("outer", &v), ("inner", &sub)] {
+        ctx.add(ContextInfo {
+            id: id.into(),
+            context_type: ContextType::Folder,
+            path: path.clone(),
+            label: id.into(),
+            color: "#fff".into(),
+            alias: None,
+            vault_type: None,
+            added_at: 0,
+        })
+        .await
+        .unwrap();
+        refresh_index_inner(&app.state::<LinkIndexState>(), &ctx, path)
+            .await
+            .unwrap();
+    }
+    (dir, v, sub)
+}
+
+#[tokio::test]
+async fn a_write_its_index_cannot_judge_drops_that_index_and_only_that_one() {
+    // The outer root's `.baramignore` became unusable; a save of `sub/n.md` cannot be
+    // judged for it. Its index is dropped rather than left trusted with the old links,
+    // while the nested root, whose own rules are fine, takes the change.
+    // 이것을 실패시키는 것: 판정하지 못한 등록(`Point::Failed`)을 `degrade` 에 올리지 않는다.
+    let app = app();
+    let (dir, v, sub) = nested(&app).await;
+    std::fs::write(dir.path().join(crate::fs::BARAMIGNORE), "{unclosed\n").unwrap();
+    std::fs::write(dir.path().join("sub/n.md"), "see [[other]]").unwrap();
+    let fresh = reconcile_effects(app.handle(), &[Effect::Path(format!("{sub}/n.md"))]).await;
+    assert!(!fresh);
+    let state = app.state::<LinkIndexState>();
+    let ctx = app.state::<ContextManager>();
+    let outer = ctx.registration("outer").await.unwrap().1;
+    let inner = ctx.registration("inner").await.unwrap().1;
+    assert!(!state.with_index_for(&v, outer, |i| i.is_some()).await);
+    assert!(state.with_index_for(&sub, inner, |i| i.is_some()).await);
+    assert!(
+        edge(
+            &app,
+            &sub,
+            &format!("{sub}/n.md"),
+            &format!("{sub}/other.md")
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn a_failure_of_an_old_registration_leaves_the_newer_ones_index_alone() {
+    // 이것을 실패시키는 것: `drop_index_for` 가 incarnation 을 보지 않고 지운다.
+    let app = app();
+    let (_dir, root) = vault(&app).await;
+    let ctx = app.state::<ContextManager>();
+    let old = ctx.registration("v").await.unwrap().1;
+    // Removed and registered again (#797 lease removal, a re-open), then built.
+    ctx.remove("v").await.unwrap();
+    ctx.add(ContextInfo {
+        id: "v2".into(),
+        context_type: ContextType::Folder,
+        path: root.clone(),
+        label: "v2".into(),
+        color: "#fff".into(),
+        alias: None,
+        vault_type: None,
+        added_at: 0,
+    })
+    .await
+    .unwrap();
+    let state = app.state::<LinkIndexState>();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let new = ctx.registration("v2").await.unwrap().1;
+    assert!(new > old);
+    degrade(app.handle(), &root, old).await;
+    assert!(state.with_index_for(&root, new, |i| i.is_some()).await);
+}
+
+#[tokio::test]
+async fn failures_of_one_registration_share_one_rebuild_job() {
+    // 이것을 실패시키는 것: `claim_rebuild` 를 보지 않고 실패마다 rebuild 를 띄운다.
+    let app = app();
+    let (_dir, root) = vault(&app).await;
+    let state = app.state::<LinkIndexState>();
+    let at = app
+        .state::<ContextManager>()
+        .registration("v")
+        .await
+        .unwrap()
+        .1;
+    let before = state.published.load(Ordering::SeqCst);
+    degrade(app.handle(), &root, at).await;
+    degrade(app.handle(), &root, at).await;
+    for _ in 0..500 {
+        if state.with_index_for(&root, at, |i| i.is_some()).await {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    // Give a second job, if any, the time to publish too.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(state.published.load(Ordering::SeqCst), before + 1);
+}
+
+#[tokio::test]
+async fn a_batch_reads_each_registration_s_rules_once_and_rebuilds_it_once() {
+    // `rename_tag` over three notes: one `.baramignore` load for the vault, not three.
+    // Two folder replacements in one command: one rebuild, not two.
+    // 이것을 실패시키는 것: 등록의 `.baramignore` 를 경로마다 다시 읽는다 — 또는 batch 의 rebuild 를 경로마다 돌린다.
+    let app = app();
+    let (dir, root) = vault(&app).await;
+    for name in ["x.md", "y.md", "z.md"] {
+        std::fs::write(dir.path().join(name), "#old [[b]]").unwrap();
+    }
+    let state = app.state::<LinkIndexState>();
+    let loads = state.exclusion_loads.load(Ordering::SeqCst);
+    crate::commands::tag_cmd::rename_tag(
+        app.handle().clone(),
+        root.clone(),
+        "old".into(),
+        "new".into(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(state.exclusion_loads.load(Ordering::SeqCst), loads + 1);
+
+    for name in ["p", "q"] {
+        std::fs::create_dir(dir.path().join(name)).unwrap();
+        std::fs::write(dir.path().join(format!("{name}/in.md")), "see [[a]]").unwrap();
+    }
+    let before = state.published.load(Ordering::SeqCst);
+    reconcile_effects(
+        app.handle(),
+        &[
+            Effect::Path(format!("{root}/p")),
+            Effect::Path(format!("{root}/q")),
+        ],
+    )
+    .await;
+    assert_eq!(state.published.load(Ordering::SeqCst), before + 1);
+    assert!(
+        edge(
+            &app,
+            &root,
+            &format!("{root}/q/in.md"),
+            &format!("{root}/a.md")
+        )
+        .await
+    );
+}
+
+#[tokio::test]
+async fn a_rebuild_job_stops_once_its_registration_is_gone() {
+    // 이것을 실패시키는 것: degrade 의 rebuild job 이 등록이 아직 그 incarnation 인지 보지 않는다.
+    let app = app();
+    let (_dir, root) = vault(&app).await;
+    let state = app.state::<LinkIndexState>();
+    let ctx = app.state::<ContextManager>();
+    let at = ctx.registration("v").await.unwrap().1;
+    ctx.remove("v").await.unwrap();
+    degrade(app.handle(), &root, at).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(state.rebuild_attempts.load(Ordering::SeqCst), 0);
+    // Not vacuous: a job for a live registration attempts.
+    let (_dir2, root2) = vault(&app).await;
+    let at2 = ctx.registration("v").await.unwrap().1;
+    degrade(app.handle(), &root2, at2).await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(state.rebuild_attempts.load(Ordering::SeqCst), 1);
 }

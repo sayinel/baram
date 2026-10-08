@@ -209,7 +209,8 @@ async fn a_rebuild_that_fails_is_reported_and_its_index_marked_for_dropping() {
     std::fs::write(&ignore, "{unclosed\n").unwrap();
     let done = reconcile_path(&state, &ctx, &ignore.to_string_lossy()).await;
     assert!(done.failed);
-    assert_eq!(done.degrade, vec![root.clone()]);
+    let incarnation = ctx.registration("ctx-x").await.unwrap().1;
+    assert_eq!(done.degrade, vec![(root.clone(), incarnation)]);
     assert!(done.rebuilt.is_empty());
 }
 

@@ -21,7 +21,7 @@ use std::collections::HashSet;
 use crate::context::manager::resolve_canonical;
 use crate::context::ContextManager;
 
-use super::reconcile::{reconcile_path, Reconciled};
+use super::reconcile::{reconcile_path_in, Batch, Reconciled};
 use super::state::LinkIndexState;
 
 /// What a sync did: how many files reached an index, and which paths could not be
@@ -47,6 +47,7 @@ pub(crate) async fn sync_watched_paths_inner(
 ) -> WatchedSync {
     let mut out = WatchedSync::default();
     let mut seen: HashSet<std::path::PathBuf> = HashSet::new();
+    let mut batch = Batch::default();
     for path in paths {
         let Ok(canonical) = resolve_canonical(path) else {
             out.failed.push(path.clone());
@@ -55,14 +56,18 @@ pub(crate) async fn sync_watched_paths_inner(
         if !seen.insert(canonical) {
             continue;
         }
-        let done = reconcile_path(state, ctx_mgr, path).await;
+        out.reconciled
+            .push(reconcile_path_in(state, ctx_mgr, path, &mut batch).await);
+    }
+    // One rebuild per registration for the whole sync, however many paths asked.
+    batch.finish(state, ctx_mgr, &mut out.reconciled).await;
+    for done in &out.reconciled {
         if done.reached {
             out.applied += 1;
         }
         if done.failed {
-            out.failed.push(path.clone());
+            out.failed.extend(done.spellings.first().cloned());
         }
-        out.reconciled.push(done);
     }
     out.failed.sort();
     out.failed.dedup();

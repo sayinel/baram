@@ -223,6 +223,15 @@ pub struct LinkIndexState {
     /// Notes a reconcile unit read (tests): one per path, however many indexes cover it.
     #[cfg(test)]
     pub(crate) note_reads: std::sync::atomic::AtomicUsize,
+    /// `.baramignore` loads a reconcile batch made (tests): one per registration.
+    #[cfg(test)]
+    pub(crate) exclusion_loads: std::sync::atomic::AtomicUsize,
+    /// Rebuilds a degrade job attempted (tests).
+    #[cfg(test)]
+    pub(crate) rebuild_attempts: std::sync::atomic::AtomicUsize,
+    /// #824 The registration incarnations a background rebuild is already scheduled
+    /// for (`commit::degrade`): one job per incarnation, however many failures ask.
+    rebuild_jobs: std::sync::Mutex<std::collections::HashSet<(String, u64)>>,
 }
 
 impl Default for LinkIndexState {
@@ -244,6 +253,11 @@ impl LinkIndexState {
             published: std::sync::atomic::AtomicUsize::new(0),
             #[cfg(test)]
             note_reads: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            exclusion_loads: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            rebuild_attempts: std::sync::atomic::AtomicUsize::new(0),
+            rebuild_jobs: std::sync::Mutex::new(std::collections::HashSet::new()),
         }
     }
 
@@ -598,6 +612,42 @@ impl LinkIndexState {
             slot.pending = None;
             slot.epoch += 1;
         }
+    }
+
+    /// #824 `drop_index` for registration `incarnation` of `key` only: an index a newer
+    /// registration of the same path published, or is building, is left alone. Answers
+    /// whether it dropped.
+    pub(super) async fn drop_index_for(&self, key: &str, incarnation: u64) -> bool {
+        let mut map = self.slots.lock().await;
+        let Some(slot) = map.get_mut(key) else {
+            return false;
+        };
+        if slot.incarnation > incarnation || slot.published_incarnation > incarnation {
+            return false;
+        }
+        slot.index = None;
+        slot.stats = None;
+        slot.root = None;
+        slot.published_incarnation = 0;
+        slot.pending = None;
+        slot.epoch += 1;
+        true
+    }
+
+    /// Claim the background rebuild of `(key, incarnation)`; `false` when one is already
+    /// scheduled.
+    pub(super) fn claim_rebuild(&self, key: &str, incarnation: u64) -> bool {
+        self.rebuild_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert((key.to_string(), incarnation))
+    }
+
+    pub(super) fn release_rebuild(&self, key: &str, incarnation: u64) {
+        self.rebuild_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&(key.to_string(), incarnation));
     }
 
     /// The root spelling the live index under `key` was built from, if any.

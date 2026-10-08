@@ -29,7 +29,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::{Emitter, Manager, Runtime};
 
-use super::reconcile::{rebuild_registration, reconcile_path, reconcile_tree, Reconciled};
+use super::reconcile::{
+    rebuild_registration, reconcile_path_in, reconcile_tree_in, Batch, Reconciled,
+};
 use super::state::LinkIndexState;
 use crate::context::ContextManager;
 
@@ -149,13 +151,15 @@ pub(crate) async fn reconcile_effects<R: Runtime>(
 ) -> bool {
     let state = app.state::<LinkIndexState>();
     let ctx_mgr = app.state::<ContextManager>();
+    let mut batch = Batch::default();
     let mut done: Vec<Reconciled> = Vec::new();
     for effect in effects {
         done.push(match effect {
-            Effect::Path(path) => reconcile_path(&state, &ctx_mgr, path).await,
-            Effect::Tree(dir) => reconcile_tree(&state, &ctx_mgr, dir).await,
+            Effect::Path(path) => reconcile_path_in(&state, &ctx_mgr, path, &mut batch).await,
+            Effect::Tree(dir) => reconcile_tree_in(&ctx_mgr, dir, &mut batch).await,
         });
     }
+    batch.finish(&state, &ctx_mgr, &mut done).await;
     report(app, done).await
 }
 
@@ -163,11 +167,11 @@ pub(crate) async fn reconcile_effects<R: Runtime>(
 /// and answer whether everything is fresh.
 pub(crate) async fn report<R: Runtime>(app: &tauri::AppHandle<R>, done: Vec<Reconciled>) -> bool {
     let fresh = done.iter().all(|d| !d.failed && d.degrade.is_empty());
-    let mut degrade: Vec<String> = done.iter().flat_map(|d| d.degrade.clone()).collect();
+    let mut degrade: Vec<(String, u64)> = done.iter().flat_map(|d| d.degrade.clone()).collect();
     degrade.sort();
     degrade.dedup();
-    for key in degrade {
-        self::degrade(app, &key).await;
+    for (key, incarnation) in degrade {
+        self::degrade(app, &key, incarnation).await;
     }
     emit_changed(app, &done);
     fresh
@@ -211,11 +215,17 @@ pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconc
 const REBUILD_ATTEMPTS: u32 = 3;
 const REBUILD_FIRST_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Drop the index under `key` — it no longer matches the disk and must not be trusted —
-/// and rebuild it in the background. `index:changed` names it once the rebuild has
-/// published; nothing is emitted at the drop.
-pub(crate) async fn degrade<R: Runtime>(app: &tauri::AppHandle<R>, key: &str) {
-    app.state::<LinkIndexState>().drop_index(key).await;
+/// Drop registration `incarnation` of `key`'s index — it no longer matches the disk and
+/// must not be trusted — and rebuild it in the background, one job per registration
+/// incarnation however many failures ask. A newer registration of the same path keeps
+/// its index (`drop_index_for`), and the job stops once the registration is no longer
+/// that incarnation. `index:changed` names the key once the rebuild has published;
+/// nothing is emitted at the drop.
+pub(crate) async fn degrade<R: Runtime>(app: &tauri::AppHandle<R>, key: &str, incarnation: u64) {
+    let state = app.state::<LinkIndexState>();
+    if !state.drop_index_for(key, incarnation).await || !state.claim_rebuild(key, incarnation) {
+        return;
+    }
     let app = app.clone();
     let key = key.to_string();
     tauri::async_runtime::spawn(async move {
@@ -227,7 +237,21 @@ pub(crate) async fn degrade<R: Runtime>(app: &tauri::AppHandle<R>, key: &str) {
             }
             let state = app.state::<LinkIndexState>();
             let ctx_mgr = app.state::<ContextManager>();
+            // That registration is gone or replaced: the replacement builds itself.
+            if ctx_mgr
+                .context_registered_at(&key)
+                .await
+                .map(|r| r.incarnation)
+                != Some(incarnation)
+            {
+                break;
+            }
+            #[cfg(test)]
+            state
+                .rebuild_attempts
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if rebuild_registration(&state, &ctx_mgr, &key).await {
+                state.release_rebuild(&key, incarnation);
                 let _ = app.emit(
                     "index:changed",
                     serde_json::json!({ "entries": [], "rebuilt": [key] }),
@@ -235,6 +259,8 @@ pub(crate) async fn degrade<R: Runtime>(app: &tauri::AppHandle<R>, key: &str) {
                 return;
             }
         }
+        app.state::<LinkIndexState>()
+            .release_rebuild(&key, incarnation);
         log::warn!(
             "§29 #824 the link index of {key} could not be rebuilt; the next reader builds it"
         );
