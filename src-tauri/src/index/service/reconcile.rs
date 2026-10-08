@@ -57,6 +57,8 @@ pub(crate) struct Reconciled {
     /// Some registration covered it: a mutation reached it or it was rebuilt.
     pub(crate) reached: bool,
     pub(crate) failed: bool,
+    /// Registrations whose published index took the path (`ApplyOutcome::Applied`).
+    pub(crate) applied: Vec<String>,
     /// Registrations rebuilt and published.
     pub(crate) rebuilt: Vec<String>,
     /// Registrations whose index no longer matches the disk and must be dropped: a
@@ -228,9 +230,13 @@ pub(crate) async fn reconcile_path_in(
                 // the guard, after the commit this unit follows; a registration of the
                 // same path that replaced one of them since was registered after that
                 // commit, so its first build reads the disk as this unit did.
-                let _: ApplyOutcome = state
+                if state
                     .apply_for(&ctx.info.path, ctx.incarnation, vec![m])
-                    .await;
+                    .await
+                    == ApplyOutcome::Applied
+                {
+                    out.applied.push(ctx.info.path.clone());
+                }
             }
             Point::Rebuild => {
                 out.reached = true;

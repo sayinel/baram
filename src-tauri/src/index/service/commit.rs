@@ -182,10 +182,11 @@ pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconc
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut rebuilt: Vec<String> = Vec::new();
     for d in done.iter().filter(|d| d.reached) {
-        // A path whose index had to be dropped is announced by that index's rebuild
+        // A path whose only index had to be dropped is announced by that index's rebuild
         // (`degrade`), not here: telling a window to re-read it now would read nothing.
-        // What else the same path rebuilt (a sibling registration) is announced now.
-        if d.degrade.is_empty()
+        // A covering index that did take it (a healthy nested vault beside a dropped
+        // outer one) is announced now, and so is what else the same path rebuilt.
+        if (d.degrade.is_empty() || !d.applied.is_empty())
             && !entries
                 .iter()
                 .any(|e| e["canonical"] == d.canonical.to_string_lossy().as_ref())

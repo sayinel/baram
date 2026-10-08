@@ -682,3 +682,27 @@ async fn a_failure_while_a_worker_gives_up_keeps_a_worker() {
     assert!(state.with_index_for(&root, at, |i| i.is_some()).await);
     assert_eq!(seen.lock().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn a_healthy_nested_index_that_took_a_save_is_announced_beside_a_dropped_outer_one() {
+    // The outer root's `.baramignore` is unusable, the nested root's rules are fine: the
+    // save reached the nested index, so the windows hear about it now.
+    // 이것을 실패시키는 것: degrade 가 있는 결과의 경로를 `applied` 와 무관하게 알리지 않는다.
+    let app = app();
+    let (dir, _v, sub) = nested(&app).await;
+    std::fs::write(dir.path().join(crate::fs::BARAMIGNORE), "{unclosed\n").unwrap();
+    std::fs::write(dir.path().join("sub/n.md"), "see [[other]]").unwrap();
+    let seen = changes(&app);
+    let note = format!("{sub}/n.md");
+    let fresh = reconcile_effects(app.handle(), &[Effect::Path(note.clone())]).await;
+    assert!(!fresh);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    let entries = seen[0]["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0]["spellings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s == note.as_str()));
+}
