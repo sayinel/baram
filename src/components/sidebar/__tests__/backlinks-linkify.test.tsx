@@ -13,7 +13,6 @@ const ipc = vi.hoisted(() => ({
   refreshIndex: vi.fn(),
   removeConfig: vi.fn().mockResolvedValue(undefined),
   setConfig: vi.fn().mockResolvedValue(undefined),
-  updateFileIndex: vi.fn(),
   writeFile: vi.fn(),
 }));
 vi.mock("../../../ipc/invoke", () => ipc);
@@ -31,8 +30,12 @@ describe("§390 Backlinks handleLinkify", () => {
     vi.clearAllMocks();
     ipc.getBacklinks.mockResolvedValue([]);
     ipc.refreshIndex.mockResolvedValue(undefined);
-    ipc.updateFileIndex.mockResolvedValue(undefined);
-    ipc.writeFile.mockResolvedValue(undefined);
+    // Rust's `write_file` announces the write (`index:changed`), which the link-index
+    // watcher turns into this bump (#824).
+    ipc.writeFile.mockImplementation(async (path: string) => {
+      useLinkStore.getState().invalidate(path);
+      return 1;
+    });
     useLinkStore.getState().clear();
     useFileStore.setState({ rootPath: "/r" });
     useEditorStore.setState({

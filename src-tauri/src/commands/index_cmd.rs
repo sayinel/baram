@@ -47,18 +47,6 @@ pub async fn refresh_index(
     refresh_index_inner(&state, &ctx_mgr, &root_path).await
 }
 
-#[tauri::command]
-pub async fn update_file_index(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
-    // §29 #824 the same guarded unit and one `index:changed`, as every writer.
-    if reconcile_effects(&app, &[Effect::Path(file_path.clone())]).await {
-        Ok(())
-    } else {
-        Err(format!(
-            "{file_path} could not be brought into the link index"
-        ))
-    }
-}
-
 /// §29 Bring paths the file watcher reported into the link indexes that
 /// contain them (issue 790): how many reached an index, and which failed.
 #[tauri::command]

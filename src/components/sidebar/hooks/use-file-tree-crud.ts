@@ -11,7 +11,6 @@ import {
   deleteDir,
   deleteFile,
   isFileExistsError,
-  updateFileIndex,
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
@@ -172,16 +171,8 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
             path: fullPath,
             isDir: false,
           });
-          // §29 A new note joins the link index now rather than when the
-          // watcher's event arrives (issue 790). Only a note: the index reads
-          // any other file as a link target, which the watcher registers.
-          if (isMarkdownNote(fullPath)) {
-            updateFileIndex(fullPath)
-              .then(() => useLinkStore.getState().invalidate(fullPath))
-              .catch((err: unknown) =>
-                logger.error("[FileTree] Link index update failed:", err),
-              );
-          }
+          // §29 #824 `createFile` put the new file in the link index before it
+          // resolved.
           setFileContent(fullPath, "");
           openTab({
             contextId: "",
@@ -224,9 +215,4 @@ function findEntryByPath(entries: FileEntry[], path: string): FileEntry | null {
     }
   }
   return null;
-}
-
-/** The markdown rule a vault build reads notes by (`fs::collect_md_files`). */
-function isMarkdownNote(path: string): boolean {
-  return path.endsWith(".md") || path.endsWith(".markdown");
 }

@@ -12,7 +12,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../ipc/invoke")>()),
   readFile: vi.fn(),
-  updateFileIndex: vi.fn(async () => ({ fileCount: 0, linkCount: 0 })),
   writeFile: vi.fn(async () => undefined),
 }));
 vi.mock("../programmatic-update", async (importOriginal) => ({
@@ -26,7 +25,7 @@ vi.mock("../serialize-live-doc", () => ({
   serializeEditorState: (state: EditorState) => `md:${idsOf(state).join(",")}`,
 }));
 
-import { readFile, updateFileIndex, writeFile } from "../../../ipc/invoke";
+import { readFile, writeFile } from "../../../ipc/invoke";
 import {
   type DocumentSurfaceAccess,
   useEditorStore,
@@ -458,15 +457,14 @@ describe("landing on disk", () => {
     vi.mocked(loadedTabId).mockReturnValue("t2");
   });
 
-  it("rewrites the saved file of a tab that was closed within the round trip, and re-indexes it", async () => {
+  it("rewrites the saved file of a tab that was closed within the round trip", async () => {
     vi.mocked(readFile).mockResolvedValue("hello ^old\n\n((#^old))\n");
     await expect(landCommittedBlockIdRename(OP)).resolves.toBe("disk");
     expect(writeFile).toHaveBeenCalledWith(
       "/vault/note.md",
       "hello ^fresh\n\n((#^fresh))\n",
     );
-    // The app's own write keeps the watcher quiet, so the index is told here.
-    expect(updateFileIndex).toHaveBeenCalledWith("/vault/note.md");
+    // §29 #824 the write itself puts the note in the link index (Rust), before it resolves.
   });
 
   it("writes nothing when the file no longer has the block", async () => {

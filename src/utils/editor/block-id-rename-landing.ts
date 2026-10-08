@@ -19,9 +19,8 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-import { readFile, updateFileIndex, writeFile } from "../../ipc/invoke";
+import { readFile, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { logger } from "../logger";
 import {
@@ -399,14 +398,7 @@ async function landOnDisk(op: CommittedBlockIdRename): Promise<Landing> {
   } catch (e) {
     return dropped(op, `the file on disk could not be updated: ${String(e)}`);
   }
-  try {
-    await updateFileIndex(op.filePath);
-    useLinkStore.getState().invalidate();
-  } catch (e) {
-    logger.warn(
-      `[blockId] ${op.filePath} renamed on disk, but its index entry could not be refreshed: ${String(e)}`,
-    );
-  }
+  // §29 #824 `writeFile` put the note in the link index before it resolved.
   return "disk";
 }
 

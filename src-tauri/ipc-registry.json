@@ -229,19 +229,6 @@
       "description": "인덱스 재구축 (전체 디렉토리 스캔)"
     },
     {
-      "name": "update_file_index",
-      "input": {
-        "filePath": "string"
-      },
-      "output": "void",
-      "module": "index",
-      "spec": "§29",
-      "phase": 2,
-      "milestone": "M7",
-      "status": "implemented",
-      "description": "단일 파일 인덱스 갱신 (incremental)"
-    },
-    {
       "name": "sync_watched_paths",
       "input": {
         "paths": "string[]"

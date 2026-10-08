@@ -19,7 +19,6 @@ const writeFile = vi.fn(
 
 vi.mock("../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../ipc/invoke")>()),
-  updateFileIndex: vi.fn(async () => undefined),
   writeFile: (path: string, content: string) => writeFile(path, content),
 }));
 

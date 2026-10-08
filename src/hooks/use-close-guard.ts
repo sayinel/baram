@@ -8,16 +8,14 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { EditorTab } from "../stores/editor/editor";
 
-import { updateFileIndex, writeFile } from "../ipc/invoke";
+import { writeFile } from "../ipc/invoke";
 import { quitApp, reloadWindow } from "../services/app-exit";
 import { closeContexts } from "../services/close-context";
 import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
-import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
 import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
 import { asTabSave } from "../utils/editor/tab-save-in-flight";
-import { isMarkdownFile } from "../utils/file-type";
 import { basename } from "../utils/path-utils";
 
 /**
@@ -162,11 +160,7 @@ export async function saveDirtyTab(
       useEditorStore.getState().markDirty(tab.id, false);
       useEditorStore.getState().markSourceEdited(tab.id, false);
     }
-    if (isMarkdownFile(tab.filePath)) {
-      updateFileIndex(tab.filePath)
-        .then(() => useLinkStore.getState().invalidate(tab.filePath))
-        .catch(() => {});
-    }
+    // §29 #824 the write itself put the note in the link index and announced it.
     return clean;
   }
 
@@ -202,11 +196,6 @@ export async function saveDirtyTab(
     ),
   }));
   useFileStore.getState().setFileContent(savePath, content);
-  if (isMarkdownFile(savePath)) {
-    updateFileIndex(savePath)
-      .then(() => useLinkStore.getState().invalidate(savePath))
-      .catch(() => {});
-  }
   return clean;
 }
 

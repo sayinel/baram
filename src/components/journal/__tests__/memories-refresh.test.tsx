@@ -22,7 +22,6 @@ vi.mock("../../../ipc/invoke", () => ({
   listDir: (path: string) => listDir(path) as Promise<unknown>,
   readFile: (path: string) => readFile(path) as Promise<string>,
   setConfig: vi.fn().mockResolvedValue(undefined),
-  updateFileIndex: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 

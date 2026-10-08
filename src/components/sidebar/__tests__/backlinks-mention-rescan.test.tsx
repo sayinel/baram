@@ -12,7 +12,6 @@ vi.mock("../../../ipc/invoke", () => ({
   getUnlinkedMentions: (...a: unknown[]) => getUnlinkedMentions(...a),
   readFile: vi.fn().mockResolvedValue(""),
   refreshIndex: vi.fn().mockResolvedValue(undefined),
-  updateFileIndex: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   // tauri-storage(설정 store 영속화)가 ipc/invoke 재export 로 부른다
   getConfig: vi.fn().mockResolvedValue(null),

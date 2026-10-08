@@ -13,7 +13,6 @@ import {
   getUnlinkedMentions,
   readFile,
   refreshIndex,
-  updateFileIndex,
   writeFile,
 } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -237,11 +236,8 @@ export function Backlinks() {
         lines[lineIdx] = linked;
         const newContent = lines.join("\n");
 
+        // §29 #824 the write puts the source in the link index and announces it.
         await writeFile(mention.sourcePath, newContent);
-
-        // Update index and refresh
-        await updateFileIndex(mention.sourcePath);
-        useLinkStore.getState().invalidate();
       } catch (err) {
         logger.error("[Backlinks] Failed to linkify:", err);
       }

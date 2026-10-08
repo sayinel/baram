@@ -16,7 +16,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../ipc/invoke", () => ({
   readFile: vi.fn().mockResolvedValue(""),
-  updateFileIndex: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 

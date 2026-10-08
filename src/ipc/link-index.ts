@@ -71,7 +71,3 @@ export async function renameNamespace(
 export async function syncWatchedPaths(paths: string[]): Promise<WatchedSync> {
   return invoke<WatchedSync>("sync_watched_paths", { paths });
 }
-
-export async function updateFileIndex(filePath: string): Promise<void> {
-  return invoke<void>("update_file_index", { filePath });
-}

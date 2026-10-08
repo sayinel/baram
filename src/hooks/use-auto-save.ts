@@ -6,9 +6,8 @@ import type { Transaction } from "@tiptap/pm/state";
 
 import { useShallow } from "zustand/shallow";
 
-import { updateFileIndex, writeFile } from "../ipc/invoke";
+import { writeFile } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
-import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
@@ -150,9 +149,8 @@ export function useAutoSave(editor: Editor | null) {
       ) {
         notifyJournalChanged();
       }
-      updateFileIndex(filePath)
-        .then(() => useLinkStore.getState().invalidate(filePath))
-        .catch(() => {});
+      // §29 #824 `writeFile` resolved after Rust put the note in the link index and
+      // announced it (`index:changed`).
       // §71 Mark the auto-snapshot dirty gate — periodic snapshot hook only
       // snapshots when something actually changed since the last snapshot.
       useSnapshotStore.getState().markPendingAutoSnapshot();

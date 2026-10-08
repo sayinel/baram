@@ -6,7 +6,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import type { Editor } from "@tiptap/core";
 
 import { pickApprovedDir, pickApprovedFile } from "../ipc/approval";
-import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
+import { readFile, writeFile } from "../ipc/invoke";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
 import { openFolder } from "../services/vault-context-loader";
 import {
@@ -14,7 +14,6 @@ import {
   isTabUnsaved,
   useEditorStore,
 } from "../stores/editor/editor";
-import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
@@ -376,12 +375,7 @@ export function useFileOperations({
         ) {
           notifyJournalChanged();
         }
-        // Only index markdown files (link indexing not relevant for code files)
-        if (!isCode) {
-          updateFileIndex(saveTab.filePath)
-            .then(() => useLinkStore.getState().invalidate(saveTab.filePath))
-            .catch(() => {});
-        }
+        // §29 #824 the write put the note in the link index before it resolved.
       } catch (err) {
         logger.error("[App] Failed to save:", err);
       }
@@ -403,11 +397,6 @@ export function useFileOperations({
         useFileStore
           .getState()
           .updateLastSaveMtime(savePath, savedAt ?? Date.now());
-        if (!isCode) {
-          updateFileIndex(savePath)
-            .then(() => useLinkStore.getState().invalidate(savePath))
-            .catch(() => {});
-        }
         // Update tab with real path
         const fileName = savePath.split("/").pop() ?? "Unknown";
         // Remove old untitled content
@@ -473,11 +462,6 @@ export function useFileOperations({
       useFileStore
         .getState()
         .updateLastSaveMtime(savePath, savedAt ?? Date.now());
-      if (!isCode) {
-        updateFileIndex(savePath)
-          .then(() => useLinkStore.getState().invalidate(savePath))
-          .catch(() => {});
-      }
       const fileName = savePath.split("/").pop() ?? "Unknown";
       if (!saveAsTab.filePath) {
         useFileStore.getState().removeFileContent(saveAsTab.id);

@@ -22,7 +22,6 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../ipc/invoke")>()),
   readFile: vi.fn(async () => "reloaded"),
   renameBlockId: vi.fn(),
-  updateFileIndex: vi.fn(async () => undefined),
 }));
 vi.mock(
   "../../../utils/editor/programmatic-update",

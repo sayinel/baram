@@ -1,6 +1,6 @@
 // §29 워처가 본 변경을 링크 index 에 넘기는지 — 실제 seam(리스너 등록 → 이벤트 → syncWatchedPaths
-// 호출 → indexVersion · savedPath)으로 센다(issue 790). 경로 판정은 Rust 몫이라 여기서는 모든
-// 경로를 그대로 넘기는지만 본다.
+// 호출)으로 센다(issue 790). 경로 판정은 Rust 몫이라 여기서는 모든 경로를 그대로 넘기는지만 본다.
+// `indexVersion` · `savedPath` 는 Rust 의 `index:changed` 에서만 온다(#824).
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -35,6 +35,14 @@ async function settle(): Promise<void> {
 
 function synced(): string[][] {
   return syncWatchedPaths.mock.calls.map((c) => [...(c[0] as string[])].sort());
+}
+
+/** Rust's `index:changed`. */
+function changed(
+  entries: { canonical: string; spellings: string[] }[],
+  rebuilt: string[] = [],
+): void {
+  emit("index:changed", { entries, rebuilt });
 }
 
 function version(): number {
@@ -74,8 +82,6 @@ describe("useLinkIndexWatcher", () => {
     await settle();
 
     expect(synced()).toEqual([["/v/dir", "/v/paper.pdf", "/v/x.md"]]);
-    expect(version()).toBe(1);
-    expect(useLinkStore.getState().savedPath).toBeNull();
   });
 
   // 이것을 실패시키는 것: 리스너에 `if (e.payload.origin === "app") return;` 를 되돌린다.
@@ -91,59 +97,68 @@ describe("useLinkIndexWatcher", () => {
     expect(synced()).toEqual([["/v/inbox.md"], ["/v/new.md"]]);
   });
 
-  // 이것을 실패시키는 것: 경로 하나인 flush 도 `invalidate()` 로 올린다(#791 의 self-save 판정이
-  // 저장 메아리마다 mention 검색을 다시 부른다).
-  it("names the one path of a single-path flush on the bump", async () => {
+  // 이것을 실패시키는 것: 항목 하나인 `index:changed` 도 `invalidate()` 로 올린다(#791 의 self-save 판정이
+  // 저장마다 mention 검색을 다시 부른다).
+  it("names the one file of an index:changed on the bump", async () => {
     renderHook(() => useLinkIndexWatcher());
     await settle();
 
-    emit("file:changed", { mtime: 1, origin: "app", path: "/v/a.md" });
-    await settle();
+    changed([{ canonical: "/v/a.md", spellings: ["/v/a.md"] }]);
 
     expect(version()).toBe(1);
     expect(useLinkStore.getState().savedPath).toBe("/v/a.md");
   });
 
-  // One file in two spellings is one file's flush (#797), named as the active tab spells
-  // it so Backlinks recognises its own save.
-  // 이것을 실패시키는 것: 단일 파일 판정을 `distinct` 가 아니라 `paths.length === 1` 로 한다 — 또는 활성 탭의 표기를 고르지 않는다.
-  it("names one file reported in two spellings by the active tab's spelling", async () => {
-    syncWatchedPaths.mockImplementation(async () => ({
-      applied: 1,
-      distinct: 1,
-      failed: [],
-    }));
+  // One file under several spellings (#797) is one entry; it is named as the active tab
+  // spells it, by any of its spellings or its canonical path, so Backlinks recognises
+  // its own save.
+  // 이것을 실패시키는 것: 활성 탭의 경로를 항목의 spelling 과 canonical 에서 찾지 않는다(첫 spelling 을 쓴다).
+  it("names one file in the spelling the active tab uses", async () => {
+    renderHook(() => useLinkIndexWatcher());
+    await settle();
+
     useEditorStore.setState({
       activeTabId: "t",
       tabs: [{ filePath: "/var/v/a.md", id: "t" } as never],
     });
-    renderHook(() => useLinkIndexWatcher());
-    await settle();
-
-    emit("file:changed", {
-      mtime: 1,
-      origin: "app",
-      path: "/private/var/v/a.md",
-    });
-    emit("file:changed", { mtime: 1, origin: "app", path: "/var/v/a.md" });
-    await settle();
-
-    expect(syncWatchedPaths).toHaveBeenCalledTimes(1);
-    expect(version()).toBe(1);
+    changed([
+      {
+        canonical: "/private/var/v/a.md",
+        spellings: ["/private/var/v/a.md", "/var/v/a.md"],
+      },
+    ]);
     expect(useLinkStore.getState().savedPath).toBe("/var/v/a.md");
+
+    useEditorStore.setState({
+      activeTabId: "t",
+      tabs: [{ filePath: "/private/var/v/b.md", id: "t" } as never],
+    });
+    changed([{ canonical: "/private/var/v/b.md", spellings: ["/var/v/b.md"] }]);
+    expect(useLinkStore.getState().savedPath).toBe("/private/var/v/b.md");
   });
 
-  // 이것을 실패시키는 것: `if (applied === 0) return;` 을 지운다.
-  it("does not bump indexVersion when no path reached an index", async () => {
-    syncWatchedPaths.mockResolvedValue({ applied: 0, distinct: 1, failed: [] });
+  // 이것을 실패시키는 것: 항목 여럿이나 rebuild 가 실린 이벤트에 첫 경로를 이름 붙인다.
+  it("names nothing when several files or a whole index changed", async () => {
     renderHook(() => useLinkIndexWatcher());
     await settle();
 
-    emit("file:changed", {
-      mtime: 1,
-      origin: "external",
-      path: "/v/.DS_Store",
-    });
+    changed([
+      { canonical: "/v/a.md", spellings: ["/v/a.md"] },
+      { canonical: "/v/b.md", spellings: ["/v/b.md"] },
+    ]);
+    expect(useLinkStore.getState().savedPath).toBeNull();
+    changed([{ canonical: "/v/a.md", spellings: ["/v/a.md"] }], ["/v"]);
+    expect(useLinkStore.getState().savedPath).toBeNull();
+    expect(version()).toBe(2);
+  });
+
+  // A flush's own result is no longer a bump; the event that follows it is.
+  // 이것을 실패시키는 것: flush 가 `applied` 를 보고 스스로 `invalidate` 한다(Rust 의 이벤트와 두 번 오른다).
+  it("does not bump indexVersion from a flush", async () => {
+    renderHook(() => useLinkIndexWatcher());
+    await settle();
+
+    emit("file:changed", { mtime: 1, origin: "external", path: "/v/a.md" });
     await settle();
 
     expect(syncWatchedPaths).toHaveBeenCalledTimes(1);
@@ -231,7 +246,6 @@ describe("useLinkIndexWatcher", () => {
     await settle();
 
     expect(synced()).toEqual([["/v/a.md"], ["/v/a.md"]]);
-    expect(version()).toBe(1);
   });
 
   // 이것을 실패시키는 것: 일부 `listen` 이 실패했을 때 이미 등록된 리스너를 풀지 않는다.
@@ -246,6 +260,10 @@ describe("useLinkIndexWatcher", () => {
     renderHook(() => useLinkIndexWatcher());
     await settle();
 
-    expect(unlistened.sort()).toEqual(["file:changed", "file:created"]);
+    expect(unlistened.sort()).toEqual([
+      "file:changed",
+      "file:created",
+      "index:changed",
+    ]);
   });
 });
