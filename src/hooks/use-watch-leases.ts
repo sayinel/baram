@@ -21,9 +21,9 @@ import {
  * - **Vault roots.** One recursive lease per directory context this window has made
  *   active this session, kept after a switch and given back when that context is
  *   removed. Kept on purpose: the link index of a vault visited earlier stays current
- *   only through its watch (use-link-index-watcher → `sync_watched_paths`, #790), and
- *   a rename there would miss referrers otherwise. A Rust-owned lease per registered
- *   context, independent of the window, is #824's.
+ *   with other programs' writes only through its watch (Rust's watcher applier, #824),
+ *   and a rename there would miss referrers otherwise. A Rust-owned lease per
+ *   registered context, independent of the window, is #824's.
  * - **Out-of-vault tabs.** One non-recursive lease per open file outside the active
  *   root, on its folder, with that file as `focus` — released when the tab closes.
  *

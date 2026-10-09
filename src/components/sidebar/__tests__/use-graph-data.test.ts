@@ -49,11 +49,6 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   getLinkIndex: () => getLinkIndex(),
   refreshIndex: (...a: unknown[]) => refreshIndex(...a),
   setConfig: vi.fn().mockResolvedValue(undefined),
-  syncWatchedPaths: vi.fn(async () => ({
-    applied: 0,
-    distinct: 0,
-    failed: [],
-  })),
   writeFile: (path: string, content: string) => writeFile(path, content),
 }));
 

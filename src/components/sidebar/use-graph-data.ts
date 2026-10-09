@@ -98,10 +98,11 @@ export function useGraphData(params: {
           // Use empty string as rootPath so namespace extraction works per-node
           effectiveRootPath = "";
         } else {
-          // Single-vault. No rebuild: a save updates its own file in the index
-          // before raising indexVersion, the watcher hands every other write
-          // to `sync_watched_paths` (use-link-index-watcher.ts), and
-          // `get_link_index` builds an index that does not exist yet (issue 790).
+          // Single-vault. No rebuild: an app write is in the index before its
+          // command returns, another program's write reaches it through Rust's
+          // watcher applier (`index/service/applier.rs`, #824), each announced
+          // by `index:changed`, and `get_link_index` builds an index that does
+          // not exist yet (issue 790).
           graph = await getLinkIndex();
           if (cancelled) return;
           nodeVaultMapRef = undefined;

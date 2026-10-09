@@ -51,11 +51,6 @@ vi.mock("../use-task-watcher", () => ({
     order.push("useTaskWatcher");
   },
 }));
-vi.mock("../use-link-index-watcher", () => ({
-  useLinkIndexWatcher: () => {
-    order.push("useLinkIndexWatcher");
-  },
-}));
 vi.mock("../use-global-capture-shortcut", () => ({
   useGlobalCaptureShortcut: () => {
     order.push("useGlobalCaptureShortcut");
@@ -112,7 +107,6 @@ describe("useEditorFeatures — subsystem hook call order", () => {
       "useJournalInitialCursor",
       "useFileWatcher",
       "useTaskWatcher",
-      "useLinkIndexWatcher",
       "useGlobalCaptureShortcut",
       "useAutoSnapshot",
       "useZoom",

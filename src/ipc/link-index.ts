@@ -8,7 +8,6 @@ import type {
   NamespaceRenameResult,
   RenameResult,
   UnlinkedMention,
-  WatchedSync,
 } from "./types";
 
 export async function getBacklinks(filePath: string): Promise<BacklinkEntry[]> {
@@ -62,12 +61,4 @@ export async function renameNamespace(
     newDir,
     rootPath,
   });
-}
-
-/**
- * §29 Bring paths the file watcher reported into the link indexes that contain
- * them (issue 790): how many reached an index, and which could not be applied.
- */
-export async function syncWatchedPaths(paths: string[]): Promise<WatchedSync> {
-  return invoke<WatchedSync>("sync_watched_paths", { paths });
 }

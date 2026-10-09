@@ -292,7 +292,7 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     await vi.advanceTimersByTimeAsync(2500);
     expect(writeFileSpy).toHaveBeenCalledTimes(1);
     // §34 #791 #824 the bump that names this save comes from Rust's `index:changed`
-    // for the write (`use-link-index-watcher.test.ts`), not from the save site.
+    // for the write (`services/__tests__/index-changes.test.ts`), not from the save site.
 
     editor.destroy();
     useEditorStore.setState({
