@@ -101,6 +101,7 @@ mod keys;
 mod query;
 mod reconcile;
 mod rename;
+mod scheduler;
 mod state;
 mod watched;
 

@@ -201,3 +201,6 @@ tauri = { version = "2", features = ["test"] }
 # command files to check that each vault write sits inside its reconciling wrapper.
 # Already in the tree through the proc-macro crates, with these features.
 syn = { version = "2", features = ["full", "visit"] }
+# Paused time for the rebuild scheduler and applier pins (`tokio::time::pause`): their
+# waits run to minutes, counted, not slept. Dev only — a normal build keeps `full`.
+tokio = { version = "1", features = ["test-util"] }

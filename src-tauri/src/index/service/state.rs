@@ -226,9 +226,16 @@ pub struct LinkIndexState {
     pub(crate) rebuild_attempts: std::sync::atomic::AtomicUsize,
     /// #824 The registration incarnations a background rebuild is already scheduled
     /// for (`commit::degrade`): one job per incarnation, however many failures ask.
-    /// The background rebuild of each dropped registration incarnation (`commit::degrade`)
-    /// and the failure generation it rebuilds against.
-    rebuild_jobs: std::sync::Mutex<HashMap<(String, u64), u64>>,
+    /// The rebuilds of dropped registration incarnations (`scheduler`).
+    pub(super) rebuild_jobs: std::sync::Mutex<super::scheduler::Jobs>,
+    /// Wakes the scheduler: a job was added, poked or cancelled.
+    pub(super) scheduler_wake: tokio::sync::Notify,
+    /// Whether the scheduler task runs (`scheduler::ensure_started`).
+    pub(super) scheduler_started: std::sync::atomic::AtomicBool,
+    /// Stands in for a scheduler attempt's walk (tests).
+    #[cfg(test)]
+    #[allow(clippy::type_complexity)]
+    pub(crate) fake_rebuild: std::sync::Mutex<Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>>,
     /// A test-only pause in a rebuild worker, keyed by the registration's path: just
     /// before it decides whether it is done (`finish_rebuild`).
     #[cfg(test)]
@@ -262,6 +269,10 @@ impl LinkIndexState {
             #[cfg(test)]
             rebuild_attempts: std::sync::atomic::AtomicUsize::new(0),
             rebuild_jobs: std::sync::Mutex::new(HashMap::new()),
+            scheduler_wake: tokio::sync::Notify::new(),
+            scheduler_started: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(test)]
+            fake_rebuild: std::sync::Mutex::new(None),
             #[cfg(test)]
             pause_before_finish: std::sync::Mutex::new(None),
             #[cfg(test)]
@@ -613,6 +624,9 @@ impl LinkIndexState {
         slot.root = Some(pending.root);
         #[cfg(test)]
         self.published.fetch_add(1, Ordering::SeqCst);
+        drop(map);
+        // #824 A rebuild job waiting for this incarnation ends now, announcing it.
+        self.poke_key(key, token.incarnation);
         Some(replayed)
     }
 
@@ -657,57 +671,6 @@ impl LinkIndexState {
         true
     }
 
-    /// #824 Ask for the background rebuild of `(key, incarnation)` after a failure dropped
-    /// its index. `true`: no worker runs for it and the caller starts one. `false`: the
-    /// running worker's generation moves on, so it rebuilds again before it finishes —
-    /// whatever it published so far may predate this drop.
-    pub(super) fn request_rebuild(&self, key: &str, incarnation: u64) -> bool {
-        let mut jobs = self
-            .rebuild_jobs
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        match jobs.entry((key.to_string(), incarnation)) {
-            std::collections::hash_map::Entry::Occupied(mut job) => {
-                *job.get_mut() += 1;
-                false
-            }
-            std::collections::hash_map::Entry::Vacant(job) => {
-                job.insert(0);
-                true
-            }
-        }
-    }
-
-    /// The failure generation the worker for `(key, incarnation)` starts a rebuild from.
-    pub(super) fn rebuild_generation(&self, key: &str, incarnation: u64) -> u64 {
-        self.rebuild_jobs
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(&(key.to_string(), incarnation))
-            .copied()
-            .unwrap_or(0)
-    }
-
-    /// The worker for `(key, incarnation)` ends — its entry removed — when no failure has
-    /// been requested since generation `seen` (`None`: end regardless, the registration
-    /// is gone). `false`: a newer failure landed, and the worker must go round again.
-    /// One lock: a failure either lands before this and is seen, or after it and starts
-    /// a worker of its own.
-    pub(super) fn finish_rebuild(&self, key: &str, incarnation: u64, seen: Option<u64>) -> bool {
-        let mut jobs = self
-            .rebuild_jobs
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let at = (key.to_string(), incarnation);
-        if let (Some(seen), Some(&now)) = (seen, jobs.get(&at)) {
-            if now != seen {
-                return false;
-            }
-        }
-        jobs.remove(&at);
-        true
-    }
-
     /// The root spelling the live index under `key` was built from, if any.
     pub(super) async fn build_root(&self, key: &str) -> Option<String> {
         self.slots
@@ -749,6 +712,9 @@ impl LinkIndexState {
                 ..Slot::default()
             },
         );
+        drop(map);
+        // #824 Its rebuild jobs go with it, not at their next wake.
+        self.cancel_rebuilds(key, incarnation);
     }
 
     /// The stats of a publication of the SAME registration that happened after

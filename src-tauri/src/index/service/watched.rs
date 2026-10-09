@@ -53,9 +53,12 @@ pub(crate) async fn sync_watched_paths_inner(
             out.failed.push(path.clone());
             continue;
         };
-        if !seen.insert(canonical) {
+        if !seen.insert(canonical.clone()) {
             continue;
         }
+        // A dropped index whose rebuild is waiting may now succeed (a fixed
+        // `.baramignore`, a folder readable again): its job is due now.
+        state.poke_under(&canonical);
         out.reconciled
             .push(reconcile_path_in(state, ctx_mgr, path, &mut batch).await);
     }

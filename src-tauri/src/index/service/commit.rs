@@ -29,9 +29,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use tauri::{Emitter, Manager, Runtime};
 
-use super::reconcile::{
-    rebuild_registration, reconcile_path_in, reconcile_tree_in, Batch, Reconciled,
-};
+use super::reconcile::{reconcile_path_in, reconcile_tree_in, Batch, Reconciled};
 use super::state::LinkIndexState;
 use crate::context::ContextManager;
 
@@ -211,95 +209,27 @@ pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconc
     );
 }
 
-/// How many times a dropped index is rebuilt before it is left for the next reader
-/// (`ensure_indexes`) to build, and the first wait.
-const REBUILD_ATTEMPTS: u32 = 3;
-const REBUILD_FIRST_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
-
 /// Drop registration `incarnation` of `key`'s index — it no longer matches the disk and
-/// must not be trusted — and rebuild it in the background, one worker per registration
-/// incarnation however many failures ask. A newer registration of the same path keeps
-/// its index (`drop_index_for`), and the worker stops once the registration is no longer
-/// that incarnation. `index:changed` names the key once a rebuild started after the last
-/// failure has published; nothing is emitted at the drop.
-///
-/// A failure that lands while the worker runs moves its generation on
-/// (`request_rebuild`): the worker publishes, then ends only if the generation is still
-/// the one it started from (`finish_rebuild`), and goes round again otherwise — that
-/// failure may have dropped what it just published. The same check ends a worker that
-/// spent its attempts, so a failure in that window is not left without one.
+/// must not be trusted — and hand its rebuild to the scheduler (`scheduler`), one job per
+/// registration incarnation however many failures ask. A newer registration of the same
+/// path keeps its index (`drop_index_for`). `index:changed` names the key once a rebuild
+/// started after the last failure has published; nothing is emitted at the drop.
 pub(crate) async fn degrade<R: Runtime>(app: &tauri::AppHandle<R>, key: &str, incarnation: u64) {
     let state = app.state::<LinkIndexState>();
-    if !state.drop_index_for(key, incarnation).await || !state.request_rebuild(key, incarnation) {
+    if !state.drop_index_for(key, incarnation).await {
         return;
     }
-    let app = app.clone();
-    let key = key.to_string();
-    tauri::async_runtime::spawn(async move {
-        let mut attempt = 0;
-        let mut wait = REBUILD_FIRST_WAIT;
-        loop {
-            let state = app.state::<LinkIndexState>();
-            let ctx_mgr = app.state::<ContextManager>();
-            let seen = state.rebuild_generation(&key, incarnation);
-            // That registration is gone or replaced: the replacement builds itself.
-            if ctx_mgr
-                .context_registered_at(&key)
-                .await
-                .map(|r| r.incarnation)
-                != Some(incarnation)
-            {
-                state.finish_rebuild(&key, incarnation, None);
-                return;
-            }
-            #[cfg(test)]
-            state
-                .rebuild_attempts
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            let published = rebuild_registration(&state, &ctx_mgr, &key).await;
-            if !published {
-                attempt += 1;
-            }
-            if published || attempt == REBUILD_ATTEMPTS {
-                #[cfg(test)]
-                pause_before_finish(&state, &key).await;
-                if state.finish_rebuild(&key, incarnation, Some(seen)) {
-                    if published {
-                        let _ = app.emit(
-                            "index:changed",
-                            serde_json::json!({ "entries": [], "rebuilt": [key] }),
-                        );
-                    } else {
-                        log::warn!(
-                            "§29 #824 the link index of {key} could not be rebuilt; the next reader builds it"
-                        );
-                    }
-                    return;
-                }
-                // A newer failure: rebuild again, with a fresh budget.
-                attempt = 0;
-                wait = REBUILD_FIRST_WAIT;
-                continue;
-            }
-            tokio::time::sleep(wait).await;
-            wait *= 2;
-        }
-    });
-}
-
-#[cfg(test)]
-async fn pause_before_finish(state: &LinkIndexState, key: &str) {
-    let pause = {
-        let mut slot = state.pause_before_finish.lock().unwrap();
-        match slot.as_ref() {
-            Some(p) if p.path == std::path::Path::new(key) => slot.take(),
-            _ => None,
-        }
+    // That registration is gone or replaced: the replacement builds itself.
+    let Some(registered) = app
+        .state::<ContextManager>()
+        .context_registered_at(key)
+        .await
+        .filter(|r| r.incarnation == incarnation)
+    else {
+        return;
     };
-    if let Some(p) = pause {
-        p.reached.notify_one();
-        p.release.notified().await;
-    }
+    state.request_rebuild(key, incarnation, &registered.canonical_path);
+    super::scheduler::ensure_started(app);
 }
 
 #[cfg(test)]
