@@ -18,3 +18,4 @@ Tauri 2.0 + Tiptap/ProseMirror + React 로 만든 경량 WYSIWYG 마크다운 �
 ## 섹션
 
 - **Vim** — WYSIWYG 위의 모달 편집. [Overview](Vim-Overview) 부터 읽는다.
+- **CLI** — 앱 실행 파일이 겸하는 읽기 전용 명령줄 도구. [Overview](CLI-Overview) 부터 읽는다.
