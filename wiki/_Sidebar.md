@@ -27,9 +27,16 @@
 
 ### CLI
 
-쓰는 법은 [사용자 문서](https://baram.ing/ko/docs/command-line/) 가, 구현 현황과 다음 단계는
-[추적 이슈](https://github.com/sayinel/baram/issues/847) 가, 계약은 `src-tauri/src/cli/` 의 모듈
-헤더와 함수 · 타입의 문서 주석이 답한다.
+링크 없는 항목은 **아직 쓰지 않았다.** 쓰는 법은 [사용자 문서](https://baram.ing/ko/docs/command-line/) 가,
+구현 현황과 다음 단계는 [추적 이슈](https://github.com/sayinel/baram/issues/847) 가, 계약은
+`src-tauri/src/cli/` 의 모듈 헤더와 함수 · 타입의 문서 주석이 답한다.
 
 - [Overview](CLI-Overview)
+- [Architecture](CLI-Architecture)
+- Vault resolution and app config — 미작성
+- [Paths and vault boundary](CLI-Paths-and-vault-boundary)
+- [Output contract](CLI-Output-contract)
+- [Links and app parity](CLI-Links-and-app-parity)
+- Testing methodology — 미작성
+- Code map — 미작성
 - [Decisions and history](CLI-Decisions-and-history)
