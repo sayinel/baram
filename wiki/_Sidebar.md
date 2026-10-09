@@ -24,3 +24,12 @@
 - Testing methodology — 미작성
 - [Code map](Vim-Code-map)
 - [Decisions and history](Vim-Decisions-and-history)
+
+### CLI
+
+쓰는 법은 [사용자 문서](https://baram.ing/ko/docs/command-line/) 가, 구현 현황과 다음 단계는
+[추적 이슈](https://github.com/sayinel/baram/issues/847) 가, 계약은 `src-tauri/src/cli/` 의 모듈
+헤더와 함수 · 타입의 문서 주석이 답한다.
+
+- [Overview](CLI-Overview)
+- [Decisions and history](CLI-Decisions-and-history)
