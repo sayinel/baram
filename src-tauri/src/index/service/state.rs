@@ -441,6 +441,16 @@ impl LinkIndexState {
             .is_some_and(|path| index.holds_path(&path))
     }
 
+    /// #824 The `began_at` of the build behind the index published for `incarnation`
+    /// under `key`: every observation stamped before it is in that index.
+    pub(super) async fn covered_since(&self, key: &str, incarnation: u64) -> Option<u64> {
+        let map = self.slots.lock().await;
+        map.get(key)
+            .and_then(|s| s.covered_from)
+            .filter(|(at, _)| *at == incarnation)
+            .map(|(_, began)| began)
+    }
+
     /// The live index's spelling of `canonical_path` under `key`, if it has one.
     pub(super) async fn spelling_of(&self, key: &str, canonical_path: &Path) -> Option<String> {
         let map = self.slots.lock().await;

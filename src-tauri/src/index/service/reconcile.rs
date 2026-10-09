@@ -179,6 +179,28 @@ pub(crate) async fn reconcile_path_in(
     .await
 }
 
+/// #824 One unit for a path the watcher reported, at the canonical identity the router
+/// derived for it (`applier`), never resolved again: an alias retargeted since the event
+/// cannot move it to another vault. Stats and reads go to that identity.
+pub(crate) async fn reconcile_identity_in(
+    state: &LinkIndexState,
+    ctx_mgr: &ContextManager,
+    canonical: &Path,
+    spellings: Vec<String>,
+    batch: &mut Batch,
+) -> Reconciled {
+    let at = canonical.to_string_lossy().into_owned();
+    reconcile_at(
+        state,
+        ctx_mgr,
+        &at,
+        canonical.to_path_buf(),
+        spellings,
+        batch,
+    )
+    .await
+}
+
 #[cfg(not(test))]
 fn resolve(_state: &LinkIndexState, path: &str) -> Result<PathBuf, String> {
     resolve_canonical(path)
@@ -332,16 +354,36 @@ pub(crate) async fn reconcile_tree_in(
     dir: &str,
     batch: &mut Batch,
 ) -> Reconciled {
+    let Ok(canonical) = resolve_canonical(dir) else {
+        // Registrations below a tree cannot be matched by spelling from above it: every
+        // directory registration is dropped rather than any left trusted.
+        return Reconciled {
+            spellings: vec![dir.to_string()],
+            failed: true,
+            degrade: buildable(&ctx_mgr.directory_registrations().await)
+                .into_iter()
+                .map(|c| (c.info.path, c.incarnation))
+                .collect(),
+            ..Reconciled::default()
+        };
+    };
+    reconcile_tree_at(ctx_mgr, dir, &canonical, batch).await
+}
+
+/// `reconcile_tree_in` for a tree whose canonical form is known — a watcher host, not
+/// resolved again (`applier`).
+pub(crate) async fn reconcile_tree_at(
+    ctx_mgr: &ContextManager,
+    dir: &str,
+    canonical: &Path,
+    batch: &mut Batch,
+) -> Reconciled {
     let mut out = Reconciled {
         spellings: vec![dir.to_string()],
+        canonical: canonical.to_path_buf(),
         ..Reconciled::default()
     };
-    let Ok(canonical) = resolve_canonical(dir) else {
-        out.failed = true;
-        return out;
-    };
-    out.canonical = canonical.clone();
-    let mut at: BTreeSet<RegistrationAt> = buildable(&ctx_mgr.contexts_containing(dir).await)
+    let mut at: BTreeSet<RegistrationAt> = buildable(&ctx_mgr.contexts_holding(canonical).await)
         .into_iter()
         .map(|c| (c.info.path, c.incarnation))
         .collect();
@@ -350,7 +392,7 @@ pub(crate) async fn reconcile_tree_in(
             continue;
         }
         if let Some(registered) = ctx_mgr.registered(&info.id).await {
-            if registered.canonical_path.starts_with(&canonical) {
+            if registered.canonical_path.starts_with(canonical) {
                 at.insert((registered.info.path, registered.incarnation));
             }
         }

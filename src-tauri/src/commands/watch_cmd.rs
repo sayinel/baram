@@ -14,6 +14,7 @@ use tauri::{Emitter, Manager};
 
 use super::fs_cmd::{check, vault_fallback_decision};
 use crate::fs::watch_registry::{LeaseRequest, LeaseView, WatchSpec, UNAUTHORIZED};
+use crate::index::service::ExternalChanges;
 
 /// §3.2 Watch `path` for the calling window and answer the lease that holds the watch
 /// (#797); `unwatch_dir` gives it back, and the window's destruction gives back every
@@ -302,23 +303,52 @@ fn with_registry<R: tauri::Runtime, T>(
 }
 
 /// Start a watcher whose own end — an error, its folder removed — ends the leases it
-/// serves, if it is still its host's watcher then.
+/// serves, if it is still its host's watcher then. §29 #824 A host whose last watcher
+/// ended is rescanned as it starts again: what changed in between was never reported.
 fn spawn_watcher<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     spec: &WatchSpec,
 ) -> Result<notify::RecommendedWatcher, crate::fs::FsError> {
+    if let Some(changes) = app.try_state::<ExternalChanges>() {
+        changes.starting(&spec.key);
+    }
+    crate::fs::start_watching(spec, app.clone(), sinks_for(app, spec))
+}
+
+/// What the router of `spec`'s watcher reports to besides the webview. §29 #824 The
+/// marks go to the link index applier (`ExternalChanges`) — a std mutex, never the
+/// registry this is called under, nor an index lock.
+pub(crate) fn sinks_for<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    spec: &WatchSpec,
+) -> crate::fs::WatchSinks {
     let ended_app = app.clone();
     let key = spec.key.clone();
     let generation = spec.generation;
-    crate::fs::start_watching(
-        spec,
-        app.clone(),
-        Box::new(move || {
+    let marks = app.clone();
+    let host = spec.key.clone();
+    let rescans = app.clone();
+    let rescanned = spec.key.clone();
+    crate::fs::WatchSinks {
+        on_end: Box::new(move || {
+            if let Some(changes) = ended_app.try_state::<ExternalChanges>() {
+                changes.note_ended(&key);
+            }
             let _ = with_registry(&ended_app, |registry, spawn| {
                 registry.watch_ended(&key, generation, spawn)
             });
         }),
-    )
+        on_paths: Box::new(move |routed| {
+            if let Some(changes) = marks.try_state::<ExternalChanges>() {
+                changes.mark(&host, routed);
+            }
+        }),
+        on_rescan: Box::new(move || {
+            if let Some(changes) = rescans.try_state::<ExternalChanges>() {
+                changes.mark_rescan(&rescanned);
+            }
+        }),
+    }
 }
 
 #[cfg(test)]

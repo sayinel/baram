@@ -6,6 +6,8 @@ mod exclusion;
 pub mod media;
 mod walk;
 mod watch_filter;
+#[cfg(test)]
+pub(crate) use watch_filter::WatchFilter;
 pub(crate) mod watch_registry;
 pub use watch_filter::set_open_files;
 
@@ -787,6 +789,91 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
     .map_err(|e| FsError::ReadError(std::io::Error::other(e.to_string())))?
 }
 
+/// What one event routed: `(canonical identity, spelling)` per emitted path.
+pub(crate) type Routed = [(PathBuf, String)];
+
+/// Where a router's events go besides the webview.
+pub(crate) struct WatchSinks {
+    /// The watcher stopped (an error, its folder removed).
+    pub(crate) on_end: Box<dyn Fn() + Send>,
+    /// §29 #824 Every path one event routed, as `(canonical identity, spelling)` — before
+    /// that event's `file:*` events go out. Must not wait on the index or the registry.
+    pub(crate) on_paths: Box<dyn Fn(&Routed) + Send>,
+    /// §29 #824 The OS dropped events under this host (`Event::need_rescan`).
+    pub(crate) on_rescan: Box<dyn Fn() + Send>,
+}
+
+/// One notify event from the watcher on `host` (canonical, watched as `spelled_host`):
+/// a rescan said first if the OS asks for one, then every routed path marked, then the
+/// `file:*` events emitted, in `route`'s order and number.
+pub(crate) fn route_event(
+    filter: &mut watch_filter::WatchFilter,
+    event: &Event,
+    host: &Path,
+    spelled_host: &Path,
+    sinks: &WatchSinks,
+    emit: &mut dyn FnMut(&'static str, serde_json::Value),
+) {
+    // Before the filter: the paths of a rescan event may be ones it drops.
+    if event.need_rescan() {
+        (sinks.on_rescan)();
+    }
+    let emits = filter.route(event, &watch_filter::RealProbe);
+    let routed: Vec<(PathBuf, String)> = emits
+        .iter()
+        .map(|e| {
+            (
+                identity(filter, host, spelled_host, e.path()),
+                e.path().to_string(),
+            )
+        })
+        .collect();
+    (sinks.on_paths)(&routed);
+    for emitted in emits {
+        match emitted {
+            watch_filter::Emit::Created {
+                path,
+                is_dir,
+                origin,
+            } => emit(
+                "file:created",
+                serde_json::json!({ "path": path, "isDir": is_dir, "origin": origin }),
+            ),
+            watch_filter::Emit::Deleted { path } => {
+                emit("file:deleted", serde_json::json!({ "path": path }))
+            }
+            watch_filter::Emit::Changed {
+                path,
+                mtime,
+                origin,
+            } => emit(
+                "file:changed",
+                serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
+            ),
+        }
+    }
+}
+
+/// The canonical identity of an emitted path, without the filesystem: through the
+/// registered spelling it was rebuilt under, else from the host as watched onto its
+/// canonical key, else as the OS spelled it (FSEvents reports canonical paths).
+fn identity(
+    filter: &watch_filter::WatchFilter,
+    host: &Path,
+    spelled_host: &Path,
+    path: &str,
+) -> PathBuf {
+    let path = Path::new(path);
+    let mapped = filter.canonical_of(path);
+    if mapped != path {
+        return mapped;
+    }
+    match path.strip_prefix(spelled_host) {
+        Ok(relative) if spelled_host != host => host.join(relative),
+        _ => path.to_path_buf(),
+    }
+}
+
 /// 디렉토리 감시 시작 — notify crate 기반
 /// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
 ///
@@ -796,7 +883,7 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 pub(crate) fn start_watching<R: tauri::Runtime>(
     spec: &watch_registry::WatchSpec,
     app_handle: tauri::AppHandle<R>,
-    on_end: Box<dyn Fn() + Send>,
+    sinks: WatchSinks,
 ) -> Result<RecommendedWatcher, FsError> {
     let path = spec.root.clone();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
@@ -842,41 +929,28 @@ pub(crate) fn start_watching<R: tauri::Runtime>(
                 Ok(event) => event,
                 Err(e) => {
                     log::warn!("§3.2 watcher on {}: {e}; ended", root.display());
-                    on_end();
+                    (sinks.on_end)();
                     return;
                 }
             };
             let root_removed = matches!(event.kind, EventKind::Remove(_))
                 && event.paths.iter().any(|p| p == &root || p == &spelled_root);
-            for emit in filter.route(&event, &watch_filter::RealProbe) {
-                let _ = match emit {
-                    watch_filter::Emit::Created {
-                        path,
-                        is_dir,
-                        origin,
-                    } => app_handle.emit(
-                        "file:created",
-                        serde_json::json!({ "path": path, "isDir": is_dir, "origin": origin }),
-                    ),
-                    watch_filter::Emit::Deleted { path } => {
-                        app_handle.emit("file:deleted", serde_json::json!({ "path": path }))
-                    }
-                    watch_filter::Emit::Changed {
-                        path,
-                        mtime,
-                        origin,
-                    } => app_handle.emit(
-                        "file:changed",
-                        serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
-                    ),
-                };
-            }
+            route_event(
+                &mut filter,
+                &event,
+                &root,
+                &spelled_root,
+                &sinks,
+                &mut |name, payload| {
+                    let _ = app_handle.emit(name, payload);
+                },
+            );
             if root_removed {
                 log::warn!(
                     "§3.2 watched folder {} was removed; watch ended",
                     root.display()
                 );
-                on_end();
+                (sinks.on_end)();
                 return;
             }
         }

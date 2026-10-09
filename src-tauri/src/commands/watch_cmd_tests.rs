@@ -357,3 +357,89 @@ fn a_lease_whose_authority_went_while_it_was_taken_is_given_back() {
     .unwrap();
     assert_eq!(held(app.handle()), vec![held_id]);
 }
+
+/// A recursive host on `root` (canonical), as the registry would start it.
+fn host_spec(root: &Path) -> WatchSpec {
+    WatchSpec {
+        key: root.to_path_buf(),
+        root: root.to_string_lossy().into_owned(),
+        recursive: true,
+        generation: 1,
+        focus: Default::default(),
+        spellings: Default::default(),
+    }
+}
+
+// §29 #824 — the router marks a routed batch for the link index before it emits the
+// batch's `file:*` events, and the mark never waits on the watch registry (which
+// `spawn_watcher` is called under) or on any index lock.
+#[test]
+fn the_router_marks_a_batch_before_emitting_it_without_the_registry() {
+    // 이것을 실패시키는 것: `route_event` 가 file:* 를 낸 뒤에 `on_paths` 를 부른다 — 또는 mark sink 가
+    // registry 를 잡는다(`with_registry`) — 그러면 이 router 가 멈춘다.
+    use notify::event::{DataChange, ModifyKind};
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    std::fs::write(root.join("n.md"), "see [[x]]").unwrap();
+    let spec = host_spec(&root);
+    let sinks = sinks_for(app.handle(), &spec);
+    let mut filter =
+        crate::fs::WatchFilter::for_watch(&root, true, Default::default(), Default::default());
+    let event = notify::Event::new(notify::EventKind::Modify(ModifyKind::Data(
+        DataChange::Content,
+    )))
+    .add_path(root.join("n.md"));
+    let held = app.state::<crate::WatcherState>();
+    let registry = held.0.lock().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = app.handle().clone();
+    std::thread::spawn(move || {
+        let mut emitted = Vec::new();
+        crate::fs::route_event(&mut filter, &event, &root, &root, &sinks, &mut |name, _| {
+            emitted.push((name, handle.state::<ExternalChanges>().pending()));
+        });
+        let _ = tx.send(emitted);
+    });
+    let emitted = rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("the router waited");
+    drop(registry);
+    // One `file:changed`, and the path was already marked when it went out.
+    assert_eq!(emitted, [("file:changed", 1)]);
+}
+
+#[test]
+fn an_event_the_os_flags_for_a_rescan_marks_its_host() {
+    // 이것을 실패시키는 것: `route_event` 가 `need_rescan` 을 보지 않는다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let sinks = sinks_for(app.handle(), &host_spec(&root));
+    let mut filter =
+        crate::fs::WatchFilter::for_watch(&root, true, Default::default(), Default::default());
+    let event = notify::Event::new(notify::EventKind::Other).set_flag(notify::event::Flag::Rescan);
+    crate::fs::route_event(&mut filter, &event, &root, &root, &sinks, &mut |_, _| {});
+    assert_eq!(app.state::<ExternalChanges>().pending_rescans(), 1);
+}
+
+#[test]
+fn a_host_whose_watcher_ended_is_rescanned_when_it_is_started_again() {
+    // 이것을 실패시키는 것: `spawn_watcher` 가 `ExternalChanges::starting` 을 부르지 않는다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let changes = app.state::<ExternalChanges>();
+    let first = spawn_watcher(app.handle(), &host_spec(&root)).unwrap();
+    assert_eq!(changes.pending_rescans(), 0);
+    drop(first);
+    changes.note_ended(&root);
+    let _second = spawn_watcher(app.handle(), &host_spec(&root)).unwrap();
+    assert_eq!(changes.pending_rescans(), 1);
+}

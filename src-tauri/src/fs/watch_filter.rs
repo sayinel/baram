@@ -382,7 +382,7 @@ impl WatchFilter {
 impl WatchFilter {
     /// `path` read back to canonical through the registered spelling it lies under; as
     /// given when it lies under none.
-    fn canonical_of(&self, path: &Path) -> PathBuf {
+    pub(crate) fn canonical_of(&self, path: &Path) -> PathBuf {
         self.spellings
             .read()
             .ok()
@@ -396,7 +396,7 @@ impl WatchFilter {
 }
 
 impl Emit {
-    fn path(&self) -> &str {
+    pub(crate) fn path(&self) -> &str {
         match self {
             Emit::Created { path, .. } | Emit::Deleted { path } | Emit::Changed { path, .. } => {
                 path

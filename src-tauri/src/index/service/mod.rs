@@ -95,6 +95,7 @@
 // it was approved as: a symlink retargeted meanwhile cannot publish an
 // unrelated tree under a vault's key.
 
+mod applier;
 mod build;
 mod commit;
 mod keys;
@@ -108,6 +109,8 @@ mod watched;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use applier::run as run_applier;
+pub use applier::ExternalChanges;
 pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 

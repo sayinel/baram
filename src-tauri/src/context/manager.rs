@@ -409,6 +409,22 @@ impl ContextManager {
             .collect()
     }
 
+    /// #824 Every vault and folder registration.
+    pub async fn directory_registrations(&self) -> Vec<Registered> {
+        self.contexts
+            .read()
+            .await
+            .values()
+            .filter(|s| {
+                matches!(
+                    s.info.context_type,
+                    ContextType::Vault | ContextType::Folder
+                )
+            })
+            .map(ContextState::registered)
+            .collect()
+    }
+
     /// issue 545: the canonical root of the vault or folder context named by
     /// `context_id` — the export's owning context, chosen by the frontend
     /// (`owningDirectoryContext` in src/utils/export/pandoc-image-policy.ts) — when the
