@@ -10,6 +10,7 @@ import {
   isPdfFile,
   isSvgFile,
   isTextFile,
+  isViewerEditableFile,
 } from "../file-type";
 
 describe("isMarkdownFile", () => {
@@ -150,6 +151,35 @@ describe("isSvgFile / isMarkdownEmbeddableAsset", () => {
   it("does NOT cover pdf, html or markdown", () => {
     for (const p of ["a.pdf", "a.html", "a.md"]) {
       expect(isMarkdownEmbeddableAsset(p), p).toBe(false);
+    }
+  });
+});
+
+describe("isViewerEditableFile (§392 spec 0071 §5 condition 3)", () => {
+  it("accepts a text file no other surface owns", () => {
+    for (const p of [
+      "/v/a.strokes",
+      "/v/a.excalidraw",
+      "/v/a.json",
+      "/v/a.svg",
+      "/v/a.txt",
+    ]) {
+      expect(isViewerEditableFile(p), p).toBe(true);
+    }
+  });
+
+  it("refuses markdown (untitled included), HTML, images and PDF", () => {
+    for (const p of [
+      "/v/a.md",
+      "/v/a.mdx",
+      "",
+      undefined,
+      "/v/a.html",
+      "/v/a.htm",
+      "/v/a.png",
+      "/v/a.PDF",
+    ]) {
+      expect(isViewerEditableFile(p), String(p)).toBe(false);
     }
   });
 });

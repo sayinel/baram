@@ -1,9 +1,14 @@
 // §3.5 에디터 상태 스토어
+import type { ViewerEditMount } from "../../plugins/viewer-edit-mounts";
 import type { Editor } from "@tiptap/core";
 import type { EditorState as PmEditorState } from "@tiptap/pm/state";
 
 import { create } from "zustand";
 
+import {
+  hasPendingViewerEdit,
+  pendingViewerEditTabIds,
+} from "../../plugins/viewer-edit-mounts";
 import { isDescendantPath } from "../../utils/path-utils";
 import { useContextStore } from "../context/context";
 
@@ -165,7 +170,11 @@ interface EditorState {
    * switch, which then re-reads that fresh content instead of the cache.
    */
   markContentStale: (tabId: string) => void;
-  /** Gated: no-op (same state reference) if the tab is already at `dirty` or doesn't exist */
+  /**
+   * Gated: no-op (same state reference) if the tab is already at `dirty` or doesn't exist.
+   * §392 D15: `false` is also refused while the tab's editable viewer holds a change no read
+   * has taken (`hasPendingViewerEdit`) — see the action.
+   */
   markDirty: (tabId: string, dirty: boolean) => void;
   /** §82 소스 모드에서 실제 편집이 일어났는지 표시/해제한다. */
   markSourceEdited: (tabId: string, edited: boolean) => void;
@@ -186,6 +195,13 @@ interface EditorState {
   openTab: (tab: EditorTab, opts?: { activate?: boolean }) => void;
   /** §38 Pin a tab — moves to end of pinned group */
   pinTab: (tabId: string) => void;
+  /**
+   * §392 Tabs a preview ↔ source toggle file (HTML, or a text file a viewer plugin claims) is
+   * showing as source — `sourceModeTabs`' counterpart, in the store for the same kind of
+   * reason: an editable viewer whose `getText` fails is switched to source from wherever the
+   * read happened, React or not (spec 0071 §7.4).
+   */
+  previewSourceTabs: string[];
   /** §324-e Publish (or clear with `null`) the open capture dialog's editor access */
   registerCaptureDropAccess: (access: CaptureDropAccess | null) => void;
   registerDocumentSurfaceAccess: (access: DocumentSurfaceAccess | null) => void;
@@ -200,9 +216,15 @@ interface EditorState {
    * `closeTabsForContexts` exists to prevent, reached by a different door.
    */
   rekeyTabsContext: (fromContextId: string, toContextId: string) => void;
-  /** §61 Rename directory: update all tabs whose filePath starts with oldDir */
+  /**
+   * §61 Rename directory: update all tabs whose filePath starts with oldDir. §392 takes a
+   * pending viewer change of those tabs first (`flushViewerEdits`).
+   */
   renameDirInTabs: (oldDir: string, newDir: string) => void;
-  /** §33 Rename tab: update filePath and title for a renamed file */
+  /**
+   * §33 Rename tab: update filePath and title for a renamed file. §392 takes a pending viewer
+   * change of that tab first (`flushViewerEdits`).
+   */
   renameTab: (oldPath: string, newPath: string, newTitle: string) => void;
   /** Reorder tab from one index to another */
   reorderTab: (fromIndex: number, toIndex: number) => void;
@@ -214,6 +236,8 @@ interface EditorState {
   setActiveTab: (tabId: string) => void;
   /** §44 Update current editor selection text. Gated: no-op if unchanged */
   setCurrentSelection: (text: string) => void;
+  /** §392 Show a preview ↔ source toggle file as source (`on`) or as its preview. */
+  setPreviewSourceForTab: (tabId: string, on: boolean) => void;
   /** §287/§312 Turn source mode on or off for one tab */
   setSourceModeForTab: (tabId: string, on: boolean) => void;
   /**
@@ -287,6 +311,25 @@ export function contextSwitchNeeded(contextId: string): boolean {
 }
 
 /**
+ * §392 spec 0071 §6.6 — take every pending editable-viewer change that `match` selects into
+ * its tab's source buffer. Called BEFORE a state change that can put a code surface up for that
+ * tab, because that surface reads the buffer in render and a take must not happen there (D16).
+ * The take itself is `getSourceBuffer` (D9); this only asks it for the tabs that have something
+ * to take. A tab that is already closed is skipped (§7.2).
+ */
+export function flushViewerEdits(
+  match: (mount: ViewerEditMount) => boolean,
+): void {
+  const { sourceBufferAccess, tabs } = useEditorStore.getState();
+  if (!sourceBufferAccess) return;
+  for (const tabId of pendingViewerEditTabIds(match)) {
+    if (tabs.some((tab) => tab.id === tabId)) {
+      sourceBufferAccess.getSourceBuffer(tabId);
+    }
+  }
+}
+
+/**
  * A type predicate, not just a boolean: callers that pass the result as a gate — "return
  * unless this is a file tab" — then get `filePath` narrowed for free, which is what makes
  * the inverted guards (`if (!isFileTab(tab)) return;`) readable instead of needing a second
@@ -332,6 +375,7 @@ export function isPluginTab(tab: EditorTab | undefined): boolean {
  * 이런 집합은 탭 밖에 살기 때문에 수명도 탭보다 길다. `sourceModeTabs`는 §305 태스크
  * 쓰기 라우터의 입력이라, 죽은 id가 남으면 라우팅이 "그 탭은 소스 모드"라고 계속
  * 주장한다. §313 `staleContentTabs`도 같은 이유로 같은 규율을 받는다.
+ * §392 `previewSourceTabs`(미리보기 ↔ 소스 토글 집합)도 같은 규율을 받는다.
  *
  * ‼️ 뺄 것이 없으면 **같은 참조**를 돌려준다: 새 배열은 use-source-mode의 `useMemo`가
  * Set을 다시 만들게 해 그 소비자들의 memo를 전부 깬다.
@@ -354,6 +398,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   staleContentTabs: [],
   sourceEditedTabs: [],
   sourceModeTabs: [],
+  previewSourceTabs: [],
   sourceBufferAccess: null,
   captureDropAccess: null,
   documentSurfaceAccess: null,
@@ -445,10 +490,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         state.staleContentTabs,
         closed,
       );
+      const previewSourceTabs = withoutClosedTabs(
+        state.previewSourceTabs,
+        closed,
+      );
       return {
         tabs,
         activeTabId,
         mruOrder,
+        previewSourceTabs,
         sourceEditedTabs,
         sourceModeTabs,
         staleContentTabs,
@@ -500,6 +550,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       const tab = state.tabs.find((t) => t.id === tabId);
       if (!tab || tab.isDirty === dirty) return state;
+      // §392 spec 0071 D15 — a change the tab's editable viewer reported and no read has taken
+      // is in no write: not in one that finished while it was reported, and in none at all when
+      // the caller wrote nothing from the viewer (the close guard's background-tab save,
+      // `saveDirtyTab`, and the conflict modal's merge apply in `AppDialogs.tsx`). Lowering
+      // dirty here would leave a clean-looking tab holding unwritten text, which Cmd+W and quit
+      // close without saving. The next read takes the change and the next save clears it.
+      if (!dirty && hasPendingViewerEdit(tabId)) return state;
       return {
         tabs: state.tabs.map((t) =>
           t.id === tabId ? { ...t, isDirty: dirty } : t,
@@ -513,32 +570,49 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return { mruOrder: [tabId, ...filtered] };
     }),
 
-  renameTab: (oldPath, newPath, newTitle) =>
+  renameTab: (oldPath, newPath, newTitle) => {
+    // §392 spec 0071 §6.6 — take a pending viewer change BEFORE the path moves: a new
+    // extension no viewer claims puts the code surface up in the same render, and that surface
+    // reads the buffer in render (D16).
+    const renamed = new Set(
+      get()
+        .tabs.filter((t) => t.filePath === oldPath)
+        .map((t) => t.id),
+    );
+    flushViewerEdits((mount) => renamed.has(mount.tabId));
     set((state) => ({
       tabs: state.tabs.map((t) =>
         t.filePath === oldPath
           ? { ...t, filePath: newPath, title: newTitle }
           : t,
       ),
-    })),
+    }));
+  },
 
-  renameDirInTabs: (oldDir, newDir) =>
+  renameDirInTabs: (oldDir, newDir) => {
+    // issue 595: the boundary after the directory is the separator the
+    // directory is spelled with — on Windows tab paths are joined with
+    // `\`, and `oldDir + "/"` left every tab under the removed directory
+    // on its old path; on Unix a `\` is a character of a name. A
+    // directory rename changes no file's own name, so the title stays.
+    const moves = (t: EditorTab) =>
+      !!t.filePath &&
+      (t.filePath === oldDir || isDescendantPath(t.filePath, oldDir));
+    // §392 spec 0071 §6.6 — the same take as `renameTab`, for every tab under the directory.
+    const moved = new Set(
+      get()
+        .tabs.filter(moves)
+        .map((t) => t.id),
+    );
+    flushViewerEdits((mount) => moved.has(mount.tabId));
     set((state) => ({
-      tabs: state.tabs.map((t) => {
-        // issue 595: the boundary after the directory is the separator the
-        // directory is spelled with — on Windows tab paths are joined with
-        // `\`, and `oldDir + "/"` left every tab under the removed directory
-        // on its old path; on Unix a `\` is a character of a name. A
-        // directory rename changes no file's own name, so the title stays.
-        if (
-          t.filePath &&
-          (t.filePath === oldDir || isDescendantPath(t.filePath, oldDir))
-        ) {
-          return { ...t, filePath: newDir + t.filePath.slice(oldDir.length) };
-        }
-        return t;
-      }),
-    })),
+      tabs: state.tabs.map((t) =>
+        moves(t)
+          ? { ...t, filePath: newDir + t.filePath.slice(oldDir.length) }
+          : t,
+      ),
+    }));
+  },
 
   reorderTab: (fromIndex, toIndex) =>
     set((state) => {
@@ -620,10 +694,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         state.staleContentTabs,
         closed,
       );
+      const previewSourceTabs = withoutClosedTabs(
+        state.previewSourceTabs,
+        closed,
+      );
       return {
         tabs,
         activeTabId,
         mruOrder,
+        previewSourceTabs,
         sourceEditedTabs,
         sourceModeTabs,
         staleContentTabs,
@@ -653,10 +732,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         state.staleContentTabs,
         closed,
       );
+      const previewSourceTabs = withoutClosedTabs(
+        state.previewSourceTabs,
+        closed,
+      );
       return {
         tabs,
         activeTabId,
         mruOrder,
+        previewSourceTabs,
         sourceEditedTabs,
         sourceModeTabs,
         staleContentTabs,
@@ -711,6 +795,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             ? (tabs[tabs.length - 1]?.id ?? null)
             : state.activeTabId,
         mruOrder: state.mruOrder.filter((id) => !ids.has(id)),
+        previewSourceTabs: withoutClosedTabs(state.previewSourceTabs, closed),
         sourceEditedTabs: withoutClosedTabs(state.sourceEditedTabs, closed),
         sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, closed),
         staleContentTabs: withoutClosedTabs(state.staleContentTabs, closed),
@@ -731,6 +816,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       tabs: [],
       activeTabId: null,
       mruOrder: [],
+      previewSourceTabs: withoutClosedTabs(state.previewSourceTabs, () => true),
       sourceEditedTabs: withoutClosedTabs(state.sourceEditedTabs, () => true),
       sourceModeTabs: withoutClosedTabs(state.sourceModeTabs, () => true),
       staleContentTabs: withoutClosedTabs(state.staleContentTabs, () => true),
@@ -789,6 +875,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // 값이 그대로일 때 새 root를 만들지 않는다.
   setCurrentSelection: (text) =>
     set((s) => (s.currentSelection === text ? s : { currentSelection: text })),
+
+  // §392 The same equality gate as `setSourceModeForTab` below, for the same reason.
+  setPreviewSourceForTab: (tabId, on) =>
+    set((state) => {
+      if (state.previewSourceTabs.includes(tabId) === on) return state;
+      return {
+        previewSourceTabs: on
+          ? [...state.previewSourceTabs, tabId]
+          : state.previewSourceTabs.filter((id) => id !== tabId),
+      };
+    }),
 
   // §287/§312 동등성 관문은 장식이 아니다. partial `set`은 값이 같아도 **새 root**를
   // 만들어 스토어 구독자 전부를 깨운다(CLAUDE.md 규약). 탭을 전환할 때마다 도는

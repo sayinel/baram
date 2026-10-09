@@ -23,9 +23,11 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 // PluginFileViewerOptions = { id: string; extensions: string[];
 //   onMount(el: HTMLElement, ctx: PluginFileViewerContext): void;
 //   onUpdate?(el: HTMLElement, ctx: PluginFileViewerContext): void;
-//   onUnmount?(el: HTMLElement): void }
+//   onUnmount?(el: HTMLElement): void;
+//   editable?: boolean; getText?(el: HTMLElement): string }
 // PluginFileViewerContext = { assetUrl: string; filePath: string;
-//   refreshKey: number; zoomLevel: number }
+//   refreshKey: number; zoomLevel: number; edit?: PluginFileViewerEdit }
+// PluginFileViewerEdit = { tabId: string; text: string; markChanged(): void }
 ```
 
 `context.ui` itself is available whenever the manifest declares `sidebar`,
@@ -37,7 +39,7 @@ method has its own per-method gate:
 | `showStatusBarItem`  | `statusbar`                                            |
 | `addSidebarPanel`    | `sidebar`                                              |
 | `addSettingsTab`     | `settings`                                             |
-| `registerFileViewer` | `viewer`                                               |
+| `registerFileViewer` | `viewer` (and `files` for `editable: true`)            |
 | `showNotification`   | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 | `addStyle`           | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 
@@ -60,13 +62,15 @@ Notes:
   `asset:` protocol (already cache-busted with `refreshKey`), and `zoomLevel`
   is the shared editor zoom (Cmd+= / Cmd+- / Cmd+0, Ctrl+wheel) — scaling
   your content with it is your viewer's job. `onUpdate` fires when the
-  context changes while mounted (zoom, save, external reload). For **text**
+  context changes while mounted (zoom, save, external reload); an editing mount
+  (see the editable viewers page below) is not sent its own save. For **text**
   extensions the app keeps its preview ↔ source toggle: your viewer renders
   the preview side, CodeMirror the source side. **Binary** extensions are
   viewer-only, and the app's binary guards (no UTF-8 reads, no text saves)
   apply whether or not your plugin is enabled. The built-in `media-viewer`
   plugin (`src/plugins/builtin/media-viewer.ts`) is the reference
-  implementation.
+  implementation. A viewer can also change the file it shows — see
+  [Editable file viewers](/en/docs/plugin-dev/editable-file-viewers/).
 
 ## Shadow-DOM UI isolation
 

@@ -15,6 +15,7 @@ import type { UseInlineAIReturn } from "../../hooks/use-inline-ai";
 import type { RetainedEntry } from "../../hooks/use-retained-tabs";
 import type { SurfaceKind } from "../../utils/editor/surface-kind";
 import type { PdfFindApi } from "../editor/pdf/use-pdf-find";
+import type { ViewerEditHostDeps } from "../editor/PluginViewerHost";
 import type { TabSurfaceRenderers } from "../editor/tab-surface-renderers";
 import type { Editor } from "@tiptap/react";
 
@@ -33,6 +34,8 @@ interface EditorAreaSurfaceProps {
   sourceEditorRef: React.RefObject<null | SourceCodeEditorRef>;
   surfaceKind: SurfaceKind;
   tabSurfaceRenderers: TabSurfaceRenderers;
+  /** §392 The source-buffer side an editable viewer's mount reads and re-arms (spec 0071 §6). */
+  viewerEdit: ViewerEditHostDeps;
 }
 
 /** Everything the always-mounted `MarkdownSurface` needs. */
@@ -88,6 +91,7 @@ export function EditorArea({
     sourceEditorRef,
     surfaceKind,
     tabSurfaceRenderers,
+    viewerEdit,
   } = surface;
   // §286 마크다운 표면이 지금 보여야 하는가 — `surfaceKind`의 순수 함수다. 별도 prop으로
   // 받으면 두 값이 어긋날 수 있다(quality review HIGH) — 여기서 한 줄로 유도한다.
@@ -124,8 +128,10 @@ export function EditorArea({
         >
           {activeSurface.pluginViewer ? (
             <PluginViewerHost
+              edit={viewerEdit}
               filePath={activeSurface.activeTabFilePath}
               refreshKey={activeSurface.previewFileMtime}
+              tabId={activeSurface.activeTabId!}
               viewer={activeSurface.pluginViewer}
             />
           ) : (
@@ -144,8 +150,10 @@ export function EditorArea({
         >
           {previewToggleButton}
           <PluginViewerHost
+            edit={viewerEdit}
             filePath={activeSurface.activeTabFilePath!}
             refreshKey={activeSurface.previewFileMtime}
+            tabId={activeSurface.activeTabId!}
             viewer={activeSurface.pluginViewer}
           />
         </div>
