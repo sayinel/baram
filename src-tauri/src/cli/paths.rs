@@ -83,29 +83,14 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
     }
     // `Path::exists` and `is_dir` are false whenever the metadata cannot be read, so a
     // folder behind a directory that cannot be entered would be reported as absent.
-    // FILE_NOT_FOUND is for what is not there; any other failure is IO, with the OS's
-    // reason (the split `file_arg` makes for a file).
+    // A failed read is split by `metadata_failure`; a file is not a folder.
     match std::fs::metadata(&folder) {
         Ok(meta) if meta.is_dir() => Ok(folder),
         Ok(_) => Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is a file, not a folder"),
         )),
-        Err(source)
-            if matches!(
-                source.kind(),
-                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-            ) =>
-        {
-            Err(CliError::new(
-                ErrorCode::FileNotFound,
-                format!("no folder at {input}"),
-            ))
-        }
-        Err(source) => Err(CliError::new(
-            ErrorCode::Io,
-            format!("cannot read {input}: {source}"),
-        )),
+        Err(source) => Err(metadata_failure(input, "folder", source)),
     }
 }
 
@@ -113,9 +98,8 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
 ///
 /// `Path::is_file` is false whenever the metadata cannot be read — std's own examples
 /// are a permission error and a broken symlink — so a file behind a directory that
-/// cannot be entered would be reported as absent. FILE_NOT_FOUND is for what is not
-/// there: nothing at the path, a file where a directory should be, or a directory (not
-/// a file). Any other failure is IO, with the OS's reason.
+/// cannot be entered would be reported as absent. A failed read is split by
+/// `metadata_failure`; a directory is FILE_NOT_FOUND too, as it is not a file.
 pub(crate) fn file_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let file = locate(vault, input)?;
     match std::fs::metadata(&file) {
@@ -124,21 +108,21 @@ pub(crate) fn file_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
             ErrorCode::FileNotFound,
             format!("no file at {input}"),
         )),
-        Err(source)
-            if matches!(
-                source.kind(),
-                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
-            ) =>
-        {
-            Err(CliError::new(
-                ErrorCode::FileNotFound,
-                format!("no file at {input}"),
-            ))
+        Err(source) => Err(metadata_failure(input, "file", source)),
+    }
+}
+
+/// What a failed `metadata` on a path argument means — the one split `folder_arg` and
+/// `file_arg` share. FILE_NOT_FOUND `no <noun> at <input>` is for what is not there:
+/// nothing at the path (`NotFound`), or a file where one of its directories should be
+/// (`NotADirectory`). Any other failure is IO `cannot read <input>: <OS error>` — a
+/// directory on the way that cannot be entered is one.
+fn metadata_failure(input: &str, noun: &str, source: std::io::Error) -> CliError {
+    match source.kind() {
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory => {
+            CliError::new(ErrorCode::FileNotFound, format!("no {noun} at {input}"))
         }
-        Err(source) => Err(CliError::new(
-            ErrorCode::Io,
-            format!("cannot read {input}: {source}"),
-        )),
+        _ => CliError::new(ErrorCode::Io, format!("cannot read {input}: {source}")),
     }
 }
 
@@ -336,6 +320,48 @@ mod tests {
         assert_eq!(
             folder_arg(&vault, "docs/a.md").unwrap_err().code,
             ErrorCode::InvalidArgument
+        );
+    }
+
+    /// A path that goes through a file names nothing, for a folder argument and a file
+    /// argument alike. On macOS the read fails with `NotADirectory`, not `NotFound`.
+    #[test]
+    fn a_path_through_a_file_is_not_found() {
+        let (_t, base) = tree(&["vault/docs"]);
+        std::fs::write(base.join("vault/docs/a.md"), "x").unwrap();
+        let vault = vault_at(&base.join("vault"));
+        assert_eq!(
+            folder_arg(&vault, "docs/a.md/x").unwrap_err().code,
+            ErrorCode::FileNotFound
+        );
+        assert_eq!(
+            file_arg(&vault, "docs/a.md/x").unwrap_err().code,
+            ErrorCode::FileNotFound
+        );
+    }
+
+    /// The split both path arguments make, one error kind at a time. On disk, the IO arm
+    /// is pinned end to end on Unix (tests/cli.rs is `#![cfg(unix)]`) by its
+    /// `…_in_a_directory_that_cannot_be_entered_…` tests — for `read`, for `files` and
+    /// `search --folder`, and for `tasks --file`.
+    #[test]
+    fn a_failed_metadata_read_is_file_not_found_only_when_nothing_is_there() {
+        use std::io::{Error, ErrorKind};
+        for (kind, code) in [
+            (ErrorKind::NotFound, ErrorCode::FileNotFound),
+            (ErrorKind::NotADirectory, ErrorCode::FileNotFound),
+            (ErrorKind::PermissionDenied, ErrorCode::Io),
+        ] {
+            let error = metadata_failure("a/b", "file", Error::from(kind));
+            assert_eq!(error.code, code, "{kind:?}");
+        }
+        let missing = metadata_failure("a/b", "folder", Error::from(ErrorKind::NotFound));
+        assert_eq!(missing.message, "no folder at a/b");
+        let denied = metadata_failure("a/b", "file", Error::from(ErrorKind::PermissionDenied));
+        assert!(
+            denied.message.starts_with("cannot read a/b: "),
+            "{}",
+            denied.message
         );
     }
 

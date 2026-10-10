@@ -54,13 +54,34 @@ pub(crate) struct FileContext {
     pub registrable: bool,
 }
 
-pub(crate) fn default_path() -> Option<PathBuf> {
+fn default_path() -> Option<PathBuf> {
     dirs::data_dir().map(|dir| dir.join(APP_IDENTIFIER).join("config.json"))
+}
+
+/// The app's config, read where the app keeps it. With no app data directory there is
+/// no config.json to look for, and that is a warning too: a `--vault <name>`, or a run
+/// without `--vault` from a directory it can read, would otherwise end as VAULT_NOT_FOUND
+/// (`vaults` as an empty list) with nothing to say why.
+pub(crate) fn load_default() -> AppConfig {
+    load_from(default_path().as_deref())
+}
+
+fn load_from(path: Option<&Path>) -> AppConfig {
+    match path {
+        Some(path) => load(path),
+        None => AppConfig {
+            warnings: vec![format!(
+                "cannot read the app's config.json: {}",
+                describe(&ConfigError::NoAppDataDir)
+            )],
+            ..AppConfig::default()
+        },
+    }
 }
 
 /// Never fails: a config that cannot be read is an empty one plus a warning, and
 /// `--vault <path>` still works. A missing FILE is not a warning — the app has not run.
-pub(crate) fn load(path: &Path) -> AppConfig {
+fn load(path: &Path) -> AppConfig {
     let mut config = AppConfig::default();
     let map = match crate::config::read_config_map(&path.to_path_buf()) {
         Ok(map) => map,
@@ -276,6 +297,28 @@ mod tests {
     fn a_missing_file_is_empty_and_silent() {
         let dir = TempDir::new().unwrap();
         assert_eq!(load(&dir.path().join("config.json")), AppConfig::default());
+    }
+
+    /// Unlike a missing file, which is silent above: with no app data directory there is
+    /// nowhere to look, and that is a warning. `execute` writes warnings before it
+    /// resolves the vault; this test does not reach `execute`.
+    #[test]
+    fn no_app_data_directory_is_empty_with_a_warning() {
+        let config = load_from(None);
+        assert_eq!(
+            config.warnings,
+            vec!["cannot read the app's config.json: no app data directory".to_string()]
+        );
+        assert_eq!(
+            AppConfig {
+                warnings: Vec::new(),
+                ..config
+            },
+            AppConfig::default()
+        );
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("config.json");
+        assert_eq!(load_from(Some(&missing)), AppConfig::default());
     }
 
     #[test]
