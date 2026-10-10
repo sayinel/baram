@@ -184,14 +184,14 @@ The host emits `"editor:ready"`, `"file:open"` and `"file:save"` (the
 Save and Save As — never on auto-save. **There is no per-keystroke event**: to
 react to edits, recompute on these or on `"vault:changed"` instead of polling.
 
-`"vault:changed"` hands your handler `{ context }` — a registered context whose
-notes changed on disk: saved (auto-save too), created, renamed or deleted, by
-Baram or another program. It fires once the link index has caught up, at most
-every couple of seconds while files keep changing, and only for vaults Baram
-watches (the active one and any opened this session), never for hidden or tool
-folders (`.obsidian/`, `node_modules/`). It needs `files` or `files:readonly`,
-not `events`. Your own `files.writeFile` triggers it too, so write a note from
-its handler only when the content differs.
+`"vault:changed"` hands your handler `{ context }`, a registered context where a note (`.md`, `.markdown`)
+or any other file a link can point at was created, changed (auto-save too), renamed or deleted, by Baram or
+another program, once the link index reflects it. A change that leaves a live index as it was may not fire
+it (deleting a path the index never held, an empty folder appearing). It needs `files` or `files:readonly`,
+not `events`, and fires within about two seconds of a change, even while files keep changing, only in vaults
+Baram watches (the active one and any opened this session), never for hidden files or folders (a name
+starting with `.`) or tool folders (`.git`, `.obsidian`, `.baram`, `node_modules`). Your own
+`files.writeFile` anywhere else in those vaults fires it too: skip unchanged writes to avoid a loop.
 
 `"file:open"` fires once the opened file's content is actually loaded into the
 editor — not at the moment the tab opens — so for markdown files

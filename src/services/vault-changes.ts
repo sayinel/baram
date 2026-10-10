@@ -1,4 +1,4 @@
-// §393 "Notes in this context changed, and the link index has caught up" (spec 0072 §6).
+// §393 "Files in this context changed, and the link index has caught up" (spec 0072 §6).
 //
 // Published by `useVaultChangeSync` once per context per synced batch, AFTER
 // `sync_index_paths` resolved — so a listener that reads the index on hearing it reads the new

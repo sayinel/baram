@@ -1,4 +1,4 @@
-// §393 — "this context's notes changed", for BOTH tiers (spec 0072 §6, D11).
+// §393 — "this context's files changed", for BOTH tiers (spec 0072 §6, D11).
 //
 // The shape of `settings-change-notifier.ts`: WHO may be told (`files` or `files:readonly`, not
 // `events` — the capability of the data the event is about, §0054's rule) and WHEN (once per

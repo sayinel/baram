@@ -110,10 +110,16 @@ export interface EditorSelection {
 export interface EventsAPI {
     emit(event: string, ...args: unknown[]): void;
     /**
-     * §393 A context's notes changed on disk — saved (auto-save too), created, renamed or deleted,
-     * by Baram or another program — and the link index has caught up. Needs `files` or
-     * `files:readonly`, not `events`; without either the subscription is accepted and never fires.
-     * Fires only for vaults the app watches (the active one and any opened this session).
+     * §393 In a registered context, a note (`.md`, `.markdown`) or any other file a link can point
+     * at was created, changed (auto-save too), renamed or deleted — by Baram or another program —
+     * and the link index already reflects it. A change that leaves a live index as it was may not
+     * fire it (deleting a path the index never held, an empty folder appearing). Fires within
+     * about two seconds of a change, even while files keep changing, and only for vaults the app
+     * watches (the active one and any opened this session); never for hidden files or folders (a
+     * name starting with `.`) or tool folders (`.git`, `.obsidian`, `.baram`, `node_modules`). Your
+     * own `files.writeFile` anywhere else in those vaults fires it too: skip writes whose content
+     * is unchanged, or the handler loops. Needs `files` or `files:readonly`, not `events`; without
+     * either the subscription is accepted and never fires.
      */
     on(event: "vault:changed", handler: (change: VaultChange) => void): Disposable;
     on(event: string, handler: (...args: unknown[]) => void): Disposable;
@@ -885,7 +891,7 @@ export interface UIAPI {
     showNotification(message: string, type?: "error" | "info" | "warning"): void;
     showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
 }
-/** §393 What `vault:changed` carries, the same in both tiers: the registered context whose notes changed. */
+/** §393 What `vault:changed` carries, the same in both tiers: the registered context whose files changed. */
 export interface VaultChange {
     context: string;
 }

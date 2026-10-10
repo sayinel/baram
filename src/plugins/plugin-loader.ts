@@ -815,7 +815,7 @@ export class PluginLoader {
         pluginId: manifest.id,
       }),
     });
-    // §393 — and to a context's notes changing (`vault:changed`). Not the event bridge either,
+    // §393 — and to a context's files changing (`vault:changed`). Not the event bridge either,
     // for the same reason: gated on `files` / `files:readonly` inside the watcher, not on `events`.
     disposables.push({
       dispose: watchVaultChanges({
