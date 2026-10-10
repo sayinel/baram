@@ -11,7 +11,6 @@ mod output;
 mod paths;
 mod vault;
 
-use app_config::AppConfig;
 use args::{Cli, Command};
 use clap::Parser;
 use error::{CliError, ErrorCode};
@@ -152,10 +151,7 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
         )
     });
     let home = dirs::home_dir();
-    let config = match app_config::default_path() {
-        Some(path) => app_config::load(&path),
-        None => AppConfig::default(),
-    };
+    let config = app_config::load_default();
     {
         let mut stderr = std::io::stderr().lock();
         for warning in &config.warnings {
