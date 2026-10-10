@@ -110,6 +110,8 @@ mod tests;
 
 pub(crate) use applier::run as run_applier;
 pub use applier::ExternalChanges;
+#[cfg(test)]
+pub(crate) use applier::{apply_batch as apply_watched_batch, SETTLE as APPLIER_SETTLE};
 pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 

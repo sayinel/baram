@@ -80,6 +80,9 @@ pub struct ExternalChanges {
     /// Batches taken, units run, entries skipped as covered (tests).
     #[cfg(test)]
     pub(crate) counts: std::sync::Mutex<Counts>,
+    /// The next batch panics right after its take (tests).
+    #[cfg(test)]
+    pub(crate) panic_next: std::sync::atomic::AtomicBool,
 }
 
 #[cfg(test)]
@@ -163,9 +166,10 @@ impl ExternalChanges {
             .insert(host.to_path_buf());
     }
 
-    /// A watcher on `host` is starting: if the last one ended, what changed meanwhile was
-    /// never reported, so the host is rescanned.
-    pub(crate) fn starting(&self, host: &Path) {
+    /// A watcher on `host` now watches: if the last one ended, what changed meanwhile was
+    /// never reported, so the host is rescanned. Called after the start succeeded, so a
+    /// failed start keeps the mark for the next.
+    pub(crate) fn started(&self, host: &Path) {
         let ended = self
             .ended
             .lock()
@@ -204,6 +208,14 @@ impl ExternalChanges {
         self.dirty().paths.len()
     }
 
+    /// The identities waiting, sorted (tests).
+    #[cfg(test)]
+    pub(crate) fn pending_identities(&self) -> Vec<PathBuf> {
+        let mut identities: Vec<PathBuf> = self.dirty().paths.keys().cloned().collect();
+        identities.sort();
+        identities
+    }
+
     /// Host rescans waiting (tests).
     #[cfg(test)]
     pub(crate) fn pending_rescans(&self) -> usize {
@@ -221,11 +233,33 @@ impl ExternalChanges {
     }
 }
 
-/// The applier: one batch per burst, for as long as the app runs.
+/// The applier: one batch per burst, for as long as the app runs. Each batch runs as a
+/// task of its own, so a panic in one (builds that unwind: dev and test — release aborts)
+/// does not end the applier. What that batch had taken is gone with it, so every
+/// directory registration is marked for a rescan, and the loop goes on.
 pub(crate) async fn run<R: Runtime>(app: tauri::AppHandle<R>) {
     loop {
         app.state::<ExternalChanges>().burst().await;
-        apply_batch(&app).await;
+        let batch = {
+            let app = app.clone();
+            tokio::spawn(async move { apply_batch(&app).await })
+        };
+        if let Err(e) = batch.await {
+            log::error!("§29 #824 a watcher batch failed ({e}); rescanning every vault");
+            recover(&app).await;
+        }
+    }
+}
+
+/// After a batch that did not finish: every directory registration is rescanned.
+async fn recover<R: Runtime>(app: &tauri::AppHandle<R>) {
+    let changes = app.state::<ExternalChanges>();
+    for registration in app
+        .state::<ContextManager>()
+        .directory_registrations()
+        .await
+    {
+        changes.mark_rescan(&registration.canonical_path);
     }
 }
 
@@ -235,6 +269,13 @@ pub(crate) async fn apply_batch<R: Runtime>(app: &tauri::AppHandle<R>) {
     let (paths, rescans) = changes.take();
     if paths.is_empty() && rescans.is_empty() {
         return;
+    }
+    #[cfg(test)]
+    if changes
+        .panic_next
+        .swap(false, std::sync::atomic::Ordering::SeqCst)
+    {
+        panic!("injected panic in a watcher batch");
     }
     let state = app.state::<LinkIndexState>();
     let ctx_mgr = app.state::<ContextManager>();

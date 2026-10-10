@@ -340,11 +340,11 @@ async fn a_host_that_ended_is_rescanned_when_it_starts_again() {
     let dir = tempfile::tempdir().unwrap();
     let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
     let changes = app.state::<ExternalChanges>();
-    changes.starting(&root);
+    changes.started(&root);
     apply_batch(app.handle()).await;
     assert_eq!(counts(&app).rescans, 0);
     changes.note_ended(&root);
-    changes.starting(&root);
+    changes.started(&root);
     apply_batch(app.handle()).await;
     assert_eq!(counts(&app).rescans, 1);
 }
@@ -379,9 +379,10 @@ fn route(
         recursive,
         Arc::clone(&spec.focus),
         Arc::clone(&spec.spellings),
-    );
+    )
+    .with_host(root);
     let event = notify::Event::new(kind).add_path(path.to_path_buf());
-    crate::fs::route_event(&mut filter, &event, root, root, &sinks, &mut |_, _| {});
+    crate::fs::route_event(&mut filter, &event, &sinks, &mut |_, _| {});
 }
 
 fn modified() -> notify::EventKind {
@@ -533,4 +534,144 @@ async fn a_file_window_s_folder_watch_keeps_its_vault_s_index() {
     apply_batch(app.handle()).await;
     let from = format!("{key}/notes/n.md");
     assert!(edges(&app, &key).await.iter().any(|(f, _)| *f == from));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn nested_spellings_key_a_change_under_the_one_it_came_through() {
+    // A vault `v` and a file window's folder `v/link`, a link to `v/sub`: both are
+    // registered spellings, and `v` holds `v/link`. A change to `v/sub/n.md` — reported
+    // by the OS as `v/sub/n.md` (FSEvents) or as `v/link/n.md` (through the link) — is
+    // one file, `v/sub/n.md`, whichever spelling it is emitted in. The link is then
+    // retargeted before the batch: the change stays where it was observed.
+    // 이것을 실패시키는 것: 다시 쓴 spelling 에서 첫 번째로 맞는 spelling 으로 identity 를 짓는다 —
+    // `v/link/n.md` 가 따로 key 가 된다 — 또는 가장 구체적인 spelling 대신 첫 spelling 을 고른다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    let sub = root.join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    let note = sub.join("n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    let link = root.join("link");
+    std::os::unix::fs::symlink(&sub, &link).unwrap();
+    let spellings = vec![(root.clone(), root.clone()), (sub.clone(), link.clone())];
+    let changes = app.state::<ExternalChanges>();
+    for reported in [&note, &link.join("n.md")] {
+        route(
+            &app,
+            &root,
+            true,
+            &[],
+            spellings.clone(),
+            modified(),
+            reported,
+        );
+        assert_eq!(
+            changes.pending_identities(),
+            std::slice::from_ref(&note),
+            "reported as {}",
+            reported.display()
+        );
+    }
+    std::fs::remove_file(&link).unwrap();
+    std::fs::create_dir(root.join("other")).unwrap();
+    std::fs::write(root.join("other/n.md"), "see [[elsewhere]]").unwrap();
+    std::os::unix::fs::symlink(root.join("other"), &link).unwrap();
+    apply_batch(app.handle()).await;
+    let edges = edges(&app, &key).await;
+    let under = |p: &str| {
+        edges
+            .iter()
+            .any(|(f, t)| *f == format!("{key}/{p}") && t.ends_with("/x.md"))
+    };
+    assert!(under("sub/n.md"), "{edges:?}");
+    assert!(
+        !edges
+            .iter()
+            .any(|(f, _)| f.starts_with(&format!("{key}/link/"))),
+        "{edges:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_batch_that_panics_is_recovered_and_the_applier_goes_on() {
+    // The batch that took a change panics; the vault is rescanned, so that change is in
+    // the index, and a change marked after it is applied too.
+    // 이것을 실패시키는 것: panic 뒤에 모든 등록을 rescan 하지 않는다 — 가져간 변경이 사라진다 — 또는 batch 를
+    // task 로 감싸지 않아 applier 가 끝난다 — 뒤의 변경이 적용되지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    tokio::spawn(run(app.handle().clone()));
+    let note = root.join("n.md");
+    let has = |target: &'static str| {
+        let (app, key) = (app.handle().clone(), key.clone());
+        async move {
+            for _ in 0..500 {
+                let graph = get_link_index_inner(
+                    &app.state::<LinkIndexState>(),
+                    &app.state::<ContextManager>(),
+                    Some(key.clone()),
+                )
+                .await
+                .unwrap();
+                if graph.edges.iter().any(|e| e.to.ends_with(target)) {
+                    return true;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            false
+        }
+    };
+    let changes = app.state::<ExternalChanges>();
+    changes
+        .panic_next
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    std::fs::write(&note, "see [[first]]").unwrap();
+    mark(&app, &root, &note, &note.to_string_lossy());
+    assert!(
+        has("/first.md").await,
+        "the panicked batch's change was lost"
+    );
+    assert!(counts(&app).rescans >= 1);
+    std::fs::write(&note, "see [[second]]").unwrap();
+    mark(&app, &root, &note, &note.to_string_lossy());
+    assert!(has("/second.md").await, "the applier stopped");
+}
+
+#[tokio::test]
+async fn a_host_watched_under_another_spelling_keys_its_paths_canonically() {
+    // The host is watched as spelled (`/var/…` on macOS) and the OS reports paths that
+    // way, with no registered spelling to read them back: the host's own canonical key
+    // gives the identity.
+    // 이것을 실패시키는 것: `identity_of` 가 host 의 spelled root 를 canonical key 로 옮기지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let spelled = dir.path().join("v");
+    let (_key, root) = vault_at(&app, "v", &spelled).await;
+    if spelled == root {
+        // This host's temporary folder has one spelling: nothing to read back.
+        return;
+    }
+    let note = spelled.join("n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    let spec = crate::fs::watch_registry::WatchSpec {
+        key: root.clone(),
+        root: spelled.to_string_lossy().into_owned(),
+        recursive: true,
+        generation: 1,
+        focus: Default::default(),
+        spellings: Default::default(),
+    };
+    let sinks = crate::commands::watch_cmd::sinks_for(app.handle(), &spec);
+    let mut filter =
+        crate::fs::WatchFilter::for_watch(&spelled, true, Default::default(), Default::default())
+            .with_host(&root);
+    let event = notify::Event::new(modified()).add_path(note.clone());
+    crate::fs::route_event(&mut filter, &event, &sinks, &mut |_, _| {});
+    assert_eq!(
+        app.state::<ExternalChanges>().pending_identities(),
+        [root.join("n.md")]
+    );
 }

@@ -398,7 +398,7 @@ fn the_router_marks_a_batch_before_emitting_it_without_the_registry() {
     let handle = app.handle().clone();
     std::thread::spawn(move || {
         let mut emitted = Vec::new();
-        crate::fs::route_event(&mut filter, &event, &root, &root, &sinks, &mut |name, _| {
+        crate::fs::route_event(&mut filter, &event, &sinks, &mut |name, _| {
             emitted.push((name, handle.state::<ExternalChanges>().pending()));
         });
         let _ = tx.send(emitted);
@@ -423,7 +423,7 @@ fn an_event_the_os_flags_for_a_rescan_marks_its_host() {
     let mut filter =
         crate::fs::WatchFilter::for_watch(&root, true, Default::default(), Default::default());
     let event = notify::Event::new(notify::EventKind::Other).set_flag(notify::event::Flag::Rescan);
-    crate::fs::route_event(&mut filter, &event, &root, &root, &sinks, &mut |_, _| {});
+    crate::fs::route_event(&mut filter, &event, &sinks, &mut |_, _| {});
     assert_eq!(app.state::<ExternalChanges>().pending_rescans(), 1);
 }
 
@@ -442,4 +442,79 @@ fn a_host_whose_watcher_ended_is_rescanned_when_it_is_started_again() {
     changes.note_ended(&root);
     let _second = spawn_watcher(app.handle(), &host_spec(&root)).unwrap();
     assert_eq!(changes.pending_rescans(), 1);
+}
+
+#[tokio::test]
+async fn a_failed_restart_keeps_the_host_marked_until_a_watcher_starts() {
+    // The host's watcher ended; the next start fails (its folder is away), a note is
+    // written while nothing watches, then a start succeeds. That start rescans, and the
+    // write is in the index.
+    // 이것을 실패시키는 것: `spawn_watcher` 가 시작하기 전에 `ended` 를 소비한다 — 실패한 시작이 표식을
+    // 가져가 성공한 시작은 rescan 하지 않는다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let v = dir.path().join("v");
+    std::fs::create_dir(&v).unwrap();
+    std::fs::write(v.join("a.md"), "see [[b]]").unwrap();
+    let key = v.to_string_lossy().into_owned();
+    let ctx = app.state::<crate::context::ContextManager>();
+    ctx.add(context("v", &key, crate::context::ContextType::Folder))
+        .await
+        .unwrap();
+    let state = app.state::<crate::index::service::LinkIndexState>();
+    crate::index::service::refresh_index_inner(&state, &ctx, &key)
+        .await
+        .unwrap();
+    let root = std::fs::canonicalize(&v).unwrap();
+    let changes = app.state::<ExternalChanges>();
+    changes.note_ended(&root);
+    let away = dir.path().join("away");
+    std::fs::rename(&v, &away).unwrap();
+    assert!(spawn_watcher(app.handle(), &host_spec(&root)).is_err());
+    assert_eq!(changes.pending_rescans(), 0);
+    std::fs::rename(&away, &v).unwrap();
+    std::fs::write(v.join("a.md"), "see [[late]]").unwrap();
+    let _watcher = spawn_watcher(app.handle(), &host_spec(&root)).unwrap();
+    assert_eq!(changes.pending_rescans(), 1);
+    crate::index::service::apply_watched_batch(app.handle()).await;
+    let graph = crate::index::service::get_link_index_inner(&state, &ctx, Some(key.clone()))
+        .await
+        .unwrap();
+    assert!(graph
+        .edges
+        .iter()
+        .any(|e| e.from == format!("{key}/a.md") && e.to.ends_with("late.md")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_restart_s_rescan_waits_for_its_watcher() {
+    // A start held past the settle window: the applier, running, takes nothing — the
+    // rescan is marked only once the watcher is in place.
+    // 이것을 실패시키는 것: rescan 을 시작 전에 건다 — applier 가 아직 감시하지 않는 동안 rescan 을 돌린다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    tokio::spawn(crate::index::service::run_applier(app.handle().clone()));
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let changes = app.state::<ExternalChanges>();
+    changes.note_ended(&root);
+    let (release, gate) = std::sync::mpsc::channel();
+    *START_GATE.lock().unwrap() = Some((root.clone(), gate));
+    let (handle, spec) = (app.handle().clone(), host_spec(&root));
+    let starting = std::thread::spawn(move || spawn_watcher(&handle, &spec).map(drop));
+    tokio::time::sleep(crate::index::service::APPLIER_SETTLE * 2).await;
+    assert_eq!(changes.pending_rescans(), 0);
+    assert_eq!(changes.counts.lock().unwrap().rescans, 0);
+    release.send(()).unwrap();
+    starting.join().unwrap().unwrap();
+    for _ in 0..200 {
+        if changes.counts.lock().unwrap().rescans == 1 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(changes.counts.lock().unwrap().rescans, 1);
 }

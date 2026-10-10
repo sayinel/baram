@@ -803,14 +803,13 @@ pub(crate) struct WatchSinks {
     pub(crate) on_rescan: Box<dyn Fn() + Send>,
 }
 
-/// One notify event from the watcher on `host` (canonical, watched as `spelled_host`):
-/// a rescan said first if the OS asks for one, then every routed path marked, then the
-/// `file:*` events emitted, in `route`'s order and number.
+/// One notify event: a rescan said first if the OS asks for one, then every routed path
+/// marked under the identity the filter derived from the watcher's own path
+/// (`WatchFilter::route_identified`), then the `file:*` events emitted, in `route`'s
+/// order and number.
 pub(crate) fn route_event(
     filter: &mut watch_filter::WatchFilter,
     event: &Event,
-    host: &Path,
-    spelled_host: &Path,
     sinks: &WatchSinks,
     emit: &mut dyn FnMut(&'static str, serde_json::Value),
 ) {
@@ -818,18 +817,13 @@ pub(crate) fn route_event(
     if event.need_rescan() {
         (sinks.on_rescan)();
     }
-    let emits = filter.route(event, &watch_filter::RealProbe);
-    let routed: Vec<(PathBuf, String)> = emits
+    let routed = filter.route_identified(event, &watch_filter::RealProbe);
+    let marks: Vec<(PathBuf, String)> = routed
         .iter()
-        .map(|e| {
-            (
-                identity(filter, host, spelled_host, e.path()),
-                e.path().to_string(),
-            )
-        })
+        .map(|(identity, e)| (identity.clone(), e.path().to_string()))
         .collect();
-    (sinks.on_paths)(&routed);
-    for emitted in emits {
+    (sinks.on_paths)(&marks);
+    for (_, emitted) in routed {
         match emitted {
             watch_filter::Emit::Created {
                 path,
@@ -851,26 +845,6 @@ pub(crate) fn route_event(
                 serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
             ),
         }
-    }
-}
-
-/// The canonical identity of an emitted path, without the filesystem: through the
-/// registered spelling it was rebuilt under, else from the host as watched onto its
-/// canonical key, else as the OS spelled it (FSEvents reports canonical paths).
-fn identity(
-    filter: &watch_filter::WatchFilter,
-    host: &Path,
-    spelled_host: &Path,
-    path: &str,
-) -> PathBuf {
-    let path = Path::new(path);
-    let mapped = filter.canonical_of(path);
-    if mapped != path {
-        return mapped;
-    }
-    match path.strip_prefix(spelled_host) {
-        Ok(relative) if spelled_host != host => host.join(relative),
-        _ => path.to_path_buf(),
     }
 }
 
@@ -917,7 +891,8 @@ pub(crate) fn start_watching<R: tauri::Runtime>(
         spec.recursive,
         spec.focus.clone(),
         spec.spellings.clone(),
-    );
+    )
+    .with_host(&spec.key);
     let root = spec.key.clone();
     let spelled_root = PathBuf::from(&path);
     std::thread::spawn(move || {
@@ -935,16 +910,9 @@ pub(crate) fn start_watching<R: tauri::Runtime>(
             };
             let root_removed = matches!(event.kind, EventKind::Remove(_))
                 && event.paths.iter().any(|p| p == &root || p == &spelled_root);
-            route_event(
-                &mut filter,
-                &event,
-                &root,
-                &spelled_root,
-                &sinks,
-                &mut |name, payload| {
-                    let _ = app_handle.emit(name, payload);
-                },
-            );
+            route_event(&mut filter, &event, &sinks, &mut |name, payload| {
+                let _ = app_handle.emit(name, payload);
+            });
             if root_removed {
                 log::warn!(
                     "§3.2 watched folder {} was removed; watch ended",
