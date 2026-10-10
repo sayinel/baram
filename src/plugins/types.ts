@@ -148,7 +148,7 @@ export interface EventsAPI {
    * about two seconds of a change, even while files keep changing, and only for vaults the app
    * watches (the active one and any opened this session); never for hidden files or folders (a
    * name starting with `.`) or tool folders (`.git`, `.obsidian`, `.baram`, `node_modules`). Your
-   * own `files.writeFile` anywhere else in those vaults fires it too: skip writes whose content
+   * own `files.writeFile` in those vaults can fire it too: skip writes whose content
    * is unchanged, or the handler loops. Needs `files` or `files:readonly`, not `events`; without
    * either the subscription is accepted and never fires.
    */

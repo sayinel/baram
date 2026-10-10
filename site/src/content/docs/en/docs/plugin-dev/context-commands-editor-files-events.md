@@ -191,7 +191,7 @@ it (deleting a path the index never held, an empty folder appearing). It needs `
 not `events`, and fires within about two seconds of a change, even while files keep changing, only in vaults
 Baram watches (the active one and any opened this session), never for hidden files or folders (a name
 starting with `.`) or tool folders (`.git`, `.obsidian`, `.baram`, `node_modules`). Your own
-`files.writeFile` anywhere else in those vaults fires it too: skip unchanged writes to avoid a loop.
+`files.writeFile` in those vaults can fire it too: skip unchanged writes to avoid a loop.
 
 `"file:open"` fires once the opened file's content is actually loaded into the
 editor — not at the moment the tab opens — so for markdown files
