@@ -26,6 +26,7 @@ export type {
   // that tier learns a path at all.
   PluginFileEvent,
   PluginFileViewerContext,
+  PluginFileViewerEdit,
   PluginFileViewerOptions,
   PluginManifest,
   PluginProseMirror,

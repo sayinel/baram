@@ -467,6 +467,13 @@ export function useFileOperations({
         useFileStore.getState().removeFileContent(saveAsTab.id);
       }
       setFileContent(savePath, md);
+      // §392 spec 0071 D17, applied to Save As (plan 0121 P10): when `md` came from the buffer,
+      // the tab is marked clean only while the buffer still holds what was just written — text
+      // drawn or typed during the dialog or the write is not in the new file. The comparison's
+      // read sits BEFORE the path changes because it also takes an editable viewer's pending
+      // change (§6.6): a new extension no viewer claims puts the code surface up in the same
+      // render, and that surface reads the buffer in render (D16).
+      const holding = fromBuffer ? getSourceBuffer(saveAsTab.id) : md;
       useEditorStore.setState((state) => ({
         tabs: state.tabs.map((t) =>
           t.id === saveAsTab.id
@@ -474,9 +481,10 @@ export function useFileOperations({
             : t,
         ),
       }));
-      // §3.5 Same rule as `handleSave`: only an unchanged document is clean (#798).
+      // §3.5 Same rule as `handleSave` for a document save: only an unchanged document is clean
+      // (#798). A buffer save compares `holding`, read above before the path changed.
       const clean = fromBuffer
-        ? getSourceBuffer(saveAsTab.id) === md
+        ? holding === md
         : editorStillHolds(editor, saveAsTab.id, docAtWrite!, md);
       if (clean) markDirty(saveAsTab.id, false);
       notifyFileSave(savePath);
@@ -503,10 +511,15 @@ export function useFileOperations({
       // and close without a prompt (Cmd+W keeps its quick save-and-close flow).
       handleSave().then(
         () => {
-          // issue 594: `handleSave` gives up — resolving normally — when the
-          // tab changed while a block ID rename was landing (a Save As can be
-          // cancelled the same way). A tab that is still dirty was NOT saved
-          // and stays open with its work; only a clean one closes.
+          // `handleSave` resolves normally on its early returns and a failed
+          // write, so the tab is asked again: one still
+          // unsaved keeps its work and stays open; only a clean one closes.
+          // It stays unsaved when the save gave up (issue 594: the tab
+          // changed while a block ID rename was landing), when the write
+          // failed, and — §392 D15 ·
+          // D17 — when the text changed while the write was in flight (an
+          // editable viewer's change, or typing in a code tab): the save
+          // then leaves the tab dirty, since what it holds is not on disk.
           const { sourceEditedTabs: editedAfter, tabs: tabsAfter } =
             useEditorStore.getState();
           const after = tabsAfter.find((t) => t.id === tabId);
@@ -591,8 +604,8 @@ export function useFileOperations({
  * §312 Push freshly-read disk content into the source buffers that show it.
  *
  * ‼️ `openFiles` + `contentRefreshKey`만 갱신하면 소스 표면은 낡은 채로 남는다. 그 탭의
- * 저장 경로는 openFiles가 아니라 이 버퍼를 읽으므로(`handleSave`의 `isCode ||
- * sourceModeTabs.has(...)` 갈래), 리로드 직후의 Cmd+S가 **낡은 버퍼로 디스크의 변경을
+ * 저장 경로는 openFiles가 아니라 이 버퍼를 읽으므로(`handleSave`의 `fromBuffer`
+ * 갈래), 리로드 직후의 Cmd+S가 **낡은 버퍼로 디스크의 변경을
  * 덮는다.**
  *
  * 조건이 `handleSave`의 읽기 조건과 **같아야** 한다 — 저장이 버퍼를 읽는 탭에서만

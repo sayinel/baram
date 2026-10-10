@@ -1,0 +1,16 @@
+{
+  "id": "baram-sketch-pad",
+  "name": "Sketch Pad",
+  "description": "§392 example — draw lines on a .strokes file. An editable file viewer: Baram keeps, saves and marks the text; the viewer reports changes and hands its text back.",
+  "version": "1.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "index.mjs",
+  "engines": {
+    "baram": ">=0.7.7"
+  },
+  "trust": "trusted",
+  "capabilities": ["viewer", "files"],
+  "icon": "✏️",
+  "keywords": ["example", "viewer", "drawing"]
+}

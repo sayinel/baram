@@ -176,38 +176,50 @@ export const Wikilink = Node.create<WikilinkOptions>({
     ];
   },
 
-  // Cmd+click navigates to the wikilink target
+  // Cmd+click navigates to the wikilink target (§56: a date link on a plain click).
+  //
+  // Decided at MOUSEDOWN, as the link mark does (link.ts). Measured in Chrome:
+  // the press's default action puts the caret inside the atom, ProseMirror reads
+  // that as a NodeSelection, and SyntaxReveal (`checkNodeSelection`) reveals the
+  // link as `[[…]]` text on the next animation frame — before the mouseup of a
+  // press held 80 ms. A mouseup or click handler then finds raw text where the
+  // node was, and the `[[` suggestion menu opens instead of the note (the app's
+  // WebKit shows the same symptom).
   addProseMirrorPlugins() {
     const { onNavigate } = this.options;
     return [
       new Plugin({
         props: {
-          handleClick(view, pos, event) {
-            const { state } = view;
-            const resolved = state.doc.resolve(pos);
-            const node = state.doc.nodeAt(pos);
+          handleDOMEvents: {
+            mousedown(view, event) {
+              if (event.button !== 0) return false;
+              const pressed = event.target as Element;
+              let pos: number;
+              try {
+                pos = view.posAtDOM(pressed, 0);
+              } catch {
+                return false;
+              }
+              const node = view.state.doc.nodeAt(pos);
+              if (node?.type.name !== "wikilink") return false;
+              // A press on the paragraph's own element resolves too — to the
+              // paragraph's first position, which a leading link occupies. Only a
+              // press inside the link's own DOM is a press on the link.
+              if (!view.nodeDOM(pos)?.contains(pressed)) return false;
 
-            // Check if clicked on a wikilink node or its parent
-            const wikilinkNode =
-              node?.type.name === "wikilink"
-                ? node
-                : resolved.parent?.type.name === "wikilink"
-                  ? resolved.parent
-                  : null;
+              const target = node.attrs.target as string;
+              if (!isDateString(target) && !(event.metaKey || event.ctrlKey)) {
+                return false;
+              }
 
-            if (!wikilinkNode) return false;
-
-            // §56 Date wikilinks navigate on single click
-            const target = wikilinkNode.attrs.target as string;
-            const isDate = isDateString(target);
-            if (!isDate && !(event.metaKey || event.ctrlKey)) return false;
-
-            onNavigate(
-              target,
-              wikilinkNode.attrs.heading as null | string,
-              wikilinkNode.attrs.vaultAlias as null | string,
-            );
-            return true;
+              event.preventDefault();
+              onNavigate(
+                target,
+                node.attrs.heading as null | string,
+                node.attrs.vaultAlias as null | string,
+              );
+              return true;
+            },
           },
         },
       }),

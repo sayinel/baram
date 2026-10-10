@@ -111,7 +111,7 @@ Without `--json`, the same error is `error[FILE_NOT_FOUND]: no file at notes/a.m
 | `VAULT_AMBIGUOUS` | More than one registered vault or folder answers to the name — counting only those whose folder exists, and entries for the same folder once. | `1` |
 | `PATH_OUTSIDE_VAULT` | The path leads out of the vault. | `1` |
 | `FILE_NOT_FOUND` | Nothing is at the path, or a folder is where a file is wanted. | `1` |
-| `INVALID_ARGUMENT` | The command does not take the value — for example an empty query or tag name, a bad regular expression, or a folder or note it refuses (see above). A regular expression that is only too large, such as `k{50000}`, can get past this check and end as `IO` `cannot search …` with exit code `1`. | `2` |
+| `INVALID_ARGUMENT` | The command does not take the value — for example an empty query or tag name, a bad regular expression, a query that makes too large a search pattern, or a folder or note it refuses (see above). | `2` |
 | `IO` | Something that is there could not be read — for example a file or folder you have no permission for, a file that is not UTF-8, or the current directory. | `1` |
 
 A command that walks the vault stops with `IO` at a folder it cannot read, and the message names that folder. `search` skips such a folder instead. Messages are in English, except what they quote: the paths and names they repeat, and the operating system's own description of a failure in an `IO` message — on Windows, that description is expected to follow the system's language (not yet checked on Windows).

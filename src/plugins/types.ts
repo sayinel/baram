@@ -349,8 +349,18 @@ export interface PluginFileEvent {
  */
 export interface PluginFileViewerContext {
   assetUrl: string;
+  /**
+   * §392 Present only on a mount where editing is allowed: the viewer registered as
+   * `editable`, the file is text the host can write back (not markdown, HTML, a raster image or
+   * a PDF), and the tab's text has loaded. Absent, the viewer only draws — as every viewer did
+   * before §392.
+   */
+  edit?: PluginFileViewerEdit;
   filePath: string;
-  /** Bumped on every save / external reload — re-fetch the file when it changes. */
+  /**
+   * Bumped on every save / external reload — re-fetch the file when it changes. §392 An
+   * editing mount is not sent an update for it: its own save would send its own change back.
+   */
   refreshKey: number;
   /**
    * Shared editor zoom factor (0.5–2.0) driven by useZoom (Cmd+= / Cmd+- /
@@ -361,20 +371,60 @@ export interface PluginFileViewerContext {
 }
 
 /**
- * A custom read-only renderer for file extensions the core editor does not
- * handle itself. Registered via `ui.registerFileViewer` (capability
- * "viewer"). For text files the host keeps its preview ↔ source toggle: the
- * viewer renders the preview side, CodeMirror the source side. Binary
- * safety (skipping UTF-8 reads, blocking saves) stays in the host — a viewer
- * only ever draws.
+ * §392 What an editing mount gets in `ctx.edit`. The tab's source buffer owns the text; the
+ * viewer shows it, changes it, and reports that it changed.
+ */
+export interface PluginFileViewerEdit {
+  /**
+   * The document changed. Cheap — nothing is serialized here: the host takes the text later,
+   * through `getText`, when it needs it (a save, a tab switch, a zoom step). One function per
+   * mount; once the mount is gone a call does nothing.
+   */
+  markChanged(): void;
+  /** The tab this mount shows — the key for screen state (scroll, tool, zoom position) that should outlive a remount. */
+  tabId: string;
+  /** The tab's current text from its source buffer, unsaved changes included — not the file on disk. */
+  text: string;
+}
+
+/**
+ * A custom renderer for file extensions the core editor does not handle itself. Registered
+ * via `ui.registerFileViewer` (capability "viewer"). For text files the host keeps its
+ * preview ↔ source toggle: the viewer renders the preview side, CodeMirror the source side.
+ * Binary safety (skipping UTF-8 reads, blocking saves) stays in the host.
+ *
+ * §392 A viewer registered as `editable` may also change the text of the file it shows. It
+ * still writes nothing: it reports a change (`ctx.edit.markChanged()`) and hands its text
+ * back when the host asks (`getText`). Saving, the unsaved mark, auto-save and conflict
+ * handling stay the host's. Without `editable` a viewer only draws.
  */
 export interface PluginFileViewerOptions {
+  /**
+   * §392 This viewer can change the file. Editing opens only on a mount that gets `ctx.edit`
+   * (see there). Needs `getText` and the plugin's `files` capability — registration throws
+   * without either.
+   */
+  editable?: boolean;
   /** Extensions without the leading dot, lowercase (e.g. ["png", "svg"]). */
   extensions: string[];
+  /**
+   * §392 Required when `editable`. The text of the document this element shows, NOW. Called
+   * only when the viewer has reported a change the host has not taken yet; after a call it is
+   * not called again until the next `markChanged`. A zoom step with an untaken change takes
+   * it. Must be synchronous, fast and free of side effects, and must not measure layout: it
+   * can run after the element has left the document (right before `onUnmount`). Throwing or
+   * returning a non-string makes the host keep the last text it took, switch the tab to
+   * source view, and tell the user.
+   */
+  getText?(el: HTMLElement): string;
   id: string;
   onMount(el: HTMLElement, ctx: PluginFileViewerContext): void;
   onUnmount?(el: HTMLElement): void;
-  /** Called when ctx changes (zoom / refresh) while mounted. */
+  /**
+   * Called when ctx changes (zoom / refresh) while mounted. §392 An editing mount gets it only
+   * when something other than the viewer changed the text, or the zoom changed. Both carry the
+   * current text in `ctx.edit.text` — skip the redraw when it equals your own serialization.
+   */
   onUpdate?(el: HTMLElement, ctx: PluginFileViewerContext): void;
 }
 

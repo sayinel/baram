@@ -740,6 +740,70 @@ fn no_match_is_success_and_a_bad_pattern_is_a_usage_error() {
     assert_eq!(plain.code, 0, "stderr: {}", plain.stderr);
 }
 
+/// The check before the search builds the pattern as the search does, with the same
+/// options. Case-insensitively, `k{50000}` with `--regex` and fifty thousand `k`s without
+/// it do not build; with `--case-sensitive` both build and are searched. A check that
+/// compiled the `--regex` text alone let both through, to fail inside the search as `IO`,
+/// exit 1.
+#[test]
+fn a_query_the_search_cannot_build_is_a_usage_error() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let ks = "k".repeat(50000);
+    for (query, regex, prefix) in [
+        ("k{50000}", true, "invalid regular expression: "),
+        (ks.as_str(), false, "the query cannot be searched: "),
+    ] {
+        let mut args = vec!["--json", "--vault", vault.as_str(), "search", query];
+        if regex {
+            args.push("--regex");
+        }
+        let refused = baram(&sb, &sb.home, &args);
+        assert_eq!(refused.code, 2, "regex {regex}: {}", refused.stderr);
+        let error = &json(&refused.stderr)["error"];
+        assert_eq!(error["code"], "INVALID_ARGUMENT", "regex {regex}");
+        let message = error["message"].as_str().unwrap_or_default();
+        assert!(message.starts_with(prefix), "regex {regex}: {message}");
+
+        args.push("--case-sensitive");
+        let searched = baram(&sb, &sb.home, &args);
+        assert_eq!(searched.code, 0, "regex {regex}: {}", searched.stderr);
+    }
+}
+
+/// `--word` wraps the expression in `\b…\b` as text, and that can make an invalid one
+/// valid: `a\` becomes `\ba\\b` and `*a` becomes `\b*a\b`. A bad expression is judged as
+/// typed, so both are still refused, and the message quotes what was typed — not the
+/// wrapped `\b(\b`.
+#[test]
+fn word_does_not_turn_a_bad_pattern_into_a_search() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    for query in [r"a\", "*a", "("] {
+        let ran = baram(
+            &sb,
+            &sb.home,
+            &[
+                "--json", "--vault", &vault, "search", query, "--regex", "--word",
+            ],
+        );
+        assert_eq!(ran.code, 2, "{query}: {}", ran.stderr);
+        let error = &json(&ran.stderr)["error"];
+        assert_eq!(error["code"], "INVALID_ARGUMENT", "{query}");
+        let message = error["message"].as_str().unwrap_or_default();
+        assert!(
+            message.starts_with("invalid regular expression: "),
+            "{query}: {message}"
+        );
+        // The regex crate's message repeats the pattern it parsed: the typed one, and
+        // not the wrapped one.
+        assert!(message.contains(query), "{query}: {message}");
+        assert!(!message.contains(r"\b"), "{query}: {message}");
+    }
+}
+
 /// The regex crate's message for `(` spans several lines, and its last one reads
 /// `error: unclosed group` — like a line of its own. In text mode the message is escaped
 /// so the error stays one line; the JSON form carries it as the crate wrote it.
