@@ -1,12 +1,16 @@
 // §389 The tools: what `tools/list` shows for each (spec 0068 §3.3, §3.6), and the CLI
 // function each call runs.
 
-use super::args::{self, Spec, VAULT};
+use super::args::{self, Args, Kind, Spec, OFFSET, VAULT};
+use super::page::Page;
 use super::scope::Scope;
 use super::server::Server;
+use crate::cli::args::TaskStatus;
 use crate::cli::error::CliError;
-use crate::cli::ops::{self, VaultRow};
+use crate::cli::ops::{self, PathRow, VaultRow};
+use crate::cli::ops_notes::{self, TagRow, TaskRow};
 use crate::cli::output::VaultInfo;
+use crate::cli::vault::Vault;
 use rmcp::handler::server::common::schema_for_output;
 use rmcp::model::{JsonObject, Tool, ToolAnnotations};
 use schemars::JsonSchema;
@@ -19,6 +23,10 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ToolName {
     ListVaults,
+    ListFiles,
+    ListTags,
+    NotesWithTag,
+    ListTasks,
 }
 
 /// What `tools/list` says about a tool.
@@ -32,11 +40,68 @@ struct About {
 
 const LIST_VAULTS: &[Spec] = &[VAULT];
 
+/// The statuses `list_tasks` takes — the CLI's `--status` values
+/// (`list_tasks_takes_the_statuses_the_cli_takes` holds the two together).
+const TASK_STATUSES: &[&str] = &["open", "done", "cancelled", "all"];
+
+const LIST_FILES: &[Spec] = &[
+    VAULT,
+    Spec {
+        name: "folder",
+        kind: Kind::Text,
+        required: false,
+        doc: "Only this folder, relative to the vault root.",
+    },
+    OFFSET,
+    args::limit(200, 1000),
+];
+
+const LIST_TAGS: &[Spec] = &[VAULT, OFFSET, args::limit(500, 2000)];
+
+const NOTES_WITH_TAG: &[Spec] = &[
+    VAULT,
+    Spec {
+        name: "tag",
+        kind: Kind::Text,
+        required: true,
+        doc: "The tag, with or without its leading #.",
+    },
+    OFFSET,
+    args::limit(200, 1000),
+];
+
+const LIST_TASKS: &[Spec] = &[
+    VAULT,
+    Spec {
+        name: "status",
+        kind: Kind::Choice {
+            values: TASK_STATUSES,
+            default: "open",
+        },
+        required: false,
+        doc: "Which tasks: open (to do and doing), done, cancelled, or all. Default open.",
+    },
+    Spec {
+        name: "file",
+        kind: Kind::Text,
+        required: false,
+        doc: "Only this note, relative to the vault root.",
+    },
+    OFFSET,
+    args::limit(100, 500),
+];
+
 impl ToolName {
     /// Every tool, in the order `tools/list` gives them. Listed by hand: the compiler holds
     /// the `match`es to every variant, not this list — `tests/mcp.rs` pins the names
     /// `tools/list` gives.
-    pub(super) const ALL: &'static [ToolName] = &[ToolName::ListVaults];
+    pub(super) const ALL: &'static [ToolName] = &[
+        ToolName::ListVaults,
+        ToolName::ListFiles,
+        ToolName::ListTags,
+        ToolName::NotesWithTag,
+        ToolName::ListTasks,
+    ];
 
     pub(super) fn from_name(name: &str) -> Option<ToolName> {
         ToolName::ALL
@@ -55,12 +120,45 @@ impl ToolName {
                               this `vault` reads (`vault`, left out when it names none).",
                 arguments: LIST_VAULTS,
             },
+            ToolName::ListFiles => About {
+                name: "list_files",
+                title: "List notes",
+                description: "The Markdown notes in the vault, or in one folder of it, by path: \
+                              the files the app's file list shows. Hidden files and folders, \
+                              and the folders the app skips, are left out.",
+                arguments: LIST_FILES,
+            },
+            ToolName::ListTags => About {
+                name: "list_tags",
+                title: "List tags",
+                description: "The vault's tags, each with how often it occurs across the notes, \
+                              most used first.",
+                arguments: LIST_TAGS,
+            },
+            ToolName::NotesWithTag => About {
+                name: "notes_with_tag",
+                title: "Notes with a tag",
+                description: "The notes that carry a tag, by path.",
+                arguments: NOTES_WITH_TAG,
+            },
+            ToolName::ListTasks => About {
+                name: "list_tasks",
+                title: "List tasks",
+                description: "The tasks in the vault's notes, or in one note: each one's path, \
+                              line, state, text, priority, dates, tags and links, by path and \
+                              line. The folders excluded from tasks in the app's settings are \
+                              left out.",
+                arguments: LIST_TASKS,
+            },
         }
     }
 
     fn output_schema(self) -> Arc<JsonObject> {
         match self {
             ToolName::ListVaults => schema_for_output::<VaultList>(),
+            ToolName::ListFiles | ToolName::NotesWithTag => schema_for_output::<Page<PathRow>>(),
+            ToolName::ListTags => schema_for_output::<Page<TagRow>>(),
+            ToolName::ListTasks => schema_for_output::<Page<TaskRow>>(),
         }
     }
 }
@@ -115,18 +213,59 @@ pub(super) async fn call(
     let args = args::read(arguments, tool.about().arguments)?;
     let config = server.config();
     let scope = Scope::new(&server.allowed, &config);
-    let wanted = args.text("vault");
+    let resolve = || scope.resolve(args.text("vault"), server.home.as_deref());
     match tool {
         ToolName::ListVaults => {
             // The tool that finds vaults does not fail on one it cannot resolve
             // (spec 0068 §3.2-3).
-            let current = scope.resolve(wanted, server.home.as_deref()).ok();
+            let current = resolve().ok();
             encode(&VaultList {
                 vault: current.as_ref().map(ops::vault_info),
                 items: scope.rows(current.as_ref()),
             })
         }
+        ToolName::ListFiles => {
+            let vault = resolve()?;
+            paged(
+                &vault,
+                ops::files(&vault, args.text("folder")).await?.items,
+                &args,
+            )
+        }
+        ToolName::ListTags => {
+            let vault = resolve()?;
+            paged(&vault, ops_notes::tags(&vault).await?.items, &args)
+        }
+        ToolName::NotesWithTag => {
+            let vault = resolve()?;
+            let tag = args.text("tag").unwrap_or_default();
+            paged(&vault, ops_notes::tag(&vault, tag).await?.items, &args)
+        }
+        ToolName::ListTasks => {
+            let vault = resolve()?;
+            // `read` has checked the value against TASK_STATUSES, the CLI's own names.
+            let status = <TaskStatus as clap::ValueEnum>::from_str(args.choice("status"), false)
+                .map_err(Failure::Internal)?;
+            let found = ops_notes::tasks(
+                &vault,
+                &config.tasks_exclude_paths,
+                status,
+                args.text("file"),
+            )
+            .await?;
+            paged(&vault, found.items, &args)
+        }
     }
+}
+
+/// One page of a list the CLI has already put in its order (spec 0068 §3.4).
+fn paged<T: Serialize>(vault: &Vault, items: Vec<T>, args: &Args) -> Result<Value, Failure> {
+    encode(&Page::cut(
+        ops::vault_info(vault),
+        items,
+        args.count("offset"),
+        args.count("limit"),
+    ))
 }
 
 pub(super) fn encode<T: Serialize>(value: &T) -> Result<Value, Failure> {
@@ -150,6 +289,19 @@ mod tests {
             assert_eq!(shown["inputSchema"]["type"], "object", "{shown}");
             assert_eq!(shown["outputSchema"]["type"], "object", "{shown}");
         }
+    }
+
+    /// What fails this: a status added to or renamed in the CLI and not here, which would
+    /// end as `-32603` in `list_tasks`.
+    #[test]
+    fn list_tasks_takes_the_statuses_the_cli_takes() {
+        use clap::ValueEnum;
+        let cli: Vec<String> = TaskStatus::value_variants()
+            .iter()
+            .filter_map(|status| status.to_possible_value())
+            .map(|value| value.get_name().to_string())
+            .collect();
+        assert_eq!(cli, TASK_STATUSES);
     }
 
     /// What fails this: `from_name` and `ALL` disagreeing with the names `about` gives.

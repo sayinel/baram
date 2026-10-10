@@ -498,3 +498,90 @@ fn stdout_carries_only_protocol_messages_when_the_config_warns() {
         .count();
     assert_eq!(warnings, 1, "{}", ended.stderr);
 }
+
+fn paths(page: &Value) -> Vec<&str> {
+    page["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| item["path"].as_str().expect("path"))
+        .collect()
+}
+
+/// The list tools page what the CLI lists, in the CLI's order (spec 0068 §3.4): `nextOffset`
+/// asks for the rest, an offset past the end is an empty last page, and a bad `limit`,
+/// `status` or `folder`, or a missing `tag`, is a tool error naming the argument.
+///
+/// What fails this: the page cut before the CLI's sort; `truncated` computed from what is
+/// left after the skip; a tool wired to another tool's function.
+#[test]
+fn list_tools_page_what_the_cli_lists() {
+    let sb = sandbox();
+    for name in ["a.md", "b.md", "c.md"] {
+        write(&sb.vault, name, "#work\n- [ ] the task\n");
+    }
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let first = s.call(1, "list_files", json!({ "limit": 2 }));
+    let page = structured(&first);
+    assert_eq!(paths(page), ["a.md", "b.md"]);
+    assert_eq!(page["truncated"], json!(true));
+    assert_eq!(page["nextOffset"], json!(2));
+    assert_eq!(page["vault"]["path"], json!(vault_arg(&sb)));
+    let rest = s.call(2, "list_files", json!({ "offset": 2, "limit": 2 }));
+    let page = structured(&rest);
+    assert_eq!(paths(page), ["c.md"]);
+    assert_eq!(page["truncated"], json!(false));
+    assert!(page.get("nextOffset").is_none(), "{page}");
+    let past = s.call(3, "list_files", json!({ "offset": 99 }));
+    assert!(paths(structured(&past)).is_empty());
+    let tagged = s.call(4, "notes_with_tag", json!({ "tag": "#work", "limit": 1 }));
+    assert_eq!(paths(structured(&tagged)), ["a.md"]);
+    let tags = s.call(5, "list_tags", json!({}));
+    assert_eq!(
+        structured(&tags)["items"],
+        json!([{ "tag": "work", "count": 3 }])
+    );
+    let tasks = s.call(6, "list_tasks", json!({ "file": "b.md" }));
+    let page = structured(&tasks);
+    assert_eq!(paths(page), ["b.md"]);
+    assert_eq!(page["items"][0]["state"], json!("todo"));
+    assert_eq!(page["items"][0]["line"], json!(2));
+    for (id, tool, arguments, start) in [
+        (
+            7,
+            "list_files",
+            json!({ "limit": 0 }),
+            "error[INVALID_ARGUMENT]: `limit` must be an integer from 1 to 1000",
+        ),
+        (
+            8,
+            "list_files",
+            json!({ "offset": -1 }),
+            "error[INVALID_ARGUMENT]: `offset` must be an integer, 0 or more",
+        ),
+        (
+            9,
+            "list_tasks",
+            json!({ "status": "late" }),
+            "error[INVALID_ARGUMENT]: `status` must be one of: open, done, cancelled, all",
+        ),
+        (
+            10,
+            "notes_with_tag",
+            json!({}),
+            "error[INVALID_ARGUMENT]: `tag` is required",
+        ),
+        (
+            11,
+            "list_files",
+            json!({ "folder": "../x" }),
+            "error[PATH_OUTSIDE_VAULT]: ../x is outside the vault",
+        ),
+    ] {
+        let result = s.call(id, tool, arguments);
+        let text = tool_error(&result);
+        assert!(text.starts_with(start), "{tool}: {text}");
+    }
+    assert_eq!(s.end().code, 0);
+}

@@ -184,7 +184,7 @@ pub(crate) fn sort_by_path_and_line<T>(
     items.sort_by(|a, b| key(a).cmp(&key(b)));
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub(crate) struct PathRow {
     pub path: String,
 }

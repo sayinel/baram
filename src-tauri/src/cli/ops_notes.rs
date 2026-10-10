@@ -9,10 +9,11 @@ use super::output::{Envelope, Row};
 use super::paths;
 use super::vault::Vault;
 use crate::task::{TaskEntry, TaskError, TaskState};
+use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::Path;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub(crate) struct TagRow {
     pub tag: String,
     /// Occurrences across the vault, not the number of files.
@@ -82,12 +83,13 @@ fn tag_rows(found: &[String]) -> Vec<PathRow> {
 /// One task as the CLI reports it. A deliberate subset of the app's `TaskEntry`
 /// (spec 0066 D5): `indent`, `raw` (the optimistic-lock baseline) and `timer` (a raw
 /// value the frontend interprets) are internal and stay out.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TaskRow {
     pub path: String,
     /// 1-based, like every line number the CLI prints. The index underneath is 0-based.
     pub line: u32,
+    /// `todo`, `doing`, `done` or `cancelled`.
     pub state: &'static str,
     pub text: String,
     pub priority: i8,
