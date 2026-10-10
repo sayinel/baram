@@ -139,9 +139,13 @@ fn a_typo_is_a_usage_error_not_a_window() {
 }
 
 /// `--json` and `--vault` are global, so clap cannot refuse them for one subcommand; `run`
-/// does (spec 0068 §3.1). With stdin closed, an `mcp` that started anyway would exit 0.
+/// does (spec 0068 §3.1). With stdin closed, an `mcp` that started anyway would exit 0. A
+/// global option written on both sides of the command name keeps the values of one side
+/// only, so `--vault` there is refused too: otherwise `--vault a mcp --vault b` would serve
+/// `b` alone and `--vault a files --vault b` would read `b` with no error.
 ///
-/// What fails this: `misuse` not called before the runtime runs a command.
+/// What fails this: `misuse` not called before the runtime runs a command; the count of
+/// `--vault` written left out of `misuse` (the two split forms would not exit 2).
 #[test]
 fn json_with_mcp_and_two_vaults_for_another_command_are_usage_errors() {
     let sb = sandbox();
@@ -149,6 +153,8 @@ fn json_with_mcp_and_two_vaults_for_another_command_are_usage_errors() {
         &["--json", "mcp"][..],
         &["mcp", "--json"],
         &["--vault", "a", "--vault", "b", "tags"],
+        &["--vault", "a", "files", "--vault", "b"],
+        &["--vault", "a", "mcp", "--vault", "b"],
     ] {
         let ran = baram(&sb, &sb.home, args);
         assert_eq!(ran.code, 2, "{args:?}: {}", ran.stderr);

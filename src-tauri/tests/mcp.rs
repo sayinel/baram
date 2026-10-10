@@ -41,10 +41,16 @@ fn session(sb: &Sandbox, args: &[&str]) -> Session {
 }
 
 fn session_with(sb: &Sandbox, cwd: &Path, args: &[&str], env: &[(&str, &str)]) -> Session {
+    let argv: Vec<&str> = std::iter::once("mcp").chain(args.iter().copied()).collect();
+    spawn(sb, cwd, &argv, env)
+}
+
+/// `baram <argv>`, as `session_with` starts it but with the whole command line given, for a
+/// test that writes an option before the command name.
+fn spawn(sb: &Sandbox, cwd: &Path, argv: &[&str], env: &[(&str, &str)]) -> Session {
     let mut command = isolated(sb, env!("CARGO_BIN_EXE_baram"));
     command
-        .arg("mcp")
-        .args(args)
+        .args(argv)
         .current_dir(cwd)
         // Claude Code sets this for the servers it starts, and for these tests when it runs
         // them. The default vault reads it, so a test sets it or leaves it out on purpose.
@@ -351,6 +357,39 @@ fn list_vaults_shows_the_scope_and_the_vault_a_call_reads() {
     let page = structured(&result);
     assert!(page.get("vault").is_none(), "{page}");
     assert_eq!(page["items"].as_array().map(Vec::len), Some(2), "{page}");
+    assert_eq!(s.end().code, 0);
+}
+
+/// Every `--vault` written before `mcp` reaches the server, the first of them as its default:
+/// the refusal of a `--vault` on both sides of the command name does not touch the form
+/// where they are all on one side.
+///
+/// What fails this: `misuse` refusing the form where every `--vault` precedes `mcp`, which
+/// the split-form cases in `tests/cli.rs` cannot see (the server would not start).
+#[test]
+fn vault_flags_before_the_command_name_all_reach_the_server() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let other = sb.base.join("other");
+    std::fs::create_dir_all(&other).expect("mkdir");
+    let other = other.to_string_lossy().into_owned();
+    let mut s = spawn(
+        &sb,
+        &sb.home,
+        &["--vault", "fx", "--vault", &other, "mcp"],
+        &[],
+    );
+    s.handshake();
+    let result = s.call(1, "list_vaults", json!({}));
+    let page = structured(&result);
+    assert_eq!(page["vault"]["name"], json!("Fixture"), "{page}");
+    let rows: Vec<(&str, &str)> = page["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|row| (row["name"].as_str().unwrap(), row["type"].as_str().unwrap()))
+        .collect();
+    assert_eq!(rows, [("Fixture", "vault"), ("other", "unregistered")]);
     assert_eq!(s.end().code, 0);
 }
 

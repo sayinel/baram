@@ -93,6 +93,8 @@ impl From<CliError> for Failure {
 /// Runs one CLI invocation and returns its exit code: 0 on success — an empty result is
 /// a success — 1 when the command failed, 2 for a usage error (spec 0066 §3.7).
 pub fn run(args: Vec<OsString>) -> i32 {
+    // Counted before clap takes `args`; `misuse` compares it with what clap kept.
+    let written = vault_flags(&args);
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         // clap prints help and the version to stdout (exit 0) and usage errors to stderr
@@ -102,7 +104,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
             return error.exit_code();
         }
     };
-    if let Some(error) = misuse(&cli) {
+    if let Some(error) = misuse(&cli, written) {
         let _ = error.print();
         return error.exit_code();
     }
@@ -157,11 +159,33 @@ fn report(error: &CliError, json: bool) -> i32 {
     error.code.exit_code()
 }
 
+/// How many `--vault` options `args` write: the tokens equal to `--vault` or starting with
+/// `--vault=`, after the program name and before the first `--`. When a global option is
+/// written on both sides of the command name, clap keeps one side's values and drops the
+/// other's — `baram --vault a mcp --vault b` parses as `[b]`; the forms checked are the ones
+/// `clap_keeps_one_side_of_a_global_option` pins — so `misuse` compares this count with what
+/// clap kept.
+fn vault_flags(args: &[OsString]) -> usize {
+    args.iter()
+        .skip(1)
+        .take_while(|arg| arg.to_str() != Some("--"))
+        .filter(|arg| {
+            arg.to_str()
+                .is_some_and(|arg| arg == "--vault" || arg.starts_with("--vault="))
+        })
+        .count()
+}
+
 /// What clap cannot declare: `--json` and `--vault` are global, so no subcommand can
 /// refuse them. `mcp` writes JSON-RPC on stdout whatever `--json` says, and every other
-/// command reads one vault. A usage error like clap's own: exit 2, on stderr.
-fn misuse(cli: &Cli) -> Option<clap::Error> {
+/// command reads one vault. `--vault` on both sides of the command name is refused first:
+/// `written` (`vault_flags`) is then higher than what clap kept, and a vault the user named
+/// would be dropped without a word. A usage error like clap's own: exit 2, on stderr.
+fn misuse(cli: &Cli, written: usize) -> Option<clap::Error> {
     let message = match cli.command {
+        _ if written != cli.vault.len() => {
+            "every `--vault` must be on the same side of the command name"
+        }
         Command::Mcp if cli.json => "`--json` does not apply to `mcp`: it always writes JSON-RPC",
         Command::Mcp => return None,
         Command::Query(_) if cli.vault.len() > 1 => {
@@ -321,6 +345,51 @@ fn install_stderr_log() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn argv(args: &[&str]) -> Vec<OsString> {
+        std::iter::once("baram")
+            .chain(args.iter().copied())
+            .map(OsString::from)
+            .collect()
+    }
+
+    /// What fails this: `--vault=x` not counted; the count running past `--`; `--vaults`
+    /// counted; the program name counted.
+    #[test]
+    fn vault_flags_counts_the_options_written_before_a_double_dash() {
+        for (args, expected) in [
+            (&[][..], 0),
+            (&["--vault", "a", "--vault=b", "tags"][..], 2),
+            (&["tags", "--vault", "a"][..], 1),
+            (
+                &["--vault", "a", "search", "--", "--vault=x", "--vault"][..],
+                1,
+            ),
+            (&["search", "--", "--vault", "x"][..], 0),
+            (&["--vaults", "x", "--vaultx=y"][..], 0),
+        ] {
+            assert_eq!(vault_flags(&argv(args)), expected, "{args:?}");
+        }
+        assert_eq!(
+            vault_flags(&[OsString::from("--vault"), OsString::from("a")]),
+            0
+        );
+    }
+
+    /// The premise of `vault_flags`, pinned: when both sides of the command name give
+    /// `--vault`, clap keeps one side's values and drops the other's; when only one side
+    /// does, it keeps all of them.
+    ///
+    /// What fails this: a clap that merges the two sides. Then `misuse` would refuse what
+    /// clap parses whole, and this test says it is time to take the count out.
+    #[test]
+    fn clap_keeps_one_side_of_a_global_option() {
+        let kept = |args: &[&str]| Cli::try_parse_from(argv(args)).expect("parses").vault;
+        assert_eq!(kept(&["--vault", "a", "mcp", "--vault", "b"]), ["b"]);
+        assert_eq!(kept(&["--vault", "a", "files", "--vault", "b"]), ["b"]);
+        assert_eq!(kept(&["--vault", "a", "--vault", "b", "mcp"]), ["a", "b"]);
+        assert_eq!(kept(&["mcp", "--vault", "a", "--vault", "b"]), ["a", "b"]);
+    }
 
     fn mode(args: &[&str]) -> Mode {
         let argv: Vec<OsString> = std::iter::once("baram")
