@@ -277,6 +277,82 @@ async fn a_symlink_is_left_alone_and_its_target_keeps_its_links() {
     );
 }
 
+/// What fails this: updating only the spelling the volume resolves — the written `Note.md`
+/// names no entry once a file manager renamed it to `note.md`, yet its build-time key stays
+/// and `b`'s backlinks list the note twice (`[Note.md, a.md, note.md]`, measured before the
+/// fix). The watcher reports both spellings as created, since both exist on a volume that
+/// folds case. The first assertion shows the old key was there. On a case-sensitive volume
+/// the two spellings are two entries and nothing is stale: `note.md` does not resolve before
+/// the rename, and the test returns there.
+#[tokio::test]
+async fn an_external_case_only_rename_leaves_only_the_new_spelling() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("Note.md", "see [[b]]")]).await;
+    if !dir.path().join("note.md").exists() {
+        return;
+    }
+    let b = format!("{root}/b.md");
+    assert_eq!(
+        sources_of(&state, &ctx, &b).await,
+        vec![format!("{root}/Note.md"), format!("{root}/a.md")]
+    );
+    std::fs::rename(dir.path().join("Note.md"), dir.path().join("note.md")).unwrap();
+
+    let ids = sync(
+        &state,
+        &ctx,
+        &[
+            (&format!("{root}/Note.md"), false),
+            (&format!("{root}/note.md"), false),
+        ],
+    )
+    .await;
+
+    assert_eq!(ids, vec!["ctx-a"]);
+    assert_eq!(
+        sources_of(&state, &ctx, &b).await,
+        vec![format!("{root}/a.md"), format!("{root}/note.md")]
+    );
+}
+
+/// The `OtherFile` half of the one above. What fails this: registering only the resolved
+/// spelling — `[[paper.pdf]]` would keep resolving to the first registered `Paper.pdf`, which
+/// names no entry any more. The first assertion shows it resolved there before.
+#[tokio::test]
+async fn an_external_case_only_rename_of_an_attachment_resolves_to_the_new_spelling() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(
+        &ctx,
+        &[("n.md", "see [[paper.pdf]]"), ("Paper.pdf", "%PDF")],
+    )
+    .await;
+    if !dir.path().join("paper.pdf").exists() {
+        return;
+    }
+    let key = active_index_key(&ctx).await.unwrap();
+    let note = format!("{root}/n.md");
+    assert_eq!(
+        resolution_of(&state, &key, &note).await,
+        crate::index::LinkResolution::Resolved(format!("{root}/Paper.pdf"))
+    );
+    std::fs::rename(dir.path().join("Paper.pdf"), dir.path().join("paper.pdf")).unwrap();
+
+    sync(
+        &state,
+        &ctx,
+        &[
+            (&format!("{root}/Paper.pdf"), false),
+            (&format!("{root}/paper.pdf"), false),
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        resolution_of(&state, &key, &note).await,
+        crate::index::LinkResolution::Resolved(format!("{root}/paper.pdf"))
+    );
+}
+
 #[tokio::test]
 async fn a_context_without_an_index_is_announced_for_notes_and_removals() {
     let ctx = ContextManager::new();

@@ -63,6 +63,23 @@ impl Mutation {
         Ok(Self::RemoveTree { paths })
     }
 
+    /// §393 The removal of `path` as written, when that spelling is not the name the volume
+    /// resolves it to; `None` when it is. On a volume that folds case, a case-only rename done
+    /// outside the app (`Note.md` → `note.md`) leaves both spellings reachable, so the watcher
+    /// reports both as created (`fs::start_watching` asks `exists()`) and both read as the
+    /// one file. `update` and `target` file it under the resolved name, so the old spelling's
+    /// key would stay beside it: it names no entry any more and goes like a missing path's.
+    /// The parent is canonicalised the same way in both, so what can differ is the name. A
+    /// platform whose canonicalisation returns the name as written rather than as stored
+    /// sees no difference, and there the old spelling stays until a build.
+    pub(super) fn stale_spelling(path: &str) -> Result<Option<Self>, String> {
+        let written = canonical_entry(path)?;
+        let resolved = crate::context::manager::resolve_canonical(path)?;
+        Ok((written != resolved).then(|| Self::RemoveTree {
+            paths: vec![written],
+        }))
+    }
+
     /// The `RemoveTree` mutations among `trees` merged into one (the others contribute
     /// nothing): the same removal, one `apply`.
     pub(super) fn merge_removals(trees: Vec<Mutation>) -> Self {

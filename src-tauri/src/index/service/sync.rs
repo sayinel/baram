@@ -33,41 +33,41 @@ pub(crate) async fn sync_index_paths_inner(
     paths: &[SyncPath],
 ) -> Result<Vec<String>, String> {
     let mut announced: BTreeSet<String> = BTreeSet::new();
-    // Phase 1: everything that is on disk now. A missing path is only collected, per holding
-    // context (keyed by its registered path), for phase 2.
+    // Phase 1: everything that is on disk now. A spelling that names no entry (`Planned::gone`)
+    // is only collected, per holding context (keyed by its registered path), for phase 2.
     let mut removed: BTreeMap<String, (String, Vec<Mutation>)> = BTreeMap::new();
     for entry in paths {
         let contexts = holding(ctx_mgr, &entry.path).await;
         if contexts.is_empty() {
             continue;
         }
-        let Some(planned) = plan(entry).await else {
+        let Some(Planned { now, gone }) = plan(entry).await else {
             continue;
         };
-        match planned {
-            Planned::Apply(mutations, rule) => {
-                for ctx in &contexts {
-                    let changed = state.apply(&ctx.info.path, mutations.clone()).await;
-                    if rule.announces(changed) {
-                        announced.insert(ctx.info.id.clone());
-                    }
-                }
-            }
-            Planned::Removed(tree) => {
-                for ctx in &contexts {
-                    removed
-                        .entry(ctx.info.path.clone())
-                        .or_insert_with(|| (ctx.info.id.clone(), Vec::new()))
-                        .1
-                        .push(tree.clone());
+        if let Some((mutations, rule)) = now {
+            for ctx in &contexts {
+                let changed = state.apply(&ctx.info.path, mutations.clone()).await;
+                if rule.announces(changed) {
+                    announced.insert(ctx.info.id.clone());
                 }
             }
         }
+        if let Some(tree) = gone {
+            for ctx in &contexts {
+                removed
+                    .entry(ctx.info.path.clone())
+                    .or_insert_with(|| (ctx.info.id.clone(), Vec::new()))
+                    .1
+                    .push(tree.clone());
+            }
+        }
     }
-    // Phase 2: the missing paths, ONE removal per context — a scan of the index per path
-    // measured ~1.2 ms on an 11,000-note index, so 1,000 deleted notes (`rm -rf`, a checkout)
-    // were over a second. Running them after the rest is safe: a missing path P cannot have a
-    // descendant updated in phase 1, since a descendant existing means P exists.
+    // Phase 2: the spellings that name no entry, ONE removal per context — a scan of the index
+    // per path measured ~1.2 ms on an 11,000-note index, so 1,000 deleted notes (`rm -rf`, a
+    // checkout) were over a second. Running them after the rest is safe: a missing path P
+    // cannot have a descendant updated in phase 1, since a descendant existing means P exists;
+    // and the stale spelling of a case-only rename is not an ancestor of the resolved path its
+    // row updated, since the removal compares path components exactly (`remove_trees`).
     for (key, (id, trees)) in removed {
         let changed = state
             .apply(&key, vec![Mutation::merge_removals(trees)])
@@ -80,11 +80,23 @@ pub(crate) async fn sync_index_paths_inner(
 }
 
 /// What `plan` decided for one path.
-enum Planned {
-    /// Mutations to apply at once, and when they are news.
-    Apply(Vec<Mutation>, Announce),
-    /// The path is gone: a `RemoveTree`, merged with the batch's others in phase 2.
-    Removed(Mutation),
+struct Planned {
+    /// Mutations to apply at once, and when they are news. `None` for a path that is gone.
+    now: Option<(Vec<Mutation>, Announce)>,
+    /// A `RemoveTree` merged with the batch's others in phase 2: the path when it is gone, or
+    /// its written spelling when that is stale (`Mutation::stale_spelling`).
+    gone: Option<Mutation>,
+}
+
+impl Planned {
+    /// `mutation` for a note or a file that is on disk now — always news — and, when the path
+    /// was written in a spelling the volume does not store, the removal of that spelling.
+    fn present(path: &str, mutation: Mutation) -> Result<Self, String> {
+        Ok(Self {
+            now: Some((vec![mutation], Announce::Always)),
+            gone: Mutation::stale_spelling(path)?,
+        })
+    }
 }
 
 /// When a context's id goes into the answer, given what its live index reported (`apply`).
@@ -181,22 +193,23 @@ fn is_note(path: &Path) -> bool {
         .is_some_and(|name| crate::fs::is_note_name(&name.to_string_lossy()))
 }
 
-/// The mutations for one path and when they are news. `None`: leave the index alone — a
-/// changed-only directory, a link or special file, an unreadable note, or a path whose
-/// mutation cannot be built (no existing ancestor, plan 0122 P7).
+/// The mutations for one path, when they are news, and what is gone. `None`: leave the index
+/// alone — a changed-only directory, a link or special file, an unreadable note, or a path
+/// whose mutation cannot be built (no existing ancestor, plan 0122 P7).
 async fn plan(entry: &SyncPath) -> Option<Planned> {
     let path = entry.path.as_str();
     let built = match on_disk(path).await {
         OnDisk::LeaveAlone => return None,
         OnDisk::Directory if entry.changed_only => return None,
         OnDisk::Note(content) => {
-            Mutation::update(path, content).map(|m| Planned::Apply(vec![m], Announce::Always))
+            Mutation::update(path, content).and_then(|m| Planned::present(path, m))
         }
-        OnDisk::OtherFile => {
-            Mutation::target(path).map(|m| Planned::Apply(vec![m], Announce::Always))
-        }
+        OnDisk::OtherFile => Mutation::target(path).and_then(|m| Planned::present(path, m)),
         OnDisk::Directory => refill(path).await,
-        OnDisk::Missing => Mutation::remove_tree(path).map(Planned::Removed),
+        OnDisk::Missing => Mutation::remove_tree(path).map(|tree| Planned {
+            now: None,
+            gone: Some(tree),
+        }),
     };
     match built {
         Ok(planned) => Some(planned),
@@ -253,5 +266,8 @@ async fn refill(dir: &str) -> Result<Planned, String> {
             mutations.push(Mutation::target(path)?);
         }
     }
-    Ok(Planned::Apply(mutations, announce))
+    Ok(Planned {
+        now: Some((mutations, announce)),
+        gone: None,
+    })
 }
