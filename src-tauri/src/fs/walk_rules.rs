@@ -29,13 +29,6 @@ pub fn is_note_name(name: &str) -> bool {
 /// created). Of the four `SKIP_DIRS` names three start with `.` and are skipped by the
 /// walkers as hidden anyway, so the two rules differ only for a FILE named `node_modules`,
 /// which `collect_all_files` collects and this skips.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the index sync is the first non-test caller (§393 Task 2)"
-    )
-)]
 pub fn is_skipped_relative(relative: &Path) -> bool {
     relative.components().any(|component| match component {
         Component::Normal(name) => {

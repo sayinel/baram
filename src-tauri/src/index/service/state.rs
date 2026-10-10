@@ -113,22 +113,8 @@ pub(super) enum Mutation {
     Remove { path: PathBuf },
     /// §393 A non-markdown file to register as a link target (§278) — the build registers
     /// every file it finds; this is the one that appeared since.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
-        )
-    )]
     Target { path: PathBuf },
     /// §393 Everything at or under this path is gone — a removed or replaced folder.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
-        )
-    )]
     RemoveTree { path: PathBuf },
 }
 
@@ -150,13 +136,6 @@ impl Mutation {
     }
 
     /// §393 A link target — canonicalised outside any lock.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
-        )
-    )]
     pub(super) fn target(path: &str) -> Result<Self, String> {
         Ok(Self::Target {
             path: crate::context::manager::resolve_canonical(path)?,
@@ -165,13 +144,6 @@ impl Mutation {
 
     /// §393 A removed tree — canonicalised outside any lock, on the existing ancestor when
     /// the path itself is gone (`resolve_canonical`), so `apply_to` can still spell it.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
-        )
-    )]
     pub(super) fn remove_tree(path: &str) -> Result<Self, String> {
         Ok(Self::RemoveTree {
             path: crate::context::manager::resolve_canonical(path)?,

@@ -6,10 +6,6 @@ mod walk_rules;
 pub mod media;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
-#[expect(
-    unused_imports,
-    reason = "the index sync is the first caller (§393 Task 2)"
-)]
 pub use walk_rules::{is_hidden_name, is_note_name, is_skipped_relative};
 
 use crate::commands::fs_cmd::FileEntry;

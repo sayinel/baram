@@ -100,6 +100,7 @@ mod keys;
 mod query;
 mod rename;
 mod state;
+mod sync;
 
 #[cfg(test)]
 mod tests;
@@ -116,3 +117,8 @@ pub(crate) use query::{get_backlinks_inner, get_link_index_inner, update_file_in
 pub(crate) use rename::{
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner,
 };
+#[expect(
+    unused_imports,
+    reason = "the `sync_index_paths` command is the first caller (§393, plan 0122 Task 5)"
+)]
+pub(crate) use sync::{sync_index_paths_inner, SyncPath};

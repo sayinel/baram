@@ -3,6 +3,7 @@ use super::keys::*;
 use super::query::*;
 use super::rename::*;
 use super::state::*;
+use super::sync::*;
 use crate::context::{ContextInfo, ContextManager, ContextType, VaultType};
 use crate::index::{BacklinkResult, IndexStats, LinkGraph, LinkIndex};
 
@@ -17,6 +18,7 @@ mod nested_roots;
 mod normalization;
 mod same_stem;
 mod stem_spelling;
+mod sync;
 
 fn info(id: &str, path: &str, kind: ContextType) -> ContextInfo {
     ContextInfo {
