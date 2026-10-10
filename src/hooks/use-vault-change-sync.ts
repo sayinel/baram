@@ -8,6 +8,8 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
+import type { IndexSyncAnswer } from "../ipc/types";
+
 import { syncIndexPaths } from "../ipc/invoke";
 import {
   createVaultChangeBatcher,
@@ -58,8 +60,13 @@ export function useVaultChangeSync(): void {
   }, []);
 }
 
-/** The backlinks panel re-reads on `indexVersion`; plugins hear `vault:changed` per context. */
-function announce(contextIds: string[]): void {
-  useLinkStore.getState().invalidate();
-  contextIds.forEach(publishVaultChange);
+/**
+ * Plugins hear `vault:changed` for each context the answer names — tags, tasks and search read the
+ * disk whatever the links. The backlinks panel and the graph re-read on `indexVersion` only when the
+ * link index changed: the watcher's echo of an auto-save finds the index as the save left it, and
+ * `useAutoSave` already invalidated after `updateFileIndex`.
+ */
+function announce({ contexts, linksChanged }: IndexSyncAnswer): void {
+  if (linksChanged) useLinkStore.getState().invalidate();
+  contexts.forEach(publishVaultChange);
 }

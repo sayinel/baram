@@ -118,4 +118,4 @@ pub(crate) use query::{get_backlinks_inner, get_link_index_inner, update_file_in
 pub(crate) use rename::{
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner,
 };
-pub(crate) use sync::{sync_index_paths_inner, SyncPath};
+pub(crate) use sync::{sync_index_paths_inner, SyncAnswer, SyncPath};

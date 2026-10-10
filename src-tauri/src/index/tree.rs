@@ -1,12 +1,36 @@
 //! §393 Changes to the link index that the incremental path had no way to make (spec 0072
-//! §5.4): a link target that appeared after the build, and a whole directory that went away.
-//! `index::service::sync` reaches them through `Mutation::Target` and `Mutation::RemoveTree`.
+//! §5.4): a link target that appeared after the build, a whole directory that went away, and a
+//! note re-read that tells whether it changed anything. `index::service::sync` reaches them
+//! through `Mutation::Target`, `Mutation::RemoveTree` and `Mutation::Update`.
 
+use super::extractor::{extract_file_tags, extract_links};
 use super::LinkIndex;
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 impl LinkIndex {
+    /// §393 Write `file_path` as read from `content` (`write_note`, what
+    /// `update_file_from_content` does), unless it reads as what the index holds for it: the
+    /// same link entries in `outgoing` (line and context included) and the same tags in
+    /// `file_tags` — no entry there when there are none, as the write leaves it. Then nothing
+    /// is written, the file maps included, and this returns `false`: every read of the index
+    /// answers as before. The watcher's echo of a save is such a read. Tags are compared as
+    /// sets: `extract_file_tags` collects through a `HashSet`, so two reads of one note list
+    /// the same tags, once each, in orders that need not agree.
+    pub(crate) fn update_file_unless_held(&mut self, file_path: &str, content: &str) -> bool {
+        let entries = extract_links(file_path, content);
+        let tags = extract_file_tags(content);
+        let same_tags = match self.file_tags.get(file_path) {
+            Some(held) => held.len() == tags.len() && tags.iter().all(|tag| held.contains(tag)),
+            None => tags.is_empty(),
+        };
+        if same_tags && self.outgoing.get(file_path) == Some(&entries) {
+            return false;
+        }
+        self.write_note(file_path, entries, tags);
+        true
+    }
+
     /// §278 · §393 Register `file_path` as a link target, as `build` does for every file it
     /// finds — `[[Paper.pdf]]` resolves once this ran. Does nothing for an index that was
     /// never built: without a root there is no vault-relative key to give the file.

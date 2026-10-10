@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   BacklinkEntry,
   IndexStats,
+  IndexSyncAnswer,
   IndexSyncPath,
   LinkGraph,
   NamespaceRenameResult,
@@ -70,10 +71,11 @@ export async function updateFileIndex(filePath: string): Promise<void> {
 
 /**
  * §393 Bring the link index up to date with watcher-reported paths (spec 0072 §5.4). Resolves with
- * the ids of the contexts whose reads may have changed — what `useVaultChangeSync` announces.
+ * the ids of the contexts whose reads may have changed — what `useVaultChangeSync` announces — and
+ * whether the link index changed.
  */
 export async function syncIndexPaths(
   paths: IndexSyncPath[],
-): Promise<string[]> {
-  return invoke<string[]>("sync_index_paths", { paths });
+): Promise<IndexSyncAnswer> {
+  return invoke<IndexSyncAnswer>("sync_index_paths", { paths });
 }

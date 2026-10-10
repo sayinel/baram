@@ -6,8 +6,9 @@
 // A batch goes out when no event arrived for `quietMs`, or `maxWaitMs` after its first event, so
 // a steady stream of writes still syncs. Batches are SERIAL: events that arrive while one is
 // syncing form the next, and a timer that fires meanwhile sends it once the current one settles.
-// `onSynced` runs only after `sync` resolved — what lets a listener read the index on hearing.
-import type { IndexSyncPath } from "../ipc/types";
+// `onSynced` runs only after `sync` resolved — what lets a listener read the index on hearing — and
+// only for an answer that names a context; the batcher reads nothing else of the answer.
+import type { IndexSyncAnswer, IndexSyncPath } from "../ipc/types";
 
 import { logger } from "../utils/logger";
 
@@ -21,10 +22,13 @@ export interface VaultChangeBatcher {
 
 export interface VaultChangeBatcherOptions {
   maxWaitMs?: number;
-  /** The ids of the contexts whose reads may have changed — called only when there are any. */
-  onSynced: (contextIds: string[]) => void;
+  /**
+   * The batch's answer — called only when it names a context. That loses no `linksChanged`: an
+   * answer with it set names one (Rust `SyncAnswer`).
+   */
+  onSynced: (answer: IndexSyncAnswer) => void;
   quietMs?: number;
-  sync: (paths: IndexSyncPath[]) => Promise<string[]>;
+  sync: (paths: IndexSyncPath[]) => Promise<IndexSyncAnswer>;
 }
 
 export type VaultEventKind = "changed" | "created" | "deleted";
@@ -57,18 +61,18 @@ export function createVaultChangeBatcher(
     }));
     pending = new Map();
     syncing = true;
-    let ids: string[] = [];
+    let answer: IndexSyncAnswer | null = null;
     try {
-      ids = await options.sync(batch);
+      answer = await options.sync(batch);
     } catch (err) {
       // Plan 0122 P8 — dropped, not re-queued: the next watcher event sends the path again.
       logger.warn("[vault-sync] sync_index_paths failed; batch dropped", err);
     } finally {
       syncing = false;
     }
-    if (!disposed && ids.length > 0) {
+    if (!disposed && answer !== null && answer.contexts.length > 0) {
       try {
-        options.onSynced(ids);
+        options.onSynced(answer);
       } catch (err) {
         // A throwing listener must not strand the batch whose timer fired during this sync.
         logger.error("[vault-sync] onSynced failed", err);

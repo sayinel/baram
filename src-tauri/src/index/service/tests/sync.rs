@@ -9,7 +9,12 @@ fn paths(list: &[(&str, bool)]) -> Vec<SyncPath> {
         .collect()
 }
 
+/// The contexts the batch announced.
 async fn sync(state: &LinkIndexState, ctx: &ContextManager, list: &[(&str, bool)]) -> Vec<String> {
+    answer(state, ctx, list).await.contexts
+}
+
+async fn answer(state: &LinkIndexState, ctx: &ContextManager, list: &[(&str, bool)]) -> SyncAnswer {
     sync_index_paths_inner(state, ctx, &paths(list))
         .await
         .unwrap()
@@ -353,6 +358,9 @@ async fn an_external_case_only_rename_of_an_attachment_resolves_to_the_new_spell
     );
 }
 
+/// With no live index there is nothing to compare: each batch is announced and counts as a
+/// change to the link index, since a missing refresh is worse than an extra one. What fails
+/// the `links_changed` half: counting only `Some(true)` from `apply`.
 #[tokio::test]
 async fn a_context_without_an_index_is_announced_for_notes_and_removals() {
     let ctx = ContextManager::new();
@@ -360,14 +368,11 @@ async fn a_context_without_an_index_is_announced_for_notes_and_removals() {
     let state = LinkIndexState::new(); // never built
     std::fs::write(dir.path().join("c.md"), "x").unwrap();
 
-    assert_eq!(
-        sync(&state, &ctx, &[(&format!("{root}/c.md"), false)]).await,
-        vec!["ctx-a"]
-    );
-    assert_eq!(
-        sync(&state, &ctx, &[(&format!("{root}/gone.md"), false)]).await,
-        vec!["ctx-a"]
-    );
+    for path in ["c.md", "gone.md"] {
+        let answer = answer(&state, &ctx, &[(&format!("{root}/{path}"), false)]).await;
+        assert_eq!(answer.contexts, vec!["ctx-a"], "{path}");
+        assert!(answer.links_changed, "{path}");
+    }
 }
 
 /// The positive pair of `a_deleted_folder_takes_its_notes_with_it`: a removal the live index
@@ -613,4 +618,66 @@ async fn a_batch_of_missing_paths_is_one_apply_per_context() {
         sources_of(&state, &ctx, &format!("{root}/b.md")).await,
         vec![format!("{root}/a.md")]
     );
+}
+
+/// The watcher's echo of an auto-save: the note reads as the index holds it. What fails this:
+/// an `Update` that rewrites such a note — `links_changed` turns true (the second assertion),
+/// and the rewrite files the note again behind its same-stem sibling, so `[[n]]` resolves to
+/// the other `n.md` (the last assertion). The eight tags pin how tags are compared:
+/// `extract_file_tags` collects through a `HashSet`, so as lists two reads of one note agree
+/// only by chance. The context is still announced — tags, tasks and search read the disk.
+#[tokio::test]
+async fn an_unchanged_note_is_announced_but_leaves_the_link_index_alone() {
+    let ctx = ContextManager::new();
+    let note = "see [[b]]\n#t1 #t2 #t3 #t4 #t5 #t6 #t7 #t8";
+    let (_dir, root, state) = built(
+        &ctx,
+        &[("x/n.md", note), ("y/n.md", note), ("r.md", "see [[n]]")],
+    )
+    .await;
+    let key = active_index_key(&ctx).await.unwrap();
+    let r = format!("{root}/r.md");
+    let before = resolution_of(&state, &key, &r).await;
+    let crate::index::LinkResolution::Resolved(first) = before.clone() else {
+        panic!("[[n]] resolves: {before:?}");
+    };
+
+    let answer = answer(&state, &ctx, &[(&first, true)]).await;
+
+    assert_eq!(answer.contexts, vec!["ctx-a"]);
+    assert!(!answer.links_changed);
+    assert_eq!(resolution_of(&state, &key, &r).await, before);
+}
+
+/// `a.md` (built as `see [[b]]`) rewritten with `content` and synced: whether the batch said
+/// the link index changed. The context is announced either way.
+async fn links_changed_by(content: &str) -> bool {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[]).await;
+    std::fs::write(dir.path().join("a.md"), content).unwrap();
+    let answer = answer(&state, &ctx, &[(&format!("{root}/a.md"), true)]).await;
+    assert_eq!(answer.contexts, vec!["ctx-a"]);
+    answer.links_changed
+}
+
+/// A positive pair of the echo above. What fails this: reading a note the index already holds
+/// as an echo whatever its links.
+#[tokio::test]
+async fn a_link_added_to_a_note_changes_the_link_index() {
+    assert!(links_changed_by("see [[b]]\n[[c]]").await);
+}
+
+/// A positive pair of the echo above: the links are as they were, a tag is new. What fails
+/// this: comparing the links only — the graph draws tags too.
+#[tokio::test]
+async fn a_tag_added_to_a_note_changes_the_link_index() {
+    assert!(links_changed_by("see [[b]]\n#tag").await);
+}
+
+/// A positive pair of the echo above: the same link, with the same text around it, one line
+/// down. What fails this: comparing the entries without their `line` — a backlink would keep
+/// pointing at the old line.
+#[tokio::test]
+async fn a_link_moved_to_another_line_changes_the_link_index() {
+    assert!(links_changed_by("\nsee [[b]]").await);
 }

@@ -1,5 +1,7 @@
 // §393 — WHEN the watcher's events become a `sync_index_paths` call, and when the result is
 // announced. What would make each case fail is stated on it.
+import type { IndexSyncAnswer } from "../../ipc/types";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,12 +10,21 @@ import {
   VAULT_SYNC_QUIET_MS,
 } from "../vault-change-batcher";
 
+/** An answer naming `contexts`; the batcher passes `linksChanged` through without reading it. */
+const answer = (contexts: string[]): IndexSyncAnswer => ({
+  contexts,
+  linksChanged: false,
+});
+
 /** A `sync` whose answer the test releases by hand. */
 function heldSync() {
-  const calls: Array<{ paths: unknown; release: (ids: string[]) => void }> = [];
+  const calls: Array<{
+    paths: unknown;
+    release: (answer: IndexSyncAnswer) => void;
+  }> = [];
   const sync = vi.fn(
     (paths: unknown) =>
-      new Promise<string[]>((resolve) => {
+      new Promise<IndexSyncAnswer>((resolve) => {
         calls.push({ paths, release: resolve });
       }),
   );
@@ -70,14 +81,14 @@ describe("createVaultChangeBatcher", () => {
     batcher.touch("/v/a.md", "changed");
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
     expect(onSynced).not.toHaveBeenCalled();
-    calls[0].release(["ctx-1"]);
+    calls[0].release(answer(["ctx-1"]));
     await settle();
     expect(onSynced).toHaveBeenCalledTimes(1);
-    expect(onSynced).toHaveBeenCalledWith(["ctx-1"]);
+    expect(onSynced).toHaveBeenCalledWith(answer(["ctx-1"]));
 
     batcher.touch("/v/b.md", "changed");
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
-    calls[1].release([]);
+    calls[1].release(answer([]));
     await settle();
     expect(onSynced).toHaveBeenCalledTimes(1);
   });
@@ -91,7 +102,7 @@ describe("createVaultChangeBatcher", () => {
     batcher.touch("/v/b.md", "created");
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_MAX_WAIT_MS);
     expect(sync).toHaveBeenCalledTimes(1);
-    calls[0].release([]);
+    calls[0].release(answer([]));
     await settle();
     expect(sync).toHaveBeenCalledTimes(2);
     expect(calls[1].paths).toEqual([{ changedOnly: false, path: "/v/b.md" }]);
@@ -103,7 +114,7 @@ describe("createVaultChangeBatcher", () => {
     const sync = vi
       .fn()
       .mockRejectedValueOnce(new Error("boom"))
-      .mockResolvedValueOnce(["ctx-1"]);
+      .mockResolvedValueOnce(answer(["ctx-1"]));
     const batcher = createVaultChangeBatcher({ onSynced, sync });
     batcher.touch("/v/a.md", "changed");
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
@@ -112,7 +123,7 @@ describe("createVaultChangeBatcher", () => {
     batcher.touch("/v/a.md", "changed");
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
     await settle();
-    expect(onSynced).toHaveBeenCalledWith(["ctx-1"]);
+    expect(onSynced).toHaveBeenCalledWith(answer(["ctx-1"]));
   });
 
   it("sends nothing after dispose", async () => {
@@ -134,7 +145,7 @@ describe("createVaultChangeBatcher", () => {
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
     expect(sync).toHaveBeenCalledTimes(1);
     batcher.dispose();
-    calls[0].release(["ctx-1"]);
+    calls[0].release(answer(["ctx-1"]));
     await settle();
     expect(onSynced).not.toHaveBeenCalled();
   });
@@ -153,7 +164,7 @@ describe("createVaultChangeBatcher", () => {
     batcher.touch("/v/b.md", "created");
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_MAX_WAIT_MS);
     expect(sync).toHaveBeenCalledTimes(1);
-    calls[0].release(["ctx-1"]);
+    calls[0].release(answer(["ctx-1"]));
     await settle();
     expect(onSynced).toHaveBeenCalledTimes(1);
     expect(sync).toHaveBeenCalledTimes(2);

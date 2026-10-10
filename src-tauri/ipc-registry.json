@@ -206,13 +206,13 @@
       "input": {
         "paths": "IndexSyncPath[]"
       },
-      "output": "string[]",
+      "output": "IndexSyncAnswer",
       "module": "index",
       "spec": "§393",
       "phase": 3,
       "milestone": "M11",
       "status": "implemented",
-      "description": "watcher 가 알린 경로 묶음으로 링크 인덱스를 지금 디스크에 맞춘다 — 노트는 다시 읽고, 그 밖의 파일은 링크 대상으로, 디렉터리는 비우고 다시 채우고, 없는 경로는 그 아래를 뺀다. 숨김 · SKIP_DIRS · symlink 는 건드리지 않는다. 읽기 답이 바뀌었을 수 있는 context id 를 돌려준다(프런트가 vault:changed 로 알린다, 스펙 0072 §5.4)"
+      "description": "watcher 가 알린 경로 묶음으로 링크 인덱스를 지금 디스크에 맞춘다 — 노트는 다시 읽고, 그 밖의 파일은 링크 대상으로, 디렉터리는 비우고 다시 채우고, 없는 경로는 그 아래를 뺀다. 숨김 · SKIP_DIRS · symlink 는 건드리지 않는다. 읽기 답이 바뀌었을 수 있는 context id(contexts — 프런트가 vault:changed 로 알린다)와 링크 인덱스가 바뀌었는지(linksChanged — 프런트가 백링크 · 그래프를 다시 읽는다)를 돌려준다(스펙 0072 §5.4)"
     },
     {
       "name": "rename_file_with_links",

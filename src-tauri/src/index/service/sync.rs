@@ -1,7 +1,7 @@
 //! §393 Bring the link index up to date with paths the file watcher reported (spec 0072
 //! §5.4, D16). The frontend batches the watcher's events (`use-vault-change-sync`) and calls
-//! `sync_index_paths`; the answer — the contexts whose reads may have changed — is what it
-//! announces as `vault:changed`.
+//! `sync_index_paths`; the answer (`SyncAnswer`) names the contexts whose reads may have
+//! changed — what it announces as `vault:changed` — and whether the link index did.
 //!
 //! The watcher pairs nothing and filters little (`fs::start_watching`), so each path is
 //! judged by what it is on disk NOW under the walkers' rules (`fs::walk_rules`), not by the
@@ -13,7 +13,7 @@ use super::mutation::Mutation;
 use super::state::LinkIndexState;
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -26,13 +26,30 @@ pub struct SyncPath {
     pub changed_only: bool,
 }
 
-/// The contexts whose reads may have changed — their ids, sorted. See the module doc.
+/// What one batch did. `links_changed` is kept apart from `contexts` because a note is
+/// announced whatever its links (`Announce::Always`), while the readers of the link index
+/// (backlinks, the graph) need refreshing only when it changed — the watcher's echo of an
+/// auto-save leaves it as the save did.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncAnswer {
+    /// The contexts whose reads may have changed — their ids, sorted.
+    pub contexts: Vec<String>,
+    /// Some `apply` in the batch answered other than `Some(false)`: a live index changed, or
+    /// there was none to ask, and a missing refresh is worse than an extra one. Implies
+    /// `contexts` is not empty — both `Announce` rules announce a context whose `apply`
+    /// answered so.
+    pub links_changed: bool,
+}
+
+/// See `SyncAnswer` and the module doc.
 pub(crate) async fn sync_index_paths_inner(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
     paths: &[SyncPath],
-) -> Result<Vec<String>, String> {
+) -> Result<SyncAnswer, String> {
     let mut announced: BTreeSet<String> = BTreeSet::new();
+    let mut links_changed = false;
     // Phase 1: everything that is on disk now. A spelling that names no entry (`Planned::gone`)
     // is only collected, per holding context (keyed by its registered path), for phase 2.
     let mut removed: BTreeMap<String, (String, Vec<Mutation>)> = BTreeMap::new();
@@ -47,6 +64,7 @@ pub(crate) async fn sync_index_paths_inner(
         if let Some((mutations, rule)) = now {
             for ctx in &contexts {
                 let changed = state.apply(&ctx.info.path, mutations.clone()).await;
+                links_changed |= changed != Some(false);
                 if rule.announces(changed) {
                     announced.insert(ctx.info.id.clone());
                 }
@@ -72,11 +90,15 @@ pub(crate) async fn sync_index_paths_inner(
         let changed = state
             .apply(&key, vec![Mutation::merge_removals(trees)])
             .await;
+        links_changed |= changed != Some(false);
         if Announce::UnlessUnchanged.announces(changed) {
             announced.insert(id);
         }
     }
-    Ok(announced.into_iter().collect())
+    Ok(SyncAnswer {
+        contexts: announced.into_iter().collect(),
+        links_changed,
+    })
 }
 
 /// What `plan` decided for one path.

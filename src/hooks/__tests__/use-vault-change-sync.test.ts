@@ -1,6 +1,6 @@
-// §393 — the hook's wiring: watcher events → `syncIndexPaths` → the backlinks panel re-reads and
-// `vault:changed` is published for each context, in that order. Timing and seriality live in the
-// batcher's own test.
+// §393 — the hook's wiring: watcher events → `syncIndexPaths` → the backlinks panel re-reads when
+// the link index changed, and `vault:changed` is published for each context. Timing and seriality
+// live in the batcher's own test.
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,8 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 vi.mock("../../ipc/invoke", () => ({ syncIndexPaths }));
 
 import { listen } from "@tauri-apps/api/event";
+
+import type { IndexSyncAnswer } from "../../ipc/types";
 
 import { VAULT_SYNC_QUIET_MS } from "../../services/vault-change-batcher";
 import { subscribeVaultChanges } from "../../services/vault-changes";
@@ -23,6 +25,19 @@ const flush = () =>
     for (let i = 0; i < 5; i += 1) await Promise.resolve();
   });
 
+/** Mount the hook, report one changed path and let the batch reach `syncIndexPaths`. */
+async function syncOnePath() {
+  renderHook(() => useVaultChangeSync());
+  await flush();
+  act(() => {
+    handlers.get("file:changed")?.({ payload: { mtime: 1, path: "/v/a.md" } });
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
+  });
+  await flush();
+}
+
 describe("useVaultChangeSync", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -36,9 +51,10 @@ describe("useVaultChangeSync", () => {
   afterEach(() => vi.useRealTimers());
 
   it("syncs the touched paths, then invalidates the panel and publishes each context", async () => {
-    let release: (ids: string[]) => void = () => undefined;
+    // Fails if `announce` does not invalidate when `linksChanged` (the second `indexVersion` check).
+    let release: (answer: IndexSyncAnswer) => void = () => undefined;
     syncIndexPaths.mockImplementation(
-      () => new Promise<string[]>((resolve) => (release = resolve)),
+      () => new Promise<IndexSyncAnswer>((resolve) => (release = resolve)),
     );
     const heard: string[] = [];
     const stop = subscribeVaultChanges((id) => heard.push(id));
@@ -67,9 +83,29 @@ describe("useVaultChangeSync", () => {
     expect(heard).toEqual([]);
     expect(useLinkStore.getState().indexVersion).toBe(version);
 
-    act(() => release(["ctx-1", "ctx-2"]));
+    act(() => release({ contexts: ["ctx-1", "ctx-2"], linksChanged: true }));
     await flush();
     expect(useLinkStore.getState().indexVersion).toBe(version + 1);
+    expect(heard).toEqual(["ctx-1", "ctx-2"]);
+    stop();
+  });
+
+  it("publishes each context but leaves the panel alone when the link index did not change", async () => {
+    // The watcher's echo of an auto-save. Fails if `announce` invalidates on every answer — the
+    // backlinks panel and the graph would re-read once more per save. The publish half fails if
+    // `linksChanged` gates the plugins' signal too.
+    syncIndexPaths.mockResolvedValue({
+      contexts: ["ctx-1", "ctx-2"],
+      linksChanged: false,
+    });
+    const heard: string[] = [];
+    const stop = subscribeVaultChanges((id) => heard.push(id));
+    const version = useLinkStore.getState().indexVersion;
+
+    await syncOnePath();
+
+    expect(syncIndexPaths).toHaveBeenCalledTimes(1);
+    expect(useLinkStore.getState().indexVersion).toBe(version);
     expect(heard).toEqual(["ctx-1", "ctx-2"]);
     stop();
   });
