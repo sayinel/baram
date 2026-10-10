@@ -444,6 +444,34 @@ fn a_host_whose_watcher_ended_is_rescanned_when_it_is_started_again() {
     assert_eq!(changes.pending_rescans(), 1);
 }
 
+#[test]
+fn a_recursive_first_start_marks_a_conditional_rescan_and_a_folder_watch_does_not() {
+    // #852 The start's scope reaches the applier: a recursive first start may have to
+    // rescan what an index read before it, a folder watched for one file never does.
+    // 이것을 실패시키는 것: `spawn_watcher` 가 `started` 에 `spec.recursive` 대신 상수를 넘긴다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let changes = app.state::<ExternalChanges>();
+    let folder = WatchSpec {
+        recursive: false,
+        ..host_spec(&root)
+    };
+    let narrow = spawn_watcher(app.handle(), &folder).unwrap();
+    assert!(changes.pending_started().is_empty());
+    drop(narrow);
+    let _wide = spawn_watcher(app.handle(), &host_spec(&root)).unwrap();
+    let started: Vec<PathBuf> = changes
+        .pending_started()
+        .into_iter()
+        .map(|(h, _)| h)
+        .collect();
+    assert_eq!(started, vec![root]);
+    assert_eq!(changes.pending_rescans(), 0);
+}
+
 #[tokio::test]
 async fn a_failed_restart_keeps_the_host_marked_until_a_watcher_starts() {
     // The host's watcher ended; the next start fails (its folder is away), a note is

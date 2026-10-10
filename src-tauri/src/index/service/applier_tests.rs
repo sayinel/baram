@@ -359,16 +359,27 @@ async fn a_stream_of_marks_is_taken_at_the_latency_bound() {
 
 #[tokio::test]
 async fn a_host_that_ended_is_rescanned_when_it_starts_again() {
-    // 이것을 실패시키는 것: `starting` 이 끝났던 host 에 rescan 을 걸지 않는다.
+    // A first start before the build reads costs nothing; a start after the watcher ended
+    // rescans, whatever the index read since.
+    // 이것을 실패시키는 것: `started` 가 끝났던 host 에 rescan 을 걸지 않는다.
     let app = app();
     let dir = tempfile::tempdir().unwrap();
-    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    let path = dir.path().join("v");
+    std::fs::create_dir_all(&path).unwrap();
+    let root = std::fs::canonicalize(&path).unwrap();
     let changes = app.state::<ExternalChanges>();
-    changes.started(&root);
+    changes.started(&root, true);
+    vault_at(&app, "v", &path).await;
     apply_batch(app.handle()).await;
-    assert_eq!(counts(&app).rescans, 0);
+    assert_eq!((counts(&app).rescans, counts(&app).rescans_skipped), (0, 1));
     changes.note_ended(&root);
-    changes.started(&root);
+    changes.started(&root, true);
+    // Unconditional, whatever the index read since. A conditional one would rebuild the
+    // same here (the build read before this start), so the kind waiting tells them apart.
+    assert_eq!(
+        (changes.pending_rescans(), changes.pending_started().len()),
+        (1, 0)
+    );
     apply_batch(app.handle()).await;
     assert_eq!(counts(&app).rescans, 1);
 }
@@ -839,4 +850,307 @@ async fn a_batch_names_its_applied_note_once_and_the_rebuild_announces_its_vault
     );
     let ignored = ignore.to_string_lossy().into_owned();
     assert!(!seen.iter().any(|e| e.to_string().contains(&ignored)));
+}
+
+// #852 A watch that starts after an index read its folder: the conditional rescan.
+
+/// Register `path` as a folder context without building it; its key and canonical root.
+async fn registered_at(app: &App, id: &str, path: &Path) -> (String, PathBuf) {
+    std::fs::create_dir_all(path).unwrap();
+    let key = path.to_str().unwrap().to_string();
+    let ctx = app.state::<ContextManager>();
+    ctx.add(ContextInfo {
+        id: id.into(),
+        context_type: ContextType::Folder,
+        path: key.clone(),
+        label: id.into(),
+        color: "#fff".into(),
+        alias: None,
+        vault_type: None,
+        added_at: 0,
+    })
+    .await
+    .unwrap();
+    let canonical = ctx
+        .context_registered_at(&key)
+        .await
+        .unwrap()
+        .canonical_path;
+    (key, canonical)
+}
+
+async fn links_to(app: &App, key: &str, from: &str, to: &str) -> bool {
+    let (from, to) = (format!("{key}/{from}"), to.to_string());
+    eventually(|| {
+        let (from, to) = (from.clone(), to.clone());
+        async move {
+            edges(app, key)
+                .await
+                .iter()
+                .any(|(f, t)| *f == from && t.ends_with(&to))
+        }
+    })
+    .await
+}
+
+#[tokio::test]
+async fn a_write_between_the_build_and_the_first_watch_reaches_the_index() {
+    // The issue's probe: the index is built, another program writes, and only then does
+    // the vault's first recursive watch start. Its start rescans what the build read.
+    // 이것을 실패시키는 것: `started` 가 끝난 적 없는 host 의 recursive 시작에 아무것도 걸지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join("a.md"), "see [[late]]").unwrap();
+    app.state::<ExternalChanges>().started(&root, true);
+    apply_batch(app.handle()).await;
+    assert_eq!((counts(&app).rescans, counts(&app).rescans_skipped), (1, 0));
+    assert!(links_to(&app, &key, "a.md", "late.md").await);
+}
+
+#[tokio::test]
+async fn a_non_recursive_start_rescans_nothing() {
+    // A folder watched for one file: its registration would be rebuilt whole for one
+    // folder's own entries.
+    // 이것을 실패시키는 것: `started` 가 recursive 가 아닌 시작에도 조건부 rescan 을 건다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    app.state::<ExternalChanges>().started(&root, false);
+    assert!(app.state::<ExternalChanges>().pending_started().is_empty());
+    apply_batch(app.handle()).await;
+    assert_eq!((counts(&app).rescans, counts(&app).rescans_skipped), (0, 0));
+}
+
+#[tokio::test]
+async fn a_build_still_reading_across_the_start_keeps_the_rescan() {
+    // No index is published yet: the first build began reading, then the watch started.
+    // That build will publish what it read before the start.
+    // 이것을 실패시키는 것: `earliest_read` 가 읽고 있는 build(`pending`)를 보지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = registered_at(&app, "v", &dir.path().join("v")).await;
+    let reached = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    *app.state::<LinkIndexState>()
+        .pause_before_publish
+        .lock()
+        .unwrap() = Some(crate::index::service::state::PauseAfterRead {
+        path: key.clone().into(),
+        reached: Arc::clone(&reached),
+        release: Arc::clone(&release),
+    });
+    let building = {
+        let (handle, key) = (app.handle().clone(), key.clone());
+        tokio::spawn(async move {
+            refresh_index_inner(
+                &handle.state::<LinkIndexState>(),
+                &handle.state::<ContextManager>(),
+                &key,
+            )
+            .await
+            .map(drop)
+        })
+    };
+    tokio::time::timeout(Duration::from_secs(5), reached.notified())
+        .await
+        .expect("the build never read");
+    std::fs::write(root.join("a.md"), "see [[late]]").unwrap();
+    app.state::<ExternalChanges>().started(&root, true);
+    apply_batch(app.handle()).await;
+    assert_eq!((counts(&app).rescans, counts(&app).rescans_skipped), (1, 0));
+    release.notify_one();
+    building.await.unwrap().unwrap();
+    assert!(links_to(&app, &key, "a.md", "late.md").await);
+}
+
+#[tokio::test]
+async fn a_second_widening_before_the_take_rescans_past_a_build_between() {
+    // Widen at S1, a build publishes after S1, narrow, a write the narrow watch cannot
+    // see, widen again at S2 — all before one take. The rescan must stand for S2.
+    // 이것을 실패시키는 것: 조건부 rescan 을 합칠 때 처음 시작(S1)을 지킨다(`max` 대신 처음 값).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = registered_at(&app, "v", &dir.path().join("v")).await;
+    let changes = app.state::<ExternalChanges>();
+    changes.started(&root, true);
+    assert!(
+        crate::index::service::reconcile::rebuild_registration(
+            &app.state::<LinkIndexState>(),
+            &app.state::<ContextManager>(),
+            &key
+        )
+        .await
+    );
+    changes.started(&root, false);
+    std::fs::create_dir_all(root.join("deep")).unwrap();
+    std::fs::write(root.join("deep/a.md"), "see [[late]]").unwrap();
+    changes.started(&root, true);
+    assert_eq!(changes.pending_started().len(), 1);
+    apply_batch(app.handle()).await;
+    assert_eq!((counts(&app).rescans, counts(&app).rescans_skipped), (1, 0));
+    assert!(links_to(&app, &key, "deep/a.md", "late.md").await);
+}
+
+#[test]
+fn an_unconditional_rescan_stands_whichever_comes_first() {
+    // 이것을 실패시키는 것: (앞) 조건부가 기다리는 무조건 rescan 을 덮는다; (뒤) 무조건 rescan 이 기다리는
+    // 조건부를 바꾸지 않는다.
+    let host = PathBuf::from("/v");
+    let first = ExternalChanges::new();
+    first.mark_rescan(&host);
+    first.started(&host, true);
+    assert_eq!(
+        (first.pending_rescans(), first.pending_started().len()),
+        (1, 0)
+    );
+    let second = ExternalChanges::new();
+    second.started(&host, true);
+    assert_eq!(
+        (second.pending_rescans(), second.pending_started().len()),
+        (0, 1)
+    );
+    second.mark_rescan(&host);
+    assert_eq!(
+        (second.pending_rescans(), second.pending_started().len()),
+        (1, 0)
+    );
+}
+
+#[tokio::test]
+async fn a_path_under_a_conditional_rescan_that_reads_nothing_is_still_applied() {
+    // The start came before the build, so the rescan is skipped — the write marked under
+    // it is not left to that rescan.
+    // 이것을 실패시키는 것: 조건부 rescan 도 그 host 의 경로를 건너뛰게 한다(`mark` 나 `apply_batch` 에서).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v");
+    std::fs::create_dir_all(&path).unwrap();
+    let root = std::fs::canonicalize(&path).unwrap();
+    app.state::<ExternalChanges>().started(&root, true);
+    let (key, _) = vault_at(&app, "v", &path).await;
+    let note = root.join("n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    mark(&app, &root, &note, &note.to_string_lossy());
+    apply_batch(app.handle()).await;
+    let counts = counts(&app);
+    assert_eq!(
+        (counts.rescans, counts.rescans_skipped, counts.units),
+        (0, 1, 1)
+    );
+    let from = format!("{key}/n.md");
+    assert!(edges(&app, &key).await.iter().any(|(f, _)| *f == from));
+}
+
+#[tokio::test]
+async fn a_nested_start_leaves_an_outer_index_its_own_watch_kept_current() {
+    // The outer vault has been watched recursively since before its build; the nested
+    // one's first watch starts after both were built. Only the nested index is rebuilt.
+    // 이것을 실패시키는 것: `read_before` 가 자기 root 가 읽기 전부터 감시된 등록도 다시 짓는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let outer_path = dir.path().join("v");
+    std::fs::create_dir_all(outer_path.join("sub")).unwrap();
+    let outer_root = std::fs::canonicalize(&outer_path).unwrap();
+    let changes = app.state::<ExternalChanges>();
+    changes.started(&outer_root, true);
+    let (outer, _) = vault_at(&app, "v", &outer_path).await;
+    let (inner, inner_root) = vault_at(&app, "s", &outer_path.join("sub")).await;
+    apply_batch(app.handle()).await;
+    assert_eq!((counts(&app).rescans, counts(&app).rescans_skipped), (0, 1));
+    // Rebuilds that never finish, so the jobs the batch asked for stay to be counted.
+    let rebuilt = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::clone(&rebuilt);
+    *app.state::<LinkIndexState>().fake_rebuild.lock().unwrap() =
+        Some(Arc::new(move |key: String| {
+            log.lock().unwrap().push(key);
+            Box::pin(std::future::pending::<bool>())
+        }));
+    changes.started(&inner_root, true);
+    apply_batch(app.handle()).await;
+    assert_eq!(counts(&app).rescans, 1);
+    assert_eq!(app.state::<LinkIndexState>().rebuild_jobs_len(), 1);
+    assert!(
+        eventually(|| {
+            let (rebuilt, inner) = (Arc::clone(&rebuilt), inner.clone());
+            async move { *rebuilt.lock().unwrap() == vec![inner] }
+        })
+        .await
+    );
+    assert!(!rebuilt.lock().unwrap().contains(&outer));
+}
+
+/// A nested vault watched on its own since before its build loses that watch (`lose`),
+/// a write lands in it, then the outer vault's first recursive watch starts. The nested
+/// index is rebuilt by the outer start.
+async fn an_outer_start_rebuilds_a_nested_index_after_its_own_watch_went(
+    lose: impl FnOnce(&ExternalChanges, &Path),
+) {
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let outer_path = dir.path().join("v");
+    std::fs::create_dir_all(outer_path.join("sub")).unwrap();
+    let inner_root = std::fs::canonicalize(outer_path.join("sub")).unwrap();
+    let changes = app.state::<ExternalChanges>();
+    changes.started(&inner_root, true);
+    let (_outer, outer_root) = registered_at(&app, "v", &outer_path).await;
+    let (inner, _) = vault_at(&app, "s", &outer_path.join("sub")).await;
+    apply_batch(app.handle()).await;
+    lose(&changes, &inner_root);
+    std::fs::write(inner_root.join("a.md"), "see [[late]]").unwrap();
+    changes.started(&outer_root, true);
+    apply_batch(app.handle()).await;
+    assert!(links_to(&app, &inner, "a.md", "late.md").await);
+}
+
+#[tokio::test]
+async fn a_narrowed_nested_watch_does_not_vouch_for_its_index() {
+    // 이것을 실패시키는 것: recursive 가 아닌 시작이 `watching_since` 를 지우지 않는다.
+    an_outer_start_rebuilds_a_nested_index_after_its_own_watch_went(|c, root| {
+        c.started(root, false)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn an_ended_nested_watch_does_not_vouch_for_its_index() {
+    // 이것을 실패시키는 것: `note_ended` 가 `watching_since` 를 지우지 않는다.
+    an_outer_start_rebuilds_a_nested_index_after_its_own_watch_went(|c, root| c.note_ended(root))
+        .await;
+}
+
+#[tokio::test]
+async fn a_restarted_outer_watch_vouches_for_the_index_its_rescan_rebuilt() {
+    // The outer vault's watcher ended and started again; its unconditional rescan rebuilt
+    // it after that start. A nested first start later leaves the outer index alone.
+    // 이것을 실패시키는 것: 끝났다 다시 시작한 recursive 감시가 `watching_since` 를 남기지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let outer_path = dir.path().join("v");
+    std::fs::create_dir_all(outer_path.join("sub")).unwrap();
+    let (_outer, outer_root) = vault_at(&app, "v", &outer_path).await;
+    let changes = app.state::<ExternalChanges>();
+    changes.note_ended(&outer_root);
+    changes.started(&outer_root, true);
+    apply_batch(app.handle()).await;
+    let state = app.state::<LinkIndexState>();
+    assert!(eventually(|| async { state.rebuild_jobs_len() == 0 }).await);
+    let (inner, inner_root) = vault_at(&app, "s", &outer_path.join("sub")).await;
+    // Rebuilds that never finish, so the jobs the batch asks for stay to be counted.
+    let rebuilt = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::clone(&rebuilt);
+    *state.fake_rebuild.lock().unwrap() = Some(Arc::new(move |key: String| {
+        log.lock().unwrap().push(key);
+        Box::pin(std::future::pending::<bool>())
+    }));
+    changes.started(&inner_root, true);
+    apply_batch(app.handle()).await;
+    assert_eq!(state.rebuild_jobs_len(), 1);
+    assert!(
+        eventually(|| {
+            let (rebuilt, inner) = (Arc::clone(&rebuilt), inner.clone());
+            async move { *rebuilt.lock().unwrap() == vec![inner] }
+        })
+        .await
+    );
 }

@@ -387,11 +387,16 @@ pub(crate) async fn reconcile_tree_at(
     canonical: &Path,
     batch: &mut Batch,
 ) -> Reconciled {
-    let mut out = Reconciled {
-        spellings: vec![dir.to_string()],
-        canonical: canonical.to_path_buf(),
-        ..Reconciled::default()
-    };
+    let at = tree_registrations(ctx_mgr, canonical).await;
+    reconcile_registrations(dir, canonical, at, batch)
+}
+
+/// The registrations a change anywhere in the tree at `canonical` can reach: every
+/// buildable one holding it, and every directory registration under it.
+pub(crate) async fn tree_registrations(
+    ctx_mgr: &ContextManager,
+    canonical: &Path,
+) -> BTreeSet<RegistrationAt> {
     let mut at: BTreeSet<RegistrationAt> = buildable(&ctx_mgr.contexts_holding(canonical).await)
         .into_iter()
         .map(|c| (c.info.path, c.incarnation))
@@ -406,6 +411,21 @@ pub(crate) async fn reconcile_tree_at(
             }
         }
     }
+    at
+}
+
+/// The tree at `canonical` (spelled `dir`) reconciled by rebuilding `at`.
+pub(crate) fn reconcile_registrations(
+    dir: &str,
+    canonical: &Path,
+    at: BTreeSet<RegistrationAt>,
+    batch: &mut Batch,
+) -> Reconciled {
+    let mut out = Reconciled {
+        spellings: vec![dir.to_string()],
+        canonical: canonical.to_path_buf(),
+        ..Reconciled::default()
+    };
     for registration in at {
         out.reached = true;
         out.wants.push(registration.clone());

@@ -313,8 +313,10 @@ fn with_registry<R: tauri::Runtime, T>(
 /// Start a watcher whose own end — an error, its folder removed — ends the leases it
 /// serves, if it is still its host's watcher then. §29 #824 A host whose last watcher
 /// ended is rescanned once the new one watches: what changed in between was never
-/// reported. Only then — a start that fails keeps the host marked, and a rescan taken
-/// while the start is still under way could not see what changes before it watches.
+/// reported. #852 A recursive start of a host never watched so, or a widening, rescans the
+/// indexes that read before it. Only then — a start that fails keeps the host marked, and a
+/// rescan taken while the start is still under way could not see what changes before it
+/// watches.
 fn spawn_watcher<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     spec: &WatchSpec,
@@ -323,7 +325,7 @@ fn spawn_watcher<R: tauri::Runtime>(
     hold_start(&spec.key);
     let watcher = crate::fs::start_watching(spec, app.clone(), sinks_for(app, spec))?;
     if let Some(changes) = app.try_state::<ExternalChanges>() {
-        changes.started(&spec.key);
+        changes.started(&spec.key, spec.recursive);
     }
     Ok(watcher)
 }

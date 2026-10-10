@@ -464,6 +464,26 @@ impl LinkIndexState {
             .map(|(_, began)| began)
     }
 
+    /// #852 When the earliest read registration `incarnation` of `key` holds began: its
+    /// published index's build, or a build still reading — `None` when it holds neither.
+    pub(super) async fn earliest_read(&self, key: &str, incarnation: u64) -> Option<u64> {
+        let map = self.slots.lock().await;
+        let slot = map.get(key)?;
+        let published = slot
+            .covered_from
+            .filter(|(at, _)| *at == incarnation && slot.index.is_some())
+            .map(|(_, began)| began);
+        let building = slot
+            .pending
+            .as_ref()
+            .filter(|p| p.token.incarnation == incarnation)
+            .map(|p| p.began_at);
+        match (published, building) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
     /// The live index's spelling of `canonical_path` under `key`, if it has one.
     pub(super) async fn spelling_of(&self, key: &str, canonical_path: &Path) -> Option<String> {
         let map = self.slots.lock().await;
