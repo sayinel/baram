@@ -1,9 +1,11 @@
 //! §29 #824 The rebuilds of dropped indexes, scheduled in one place.
 //!
 //! An index a write or a watcher batch could not keep is dropped (`commit::degrade`) and
-//! its registration incarnation gets a job here. One task runs the jobs, one attempt at a
-//! time and at most one per `GLOBAL_GAP`, so a run of failing vaults costs one walk at a
-//! time rather than one per vault at once.
+//! its registration incarnation gets a job here. One task schedules the jobs: it starts
+//! at most one attempt per `GLOBAL_GAP`, each as a task of its own, and runs at most
+//! `MAX_RUNNING` at once, never two on intersecting roots — a run of failing vaults
+//! costs a bounded number of walks, and one walk stuck on a slow volume does not stop an
+//! unrelated vault from recovering.
 //!
 //! A job waits `BACKOFF` after each failed attempt, then `TERMINAL` for as long as it
 //! keeps failing — it never gives up while its registration is that incarnation, since
@@ -16,7 +18,8 @@
 //! something it depends on moves: a watcher mark at or under its root (a fixed
 //! `.baramignore` included, `poke_under`), a new failure (`request_rebuild`), or a
 //! publication for its incarnation by anyone else (`publish` → `poke_key`), which ends
-//! it. Removing the registration (`forget`) cancels it at once.
+//! it. Removing the registration (`forget`) cancels it at once, aborting an attempt that
+//! is running.
 //!
 //! The failure generation is kept (`request_rebuild` moves it on): a job that has
 //! published ends, and announces, only when no failure has landed since it started the
@@ -48,6 +51,9 @@ pub(crate) const TERMINAL: Duration = Duration::from_secs(600);
 pub(crate) const GLOBAL_GAP: Duration = Duration::from_secs(1);
 /// The least time between two attempts of one job, however often it is poked.
 pub(crate) const JOB_GAP: Duration = Duration::from_secs(2);
+/// The most attempts running at once — each on a root no other running one intersects,
+/// so one slow walk (a stalled volume) does not hold up an unrelated vault's recovery.
+pub(crate) const MAX_RUNNING: usize = 2;
 
 /// One dropped registration incarnation waiting for its rebuild.
 pub(super) struct Job {
@@ -59,16 +65,30 @@ pub(super) struct Job {
     pub(super) failures: usize,
     pub(super) due: Instant,
     pub(super) last_attempt: Option<Instant>,
+    /// The attempt running for it, if any: its id, and once spawned, its abort handle.
+    pub(super) running: Option<(u64, Option<tokio::task::AbortHandle>)>,
 }
 
 /// The jobs, keyed by registration and incarnation (`LinkIndexState::rebuild_jobs`).
 pub(super) type Jobs = HashMap<(String, u64), Job>;
 
+/// What stands in for a walk in tests: the key in, whether it published out.
+#[cfg(test)]
+pub(crate) type FakeRebuild = std::sync::Arc<
+    dyn Fn(String) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// What the scheduler does next.
 enum Next {
     Idle,
     At(Instant),
-    Run { key: String, incarnation: u64 },
+    Run {
+        key: String,
+        incarnation: u64,
+        attempt: u64,
+    },
 }
 
 fn intersect(a: &Path, b: &Path) -> bool {
@@ -108,6 +128,7 @@ impl LinkIndexState {
                         failures: 0,
                         due: now,
                         last_attempt: None,
+                        running: None,
                     });
                     true
                 }
@@ -164,10 +185,42 @@ impl LinkIndexState {
         }
     }
 
-    /// The registration under `key` is removed, up to `incarnation`: its jobs go now.
+    /// The registration under `key` is removed, up to `incarnation`: its jobs go now, and
+    /// an attempt running for one is aborted — its walk stops at its next await, and its
+    /// build lock and lease go with it (`forget` has already replaced the slot, so nothing
+    /// it built could publish).
     pub(super) fn cancel_rebuilds(&self, key: &str, incarnation: u64) {
-        self.jobs()
-            .retain(|(k, at), _| !(k == key && *at <= incarnation));
+        self.jobs().retain(|(k, at), job| {
+            let removed = k == key && *at <= incarnation;
+            if removed {
+                if let Some((_, Some(abort))) = &job.running {
+                    abort.abort();
+                }
+            }
+            !removed
+        });
+        self.scheduler_wake.notify_one();
+    }
+
+    /// The attempt `attempt` for `(key, incarnation)` was spawned as `abort`. If the job
+    /// went (cancelled) or moved on meanwhile, the attempt is aborted at once.
+    fn spawned(&self, key: &str, incarnation: u64, attempt: u64, abort: tokio::task::AbortHandle) {
+        let mut jobs = self.jobs();
+        match jobs.get_mut(&(key.to_string(), incarnation)) {
+            Some(job) if job.running.as_ref().is_some_and(|(id, _)| *id == attempt) => {
+                job.running = Some((attempt, Some(abort)));
+            }
+            _ => abort.abort(),
+        }
+    }
+
+    /// The attempt `attempt` for `(key, incarnation)` is over.
+    fn ended(&self, key: &str, incarnation: u64, attempt: u64) {
+        if let Some(job) = self.jobs().get_mut(&(key.to_string(), incarnation)) {
+            if job.running.as_ref().is_some_and(|(id, _)| *id == attempt) {
+                job.running = None;
+            }
+        }
         self.scheduler_wake.notify_one();
     }
 
@@ -191,18 +244,42 @@ impl LinkIndexState {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The next attempt to start — claimed as running when it is due — or when to look
+    /// again. Only jobs whose root no running attempt intersects are candidates, and
+    /// none while `MAX_RUNNING` run: a running attempt's end wakes the scheduler.
     fn next(&self, now: Instant) -> Next {
-        let jobs = self.jobs();
+        let mut jobs = self.jobs();
+        let running: Vec<PathBuf> = jobs
+            .values()
+            .filter(|j| j.running.is_some())
+            .map(|j| j.root.clone())
+            .collect();
+        if running.len() >= MAX_RUNNING {
+            return Next::Idle;
+        }
         // The job due first; among those due together, the one tried longest ago, so a
         // job postponed by an intersecting failure is not passed over for ever.
-        let first = jobs.iter().min_by_key(|(_, j)| (j.due, j.last_attempt));
+        let first = jobs
+            .iter()
+            .filter(|(_, j)| j.running.is_none() && !running.iter().any(|r| intersect(r, &j.root)))
+            .min_by_key(|(_, j)| (j.due, j.last_attempt))
+            .map(|(at, j)| (at.clone(), j.due));
         match first {
             None => Next::Idle,
-            Some((_, job)) if job.due > now => Next::At(job.due),
-            Some(((key, incarnation), _)) => Next::Run {
-                key: key.clone(),
-                incarnation: *incarnation,
-            },
+            Some((_, due)) if due > now => Next::At(due),
+            Some(((key, incarnation), _)) => {
+                let attempt = self
+                    .attempts_started
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if let Some(job) = jobs.get_mut(&(key.clone(), incarnation)) {
+                    job.running = Some((attempt, None));
+                }
+                Next::Run {
+                    key,
+                    incarnation,
+                    attempt,
+                }
+            }
         }
     }
 
@@ -253,11 +330,17 @@ pub(crate) fn ensure_started<R: Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 async fn run<R: Runtime>(app: tauri::AppHandle<R>) {
-    let mut last: Option<Instant> = None;
+    let mut last_start: Option<Instant> = None;
     loop {
         let state = app.state::<LinkIndexState>();
-        let now = Instant::now();
-        match state.next(now) {
+        // Starts, not attempts, are spaced: an attempt that runs long does not delay
+        // the next start beyond the gap.
+        if let Some(at) = last_start.map(|l| l + GLOBAL_GAP) {
+            if at > Instant::now() {
+                tokio::time::sleep_until(at).await;
+            }
+        }
+        match state.next(Instant::now()) {
             Next::Idle => state.scheduler_wake.notified().await,
             Next::At(at) => {
                 tokio::select! {
@@ -265,13 +348,20 @@ async fn run<R: Runtime>(app: tauri::AppHandle<R>) {
                     () = state.scheduler_wake.notified() => {}
                 }
             }
-            Next::Run { key, incarnation } => {
-                if let Some(at) = last.map(|l| l + GLOBAL_GAP).filter(|at| *at > now) {
-                    tokio::time::sleep_until(at).await;
-                    continue;
-                }
-                attempt(&app, &key, incarnation).await;
-                last = Some(Instant::now());
+            Next::Run {
+                key,
+                incarnation,
+                attempt: id,
+            } => {
+                last_start = Some(Instant::now());
+                let task = {
+                    let (app, key) = (app.clone(), key.clone());
+                    tokio::spawn(async move {
+                        attempt(&app, &key, incarnation).await;
+                        app.state::<LinkIndexState>().ended(&key, incarnation, id);
+                    })
+                };
+                state.spawned(&key, incarnation, id, task.abort_handle());
             }
         }
     }
@@ -328,12 +418,12 @@ async fn rebuild(state: &LinkIndexState, ctx_mgr: &ContextManager, key: &str) ->
 }
 
 /// Tests may stand in for the walk (`LinkIndexState::fake_rebuild`), to count attempts
-/// under paused time without real I/O.
+/// under paused time without real I/O, or to park one.
 #[cfg(test)]
 async fn rebuild(state: &LinkIndexState, ctx_mgr: &ContextManager, key: &str) -> bool {
     let fake = state.fake_rebuild.lock().unwrap().clone();
     match fake {
-        Some(fake) => fake(key),
+        Some(fake) => fake(key.to_string()).await,
         None => rebuild_registration(state, ctx_mgr, key).await,
     }
 }

@@ -234,8 +234,13 @@ pub struct LinkIndexState {
     pub(super) scheduler_started: std::sync::atomic::AtomicBool,
     /// Stands in for a scheduler attempt's walk (tests).
     #[cfg(test)]
-    #[allow(clippy::type_complexity)]
-    pub(crate) fake_rebuild: std::sync::Mutex<Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>>,
+    pub(crate) fake_rebuild: std::sync::Mutex<Option<super::scheduler::FakeRebuild>>,
+    /// Numbers the scheduler's attempts (`scheduler::Next::Run`).
+    pub(super) attempts_started: AtomicU64,
+    /// A test-only pause in a rebuild, keyed by registration: after the walk, with the
+    /// build lease and lock held, before it publishes.
+    #[cfg(test)]
+    pub(super) pause_before_publish: std::sync::Mutex<Option<PauseAfterRead>>,
     /// A test-only pause in a rebuild worker, keyed by the registration's path: just
     /// before it decides whether it is done (`finish_rebuild`).
     #[cfg(test)]
@@ -273,6 +278,9 @@ impl LinkIndexState {
             scheduler_started: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             fake_rebuild: std::sync::Mutex::new(None),
+            attempts_started: AtomicU64::new(0),
+            #[cfg(test)]
+            pause_before_publish: std::sync::Mutex::new(None),
             #[cfg(test)]
             pause_before_finish: std::sync::Mutex::new(None),
             #[cfg(test)]

@@ -200,6 +200,8 @@ pub(super) async fn rebuild_and_publish(
         state.abort_build(key, token).await;
         return Err(e);
     }
+    #[cfg(test)]
+    pause_before_publish(state, key).await;
     publish_built_index(state, key, token, new_index, stats).await
 }
 
@@ -239,4 +241,19 @@ pub(crate) async fn refresh_index_inner(
     rebuild_and_publish(state, &target, root_path, true)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+async fn pause_before_publish(state: &LinkIndexState, key: &str) {
+    let pause = {
+        let mut slot = state.pause_before_publish.lock().unwrap();
+        match slot.as_ref() {
+            Some(p) if p.path == std::path::Path::new(key) => slot.take(),
+            _ => None,
+        }
+    };
+    if let Some(p) = pause {
+        p.reached.notify_one();
+        p.release.notified().await;
+    }
 }
