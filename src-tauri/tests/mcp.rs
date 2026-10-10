@@ -646,3 +646,97 @@ fn list_tools_page_what_the_cli_lists() {
     }
     assert_eq!(s.end().code, 0);
 }
+
+/// `search` pages its hits in the order it finds them, and a hit's `line` minus 1 is the
+/// `offset` `read_note` starts at; `read_note`'s pages put together are the note's bytes,
+/// CRLF included (spec 0068 §3.4). `read_note` reads notes only — not a hidden file `search`
+/// does find (D6).
+///
+/// What fails this: `read_note` written with `paths::file_arg`; lines split without their
+/// endings; `search` given offset 0 whatever the call asked.
+#[test]
+fn search_and_read_note_page_through_notes() {
+    let sb = sandbox();
+    let body = "one\r\ntwo needle\r\nthree\r\nfour needle\r\n";
+    write(&sb.vault, "n.md", body);
+    write(&sb.vault, ".hidden.md", "needle\n");
+    write(&sb.vault, "x.txt", "needle\n");
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    // The search finds `.hidden.md` first: its walk sorts the absolute paths, and `.` (0x2E)
+    // comes before `n`.
+    let mut hits: Vec<(String, u64)> = Vec::new();
+    let mut offset = 0;
+    for id in 1..=3 {
+        let result = s.call(
+            id,
+            "search",
+            json!({ "query": "needle", "offset": offset, "limit": 1 }),
+        );
+        let page = structured(&result);
+        let item = &page["items"][0];
+        hits.push((
+            item["path"].as_str().unwrap().to_string(),
+            item["line"].as_u64().unwrap(),
+        ));
+        match page["nextOffset"].as_u64() {
+            Some(next) => offset = next,
+            None => assert_eq!(id, 3, "{page}"),
+        }
+    }
+    assert_eq!(
+        hits,
+        [
+            (".hidden.md".to_string(), 1),
+            ("n.md".to_string(), 2),
+            ("n.md".to_string(), 4)
+        ]
+    );
+    let from_hit = s.call(
+        4,
+        "read_note",
+        json!({ "path": "n.md", "offset": 2 - 1, "limit": 2 }),
+    );
+    let page = structured(&from_hit);
+    assert_eq!(page["content"], json!("two needle\r\nthree\r\n"));
+    assert_eq!(page["totalLines"], json!(4));
+    assert_eq!(page["truncated"], json!(true));
+    assert_eq!(page["nextOffset"], json!(3));
+    let first = s.call(5, "read_note", json!({ "path": "n.md", "limit": 2 }));
+    let rest = s.call(6, "read_note", json!({ "path": "n.md", "offset": 2 }));
+    let joined = format!(
+        "{}{}",
+        structured(&first)["content"].as_str().unwrap(),
+        structured(&rest)["content"].as_str().unwrap()
+    );
+    assert_eq!(joined, body);
+    for (id, path, start) in [
+        (
+            7,
+            ".hidden.md",
+            "error[INVALID_ARGUMENT]: .hidden.md is where the vault walk does not go",
+        ),
+        (
+            8,
+            "x.txt",
+            "error[INVALID_ARGUMENT]: x.txt is not a markdown note",
+        ),
+        (
+            9,
+            "missing.md",
+            "error[FILE_NOT_FOUND]: no file at missing.md",
+        ),
+    ] {
+        let result = s.call(id, "read_note", json!({ "path": path }));
+        let text = tool_error(&result);
+        assert!(text.starts_with(start), "{path}: {text}");
+    }
+    let result = s.call(10, "search", json!({ "query": "(", "regex": true }));
+    assert!(tool_error(&result).starts_with("error[INVALID_ARGUMENT]: invalid regular expression"));
+    let result = s.call(11, "search", json!({ "query": "x", "regex": "yes" }));
+    assert_eq!(
+        tool_error(&result),
+        "error[INVALID_ARGUMENT]: `regex` must be true or false"
+    );
+    assert_eq!(s.end().code, 0);
+}

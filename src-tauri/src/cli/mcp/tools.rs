@@ -2,13 +2,14 @@
 // function each call runs.
 
 use super::args::{self, Args, Kind, Spec, OFFSET, VAULT};
-use super::page::Page;
+use super::page::{self, Page};
 use super::scope::Scope;
 use super::server::Server;
 use crate::cli::args::TaskStatus;
 use crate::cli::error::CliError;
 use crate::cli::ops::{self, PathRow, VaultRow};
 use crate::cli::ops_notes::{self, TagRow, TaskRow};
+use crate::cli::ops_search::{self, SearchQuery, SearchRow};
 use crate::cli::output::VaultInfo;
 use crate::cli::vault::Vault;
 use rmcp::handler::server::common::schema_for_output;
@@ -24,6 +25,8 @@ use std::sync::Arc;
 pub(super) enum ToolName {
     ListVaults,
     ListFiles,
+    ReadNote,
+    Search,
     ListTags,
     NotesWithTag,
     ListTasks,
@@ -54,6 +57,70 @@ const LIST_FILES: &[Spec] = &[
     },
     OFFSET,
     args::limit(200, 1000),
+];
+
+/// The most characters one `read_note` page holds (spec 0068 §3.4). The result is carried
+/// twice — as structured content and again as text — so a page is a starting point under what
+/// a client keeps of one result. At about one token per character (an estimate), 10,000
+/// characters is the most an all-Hangul page can hold within 20,000 tokens for the two copies.
+const READ_NOTE_CHARS: usize = 10_000;
+
+const READ_NOTE: &[Spec] = &[
+    VAULT,
+    Spec {
+        name: "path",
+        kind: Kind::Text,
+        required: true,
+        doc: "The note, relative to the vault root.",
+    },
+    Spec {
+        name: "offset",
+        kind: Kind::Count {
+            min: 0,
+            max: None,
+            default: 0,
+        },
+        required: false,
+        doc: "How many lines to skip: the nextOffset of the page before, or a search \
+              match's line minus 1. Default 0.",
+    },
+    args::limit(2000, 5000),
+];
+
+const SEARCH: &[Spec] = &[
+    VAULT,
+    Spec {
+        name: "query",
+        kind: Kind::Text,
+        required: true,
+        doc: "The text to find; with regex, a regular expression (Rust regex syntax).",
+    },
+    Spec {
+        name: "regex",
+        kind: Kind::Flag,
+        required: false,
+        doc: "Read query as a regular expression.",
+    },
+    Spec {
+        name: "caseSensitive",
+        kind: Kind::Flag,
+        required: false,
+        doc: "Match case exactly.",
+    },
+    Spec {
+        name: "word",
+        kind: Kind::Flag,
+        required: false,
+        doc: "Match whole words only.",
+    },
+    Spec {
+        name: "folder",
+        kind: Kind::Text,
+        required: false,
+        doc: "Only this folder, relative to the vault root.",
+    },
+    OFFSET,
+    args::limit(50, 500),
 ];
 
 const LIST_TAGS: &[Spec] = &[VAULT, OFFSET, args::limit(500, 2000)];
@@ -98,6 +165,8 @@ impl ToolName {
     pub(super) const ALL: &'static [ToolName] = &[
         ToolName::ListVaults,
         ToolName::ListFiles,
+        ToolName::ReadNote,
+        ToolName::Search,
         ToolName::ListTags,
         ToolName::NotesWithTag,
         ToolName::ListTasks,
@@ -129,6 +198,29 @@ impl ToolName {
                               left out.",
                 arguments: LIST_FILES,
             },
+            ToolName::ReadNote => About {
+                name: "read_note",
+                title: "Read a note",
+                description: "The text of one note (.md or .markdown), a page of lines at a \
+                              time, each line with its line ending: content, totalLines, and \
+                              nextOffset when more follows. A page also ends early, at the end \
+                              of a line, before it grows past a size limit. Only notes: hidden \
+                              files, files in hidden folders or in node_modules, and files \
+                              other than .md and .markdown are refused.",
+                arguments: READ_NOTE,
+            },
+            ToolName::Search => About {
+                name: "search",
+                title: "Search notes",
+                description: "Full-text search of the vault's .md files, as the app's search \
+                              runs it: each match's path, line (from 1) and a snippet of the \
+                              line around the match. A page holds matches in the order the \
+                              search finds them, sorted by path and line. Hidden .md files \
+                              inside ordinary folders are searched too; read_note does not \
+                              open those. read_note with offset = line - 1 starts at a \
+                              match's line.",
+                arguments: SEARCH,
+            },
             ToolName::ListTags => About {
                 name: "list_tags",
                 title: "List tags",
@@ -158,6 +250,8 @@ impl ToolName {
         match self {
             ToolName::ListVaults => schema_for_output::<VaultList>(),
             ToolName::ListFiles | ToolName::NotesWithTag => schema_for_output::<Page<PathRow>>(),
+            ToolName::ReadNote => schema_for_output::<NoteText>(),
+            ToolName::Search => schema_for_output::<Page<SearchRow>>(),
             ToolName::ListTags => schema_for_output::<Page<TagRow>>(),
             ToolName::ListTasks => schema_for_output::<Page<TaskRow>>(),
         }
@@ -204,6 +298,21 @@ struct VaultList {
     items: Vec<VaultRow>,
 }
 
+/// `read_note`'s result (spec 0068 §3.4).
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct NoteText {
+    vault: VaultInfo,
+    path: String,
+    /// The page's lines, each with its line ending.
+    content: String,
+    /// How many lines the whole note has.
+    total_lines: usize,
+    truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    next_offset: Option<usize>,
+}
+
 /// Runs one call: its arguments checked first, then config.json read as it is now (D13),
 /// then the vault resolved inside the scope.
 pub(super) async fn call(
@@ -232,6 +341,49 @@ pub(super) async fn call(
                 ops::files(&vault, args.text("folder")).await?.items,
                 &args,
             )
+        }
+        ToolName::ReadNote => {
+            let vault = resolve()?;
+            let note = ops::read_note(&vault, args.text("path").unwrap_or_default()).await?;
+            let page = page::lines(
+                &note.content,
+                args.count("offset"),
+                args.count("limit"),
+                READ_NOTE_CHARS,
+            );
+            encode(&NoteText {
+                vault: ops::vault_info(&vault),
+                path: note.path,
+                content: page.content,
+                total_lines: page.total,
+                truncated: page.truncated,
+                next_offset: page.next_offset,
+            })
+        }
+        ToolName::Search => {
+            let vault = resolve()?;
+            let (offset, limit) = (args.count("offset"), args.count("limit"));
+            let found = ops_search::search(
+                &vault,
+                SearchQuery {
+                    query: args.text("query").unwrap_or_default(),
+                    regex: args.flag("regex"),
+                    case_sensitive: args.flag("caseSensitive"),
+                    word: args.flag("word"),
+                    folder: args.text("folder"),
+                    offset,
+                    limit,
+                },
+            )
+            .await?;
+            // Not `Page::cut`: the search has cut the page itself, in the order it found the
+            // hits (spec 0068 §3.4).
+            encode(&Page {
+                vault: ops::vault_info(&vault),
+                items: found.items,
+                truncated: found.truncated,
+                next_offset: found.truncated.then(|| offset.saturating_add(limit)),
+            })
         }
         ToolName::ListTags => {
             let vault = resolve()?;

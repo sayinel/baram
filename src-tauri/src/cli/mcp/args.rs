@@ -12,6 +12,8 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Kind {
     Text,
+    /// `true` or `false`; `false` when the call leaves it out.
+    Flag,
     /// An integer from `min`, up to `max` when there is one.
     Count {
         min: u64,
@@ -75,6 +77,7 @@ pub(super) fn schema(specs: &[Spec]) -> Arc<JsonObject> {
     for spec in specs {
         let mut property = match spec.kind {
             Kind::Text => json!({ "type": "string" }),
+            Kind::Flag => json!({ "type": "boolean", "default": false }),
             Kind::Count { min, max, default } => {
                 let mut property = json!({ "type": "integer", "minimum": min, "default": default });
                 if let Some(max) = max {
@@ -140,6 +143,8 @@ fn check(spec: &Spec, value: &Value) -> Result<(), CliError> {
     match spec.kind {
         Kind::Text if value.is_string() => Ok(()),
         Kind::Text => Err(invalid(format!("`{name}` must be a string"))),
+        Kind::Flag if value.is_boolean() => Ok(()),
+        Kind::Flag => Err(invalid(format!("`{name}` must be true or false"))),
         Kind::Count { min, max, .. } => {
             let fits = value.as_u64().is_some_and(|n| {
                 n >= min
@@ -179,6 +184,16 @@ impl Args {
     pub(super) fn text(&self, name: &str) -> Option<&str> {
         self.known(name)?;
         self.values.get(name).and_then(Value::as_str)
+    }
+
+    /// A true-or-false argument; `false` when the call left it out.
+    pub(super) fn flag(&self, name: &str) -> bool {
+        self.known(name).is_some()
+            && self
+                .values
+                .get(name)
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
     }
 
     /// A count argument, or its default when the call left it out. Past `usize` — only on a
@@ -370,5 +385,26 @@ mod tests {
         assert!(properties["offset"].get("maximum").is_none());
         assert_eq!(properties["status"]["enum"], json!(["open", "all"]));
         assert_eq!(schema["required"], json!(["tag"]));
+    }
+
+    /// What fails this: `check` accepting `"true"` or `1` for a flag; `flag` defaulting to true.
+    #[test]
+    fn a_flag_is_true_or_false_and_false_when_left_out() {
+        const FLAGGED: &[Spec] = &[Spec {
+            name: "regex",
+            kind: Kind::Flag,
+            required: false,
+            doc: "",
+        }];
+        for value in [json!("true"), json!(1)] {
+            assert_eq!(
+                message(read(object(json!({ "regex": value })), FLAGGED)),
+                "`regex` must be true or false"
+            );
+        }
+        assert!(!read(None, FLAGGED).unwrap().flag("regex"));
+        assert!(read(object(json!({ "regex": true })), FLAGGED)
+            .unwrap()
+            .flag("regex"));
     }
 }

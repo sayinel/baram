@@ -100,6 +100,25 @@ pub(crate) struct FileContent {
 
 /// `baram read <path>` — one file, as it is on disk.
 pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileContent>, CliError> {
+    let file = paths::file_arg(vault, path)?;
+    Ok(Envelope {
+        vault: Some(vault_info(vault)),
+        truncated: false,
+        items: vec![read_text(vault, path, file).await?],
+    })
+}
+
+/// `read` for the MCP server's `read_note`, which reads notes only (spec 0068 D6): the path
+/// passes `paths::note_arg`, so a file that is there but hidden, in a folder the walk skips,
+/// or not `.md` or `.markdown` is INVALID_ARGUMENT — and one that is not there is
+/// FILE_NOT_FOUND, as for `read`.
+pub(crate) async fn read_note(vault: &Vault, path: &str) -> Result<FileContent, CliError> {
+    let file = paths::note_arg(vault, path)?;
+    read_text(vault, path, file).await
+}
+
+/// The text of `file` — `path` is the argument as given, for the messages.
+async fn read_text(vault: &Vault, path: &str, file: PathBuf) -> Result<FileContent, CliError> {
     let missing = || CliError::new(ErrorCode::FileNotFound, format!("no file at {path}"));
     // The io::Error's own text is the OS's or std's, in English, and carries no path
     // ("Permission denied (os error 13)", "stream did not contain valid UTF-8"). The
@@ -107,7 +126,6 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
     let unreadable = |source: &std::io::Error| {
         CliError::new(ErrorCode::Io, format!("cannot read {path}: {source}"))
     };
-    let file = paths::file_arg(vault, path)?;
     let content = crate::fs::read_file(&file.to_string_lossy())
         .await
         .map_err(|error| match error {
@@ -115,13 +133,9 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
             FsError::ReadError(source) => unreadable(&source),
             _ => CliError::new(ErrorCode::Io, format!("cannot read {path}")),
         })?;
-    Ok(Envelope {
-        vault: Some(vault_info(vault)),
-        truncated: false,
-        items: vec![FileContent {
-            path: paths::relative(vault, &file),
-            content,
-        }],
+    Ok(FileContent {
+        path: paths::relative(vault, &file),
+        content,
     })
 }
 
@@ -326,5 +340,41 @@ mod tests {
             paths,
             ["a/y.md", "a0/x.md", "b.md", "docs-old/a.md", "docs/g.md"]
         );
+    }
+
+    /// `read_note` reads notes only (spec 0068 D6), where `read` reads any file in the vault.
+    ///
+    /// What fails this: `read_note` written with `paths::file_arg`.
+    #[tokio::test]
+    async fn read_note_reads_notes_and_nothing_else() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let vault = Vault {
+            name: "v".into(),
+            root: dir.path().canonicalize().unwrap(),
+        };
+        for (rel, body) in [
+            ("n.md", "note"),
+            (".git/config", "[core]"),
+            (".h.md", "hidden"),
+            ("t.txt", "text"),
+        ] {
+            let path = vault.root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        let note = read_note(&vault, "n.md").await.unwrap();
+        assert_eq!(
+            (note.path.as_str(), note.content.as_str()),
+            ("n.md", "note")
+        );
+        for rel in [".git/config", ".h.md", "t.txt"] {
+            let error = read_note(&vault, rel).await.unwrap_err();
+            assert_eq!(
+                error.code,
+                super::super::error::ErrorCode::InvalidArgument,
+                "{rel}"
+            );
+            assert!(read(&vault, rel).await.is_ok(), "{rel}: `read` takes it");
+        }
     }
 }

@@ -8,6 +8,7 @@ use super::output::{Envelope, Row};
 use super::paths;
 use super::vault::Vault;
 use crate::search::{SearchOptions, SearchResult};
+use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::Path;
 
@@ -22,7 +23,7 @@ pub(crate) struct SearchQuery<'a> {
     pub limit: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub(crate) struct SearchRow {
     pub path: String,
     pub line: usize,
