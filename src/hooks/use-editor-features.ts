@@ -17,6 +17,7 @@ import { useJournalInitialCursor } from "./use-journal-initial-cursor";
 import { useSettingsEffects } from "./use-settings-effects";
 import { useSkillsMode } from "./use-skills-mode";
 import { useTaskWatcher } from "./use-task-watcher";
+import { useVaultChangeSync } from "./use-vault-change-sync";
 import { useZoom } from "./use-zoom";
 
 interface UseEditorFeaturesReturn {
@@ -43,6 +44,8 @@ export function useEditorFeatures(
 
   // §304 태스크 캐시 증분 갱신 — file:* 이벤트로 변경된 파일만 재스캔
   useTaskWatcher();
+  // §393 링크 인덱스를 watcher 가 알린 변경에 맞추고 `vault:changed` 를 알린다
+  useVaultChangeSync();
 
   // §313 전역 캡처 단축키 — 설정된 조합 하나를 OS에 등록해 둔다. 앱에서 **한 번만**
   // 마운트한다(두 번이면 같은 조합을 두 번 등록하려다 실패 상태가 남는다).
