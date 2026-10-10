@@ -55,7 +55,11 @@ impl Default for SearchOptions {
 use crate::fs::SKIP_DIRS;
 
 /// Build a regex pattern from the query and options.
-fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, String> {
+///
+/// The CLI builds it too, before it searches (`cli::ops::search`): `search_files` reports
+/// a pattern it cannot build and a root it cannot search both as a String, told apart
+/// only by its wording.
+pub(crate) fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, regex::Error> {
     let pattern = if opts.regex {
         query.to_string()
     } else {
@@ -71,7 +75,6 @@ fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, String> {
     RegexBuilder::new(&pattern)
         .case_insensitive(!opts.case_sensitive)
         .build()
-        .map_err(|e| format!("Invalid search pattern: {}", e))
 }
 
 /// Build a snippet around a match, showing up to ~100 chars of context on each side.
@@ -215,7 +218,8 @@ pub async fn search_files(
         return Ok(Vec::new());
     }
 
-    let pattern = build_pattern(query, opts)?;
+    let pattern =
+        build_pattern(query, opts).map_err(|e| format!("Invalid search pattern: {}", e))?;
     let root_path = Path::new(root);
 
     if !root_path.is_dir() {
