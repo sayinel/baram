@@ -508,18 +508,46 @@ fn paths(page: &Value) -> Vec<&str> {
         .collect()
 }
 
+/// A task page's rows as (path, line, state).
+fn task_keys(page: &Value) -> Vec<(&str, u64, &str)> {
+    page["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| {
+            (
+                item["path"].as_str().expect("path"),
+                item["line"].as_u64().expect("line"),
+                item["state"].as_str().expect("state"),
+            )
+        })
+        .collect()
+}
+
 /// The list tools page what the CLI lists, in the CLI's order (spec 0068 §3.4): `nextOffset`
-/// asks for the rest, an offset past the end is an empty last page, and a bad `limit`,
-/// `status` or `folder`, or a missing `tag`, is a tool error naming the argument.
+/// asks for the rest, an offset past the end is an empty last page, `status`, `tag`, `folder`
+/// and `file` choose what is listed, and a bad `limit`, `status` or `folder`, or a missing
+/// `tag`, is a tool error naming the argument.
 ///
-/// What fails this: the page cut before the CLI's sort; `truncated` computed from what is
-/// left after the skip; a tool wired to another tool's function.
+/// The fixture gives each argument something to choose between: three notes under `#work`
+/// with one open task each, and one note in a subfolder under `#other` with a done and a
+/// cancelled task.
+///
+/// What fails this: `status` not read (a call that always asks for `all` lists the done and
+/// the cancelled task in the default page; one that always asks for `open` has no done
+/// page); `tag` not read (a call that always asks for `work`); `folder` or `file` not passed
+/// on; a left-out `limit` read as 0; a tool wired to another tool's function.
 #[test]
 fn list_tools_page_what_the_cli_lists() {
     let sb = sandbox();
     for name in ["a.md", "b.md", "c.md"] {
         write(&sb.vault, name, "#work\n- [ ] the task\n");
     }
+    write(
+        &sb.vault,
+        "sub/d.md",
+        "#other\n- [x] the finished task\n- [-] the dropped task\n",
+    );
     let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
     s.handshake();
     let first = s.call(1, "list_files", json!({ "limit": 2 }));
@@ -530,50 +558,83 @@ fn list_tools_page_what_the_cli_lists() {
     assert_eq!(page["vault"]["path"], json!(vault_arg(&sb)));
     let rest = s.call(2, "list_files", json!({ "offset": 2, "limit": 2 }));
     let page = structured(&rest);
-    assert_eq!(paths(page), ["c.md"]);
+    assert_eq!(paths(page), ["c.md", "sub/d.md"]);
     assert_eq!(page["truncated"], json!(false));
     assert!(page.get("nextOffset").is_none(), "{page}");
     let past = s.call(3, "list_files", json!({ "offset": 99 }));
     assert!(paths(structured(&past)).is_empty());
-    let tagged = s.call(4, "notes_with_tag", json!({ "tag": "#work", "limit": 1 }));
+    let folder = s.call(4, "list_files", json!({ "folder": "sub" }));
+    assert_eq!(paths(structured(&folder)), ["sub/d.md"]);
+    let tagged = s.call(5, "notes_with_tag", json!({ "tag": "#work", "limit": 1 }));
     assert_eq!(paths(structured(&tagged)), ["a.md"]);
-    let tags = s.call(5, "list_tags", json!({}));
+    let bare = s.call(6, "notes_with_tag", json!({ "tag": "work" }));
+    assert_eq!(paths(structured(&bare)), ["a.md", "b.md", "c.md"]);
+    let other = s.call(7, "notes_with_tag", json!({ "tag": "other" }));
+    assert_eq!(paths(structured(&other)), ["sub/d.md"]);
+    let tags = s.call(8, "list_tags", json!({}));
     assert_eq!(
         structured(&tags)["items"],
-        json!([{ "tag": "work", "count": 3 }])
+        json!([{ "tag": "work", "count": 3 }, { "tag": "other", "count": 1 }])
     );
-    let tasks = s.call(6, "list_tasks", json!({ "file": "b.md" }));
+    let open = s.call(9, "list_tasks", json!({}));
+    assert_eq!(
+        task_keys(structured(&open)),
+        [
+            ("a.md", 2, "todo"),
+            ("b.md", 2, "todo"),
+            ("c.md", 2, "todo")
+        ]
+    );
+    let done = s.call(10, "list_tasks", json!({ "status": "done" }));
+    assert_eq!(task_keys(structured(&done)), [("sub/d.md", 2, "done")]);
+    let cancelled = s.call(11, "list_tasks", json!({ "status": "cancelled" }));
+    assert_eq!(
+        task_keys(structured(&cancelled)),
+        [("sub/d.md", 3, "cancelled")]
+    );
+    let all = s.call(12, "list_tasks", json!({ "status": "all" }));
+    assert_eq!(
+        task_keys(structured(&all)),
+        [
+            ("a.md", 2, "todo"),
+            ("b.md", 2, "todo"),
+            ("c.md", 2, "todo"),
+            ("sub/d.md", 2, "done"),
+            ("sub/d.md", 3, "cancelled")
+        ]
+    );
+    let tasks = s.call(13, "list_tasks", json!({ "file": "b.md" }));
     let page = structured(&tasks);
     assert_eq!(paths(page), ["b.md"]);
     assert_eq!(page["items"][0]["state"], json!("todo"));
     assert_eq!(page["items"][0]["line"], json!(2));
     for (id, tool, arguments, start) in [
         (
-            7,
+            14,
             "list_files",
             json!({ "limit": 0 }),
             "error[INVALID_ARGUMENT]: `limit` must be an integer from 1 to 1000",
         ),
         (
-            8,
+            15,
             "list_files",
             json!({ "offset": -1 }),
             "error[INVALID_ARGUMENT]: `offset` must be an integer, 0 or more",
         ),
         (
-            9,
+            16,
             "list_tasks",
             json!({ "status": "late" }),
             "error[INVALID_ARGUMENT]: `status` must be one of: open, done, cancelled, all",
         ),
         (
-            10,
+            17,
             "notes_with_tag",
             json!({}),
             "error[INVALID_ARGUMENT]: `tag` is required",
         ),
         (
-            11,
+            18,
             "list_files",
             json!({ "folder": "../x" }),
             "error[PATH_OUTSIDE_VAULT]: ../x is outside the vault",
