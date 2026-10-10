@@ -288,6 +288,14 @@ fn with_registry<R: tauri::Runtime, T>(
     let mut registry = state.0.lock().map_err(|e| e.to_string())?;
     let out = f(&mut registry, &|spec| spawn_watcher(app, spec));
     let (ended, freed) = registry.take_news();
+    // §29 #824 A host left unwatched: whatever changes under it until a watcher covers it
+    // again is rescanned then (`ExternalChanges::started`).
+    let stopped = registry.take_stopped();
+    if let Some(changes) = app.try_state::<ExternalChanges>() {
+        for host in &stopped {
+            changes.note_ended(host);
+        }
+    }
     drop(registry);
     for lease in ended {
         let _ = app.emit_to(

@@ -572,3 +572,39 @@ fn ended_leases_are_reported_and_their_folders_released() {
     assert_eq!(r.live_watches(), 1);
     assert!(r.release("file-1", y, &spawn).is_ok());
 }
+
+#[test]
+fn a_host_left_without_a_watcher_is_reported_stopped() {
+    // §29 #824 Its last lease released, the host is stopped; a scope change in between
+    // (a folder watched for one file, then the whole vault) is not a stop.
+    // 이것을 실패시키는 것: `drop_unneeded` 가 지운 host 를 `stopped` 에 넣지 않는다.
+    let (_d, dir) = tmp();
+    let host = std::fs::canonicalize(&dir).unwrap();
+    let s = Spawner::default();
+    let spawn = |spec: &WatchSpec| s.spawn(spec);
+    let mut r: WatchRegistry<Fake> = WatchRegistry::default();
+    let file = r
+        .acquire(req("file-1", &dir, false, Some("/d/a.md")), &spawn)
+        .unwrap();
+    let vault = r.acquire(req("main", &dir, true, None), &spawn).unwrap();
+    // Not vacuous: the scope change did start a second watcher.
+    assert_eq!(starts(&s), 2);
+    assert!(r.take_stopped().is_empty());
+    r.release("file-1", file, &spawn).unwrap();
+    assert!(r.take_stopped().is_empty());
+    r.release("main", vault, &spawn).unwrap();
+    assert_eq!(r.take_stopped(), [host]);
+}
+
+#[test]
+fn a_host_whose_start_fails_is_reported_stopped() {
+    // 이것을 실패시키는 것: 시작하지 못한 host 를 `stopped` 에 넣지 않는다.
+    let (_d, dir) = tmp();
+    let host = std::fs::canonicalize(&dir).unwrap();
+    let s = Spawner::default();
+    s.fail.set(true);
+    let spawn = |spec: &WatchSpec| s.spawn(spec);
+    let mut r: WatchRegistry<Fake> = WatchRegistry::default();
+    assert!(r.acquire(req("main", &dir, true, None), &spawn).is_err());
+    assert!(r.take_stopped().contains(&host));
+}

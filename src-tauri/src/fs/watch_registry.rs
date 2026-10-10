@@ -134,6 +134,9 @@ pub(crate) struct WatchRegistry<H> {
     /// What happened since the caller last asked (`take_news`).
     ended: Vec<Ended>,
     freed: bool,
+    /// §29 #824 Hosts left without a watcher since the caller last asked
+    /// (`take_stopped`): no lease needs them any more, or their start failed.
+    stopped: Vec<PathBuf>,
 }
 
 impl<H> Default for WatchRegistry<H> {
@@ -146,6 +149,7 @@ impl<H> Default for WatchRegistry<H> {
             pages: HashMap::new(),
             ended: Vec::new(),
             freed: false,
+            stopped: Vec::new(),
         }
     }
 }
@@ -164,6 +168,13 @@ impl<H> WatchRegistry<H> {
             std::mem::take(&mut self.ended),
             std::mem::take(&mut self.freed),
         )
+    }
+
+    /// §29 #824 The hosts left without a watcher since the last call — what changes
+    /// under one from now on is not reported, so the next watcher on it rescans. A
+    /// scope change is not a stop: the replacement watches before the old one goes.
+    pub(crate) fn take_stopped(&mut self) -> Vec<PathBuf> {
+        std::mem::take(&mut self.stopped)
     }
 
     /// How many leases are held.
@@ -424,7 +435,12 @@ impl<H> WatchRegistry<H> {
                     );
                 }
                 Err(()) if self.watches.get(host).is_some_and(|w| w.recursive) => {}
-                Err(()) => failed.push(host.clone()),
+                Err(()) => {
+                    failed.push(host.clone());
+                    if !self.watches.contains_key(host) {
+                        self.stopped.push(host.clone());
+                    }
+                }
             }
         }
         failed
@@ -432,7 +448,14 @@ impl<H> WatchRegistry<H> {
 
     fn drop_unneeded(&mut self, hosts: &BTreeMap<PathBuf, Vec<u64>>) {
         let before = self.watches.len();
-        self.watches.retain(|key, _| hosts.contains_key(key));
+        let stopped = &mut self.stopped;
+        self.watches.retain(|key, _| {
+            let needed = hosts.contains_key(key);
+            if !needed {
+                stopped.push(key.clone());
+            }
+            needed
+        });
         self.freed |= self.watches.len() < before;
     }
 

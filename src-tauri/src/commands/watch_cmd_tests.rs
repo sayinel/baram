@@ -479,13 +479,23 @@ async fn a_failed_restart_keeps_the_host_marked_until_a_watcher_starts() {
     let _watcher = spawn_watcher(app.handle(), &host_spec(&root)).unwrap();
     assert_eq!(changes.pending_rescans(), 1);
     crate::index::service::apply_watched_batch(app.handle()).await;
-    let graph = crate::index::service::get_link_index_inner(&state, &ctx, Some(key.clone()))
-        .await
-        .unwrap();
-    assert!(graph
-        .edges
-        .iter()
-        .any(|e| e.from == format!("{key}/a.md") && e.to.ends_with("late.md")));
+    // The rescan's rebuild is the scheduler's.
+    let mut landed = false;
+    for _ in 0..500 {
+        let graph = crate::index::service::get_link_index_inner(&state, &ctx, Some(key.clone()))
+            .await
+            .unwrap();
+        if graph
+            .edges
+            .iter()
+            .any(|e| e.from == format!("{key}/a.md") && e.to.ends_with("late.md"))
+        {
+            landed = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(landed);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -517,4 +527,57 @@ async fn a_restart_s_rescan_waits_for_its_watcher() {
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
     assert_eq!(changes.counts.lock().unwrap().rescans, 1);
+}
+
+#[test]
+fn a_vault_left_unwatched_is_rescanned_when_it_is_watched_again() {
+    // A window lets go of its vault's watch, then takes it again: whatever changed in
+    // between was reported to nothing, so the new watch rescans.
+    // 이것을 실패시키는 것: `with_registry` 가 registry 가 멈춘 host 를 `note_ended` 하지 않는다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let id = lease(app.handle(), &root.to_string_lossy(), &root);
+    let changes = app.state::<ExternalChanges>();
+    assert_eq!(changes.pending_rescans(), 0);
+    with_registry(app.handle(), |registry, spawn| {
+        registry.release("main", id, spawn)
+    })
+    .unwrap()
+    .unwrap();
+    assert_eq!(changes.pending_rescans(), 0);
+    let _again = lease(app.handle(), &root.to_string_lossy(), &root);
+    assert_eq!(changes.pending_rescans(), 1);
+}
+
+#[test]
+fn a_router_that_panics_ends_its_watch_and_its_restart_rescans() {
+    // 이것을 실패시키는 것: router 의 `catch_unwind` 뒤에 `on_end` 를 부르지 않는다 — lease 가 살아 있는
+    // 것처럼 남고 host 는 다시 시작하지 않는다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let id = lease(app.handle(), &root.to_string_lossy(), &root);
+    assert_eq!(held(app.handle()), vec![id]);
+    *crate::fs::PANIC_ROUTING.lock().unwrap() = Some(root.clone());
+    // Writes until the router has an event to route (FSEvents may coalesce the first).
+    for i in 0..200 {
+        std::fs::write(root.join(format!("n{i}.md")), "x").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        if held(app.handle()).is_empty() {
+            break;
+        }
+    }
+    *crate::fs::PANIC_ROUTING.lock().unwrap() = None;
+    assert!(
+        held(app.handle()).is_empty(),
+        "the panicked router's lease is still held"
+    );
+    let changes = app.state::<ExternalChanges>();
+    let _again = lease(app.handle(), &root.to_string_lossy(), &root);
+    assert_eq!(changes.pending_rescans(), 1);
 }

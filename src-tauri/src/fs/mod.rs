@@ -789,6 +789,10 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
     .map_err(|e| FsError::ReadError(std::io::Error::other(e.to_string())))?
 }
 
+/// The host whose router panics on its next event (tests).
+#[cfg(test)]
+pub(crate) static PANIC_ROUTING: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
 /// What one event routed: `(canonical identity, spelling)` per emitted path.
 pub(crate) type Routed = [(PathBuf, String)];
 
@@ -910,9 +914,23 @@ pub(crate) fn start_watching<R: tauri::Runtime>(
             };
             let root_removed = matches!(event.kind, EventKind::Remove(_))
                 && event.paths.iter().any(|p| p == &root || p == &spelled_root);
-            route_event(&mut filter, &event, &sinks, &mut |name, payload| {
-                let _ = app_handle.emit(name, payload);
-            });
+            // §29 #824 A router that panics must not stay up looking alive: its leases would
+            // be taken for live and the host never restarted. It ends the watch instead, so
+            // the windows ask again and the restart rescans (`ExternalChanges::started`).
+            let routed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(test)]
+                if PANIC_ROUTING.lock().unwrap().as_deref() == Some(root.as_path()) {
+                    panic!("injected panic in a router");
+                }
+                route_event(&mut filter, &event, &sinks, &mut |name, payload| {
+                    let _ = app_handle.emit(name, payload);
+                });
+            }));
+            if routed.is_err() {
+                log::error!("§3.2 router for {} panicked; watch ended", root.display());
+                (sinks.on_end)();
+                return;
+            }
             if root_removed {
                 log::warn!(
                     "§3.2 watched folder {} was removed; watch ended",
