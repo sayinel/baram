@@ -58,4 +58,5 @@ export type {
   // type to name, and the reference plugin had to spell the shape out by hand.
   TiptapPluginContext,
   UIAPI,
+  VaultChange,
 } from "./types";

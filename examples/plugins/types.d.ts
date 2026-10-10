@@ -109,6 +109,13 @@ export interface EditorSelection {
 }
 export interface EventsAPI {
     emit(event: string, ...args: unknown[]): void;
+    /**
+     * §393 A context's notes changed on disk — saved (auto-save too), created, renamed or deleted,
+     * by Baram or another program — and the link index has caught up. Needs `files` or
+     * `files:readonly`, not `events`; without either the subscription is accepted and never fires.
+     * Fires only for vaults the app watches (the active one and any opened this session).
+     */
+    on(event: "vault:changed", handler: (change: VaultChange) => void): Disposable;
     on(event: string, handler: (...args: unknown[]) => void): Disposable;
 }
 export interface ExtensionContext {
@@ -675,6 +682,8 @@ export interface SandboxContext {
     editor: EditorAPI;
     events: {
         emit(event: string, ...args: unknown[]): void;
+        /** §393 See `EventsAPI.on("vault:changed")` — the same event, the same payload. */
+        on(event: "vault:changed", handler: (change: VaultChange) => void): void;
         /**
          * §260 Phase 4a — overloaded so the file events' payload actually reaches plugin
          * code as `PluginFileEvent` (code review nit): with only the `unknown[]` signature an
@@ -875,6 +884,10 @@ export interface UIAPI {
     registerFileViewer(opts: PluginFileViewerOptions): Disposable;
     showNotification(message: string, type?: "error" | "info" | "warning"): void;
     showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
+}
+/** §393 What `vault:changed` carries, the same in both tiers: the registered context whose notes changed. */
+export interface VaultChange {
+    context: string;
 }
 /**
  * Capabilities that admit the `ui` surface. Shared by both tiers on purpose: the
