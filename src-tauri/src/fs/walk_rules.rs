@@ -72,7 +72,9 @@ mod tests {
     }
 
     /// What fails this: a walker that changes its rule without this module, or the other
-    /// way round — the sync would then index a path the build never does (or miss one).
+    /// way round — the sync would then index a path the build never does (or miss one). The
+    /// fixture also catches a note walker that collects `.md` alone (`b.markdown`), and, on
+    /// Unix, a walker that follows links (`link.md`, whose target is outside the vault).
     #[tokio::test]
     async fn the_walkers_collect_exactly_the_paths_the_predicates_admit() {
         let dir = tempfile::tempdir().unwrap();

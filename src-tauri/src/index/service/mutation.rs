@@ -140,3 +140,29 @@ fn canonical_entry(path: &str) -> Result<PathBuf, String> {
         _ => crate::context::manager::resolve_canonical(path.to_str().ok_or("path is not UTF-8")?),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What fails this: naming a removed path by `resolve_canonical` instead of
+    /// `canonical_entry` — the link would be followed and the removal would name its target
+    /// `a.md`, which is still there. On macOS, where a temporary directory sits under the
+    /// `/var` → `/private/var` link, the expected path also pins the other half: the parent is
+    /// canonicalised.
+    #[cfg(unix)]
+    #[test]
+    fn a_removed_link_is_named_by_its_own_spelling_not_by_its_target() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("link.md")).unwrap();
+
+        let removal = Mutation::remove_tree(dir.path().join("link.md").to_str().unwrap()).unwrap();
+
+        let Mutation::RemoveTree { paths } = removal else {
+            panic!("remove_tree builds a RemoveTree");
+        };
+        let parent = std::fs::canonicalize(dir.path()).unwrap();
+        assert_eq!(paths, vec![parent.join("link.md")]);
+    }
+}

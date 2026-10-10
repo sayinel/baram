@@ -125,8 +125,10 @@ mod tests {
         assert_eq!(index.resolve_target_from_map("paper.pdf"), None);
     }
 
-    /// What fails this: a string-prefix comparison (`dir-old` would go too), or a map
-    /// `remove_tree` forgets to gather from (the PDF target would stay).
+    /// What fails this: a string-prefix comparison (`dir-old` would go too), or a gather that
+    /// forgets `name_map`, the only map a non-note target sits in (the PDF would keep
+    /// resolving). Forgetting any one of the other six fails no `index::` test (each was
+    /// probed alone): a note sits in several maps, so another gather still finds it.
     #[test]
     fn removing_a_tree_drops_what_is_under_it_and_keeps_its_string_prefixed_sibling() {
         let mut index = index_at("/vault");

@@ -264,8 +264,10 @@ async fn hidden_and_tool_paths_are_left_alone() {
 
 /// What fails this: judging the link with `metadata` instead of `symlink_metadata` — it would
 /// read as a note, re-index its TARGET `a.md` and announce the context (the `ids` assertion).
-/// A link that is treated as a missing path would canonicalise through it and remove `a.md`
-/// (the backlinks assertion) — no code path does that today, which is why the rule is pinned.
+/// Treating the link as a missing path does not fail it: the removal names the link's own
+/// spelling, which the index never held (`canonical_entry`, pinned on its own by
+/// `mutation`'s `a_removed_link_is_named_by_its_own_spelling_not_by_its_target`). Only with
+/// both guards gone does the removal reach `a.md`; then the `ids` assertion fails first.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_symlink_is_left_alone_and_its_target_keeps_its_links() {

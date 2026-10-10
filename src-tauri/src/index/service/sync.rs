@@ -85,7 +85,10 @@ pub(crate) async fn sync_index_paths_inner(
     // checkout) were over a second. Running them after the rest is safe: a missing path P
     // cannot have a descendant updated in phase 1, since a descendant existing means P exists;
     // and the stale spelling of a case-only rename is not an ancestor of the resolved path its
-    // row updated, since the removal compares path components exactly (`remove_trees`).
+    // row updated, since the removal compares path components exactly (`remove_trees`). The
+    // first holds at one instant only: if P is re-created while this batch syncs, a descendant
+    // can be updated in phase 1 and then removed here. The re-creation's own events arrive
+    // after this batch was taken, so the next batch puts it back.
     for (key, (id, trees)) in removed {
         let changed = state
             .apply(&key, vec![Mutation::merge_removals(trees)])
@@ -143,8 +146,9 @@ impl Announce {
 }
 
 /// What a path is on disk now, by the walkers' rules: `symlink_metadata`, so a link is not
-/// followed. The build never indexes one (`DirEntry::metadata`), and treating a link as
-/// missing would canonicalise THROUGH it and remove its target (plan 0122 P4).
+/// followed and is left alone — the build never indexes one (`DirEntry::metadata`, plan 0122
+/// P4). Treating a link as missing would not reach its target either: the removal keeps the
+/// link's own name (`Mutation::remove_trees` through `canonical_entry`).
 enum OnDisk {
     Note(String),
     OtherFile,

@@ -190,7 +190,10 @@ impl LinkIndexState {
         slot.epoch += 1;
         let (index, live_root, pending) = (&mut slot.index, &slot.root, &mut slot.pending);
         let changed = match (index.as_mut(), live_root.as_ref()) {
-            // `apply_to` first, then `||`: every mutation is applied, none short-circuited.
+            // `apply_to` first, then `||`: every mutation is applied, none short-circuited. With
+            // `any()` a refill would stop at its removal once that found the old children, and
+            // the notes its walk found would never be applied — tests/sync.rs
+            // `a_folder_replaced_under_the_same_name_in_one_batch_loses_its_old_children` fails.
             (Some(index), Some(live_root)) => {
                 let mut any = false;
                 for mutation in &mutations {
