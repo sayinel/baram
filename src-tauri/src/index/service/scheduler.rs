@@ -59,6 +59,9 @@ pub(crate) const MAX_RUNNING: usize = 2;
 pub(super) struct Job {
     /// Moved on by every failure (`request_rebuild`).
     pub(super) generation: u64,
+    /// The stamp (`state::tick`) of the latest request: a build that began after it has
+    /// read past every change any request was for.
+    pub(super) requested_at: u64,
     /// The registration's canonical root: what intersects it, what pokes it.
     pub(super) root: PathBuf,
     /// Failed attempts in a row.
@@ -118,12 +121,14 @@ impl LinkIndexState {
                 std::collections::hash_map::Entry::Occupied(mut job) => {
                     let job = job.get_mut();
                     job.generation += 1;
+                    job.requested_at = super::state::tick();
                     job.due = soonest(job, now);
                     false
                 }
                 std::collections::hash_map::Entry::Vacant(job) => {
                     job.insert(Job {
                         generation: 0,
+                        requested_at: super::state::tick(),
                         root: root.to_path_buf(),
                         failures: 0,
                         due: now,
@@ -138,11 +143,12 @@ impl LinkIndexState {
         fresh
     }
 
-    /// The failure generation an attempt for `(key, incarnation)` starts from.
-    pub(super) fn rebuild_generation(&self, key: &str, incarnation: u64) -> u64 {
+    /// The failure generation an attempt for `(key, incarnation)` starts from, and the
+    /// stamp of the latest request.
+    fn rebuild_request(&self, key: &str, incarnation: u64) -> (u64, u64) {
         self.jobs()
             .get(&(key.to_string(), incarnation))
-            .map_or(0, |j| j.generation)
+            .map_or((0, 0), |j| (j.generation, j.requested_at))
     }
 
     /// The job for `(key, incarnation)` ends — removed — when no failure has been requested
@@ -357,8 +363,15 @@ async fn run<R: Runtime>(app: tauri::AppHandle<R>) {
                 let task = {
                     let (app, key) = (app.clone(), key.clone());
                     tokio::spawn(async move {
+                        // Ends the attempt on return and on unwind alike: a panicking
+                        // attempt must not leave its family blocked for good.
+                        let _ended = Ended {
+                            app: app.clone(),
+                            key: key.clone(),
+                            incarnation,
+                            attempt: id,
+                        };
                         attempt(&app, &key, incarnation).await;
-                        app.state::<LinkIndexState>().ended(&key, incarnation, id);
                     })
                 };
                 state.spawned(&key, incarnation, id, task.abort_handle());
@@ -367,12 +380,36 @@ async fn run<R: Runtime>(app: tauri::AppHandle<R>) {
     }
 }
 
+/// Ends an attempt when its task does, however it does — except by abort, which only
+/// `cancel_rebuilds` does, after removing the job.
+struct Ended<R: Runtime> {
+    app: tauri::AppHandle<R>,
+    key: String,
+    incarnation: u64,
+    attempt: u64,
+}
+
+impl<R: Runtime> Drop for Ended<R> {
+    fn drop(&mut self) {
+        self.app
+            .state::<LinkIndexState>()
+            .ended(&self.key, self.incarnation, self.attempt);
+    }
+}
+
 /// One attempt for `(key, incarnation)`.
 async fn attempt<R: Runtime>(app: &tauri::AppHandle<R>, key: &str, incarnation: u64) {
     let state = app.state::<LinkIndexState>();
     let ctx_mgr = app.state::<ContextManager>();
     let now = Instant::now();
-    let seen = state.rebuild_generation(key, incarnation);
+    let (seen, requested_at) = state.rebuild_request(key, incarnation);
+    #[cfg(test)]
+    if state
+        .panic_attempt
+        .swap(false, std::sync::atomic::Ordering::SeqCst)
+    {
+        panic!("injected panic in a rebuild attempt");
+    }
     // That registration is gone or replaced: the replacement builds itself.
     if ctx_mgr
         .context_registered_at(key)
@@ -383,11 +420,13 @@ async fn attempt<R: Runtime>(app: &tauri::AppHandle<R>, key: &str, incarnation: 
         state.finish_rebuild(key, incarnation, None);
         return;
     }
-    // Someone else published for this incarnation since the drop (a build that began
-    // before it could not: the drop cancels it).
+    // A build that began after the latest request has published for this incarnation —
+    // ours or anyone's (a refresh, a rename's gate): it read past what the job is for. A
+    // published index alone is not that: a refresh job's index was never dropped.
     let published = if state
-        .with_index_for(key, incarnation, |i| i.is_some())
+        .covered_since(key, incarnation)
         .await
+        .is_some_and(|began| began > requested_at)
     {
         true
     } else {
@@ -399,6 +438,9 @@ async fn attempt<R: Runtime>(app: &tauri::AppHandle<R>, key: &str, incarnation: 
         rebuild(&state, &ctx_mgr, key).await
     };
     if !published {
+        // The index is known not to match the disk: a refresh's index is dropped now
+        // rather than left trusted (a degraded one already is).
+        state.drop_index_for(key, incarnation).await;
         state.record_failure(key, incarnation, now);
         return;
     }

@@ -339,3 +339,57 @@ async fn attempts_start_a_gap_apart_however_many_are_due() {
     tokio::time::sleep(Duration::from_millis(2_000)).await;
     assert_eq!(total(&counts), 3);
 }
+
+#[tokio::test]
+async fn a_refresh_of_a_published_index_still_rebuilds_and_a_failed_one_drops_it() {
+    // The index is published (never dropped): a refresh job must walk, not take the
+    // published index for its own result. When the walk fails, the index is dropped —
+    // it no longer matches the disk.
+    // 이것을 실패시키는 것: attempt 가 "index 가 있다" 를 끝난 것으로 본다 — 또는 실패한 refresh 뒤에 index 를
+    // 내리지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, at, root) = registered(&app, "v", &dir.path().join("v")).await;
+    let state = app.state::<LinkIndexState>();
+    crate::index::service::refresh_index_inner(&state, &app.state::<ContextManager>(), &key)
+        .await
+        .unwrap();
+    let counts = stand_in(&app, Arc::new(AtomicBool::new(false)));
+    state.request_rebuild(&key, at, &root);
+    ensure_started(app.handle());
+    for _ in 0..200 {
+        if count(&counts, &key) == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(count(&counts, &key), 1);
+    for _ in 0..200 {
+        if !state.with_index_for(&key, at, |i| i.is_some()).await {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(!state.with_index_for(&key, at, |i| i.is_some()).await);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_attempt_that_panics_does_not_block_its_job() {
+    // 이것을 실패시키는 것: 시도가 끝났다는 표시를 정상 반환 뒤에만 남긴다(drop guard 없이) — panic 한 시도의
+    // `running` 이 남아 job 이 다시 돌지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, at, root) = registered(&app, "v", &dir.path().join("v")).await;
+    let counts = stand_in(&app, Arc::new(AtomicBool::new(true)));
+    let seen = announced(&app);
+    let state = app.state::<LinkIndexState>();
+    state
+        .panic_attempt
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    state.request_rebuild(&key, at, &root);
+    ensure_started(app.handle());
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert_eq!(count(&counts, &key), 1);
+    assert_eq!(*seen.lock().unwrap(), 1);
+    assert_eq!(state.rebuild_jobs_len(), 0);
+}

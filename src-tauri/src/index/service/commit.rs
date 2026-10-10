@@ -184,7 +184,7 @@ pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconc
         // (`degrade`), not here: telling a window to re-read it now would read nothing.
         // A covering index that did take it (a healthy nested vault beside a dropped
         // outer one) is announced now, and so is what else the same path rebuilt.
-        if (d.degrade.is_empty() || !d.applied.is_empty())
+        if ((d.degrade.is_empty() && !d.deferred) || !d.applied.is_empty())
             && !entries
                 .iter()
                 .any(|e| e["canonical"] == d.canonical.to_string_lossy().as_ref())

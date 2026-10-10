@@ -22,7 +22,10 @@
 //! first mark of a burst, whichever comes first. Each rescan is a tree effect, and each
 //! path a unit at its identity (`reconcile::reconcile_identity_in`), all in one `Batch`,
 //! then `commit::report` — one `index:changed`, and a drop with a scheduled rebuild for
-//! what could not be judged. A path every covering registration has already rebuilt
+//! what could not be judged. The rebuilds the units ask for (rescans, structural changes,
+//! a changed `.baramignore`) are not run here but handed to the scheduler, which
+//! announces each once it publishes: a walk under a stalled volume holds up its own root
+//! family, not every vault's next batch. A path every covering registration has already rebuilt
 //! past (a publication whose build began after the path's newest mark,
 //! `LinkIndexState::covered_since`) is skipped: that build read it.
 //!
@@ -317,7 +320,26 @@ pub(crate) async fn apply_batch<R: Runtime>(app: &tauri::AppHandle<R>) {
         let spellings = entry.spellings.into_iter().collect();
         done.push(reconcile_identity_in(&state, &ctx_mgr, &identity, spellings, &mut batch).await);
     }
-    batch.finish(&state, &ctx_mgr, &mut done).await;
+    // The rebuilds go to the scheduler: a walk under a stalled volume holds up its own
+    // root family there, not this applier's next batch for every vault. A path that only
+    // waits for one is announced by the scheduler once it publishes.
+    for d in done.iter_mut().filter(|d| !d.wants.is_empty()) {
+        d.deferred = true;
+    }
+    let mut asked = false;
+    for (key, incarnation) in batch.into_rebuilds() {
+        if let Some(registered) = ctx_mgr
+            .context_registered_at(&key)
+            .await
+            .filter(|r| r.incarnation == incarnation)
+        {
+            state.request_rebuild(&key, incarnation, &registered.canonical_path);
+            asked = true;
+        }
+    }
+    if asked {
+        super::scheduler::ensure_started(app);
+    }
     report(app, done).await;
     #[cfg(test)]
     {

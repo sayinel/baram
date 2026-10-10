@@ -67,6 +67,9 @@ pub(crate) struct Reconciled {
     pub(crate) degrade: Vec<RegistrationAt>,
     /// Rebuilds this path asked the batch for (`Batch::finish`).
     pub(crate) wants: Vec<RegistrationAt>,
+    /// Those rebuilds were handed to the scheduler rather than run (the watcher applier):
+    /// the scheduler announces them once they publish.
+    pub(crate) deferred: bool,
 }
 
 /// What the units of one batch — one command's effects, one watcher sync — share
@@ -93,6 +96,12 @@ impl Batch {
                 VaultExclusion::load(Path::new(&ctx.info.path)).ok()
             })
             .as_ref()
+    }
+
+    /// The rebuilds the batch asked for, not run — the watcher applier hands them to the
+    /// scheduler, so one slow walk does not hold up its next batch.
+    pub(crate) fn into_rebuilds(self) -> BTreeSet<RegistrationAt> {
+        self.rebuild
     }
 
     /// Run every rebuild the batch asked for, once each, and tell each unit how its own

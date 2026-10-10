@@ -237,6 +237,9 @@ pub struct LinkIndexState {
     pub(crate) fake_rebuild: std::sync::Mutex<Option<super::scheduler::FakeRebuild>>,
     /// Numbers the scheduler's attempts (`scheduler::Next::Run`).
     pub(super) attempts_started: AtomicU64,
+    /// The next scheduler attempt panics (tests).
+    #[cfg(test)]
+    pub(crate) panic_attempt: std::sync::atomic::AtomicBool,
     /// A test-only pause in a rebuild, keyed by registration: after the walk, with the
     /// build lease and lock held, before it publishes.
     #[cfg(test)]
@@ -279,6 +282,8 @@ impl LinkIndexState {
             #[cfg(test)]
             fake_rebuild: std::sync::Mutex::new(None),
             attempts_started: AtomicU64::new(0),
+            #[cfg(test)]
+            panic_attempt: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
             pause_before_publish: std::sync::Mutex::new(None),
             #[cfg(test)]

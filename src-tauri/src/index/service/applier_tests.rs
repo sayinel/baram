@@ -74,6 +74,17 @@ async fn edges(app: &App, key: &str) -> Vec<(String, String)> {
     edges
 }
 
+/// Wait (real time) until `ready` holds — for what the scheduler publishes after a batch.
+async fn eventually<F: std::future::Future<Output = bool>>(mut ready: impl FnMut() -> F) -> bool {
+    for _ in 0..500 {
+        if ready().await {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    false
+}
+
 fn counts(app: &App) -> Counts {
     *app.state::<ExternalChanges>().counts.lock().unwrap()
 }
@@ -219,12 +230,19 @@ async fn past_the_cap_the_host_is_rescanned_and_its_paths_are_not_applied() {
     apply_batch(app.handle()).await;
     let counts = counts(&app);
     assert_eq!((counts.rescans, counts.units), (1, 0));
+    // The rescan is the scheduler's: one publication, with the late note in it.
+    let from = format!("{key}/late.md");
+    assert!(
+        eventually(|| {
+            let (app, from, key) = (&app, from.clone(), key.clone());
+            async move { edges(app, &key).await.iter().any(|(f, _)| *f == from) }
+        })
+        .await
+    );
     assert_eq!(
         state.published.load(std::sync::atomic::Ordering::SeqCst),
         published + 1
     );
-    let from = format!("{key}/late.md");
-    assert!(edges(&app, &key).await.iter().any(|(f, _)| *f == from));
 }
 
 #[tokio::test]
@@ -248,7 +266,13 @@ async fn a_delete_marked_before_a_rescan_ends_as_a_fresh_build() {
     app.state::<ExternalChanges>().mark_rescan(&root);
     apply_batch(app.handle()).await;
     let from = format!("{key}/n.md");
-    assert!(!edges(&app, &key).await.iter().any(|(f, _)| *f == from));
+    assert!(
+        eventually(|| {
+            let (app, from, key) = (&app, from.clone(), key.clone());
+            async move { !edges(app, &key).await.iter().any(|(f, _)| *f == from) }
+        })
+        .await
+    );
     assert_eq!(counts(&app).rescans, 1);
 }
 
@@ -674,4 +698,99 @@ async fn a_host_watched_under_another_spelling_keys_its_paths_canonically() {
         app.state::<ExternalChanges>().pending_identities(),
         [root.join("n.md")]
     );
+}
+
+/// A stand-in rebuild for the scheduler: parks for ever for `parked`, publishes otherwise.
+fn scheduler_stand_in(app: &App, parked: Option<String>) {
+    *app.state::<LinkIndexState>().fake_rebuild.lock().unwrap() =
+        Some(Arc::new(move |key: String| {
+            let parks = parked.as_deref() == Some(key.as_str());
+            Box::pin(async move {
+                if parks {
+                    std::future::pending::<()>().await;
+                }
+                true
+            })
+        }));
+}
+
+#[tokio::test]
+async fn a_rescan_stuck_in_its_walk_holds_up_no_later_batch() {
+    // One vault's rescan walks for ever (a stalled volume); the next batch, for another
+    // vault, is still taken, applied and announced.
+    // 이것을 실패시키는 것: applier 가 batch 의 rebuild 를 그 자리에서 돈다(`batch.finish`) — 다음 batch 가
+    // 멈춘 walk 를 기다린다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (stuck, stuck_root) = vault_at(&app, "s", &dir.path().join("s")).await;
+    let (fine, fine_root) = vault_at(&app, "f", &dir.path().join("f")).await;
+    // The stuck vault's real rebuild walks, then never publishes — wherever it runs.
+    let reached = Arc::new(tokio::sync::Notify::new());
+    *app.state::<LinkIndexState>()
+        .pause_before_publish
+        .lock()
+        .unwrap() = Some(crate::index::service::state::PauseAfterRead {
+        path: stuck.clone().into(),
+        reached: Arc::clone(&reached),
+        release: Arc::new(tokio::sync::Notify::new()),
+    });
+    let seen = changes(&app);
+    app.state::<ExternalChanges>().mark_rescan(&stuck_root);
+    tokio::time::timeout(Duration::from_secs(5), apply_batch(app.handle()))
+        .await
+        .expect("the batch waited on its rescan's walk");
+    // Not vacuous: the stuck rebuild did start (in the scheduler) and is parked.
+    tokio::time::timeout(Duration::from_secs(5), reached.notified())
+        .await
+        .expect("the stuck vault's rebuild never ran");
+    let note = fine_root.join("n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    mark(&app, &fine_root, &note, &note.to_string_lossy());
+    tokio::time::timeout(Duration::from_secs(5), apply_batch(app.handle()))
+        .await
+        .expect("a later batch waited on another vault's walk");
+    let from = format!("{fine}/n.md");
+    assert!(edges(&app, &fine).await.iter().any(|(f, _)| *f == from));
+    assert!(seen
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| e["entries"]
+            .as_array()
+            .is_some_and(|es| es.iter().any(|x| x["spellings"]
+                .as_array()
+                .is_some_and(|s| s.iter().any(|p| p.as_str() == Some(note.to_str().unwrap())))))));
+}
+
+#[tokio::test]
+async fn a_path_waiting_for_its_rebuild_is_announced_by_the_rebuild() {
+    // A changed `.baramignore` asks for a rebuild: the batch does not announce the path —
+    // the index does not reflect it yet — and the scheduler announces the vault once its
+    // rebuild has published.
+    // 이것을 실패시키는 것: `emit_changed` 가 rebuild 를 기다리는(`deferred`) 경로도 알린다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    scheduler_stand_in(&app, None);
+    let seen = changes(&app);
+    let ignore = root.join(crate::fs::BARAMIGNORE);
+    std::fs::write(&ignore, "drafts/\n").unwrap();
+    mark(&app, &root, &ignore, &ignore.to_string_lossy());
+    apply_batch(app.handle()).await;
+    assert!(
+        eventually(|| {
+            let seen = Arc::clone(&seen);
+            let key = key.clone();
+            async move {
+                seen.lock()
+                    .unwrap()
+                    .iter()
+                    .any(|e| e["rebuilt"] == serde_json::json!([key]))
+            }
+        })
+        .await
+    );
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0]["entries"], serde_json::json!([]));
 }
