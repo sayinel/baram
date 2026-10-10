@@ -95,9 +95,10 @@ impl Mutation {
 
     /// Apply to `index`, spelled under `root`. Whether the index changed: `Update` counts only
     /// when the note reads differently from what the index holds for it (§393
-    /// `LinkIndex::update_file_unless_held` — otherwise it writes nothing); `Remove` and
-    /// `Target` rewrite what they name and count as a change; `RemoveTree` counts only when
-    /// something was under its path. A path not under `root` changes nothing.
+    /// `LinkIndex::update_file_unless_held` — otherwise it writes nothing); `Target` counts
+    /// only when the file was not yet a link target (`LinkIndex::add_link_target`); `Remove`
+    /// rewrites what it names and counts as a change; `RemoveTree` counts only when something was under its path. A path not under `root`
+    /// changes nothing.
     pub(super) fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) -> bool {
         match self {
             Self::Update { path, content } => match root.spell(path) {
@@ -112,10 +113,7 @@ impl Mutation {
                 None => false,
             },
             Self::Target { path } => match root.spell(path) {
-                Some(spelled) => {
-                    index.add_link_target(&spelled);
-                    true
-                }
+                Some(spelled) => index.add_link_target(&spelled),
                 None => false,
             },
             Self::RemoveTree { paths } => {

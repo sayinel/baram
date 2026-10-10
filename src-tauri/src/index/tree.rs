@@ -32,11 +32,14 @@ impl LinkIndex {
     }
 
     /// §278 · §393 Register `file_path` as a link target, as `build` does for every file it
-    /// finds — `[[Paper.pdf]]` resolves once this ran. Does nothing for an index that was
-    /// never built: without a root there is no vault-relative key to give the file.
-    pub(crate) fn add_link_target(&mut self, file_path: &str) {
-        if let Some(root) = self.root_path.clone() {
-            self.register_link_target(file_path, &root);
+    /// finds — `[[Paper.pdf]]` resolves once this ran. Returns whether the index changed: `true`
+    /// when some key newly gained the path, `false` when the file was already a target (the
+    /// watcher's echo of a save to it) and for an index that was never built — without a root
+    /// there is no vault-relative key to give the file, so nothing is registered.
+    pub(crate) fn add_link_target(&mut self, file_path: &str) -> bool {
+        match self.root_path.clone() {
+            Some(root) => self.register_link_target(file_path, &root),
+            None => false,
         }
     }
 

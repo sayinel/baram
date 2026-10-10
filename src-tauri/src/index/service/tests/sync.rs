@@ -97,13 +97,35 @@ async fn an_attachment_that_appears_resolves_and_is_announced() {
     );
 
     std::fs::write(dir.path().join("paper.pdf"), "%PDF").unwrap();
-    let ids = sync(&state, &ctx, &[(&format!("{root}/paper.pdf"), false)]).await;
+    let answer = answer(&state, &ctx, &[(&format!("{root}/paper.pdf"), false)]).await;
 
-    assert_eq!(ids, vec!["ctx-a"]);
+    assert_eq!(answer.contexts, vec!["ctx-a"]);
+    assert!(
+        answer.links_changed,
+        "a newly registered target is a change"
+    );
     assert!(matches!(
         resolution_of(&state, &key, &note).await,
         crate::index::LinkResolution::Resolved(_)
     ));
+}
+
+/// The echo of a save to a file the index already holds as a link target (a plugin viewer's
+/// save, a rewritten attachment) is announced to plugins but leaves the link index as it was,
+/// so the link readers are not refreshed. What fails this: the `Target` arm of
+/// `Mutation::apply_to` answering `true` whether or not the file was newly registered — the
+/// second assertion. The first shows the context is still announced, so the plugin signal is
+/// unchanged; the pair with `an_attachment_that_appears_resolves_and_is_announced` shows
+/// `links_changed` does turn true for a target the index did not hold.
+#[tokio::test]
+async fn the_echo_of_a_held_attachment_is_announced_but_leaves_the_link_index_alone() {
+    let ctx = ContextManager::new();
+    let (_dir, root, state) = built(&ctx, &[("paper.pdf", "%PDF")]).await;
+
+    let answer = answer(&state, &ctx, &[(&format!("{root}/paper.pdf"), true)]).await;
+
+    assert_eq!(answer.contexts, vec!["ctx-a"]);
+    assert!(!answer.links_changed);
 }
 
 /// What fails this: walking a directory on its own metadata change — the second half shows the

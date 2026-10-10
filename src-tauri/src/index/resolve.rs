@@ -46,7 +46,10 @@ impl LinkIndex {
     /// `normalize_target` strips only markdown extensions — `[[Paper.pdf]]` normalises to
     /// `paper.pdf` and `[[papers/Paper.pdf]]` to `papers/paper.pdf`, and both forms have
     /// to find the file.
-    pub(super) fn register_link_target(&mut self, file_path: &str, root_path: &str) {
+    ///
+    /// Returns whether any of the keys newly gained `file_path`; `false` when every key
+    /// already held it, as for a file registered before.
+    pub(super) fn register_link_target(&mut self, file_path: &str, root_path: &str) -> bool {
         let mut keys: Vec<String> = Vec::new();
 
         if let Some(name) = std::path::Path::new(file_path)
@@ -67,12 +70,15 @@ impl LinkIndex {
             }
         }
 
+        let mut gained = false;
         for key in keys {
             let paths = self.name_map.entry(key).or_default();
             if !paths.contains(&file_path.to_string()) {
                 paths.push(file_path.to_string());
+                gained = true;
             }
         }
+        gained
     }
 
     #[cfg(test)]
