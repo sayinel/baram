@@ -72,6 +72,10 @@ fn is_url(arg: &str) -> bool {
 }
 
 /// Why a run did not finish: the command failed, or its output could not be written.
+///
+/// There is no `From<io::Error>`. With one, `?` would make ANY io error an `Output`,
+/// which `run` reports as "cannot write the output" — or, for `BrokenPipe`, ends with
+/// exit 0 and no message. A write of the output marks itself: `.map_err(Failure::Output)`.
 enum Failure {
     Command(CliError),
     Output(std::io::Error),
@@ -80,12 +84,6 @@ enum Failure {
 impl From<CliError> for Failure {
     fn from(error: CliError) -> Self {
         Failure::Command(error)
-    }
-}
-
-impl From<std::io::Error> for Failure {
-    fn from(error: std::io::Error) -> Self {
-        Failure::Output(error)
     }
 }
 
@@ -172,24 +170,25 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
     match cli.command {
         Command::Vaults => {
             let envelope = ops::vaults(&config, resolved.as_ref().ok());
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Read { path } => {
             let vault = required(resolved)?;
             let envelope = ops::read(&vault, &path).await?;
             if cli.json {
-                output::write_json(out, &envelope)?;
+                output::write_json(out, &envelope).map_err(Failure::Output)?;
             } else {
                 // Text mode prints the file itself: no escaping, no added newline.
                 for item in &envelope.items {
-                    out.write_all(item.content.as_bytes())?;
+                    out.write_all(item.content.as_bytes())
+                        .map_err(Failure::Output)?;
                 }
             }
         }
         Command::Files { folder } => {
             let vault = required(resolved)?;
             let envelope = ops::files(&vault, folder.as_deref()).await?;
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Search {
             query,
@@ -212,34 +211,34 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
                 },
             )
             .await?;
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Tags => {
             let vault = required(resolved)?;
             let envelope = ops_notes::tags(&vault).await?;
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Tag { name } => {
             let vault = required(resolved)?;
             let envelope = ops_notes::tag(&vault, &name).await?;
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Tasks { status, file } => {
             let vault = required(resolved)?;
             let envelope =
                 ops_notes::tasks(&vault, &config.tasks_exclude_paths, status, file.as_deref())
                     .await?;
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Backlinks { path } => {
             let vault = required(resolved)?;
             let envelope = ops_notes::backlinks(&vault, &path, &config).await?;
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Links { path } => {
             let vault = required(resolved)?;
             let envelope = ops_notes::links(&vault, &path).await?;
-            output::write_envelope(out, &envelope, cli.json)?;
+            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
     }
     Ok(())
