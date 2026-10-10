@@ -8,6 +8,7 @@ use super::paths;
 use super::vault::{RootKind, Vault};
 use crate::context::manager::resolve_canonical;
 use crate::fs::FsError;
+use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -18,11 +19,12 @@ pub(crate) fn vault_info(vault: &Vault) -> VaultInfo {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub(crate) struct VaultRow {
     pub name: String,
     pub path: String,
     pub alias: Option<String>,
+    /// `vault` or `folder` — or `unregistered`, which only the MCP server's `list_vaults` gives, for a `--vault` the app does not register.
     #[serde(rename = "type")]
     pub kind: &'static str,
     /// The vault this run resolved to.
@@ -75,14 +77,19 @@ pub(crate) fn vaults(config: &AppConfig, current: Option<&Vault>) -> Envelope<Va
             }
         })
         .collect();
-    items.sort_by(|a, b| {
-        (a.name.as_str(), a.path.as_str()).cmp(&(b.name.as_str(), b.path.as_str()))
-    });
+    sort_vault_rows(&mut items);
     Envelope {
         vault: current.map(vault_info),
         truncated: false,
         items,
     }
+}
+
+/// The order roots are listed in: by (name, path).
+pub(crate) fn sort_vault_rows(items: &mut [VaultRow]) {
+    items.sort_by(|a, b| {
+        (a.name.as_str(), a.path.as_str()).cmp(&(b.name.as_str(), b.path.as_str()))
+    });
 }
 
 #[derive(Debug, Serialize)]

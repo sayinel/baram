@@ -138,6 +138,25 @@ fn a_typo_is_a_usage_error_not_a_window() {
     assert!(ran.stderr.contains("serch"), "stderr: {}", ran.stderr);
 }
 
+/// `--json` and `--vault` are global, so clap cannot refuse them for one subcommand; `run`
+/// does (spec 0068 §3.1). With stdin closed, an `mcp` that started anyway would exit 0.
+///
+/// What fails this: `misuse` not called before the runtime runs a command.
+#[test]
+fn json_with_mcp_and_two_vaults_for_another_command_are_usage_errors() {
+    let sb = sandbox();
+    for args in [
+        &["--json", "mcp"][..],
+        &["mcp", "--json"],
+        &["--vault", "a", "--vault", "b", "tags"],
+    ] {
+        let ran = baram(&sb, &sb.home, args);
+        assert_eq!(ran.code, 2, "{args:?}: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{args:?}: {}", ran.stdout);
+        assert!(ran.stderr.starts_with("error:"), "{args:?}: {}", ran.stderr);
+    }
+}
+
 // ── vaults ────────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -1722,6 +1741,9 @@ fn the_nine_commands_are_the_ones_the_binary_knows() {
         .filter_map(|line| line.split_whitespace().next())
         .filter(|name| *name != "help")
         .collect();
+    // `mcp` is listed with them: it serves the nine as tools (tests/mcp.rs).
+    assert!(listed.contains(&"mcp"), "help printed: {}", help.stdout);
+    listed.retain(|name| *name != "mcp");
     let mut tested: Vec<&str> = NINE.iter().map(|command| command[0]).collect();
     listed.sort_unstable();
     tested.sort_unstable();

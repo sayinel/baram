@@ -11,8 +11,14 @@ use clap::{Parser, Subcommand, ValueEnum};
 pub(crate) struct Cli {
     /// The vault to read: a registered name, or a path (has a separator, or starts with
     /// `.` or `~`). Default: the registered vault that contains the current directory.
-    #[arg(long, global = true, value_name = "NAME|PATH")]
-    pub vault: Option<String>,
+    /// `mcp` takes it more than once, with its own rule for a path (`baram mcp --help`).
+    #[arg(
+        long,
+        global = true,
+        value_name = "NAME|PATH",
+        action = clap::ArgAction::Append
+    )]
+    pub vault: Vec<String>,
 
     /// Print one JSON object instead of tab-separated text.
     #[arg(long, global = true)]
@@ -24,6 +30,19 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
+    #[command(flatten)]
+    Query(Query),
+    /// Serve the commands above to an MCP client as read-only tools, over stdin and stdout.
+    ///
+    /// Each `--vault` adds a vault the tools may read; the first is the default. Without
+    /// `--vault`, every vault registered in the app is open to the client. Here a path is
+    /// absolute or starts with `~`; anything else is a vault's name or alias.
+    Mcp,
+}
+
+/// The commands that read a vault and print what they found.
+#[derive(Debug, Subcommand)]
+pub(crate) enum Query {
     /// List the vaults and folders registered in the app.
     Vaults,
     /// Print a file. PATH is relative to the vault root.
