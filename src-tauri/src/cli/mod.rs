@@ -209,6 +209,7 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
                     case_sensitive,
                     word,
                     folder: folder.as_deref(),
+                    offset: 0,
                     limit: limit as usize,
                 },
             )

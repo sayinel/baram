@@ -17,6 +17,8 @@ pub(crate) struct SearchQuery<'a> {
     pub case_sensitive: bool,
     pub word: bool,
     pub folder: Option<&'a str>,
+    /// How many hits to skip, in the order the search finds them. The CLI passes 0.
+    pub offset: usize,
     pub limit: usize,
 }
 
@@ -60,8 +62,9 @@ pub(crate) async fn search(
         case_sensitive: query.case_sensitive,
         whole_word: query.word,
         regex: query.regex,
-        // One more than asked for: `search_files` does not say whether it stopped early.
-        max_results: query.limit + 1,
+        // One past the end of the page: `search_files` does not say whether it stopped
+        // early. Saturating, as `offset` comes from the caller unbounded.
+        max_results: query.offset.saturating_add(query.limit).saturating_add(1),
         include_glob: None,
         exclude_glob: None,
     };
@@ -99,7 +102,7 @@ pub(crate) async fn search(
     let hits = crate::search::search_files(&start.to_string_lossy(), query.query, &options)
         .await
         .map_err(|_| CliError::new(ErrorCode::Io, format!("cannot search {}", start.display())))?;
-    let (truncated, items) = search_rows(vault, hits, query.limit);
+    let (truncated, items) = search_rows(vault, hits, query.offset, query.limit);
     Ok(Envelope {
         vault: Some(vault_info(vault)),
         truncated,
@@ -107,12 +110,25 @@ pub(crate) async fn search(
     })
 }
 
-/// The rows `search` prints, and whether `hits` held more than `limit`: the first `limit`
-/// hits the search gave, each path relative to the vault, in (path, line) order.
-fn search_rows(vault: &Vault, hits: Vec<SearchResult>, limit: usize) -> (bool, Vec<SearchRow>) {
-    let truncated = hits.len() > limit;
+/// One page of rows, and whether hits go on past it: hits `[offset, offset + limit)` in
+/// the order the search found them, each path relative to the vault, then sorted by
+/// (path, line).
+///
+/// The cut comes BEFORE the sort (spec 0068 §3.4). Sorted first, a hit that sorts late on
+/// one page would come back on the next, and one found later that sorts early would be on
+/// none. The search's own order is `search::collect_files`' sort of the absolute path
+/// strings, then line order — on Unix the same as the sort here, so the two ways agree
+/// there; on Windows the separators differ and only this one is right.
+fn search_rows(
+    vault: &Vault,
+    hits: Vec<SearchResult>,
+    offset: usize,
+    limit: usize,
+) -> (bool, Vec<SearchRow>) {
+    let truncated = hits.len() > offset.saturating_add(limit);
     let mut items: Vec<SearchRow> = hits
         .into_iter()
+        .skip(offset)
         .take(limit)
         .map(|hit| SearchRow {
             path: paths::relative(vault, Path::new(&hit.file_path)),
@@ -159,7 +175,7 @@ mod tests {
         let vault = vault_in("/vault");
         let hits = || vec![hit("a0/x.md", 1), hit("a/y.md", 10), hit("a/y.md", 2)];
 
-        let (truncated, rows) = search_rows(&vault, hits(), 3);
+        let (truncated, rows) = search_rows(&vault, hits(), 0, 3);
         assert!(!truncated, "as many hits as the limit is not a cut");
         assert_eq!(
             pairs(&rows),
@@ -167,12 +183,88 @@ mod tests {
         );
         assert_eq!(rows[0].snippet, "a/y.md:2");
 
-        let (truncated, rows) = search_rows(&vault, hits(), 2);
+        let (truncated, rows) = search_rows(&vault, hits(), 0, 2);
         assert!(truncated);
         assert_eq!(pairs(&rows), [("a/y.md", 10), ("a0/x.md", 1)]);
 
-        let (truncated, rows) = search_rows(&vault, hits(), 1);
+        let (truncated, rows) = search_rows(&vault, hits(), 0, 1);
         assert!(truncated);
         assert_eq!(pairs(&rows), [("a0/x.md", 1)]);
+    }
+
+    /// The pages of one search are cut from the order the search found the hits, and each
+    /// page alone is then sorted (spec 0068 §3.4). The hits come in an order the sort turns
+    /// around — `d`, `b`, `c`, `a` — so each wrong way gives other pages.
+    ///
+    /// What fails this: sorting all the hits before the cut (pages `a b` and `c d`); not
+    /// sorting within the page (`d b`); skipping a page's worth too few or too many.
+    #[test]
+    fn a_page_is_cut_in_match_order_and_sorted_within_itself() {
+        let vault = vault_in("/vault");
+        let hits = || {
+            vec![
+                hit("d.md", 1),
+                hit("b.md", 1),
+                hit("c.md", 1),
+                hit("a.md", 1),
+            ]
+        };
+        let (truncated, first) = search_rows(&vault, hits(), 0, 2);
+        assert!(truncated, "two more hits come after the first page");
+        assert_eq!(pairs(&first), [("b.md", 1), ("d.md", 1)]);
+        let (truncated, second) = search_rows(&vault, hits(), 2, 2);
+        assert!(!truncated, "nothing comes after the fourth hit");
+        assert_eq!(pairs(&second), [("a.md", 1), ("c.md", 1)]);
+        // Together the two pages are every hit, once.
+        let mut both: Vec<(&str, usize)> =
+            pairs(&first).into_iter().chain(pairs(&second)).collect();
+        both.sort_unstable();
+        assert_eq!(both, [("a.md", 1), ("b.md", 1), ("c.md", 1), ("d.md", 1)]);
+    }
+
+    /// An offset at or past the last hit is an empty page with nothing after it, and an
+    /// offset and limit near `usize::MAX` saturate instead of overflowing.
+    ///
+    /// What fails this: `offset + limit` written with `+` (overflow panics in a debug
+    /// build); `truncated` computed from the hits left after the skip.
+    #[test]
+    fn an_offset_past_the_hits_is_an_empty_last_page() {
+        let vault = vault_in("/vault");
+        let hits = || vec![hit("a.md", 1), hit("b.md", 1), hit("c.md", 1)];
+        for (offset, limit) in [(3, 2), (4, 2), (usize::MAX, 2), (1, usize::MAX)] {
+            let (truncated, rows) = search_rows(&vault, hits(), offset, limit);
+            assert!(!truncated, "{offset} {limit}");
+            let expected = if offset == 1 { 2 } else { 0 };
+            assert_eq!(rows.len(), expected, "{offset} {limit}");
+        }
+    }
+
+    /// The search itself asks for one hit past the page, and that count saturates too.
+    ///
+    /// What fails this: `max_results` written as `offset + limit + 1` — an overflow panic
+    /// in a debug build before the search runs.
+    #[tokio::test]
+    async fn a_search_from_the_largest_offset_is_an_empty_page() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let vault = Vault {
+            name: "v".into(),
+            root: dir.path().canonicalize().unwrap(),
+        };
+        std::fs::write(vault.root.join("a.md"), "needle\n").unwrap();
+        let query = |offset| SearchQuery {
+            query: "needle",
+            regex: false,
+            case_sensitive: false,
+            word: false,
+            folder: None,
+            offset,
+            limit: 10,
+        };
+        let page = search(&vault, query(usize::MAX)).await.unwrap();
+        assert!(page.items.is_empty());
+        assert!(!page.truncated);
+        // The same vault from the start finds the hit: the empty page above is the offset's.
+        let page = search(&vault, query(0)).await.unwrap();
+        assert_eq!(page.items.len(), 1);
     }
 }
