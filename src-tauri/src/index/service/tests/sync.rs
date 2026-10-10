@@ -216,8 +216,9 @@ async fn a_path_no_directory_context_holds_is_dropped() {
     );
 }
 
-/// What fails this: skipping on the watcher's spelling instead of the walkers' rules — the
-/// three would be indexed (`node_modules/x.md` links to b) and announced.
+/// What fails this: removing the skip filter in `holding` — `node_modules/x.md` and the two
+/// hidden paths would be applied and announced (the `ids.is_empty()` assertion fails first;
+/// the epoch and backlinks assertions pin the index side).
 #[tokio::test]
 async fn hidden_and_tool_paths_are_left_alone() {
     let ctx = ContextManager::new();
@@ -318,4 +319,222 @@ async fn nested_contexts_are_each_updated_and_announced() {
     let ids = sync(&state, &ctx, &[(&format!("{inner}/n.md"), false)]).await;
 
     assert_eq!(ids, vec!["ctx-a", "ctx-inner"]);
+    // What fails the second half: applying to one holding context only — the announcement
+    // would still name both, so each slot is read.
+    let n = format!("{inner}/n.md");
+    for key in [root.as_str(), inner.as_str()] {
+        let known = state
+            .with_index(key, |idx| idx.unwrap().outgoing_resolved(&n).is_some())
+            .await;
+        assert!(known, "{key} holds {n}");
+    }
+}
+
+/// A folder that appears with nothing in it: with a live index that knows nothing was there it
+/// is not news. What fails this: announcing every directory row.
+#[tokio::test]
+async fn an_empty_folder_that_appears_is_not_announced_with_a_live_index() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[]).await;
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+
+    assert!(sync(&state, &ctx, &[(&format!("{root}/empty"), false)])
+        .await
+        .is_empty());
+}
+
+/// The positive pair of the one above. What fails this: treating an empty walk as "nothing
+/// changed" — `sub/old.md` went away with the replaced folder and that is news.
+#[tokio::test]
+async fn a_folder_replaced_by_an_empty_one_is_announced_and_loses_its_notes() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("sub/old.md", "see [[b]]")]).await;
+    std::fs::remove_dir_all(dir.path().join("sub")).unwrap();
+    std::fs::create_dir(dir.path().join("sub")).unwrap();
+
+    assert_eq!(
+        sync(&state, &ctx, &[(&format!("{root}/sub"), false)]).await,
+        vec!["ctx-a"]
+    );
+    assert_eq!(
+        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
+        vec![format!("{root}/a.md")]
+    );
+}
+
+/// What fails this: announcing only when the live index reports a change — with no live
+/// index there is nothing to compare, and tags, tasks and search read the disk (spec 0072 §5.4).
+#[tokio::test]
+async fn an_empty_folder_is_announced_when_there_is_no_live_index() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-a", true).await;
+    let state = LinkIndexState::new(); // never built
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+
+    assert_eq!(
+        sync(&state, &ctx, &[(&format!("{root}/empty"), false)]).await,
+        vec!["ctx-a"]
+    );
+}
+
+/// What fails this: treating an unreadable note as an empty one or as gone — `c.md` would lose
+/// its link to b (the second assertion) and the context would be announced (the first). The
+/// second half shows the same path IS re-indexed once it reads.
+#[tokio::test]
+async fn an_unreadable_note_keeps_what_the_index_knew_until_it_reads_again() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("c.md", "see [[b]]")]).await;
+    let both = vec![format!("{root}/a.md"), format!("{root}/c.md")];
+    std::fs::write(dir.path().join("c.md"), [0xff, 0xfe, 0xfd]).unwrap();
+
+    assert!(sync(&state, &ctx, &[(&format!("{root}/c.md"), false)])
+        .await
+        .is_empty());
+    assert_eq!(
+        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
+        both
+    );
+
+    std::fs::write(dir.path().join("c.md"), "plain").unwrap();
+    assert_eq!(
+        sync(&state, &ctx, &[(&format!("{root}/c.md"), false)]).await,
+        vec!["ctx-a"]
+    );
+    assert_eq!(
+        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
+        vec![format!("{root}/a.md")]
+    );
+}
+
+/// What fails this: skipping an unreadable note while refilling — `[[bad]]` would stay
+/// unresolved (the build registers every note before reading it).
+#[tokio::test]
+async fn a_refilled_folder_keeps_an_unreadable_note_as_a_link_target() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("n.md", "see [[bad]]"), ("dir/ok.md", "x")]).await;
+    let key = active_index_key(&ctx).await.unwrap();
+    let note = format!("{root}/n.md");
+    assert_eq!(
+        resolution_of(&state, &key, &note).await,
+        crate::index::LinkResolution::Unresolved
+    );
+    std::fs::write(dir.path().join("dir/bad.md"), [0xff, 0xfe, 0xfd]).unwrap();
+
+    sync(&state, &ctx, &[(&format!("{root}/dir"), false)]).await;
+
+    assert!(matches!(
+        resolution_of(&state, &key, &note).await,
+        crate::index::LinkResolution::Resolved(_)
+    ));
+}
+
+/// What fails this: a refill that registers notes only — `img.png` would stay unresolved.
+#[tokio::test]
+async fn a_moved_in_folders_attachment_becomes_a_link_target() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("n.md", "see [[img.png]]")]).await;
+    let key = active_index_key(&ctx).await.unwrap();
+    let note = format!("{root}/n.md");
+    std::fs::create_dir(dir.path().join("sub")).unwrap();
+    std::fs::write(dir.path().join("sub/img.png"), "png").unwrap();
+
+    sync(&state, &ctx, &[(&format!("{root}/sub"), false)]).await;
+
+    assert!(matches!(
+        resolution_of(&state, &key, &note).await,
+        crate::index::LinkResolution::Resolved(_)
+    ));
+}
+
+/// What fails this: a tree removal that drops notes but not link targets — the PDF would keep
+/// resolving. The first assertion shows it resolved before.
+#[tokio::test]
+async fn a_deleted_folders_attachment_stops_resolving() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) =
+        built(&ctx, &[("m.md", "see [[p.pdf]]"), ("docs/p.pdf", "%PDF")]).await;
+    let key = active_index_key(&ctx).await.unwrap();
+    let note = format!("{root}/m.md");
+    assert!(matches!(
+        resolution_of(&state, &key, &note).await,
+        crate::index::LinkResolution::Resolved(_)
+    ));
+    std::fs::remove_dir_all(dir.path().join("docs")).unwrap();
+
+    sync(&state, &ctx, &[(&format!("{root}/docs"), false)]).await;
+
+    assert_eq!(
+        resolution_of(&state, &key, &note).await,
+        crate::index::LinkResolution::Unresolved
+    );
+}
+
+/// What fails this: comparing the watcher's spelling with the root's — a path spelled through
+/// a symlink to the vault would be held by no context and dropped (the `ids` assertion).
+#[cfg(unix)]
+#[tokio::test]
+async fn a_path_spelled_through_a_link_to_the_vault_is_still_held() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[]).await;
+    let elsewhere = tempfile::tempdir().unwrap();
+    let alias = elsewhere.path().join("alias");
+    std::os::unix::fs::symlink(dir.path(), &alias).unwrap();
+    std::fs::write(dir.path().join("c.md"), "see [[b]]").unwrap();
+
+    let ids = sync(
+        &state,
+        &ctx,
+        &[(alias.join("c.md").to_str().unwrap(), false)],
+    )
+    .await;
+
+    assert_eq!(ids, vec!["ctx-a"]);
+    assert_eq!(
+        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
+        vec![format!("{root}/a.md"), format!("{root}/c.md")]
+    );
+}
+
+/// The count pin: three missing notes in one batch are ONE `apply` on the context (one scan
+/// of the index), not three. What fails this: applying each missing path as it is found — the
+/// epoch would grow by 3.
+#[tokio::test]
+async fn a_batch_of_missing_paths_is_one_apply_per_context() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(
+        &ctx,
+        &[
+            ("x/1.md", "see [[b]]"),
+            ("x/2.md", "see [[b]]"),
+            ("x/3.md", "see [[b]]"),
+        ],
+    )
+    .await;
+    let key = active_index_key(&ctx).await.unwrap();
+    for n in 1..=3 {
+        std::fs::remove_file(dir.path().join(format!("x/{n}.md"))).unwrap();
+    }
+    let epoch = state.epoch(&key).await;
+
+    let ids = sync(
+        &state,
+        &ctx,
+        &[
+            (&format!("{root}/x/1.md"), false),
+            (&format!("{root}/x/2.md"), false),
+            (&format!("{root}/x/3.md"), false),
+        ],
+    )
+    .await;
+
+    assert_eq!(ids, vec!["ctx-a"]);
+    assert_eq!(
+        state.epoch(&key).await,
+        epoch + 1,
+        "one apply for the whole batch"
+    );
+    assert_eq!(
+        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
+        vec![format!("{root}/a.md")]
+    );
 }

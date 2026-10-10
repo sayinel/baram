@@ -114,8 +114,9 @@ pub(super) enum Mutation {
     /// §393 A non-markdown file to register as a link target (§278) — the build registers
     /// every file it finds; this is the one that appeared since.
     Target { path: PathBuf },
-    /// §393 Everything at or under this path is gone — a removed or replaced folder.
-    RemoveTree { path: PathBuf },
+    /// §393 Everything at or under each of these paths is gone — removed or replaced
+    /// folders and files, as one change (one scan of the index however many paths).
+    RemoveTree { paths: Vec<PathBuf> },
 }
 
 impl Mutation {
@@ -142,42 +143,82 @@ impl Mutation {
         })
     }
 
-    /// §393 A removed tree — canonicalised outside any lock, on the existing ancestor when
-    /// the path itself is gone (`resolve_canonical`), so `apply_to` can still spell it.
+    /// §393 A removed tree — canonicalised outside any lock.
     pub(super) fn remove_tree(path: &str) -> Result<Self, String> {
-        Ok(Self::RemoveTree {
-            path: crate::context::manager::resolve_canonical(path)?,
-        })
+        Self::remove_trees(&[path])
+    }
+
+    /// §393 Several removed trees as one mutation. Each path may be gone, so it is
+    /// canonicalised through its PARENT and the final component is joined on as written: a
+    /// symlink that appears at the path after the caller looked is never followed (following
+    /// it would remove its TARGET — the hazard `sync::on_disk` leaves links alone for).
+    pub(super) fn remove_trees(paths: &[&str]) -> Result<Self, String> {
+        let paths = paths
+            .iter()
+            .map(|path| canonical_entry(path))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self::RemoveTree { paths })
+    }
+
+    /// The `RemoveTree` mutations among `trees` merged into one (the others contribute
+    /// nothing): the same removal, one `apply`.
+    pub(super) fn merge_removals(trees: Vec<Mutation>) -> Self {
+        let paths = trees
+            .into_iter()
+            .flat_map(|tree| match tree {
+                Self::RemoveTree { paths } => paths,
+                Self::Update { .. } | Self::Remove { .. } | Self::Target { .. } => Vec::new(),
+            })
+            .collect();
+        Self::RemoveTree { paths }
     }
 
     /// Apply to `index`, spelled under `root`. Whether the index changed: `Update`, `Remove`
     /// and `Target` rewrite what they name and count as a change; `RemoveTree` counts only
     /// when something was under its path. A path not under `root` changes nothing.
     fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) -> bool {
-        let canonical_path = match self {
-            Self::Update { path, .. }
-            | Self::Remove { path }
-            | Self::Target { path }
-            | Self::RemoveTree { path } => path,
-        };
-        let Some(spelled) = root.spell(canonical_path) else {
-            return false;
-        };
         match self {
-            Self::Update { content, .. } => {
-                index.update_file_from_content(&spelled, content);
-                true
+            Self::Update { path, content } => match root.spell(path) {
+                Some(spelled) => {
+                    index.update_file_from_content(&spelled, content);
+                    true
+                }
+                None => false,
+            },
+            Self::Remove { path } => match root.spell(path) {
+                Some(spelled) => {
+                    index.remove_file(&spelled);
+                    true
+                }
+                None => false,
+            },
+            Self::Target { path } => match root.spell(path) {
+                Some(spelled) => {
+                    index.add_link_target(&spelled);
+                    true
+                }
+                None => false,
+            },
+            Self::RemoveTree { paths } => {
+                let spelled: Vec<String> =
+                    paths.iter().filter_map(|path| root.spell(path)).collect();
+                let spelled: Vec<&str> = spelled.iter().map(String::as_str).collect();
+                !spelled.is_empty() && index.remove_trees(&spelled)
             }
-            Self::Remove { .. } => {
-                index.remove_file(&spelled);
-                true
-            }
-            Self::Target { .. } => {
-                index.add_link_target(&spelled);
-                true
-            }
-            Self::RemoveTree { .. } => index.remove_tree(&spelled),
         }
+    }
+}
+
+/// `path` with its parent canonicalised and its last component kept as written; a path with
+/// no last component (`/`, `..`) falls back to `resolve_canonical`.
+fn canonical_entry(path: &str) -> Result<PathBuf, String> {
+    let path = std::path::Path::new(path);
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) if !parent.as_os_str().is_empty() => {
+            let parent = parent.to_str().ok_or("path is not UTF-8")?;
+            Ok(crate::context::manager::resolve_canonical(parent)?.join(name))
+        }
+        _ => crate::context::manager::resolve_canonical(path.to_str().ok_or("path is not UTF-8")?),
     }
 }
 

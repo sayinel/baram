@@ -13,7 +13,7 @@ use super::state::{LinkIndexState, Mutation};
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// One path the watcher reported. `changed_only`: every event for it in the batch was
@@ -39,22 +39,58 @@ pub(crate) async fn sync_index_paths_inner(
     paths: &[SyncPath],
 ) -> Result<Vec<String>, String> {
     let mut announced: BTreeSet<String> = BTreeSet::new();
+    // Phase 1: everything that is on disk now. A missing path is only collected, per holding
+    // context (keyed by its registered path), for phase 2.
+    let mut removed: BTreeMap<String, (String, Vec<Mutation>)> = BTreeMap::new();
     for entry in paths {
         let contexts = holding(ctx_mgr, &entry.path).await;
         if contexts.is_empty() {
             continue;
         }
-        let Some((mutations, rule)) = plan(entry).await else {
+        let Some(planned) = plan(entry).await else {
             continue;
         };
-        for ctx in &contexts {
-            let changed = state.apply(&ctx.info.path, mutations.clone()).await;
-            if rule.announces(changed) {
-                announced.insert(ctx.info.id.clone());
+        match planned {
+            Planned::Apply(mutations, rule) => {
+                for ctx in &contexts {
+                    let changed = state.apply(&ctx.info.path, mutations.clone()).await;
+                    if rule.announces(changed) {
+                        announced.insert(ctx.info.id.clone());
+                    }
+                }
+            }
+            Planned::Removed(tree) => {
+                for ctx in &contexts {
+                    removed
+                        .entry(ctx.info.path.clone())
+                        .or_insert_with(|| (ctx.info.id.clone(), Vec::new()))
+                        .1
+                        .push(tree.clone());
+                }
             }
         }
     }
+    // Phase 2: the missing paths, ONE removal per context — a scan of the index per path
+    // measured ~1.2 ms on an 11,000-note index, so 1,000 deleted notes (`rm -rf`, a checkout)
+    // were over a second. Running them after the rest is safe: a missing path P cannot have a
+    // descendant updated in phase 1, since a descendant existing means P exists.
+    for (key, (id, trees)) in removed {
+        let changed = state
+            .apply(&key, vec![Mutation::merge_removals(trees)])
+            .await;
+        if Announce::UnlessUnchanged.announces(changed) {
+            announced.insert(id);
+        }
+    }
     Ok(announced.into_iter().collect())
+}
+
+/// What `plan` decided for one path.
+enum Planned {
+    /// Mutations to apply at once, and when they are news.
+    Apply(Vec<Mutation>, Announce),
+    /// The path is gone: a `RemoveTree`, merged with the batch's others in phase 2.
+    Removed(Mutation),
 }
 
 /// When a context's id goes into the answer, given what its live index reported (`apply`).
@@ -62,10 +98,10 @@ enum Announce {
     /// The path is a note or a file now: tags, tasks and search read it from disk and a
     /// target may resolve differently, whatever the live index says.
     Always,
-    /// An empty directory: only if the index lost something under it.
-    IfChanged,
-    /// A missing path: unless the live index KNOWS nothing was there. With no live index it
-    /// cannot know, and a missing signal is worse than an extra one (spec 0072 §5.4).
+    /// A missing path, or a directory with nothing in it: unless the live index KNOWS nothing
+    /// was there. With no live index it cannot know, and a missing signal is worse than an
+    /// extra one (spec 0072 §5.4) — tags, tasks and search read the disk whatever the link
+    /// index holds.
     UnlessUnchanged,
 }
 
@@ -73,7 +109,6 @@ impl Announce {
     fn announces(&self, changed: Option<bool>) -> bool {
         match self {
             Announce::Always => true,
-            Announce::IfChanged => changed == Some(true),
             Announce::UnlessUnchanged => changed != Some(false),
         }
     }
@@ -94,7 +129,10 @@ async fn on_disk(path: &str) -> OnDisk {
     let meta = match tokio::fs::symlink_metadata(path).await {
         Ok(meta) => meta,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return OnDisk::Missing,
-        Err(_) => return OnDisk::LeaveAlone,
+        Err(e) => {
+            log::warn!("§393 sync_index_paths: {path} left as it was: {e}");
+            return OnDisk::LeaveAlone;
+        }
     };
     if meta.is_dir() {
         return OnDisk::Directory;
@@ -110,7 +148,10 @@ async fn on_disk(path: &str) -> OnDisk {
     match tokio::fs::read_to_string(path).await {
         Ok(content) => OnDisk::Note(content),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => OnDisk::Missing,
-        Err(_) => OnDisk::LeaveAlone,
+        Err(e) => {
+            log::warn!("§393 sync_index_paths: {path} left as it was: {e}");
+            OnDisk::LeaveAlone
+        }
     }
 }
 
@@ -149,19 +190,19 @@ fn is_note(path: &Path) -> bool {
 /// The mutations for one path and when they are news. `None`: leave the index alone — a
 /// changed-only directory, a link or special file, an unreadable note, or a path whose
 /// mutation cannot be built (no existing ancestor, plan 0122 P7).
-async fn plan(entry: &SyncPath) -> Option<(Vec<Mutation>, Announce)> {
+async fn plan(entry: &SyncPath) -> Option<Planned> {
     let path = entry.path.as_str();
     let built = match on_disk(path).await {
         OnDisk::LeaveAlone => return None,
         OnDisk::Directory if entry.changed_only => return None,
         OnDisk::Note(content) => {
-            Mutation::update(path, content).map(|m| (vec![m], Announce::Always))
+            Mutation::update(path, content).map(|m| Planned::Apply(vec![m], Announce::Always))
         }
-        OnDisk::OtherFile => Mutation::target(path).map(|m| (vec![m], Announce::Always)),
+        OnDisk::OtherFile => {
+            Mutation::target(path).map(|m| Planned::Apply(vec![m], Announce::Always))
+        }
         OnDisk::Directory => refill(path).await,
-        OnDisk::Missing => {
-            Mutation::remove_tree(path).map(|m| (vec![m], Announce::UnlessUnchanged))
-        }
+        OnDisk::Missing => Mutation::remove_tree(path).map(Planned::Removed),
     };
     match built {
         Ok(planned) => Some(planned),
@@ -177,7 +218,7 @@ async fn plan(entry: &SyncPath) -> Option<(Vec<Mutation>, Announce)> {
 /// (`mv X …; mv Y X`) loses its old children (spec 0072 §5.4). One walk with
 /// `collect_all_files`: its notes are exactly what `collect_md_files` would collect (plan
 /// 0122 P5, pinned by `fs::walk_rules`' tests).
-async fn refill(dir: &str) -> Result<(Vec<Mutation>, Announce), String> {
+async fn refill(dir: &str) -> Result<Planned, String> {
     let mut mutations = vec![Mutation::remove_tree(dir)?];
     #[cfg(test)]
     WALKS.with(|walks| walks.set(walks.get() + 1));
@@ -186,23 +227,37 @@ async fn refill(dir: &str) -> Result<(Vec<Mutation>, Announce), String> {
         .await
         .map_err(|e| e.to_string())?;
     let announce = if files.is_empty() {
-        Announce::IfChanged
+        Announce::UnlessUnchanged
     } else {
         Announce::Always
     };
     for file in files {
         let Some(path) = file.to_str() else {
+            // `LinkIndex::build` keeps such a name (`to_string_lossy`), but the index keys
+            // are `String`s and `Mutation`s take `&str`, so this file is missing from the
+            // refilled directory until a build.
+            log::warn!(
+                "§393 sync_index_paths: {} has a non-UTF-8 name and is not indexed",
+                file.display()
+            );
             continue;
         };
         if is_note(&file) {
-            // An unreadable note stays a link TARGET with no links of its own — what
-            // `LinkIndex::build` leaves for it (it registers every note before reading and
-            // skips the unreadable ones), so `[[that note]]` keeps resolving.
-            let content = tokio::fs::read_to_string(&file).await.unwrap_or_default();
+            // An unreadable note becomes an EMPTY `Update`: it stays a link TARGET, as the
+            // build leaves it (it registers every note before reading), so `[[that note]]`
+            // keeps resolving. Unlike the build, which inserts nothing into `outgoing` for it,
+            // this inserts `outgoing[path] = []` — the note shows as a graph node and
+            // `outgoing_resolved` returns `Some([])`.
+            let content = tokio::fs::read_to_string(&file).await.unwrap_or_else(|e| {
+                log::warn!(
+                    "§393 sync_index_paths: {path} is unreadable ({e}); indexed without links"
+                );
+                String::new()
+            });
             mutations.push(Mutation::update(path, content)?);
         } else {
             mutations.push(Mutation::target(path)?);
         }
     }
-    Ok((mutations, announce))
+    Ok(Planned::Apply(mutations, announce))
 }

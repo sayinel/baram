@@ -3,7 +3,7 @@
 //! `index::service::sync` reaches them through `Mutation::Target` and `Mutation::RemoveTree`.
 
 use super::LinkIndex;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 impl LinkIndex {
@@ -16,16 +16,19 @@ impl LinkIndex {
         }
     }
 
-    /// §393 Drop every note and link target at `dir` or under it, comparing path components
-    /// (`/v/dir` does not take `/v/dir-old/x.md`). Returns whether anything was there.
+    /// §393 Drop every note and link target at one of `dirs` or under it, comparing path
+    /// components (`/v/dir` does not take `/v/dir-old/x.md`). Returns whether anything was there.
     ///
-    /// The paths are gathered from every map below and each is then removed through
-    /// `remove_file`, so "remove a file" keeps one definition. The gathering is the part that
-    /// can drift: a path held ONLY by a map not listed here would be missed — a new path-valued
-    /// map in `LinkIndex` must be listed here as well as cleaned in `remove_file`.
-    pub(crate) fn remove_tree(&mut self, dir: &str) -> bool {
-        let dir = Path::new(dir);
-        let under = |path: &str| Path::new(path).starts_with(dir);
+    /// ONE gather serves every dir: a candidate is doomed when one of its `Path::ancestors()`
+    /// (the path itself included) is a dir, so a batch of N removed paths costs one scan of
+    /// the maps, not N (a scan per path measured ~1.2 ms each on an 11,000-note index). Each
+    /// doomed path is then removed through `remove_file`, so "remove a file" keeps one
+    /// definition. The gathering is the part that can drift: a path held ONLY by a map not
+    /// listed here would be missed — a new path-valued map in `LinkIndex` must be listed here
+    /// as well as cleaned in `remove_file`.
+    pub(crate) fn remove_trees(&mut self, dirs: &[&str]) -> bool {
+        let dirs: HashSet<&Path> = dirs.iter().map(|dir| Path::new(*dir)).collect();
+        let under = |path: &str| Path::new(path).ancestors().any(|a| dirs.contains(a));
         let mut doomed: BTreeSet<String> = BTreeSet::new();
         doomed.extend(self.outgoing.keys().filter(|p| under(p.as_str())).cloned());
         doomed.extend(
@@ -126,7 +129,7 @@ mod tests {
             ]
         );
 
-        assert!(index.remove_tree("/vault/dir"));
+        assert!(index.remove_trees(&["/vault/dir"]));
 
         assert!(index.outgoing_resolved("/vault/dir/a.md").is_none());
         assert!(index.outgoing_resolved("/vault/dir/sub/b.md").is_none());
@@ -139,15 +142,38 @@ mod tests {
     fn removing_a_tree_that_holds_nothing_reports_no_change() {
         let mut index = index_at("/vault");
         index.update_file_from_content("/vault/a.md", "x");
-        assert!(!index.remove_tree("/vault/elsewhere"));
+        assert!(!index.remove_trees(&["/vault/elsewhere"]));
         assert!(index.outgoing_resolved("/vault/a.md").is_some());
+    }
+
+    /// What fails this: a gather that only honours the first dir, or one that compares a path
+    /// with each dir by string prefix — `/vault/b-old` would go with `/vault/b`.
+    #[test]
+    fn several_trees_go_in_one_call_and_each_keeps_its_string_prefixed_sibling() {
+        let mut index = index_at("/vault");
+        for path in [
+            "/vault/a/1.md",
+            "/vault/b/sub/2.md",
+            "/vault/b-old/3.md",
+            "/vault/c/4.md",
+        ] {
+            index.update_file_from_content(path, "x");
+        }
+
+        assert!(index.remove_trees(&["/vault/a", "/vault/b", "/vault/nothing"]));
+
+        assert!(index.outgoing_resolved("/vault/a/1.md").is_none());
+        assert!(index.outgoing_resolved("/vault/b/sub/2.md").is_none());
+        assert!(index.outgoing_resolved("/vault/b-old/3.md").is_some());
+        assert!(index.outgoing_resolved("/vault/c/4.md").is_some());
+        assert!(!index.remove_trees(&["/vault/a", "/vault/b"]));
     }
 
     #[test]
     fn a_tree_named_by_a_file_is_that_file() {
         let mut index = index_at("/vault");
         index.update_file_from_content("/vault/a.md", "x");
-        assert!(index.remove_tree("/vault/a.md"));
+        assert!(index.remove_trees(&["/vault/a.md"]));
         assert!(index.outgoing_resolved("/vault/a.md").is_none());
     }
 }
