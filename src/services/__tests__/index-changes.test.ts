@@ -89,4 +89,21 @@ describe("index:changed", () => {
     });
     expect(version()).toBe(1);
   });
+
+  // §29 #824 A watcher batch whose rebuild went to the scheduler: the batch names the
+  // note it applied, then the rebuild announces the vault. One bump each, the first
+  // naming the active tab (#791), the second naming nothing.
+  // 이것을 실패시키는 것: rebuild 이벤트가 활성 탭을 이름 붙인다 — 또는 이벤트 하나에 두 번 올린다.
+  it("names the applied note, then bumps once for the rebuilt vault", () => {
+    useEditorStore.setState({
+      activeTabId: "t",
+      tabs: [{ filePath: "/v/n.md", id: "t" } as never],
+    });
+    changed([{ canonical: "/v/n.md", spellings: ["/v/n.md"] }]);
+    expect(version()).toBe(1);
+    expect(useLinkStore.getState().savedPath).toBe("/v/n.md");
+    changed([], ["/v"]);
+    expect(version()).toBe(2);
+    expect(useLinkStore.getState().savedPath).toBeNull();
+  });
 });

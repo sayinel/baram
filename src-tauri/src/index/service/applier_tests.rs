@@ -794,3 +794,49 @@ async fn a_path_waiting_for_its_rebuild_is_announced_by_the_rebuild() {
     assert_eq!(seen.len(), 1, "{seen:?}");
     assert_eq!(seen[0]["entries"], serde_json::json!([]));
 }
+
+#[tokio::test]
+async fn a_batch_names_its_applied_note_once_and_the_rebuild_announces_its_vault_once() {
+    // One batch: a note's change (applied) and the vault's `.baramignore` (a rebuild).
+    // The batch's event names exactly the note — the frontend names the active tab from
+    // it (#791) — and the rebuild's own event follows once, naming the vault; the
+    // `.baramignore` path is in neither, since it is announced through the rebuild.
+    // 이것을 실패시키는 것: `emit_changed` 가 rebuild 를 기다리는 경로도 batch event 에 넣는다 — 또는 scheduler 가
+    // publish 뒤에 알리지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    scheduler_stand_in(&app, None);
+    let seen = changes(&app);
+    let note = root.join("n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    let ignore = root.join(crate::fs::BARAMIGNORE);
+    std::fs::write(&ignore, "drafts/\n").unwrap();
+    mark(&app, &root, &note, &note.to_string_lossy());
+    mark(&app, &root, &ignore, &ignore.to_string_lossy());
+    apply_batch(app.handle()).await;
+    assert!(
+        eventually(|| {
+            let seen = Arc::clone(&seen);
+            async move { seen.lock().unwrap().len() >= 2 }
+        })
+        .await
+    );
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    let entries = seen[0]["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1, "{seen:?}");
+    assert!(entries[0]["spellings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s.as_str() == Some(note.to_str().unwrap())));
+    assert_eq!(seen[0]["rebuilt"], serde_json::json!([]));
+    assert_eq!(
+        seen[1],
+        serde_json::json!({ "entries": [], "rebuilt": [key] })
+    );
+    let ignored = ignore.to_string_lossy().into_owned();
+    assert!(!seen.iter().any(|e| e.to_string().contains(&ignored)));
+}

@@ -192,9 +192,11 @@ impl LinkIndexState {
     }
 
     /// The registration under `key` is removed, up to `incarnation`: its jobs go now, and
-    /// an attempt running for one is aborted — its walk stops at its next await, and its
-    /// build lock and lease go with it (`forget` has already replaced the slot, so nothing
-    /// it built could publish).
+    /// an attempt running for one is aborted. Its future is dropped at once, and with it
+    /// the build lock and lease (`forget` has already replaced the slot, so nothing it
+    /// built could publish). The vault walk inside it runs on a blocking thread, which the
+    /// drop stops at its next folder (`fs::walk_vault`'s cancel-on-drop flag); a read
+    /// already blocked on a stalled volume finishes first — nothing can interrupt it.
     pub(super) fn cancel_rebuilds(&self, key: &str, incarnation: u64) {
         self.jobs().retain(|(k, at), job| {
             let removed = k == key && *at <= incarnation;
