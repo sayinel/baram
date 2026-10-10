@@ -339,6 +339,7 @@ pub fn run() {
             index_cmd::get_link_index,
             index_cmd::refresh_index,
             index_cmd::update_file_index,
+            index_cmd::sync_index_paths,
             index_cmd::rename_file_with_links,
             index_cmd::get_unlinked_mentions,
             index_cmd::rename_block_id,

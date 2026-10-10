@@ -175,6 +175,12 @@ export interface IndexStats {
   linksFound: number;
 }
 
+/** §393 One path the file watcher reported, and whether every event for it in the batch was `file:changed`. */
+export interface IndexSyncPath {
+  changedOnly: boolean;
+  path: string;
+}
+
 export interface IndexUpdatedPayload {
   duration: number;
   filesIndexed: number;

@@ -26,13 +26,6 @@ pub struct SyncPath {
 }
 
 /// The contexts whose reads may have changed — their ids, sorted. See the module doc.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the `sync_index_paths` command is the first non-test caller (§393, plan 0122 Task 5)"
-    )
-)]
 pub(crate) async fn sync_index_paths_inner(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
