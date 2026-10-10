@@ -9,8 +9,8 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 impl LinkIndex {
-    /// §393 Write `file_path` as read from `content` (`write_note`, what
-    /// `update_file_from_content` does), unless it reads as what the index holds for it: the
+    /// §393 Write `file_path` as read from `content` (`write_note`, which the
+    /// test-only `update_file_from_content` also writes through), unless it reads as what the index holds for it: the
     /// same link entries in `outgoing` (line and context included) and the same tags in
     /// `file_tags` — no entry there when there are none, as the write leaves it. Then nothing
     /// is written, the file maps included, and this returns `false`: every read of the index

@@ -35,10 +35,11 @@ pub struct SyncPath {
 pub struct SyncAnswer {
     /// The contexts whose reads may have changed — their ids, sorted.
     pub contexts: Vec<String>,
-    /// Some `apply` in the batch answered other than `Some(false)`: a live index changed, or
-    /// there was none to ask, and a missing refresh is worse than an extra one. Implies
-    /// `contexts` is not empty — both `Announce` rules announce a context whose `apply`
-    /// answered so.
+    /// True when some `apply` in the batch changed a live index — an `Update` whose links or
+    /// tags differ from what the index holds, a `Target` newly registered, a `RemoveTree` that
+    /// removed something — or found no live index for a holding context (a missing refresh is
+    /// worse than an extra one). Implies `contexts` is not empty — both
+    /// `Announce` rules announce a context whose `apply` answered so.
     pub links_changed: bool,
 }
 

@@ -148,16 +148,18 @@ impl LinkIndex {
     /// matched first by the root-relative path as written, then by the first
     /// matching file name in registration order. These are the two keys
     /// `register_link_target` gives a file. Not `name_map` itself: a save
-    /// (`update_file_from_content`) drops the note from it through
-    /// `remove_file` and re-registers it with `register_file_path` alone, so a
-    /// saved note would miss there while `file_map` holds it again.
+    /// that rewrites the note (its links or tags changed — `update_file_unless_held`
+    /// → `write_note`) drops the note from it through `remove_file` and re-registers it
+    /// with `register_file_path` alone, so such a note would miss there while
+    /// `file_map` holds it again.
     ///
     /// `None` unless `normalize_target` stripped a note extension from `full`
     /// (`full != normalized`), so a target with none — `[[Paper]]`,
     /// `[[Paper.pdf]]` — takes exactly the chain in `resolve_target_from_map`,
     /// and the §278 order stays. The guard is needed: `file_map` is not only
-    /// notes, since a save registers whatever path it is given
-    /// (`update_file_from_content` → `register_file_path`), and an
+    /// notes, since a save that rewrites the file registers
+    /// whatever path it is given (`update_file_index_inner` → `update_file_unless_held`
+    /// → `write_note` → `register_file_path`), and an
     /// extension-less file's name equals its key, so `[[architecture]]` would
     /// match `architecture` by name. With no candidate, `[[foo.markdown]]`
     /// beside only `foo.md` falls through to the stem `foo`: the note, not the
@@ -332,8 +334,9 @@ mod tests {
     /// An index over `/vault` whose `r.md` holds `content`, built the way
     /// `build` registers files: the markdown pass over the names ending in
     /// `.md` or `.markdown` (`collect_md_files`' filter), then every file as a
-    /// target. Then each of `saved` is saved (`update_file_from_content`), as
-    /// a save after the build does. The edge targets from `r.md`, in the order
+    /// target. Then each of `saved` is saved (`update_file_from_content`, the
+    /// test-only unconditional write — the app's `update_file_unless_held` writes the same
+    /// way when the links or tags changed). The edge targets from `r.md`, in the order
     /// its links are written (`get_link_graph` walks each source's entries in
     /// order).
     fn graph_targets_of(files: &[&str], saved: &[&str], content: &str) -> Vec<String> {
@@ -418,7 +421,7 @@ mod tests {
             graph_targets_of(&root_first, &[], "[[x.md]]\n"),
             vec!["/vault/x.md"]
         );
-        // A save moves the saved note to the end of its stem's list.
+        // A save that rewrites the note moves it to the end of its stem's list.
         assert_eq!(
             graph_targets_of(&root_first, &["/vault/x.md"], "[[x.md]]\n"),
             vec!["/vault/x.md"]
@@ -548,8 +551,8 @@ mod tests {
 
     #[test]
     fn test_a_saved_note_is_still_found_by_its_spelled_name() {
-        // A save drops the note from `name_map` (`remove_file`) and
-        // re-registers it in the stem maps alone, so the spelled name is
+        // A save that rewrites the note drops it from `name_map` (`remove_file`)
+        // and re-registers it in the stem maps alone, so the spelled name is
         // looked for among the stem's notes. Under `d/`, `relative_map` does
         // not answer a bare target, and after the save `file_map` lists
         // `x.markdown` first.
@@ -564,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_a_target_without_a_note_extension_takes_the_old_chain_in_the_graph() {
-        // §278 in the graph: a save registers whatever path it is given, so
+        // §278 in the graph: a save that rewrites the file registers whatever path it is given, so
         // an extension-less `architecture` saved beside the note lands under
         // the same stem. A link spelling no note extension must not be
         // matched by full name, or `[[architecture]]` would leave the note,

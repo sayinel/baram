@@ -54,7 +54,8 @@ impl Mutation {
     /// §393 Several removed trees as one mutation. Each path may be gone, so it is
     /// canonicalised through its PARENT and the final component is joined on as written: a
     /// symlink that appears at the path after the caller looked is never followed (following
-    /// it would remove its TARGET — the hazard `sync::on_disk` leaves links alone for).
+    /// it would remove its TARGET). The removal keeps the link's own name, and the build never
+    /// indexes a link (`sync::OnDisk`), so it reaches nothing of the target's.
     pub(super) fn remove_trees(paths: &[&str]) -> Result<Self, String> {
         let paths = paths
             .iter()
