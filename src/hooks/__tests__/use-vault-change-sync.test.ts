@@ -81,4 +81,36 @@ describe("useVaultChangeSync", () => {
     unmount();
     expect(handlers.size).toBe(0);
   });
+
+  it("unlistens every registration that resolves after unmount", async () => {
+    // Fails if the `cancelled` branch is deleted: the late registrations stay in `handlers`.
+    const resolvers: Array<() => void> = [];
+    vi.mocked(listen).mockImplementation(
+      (event, handler) =>
+        new Promise((resolve) => {
+          resolvers.push(() => {
+            handlers.set(event, handler as (e: { payload: unknown }) => void);
+            resolve(() => handlers.delete(event));
+          });
+        }),
+    );
+    const { unmount } = renderHook(() => useVaultChangeSync());
+    unmount();
+    resolvers.forEach((r) => r());
+    await flush();
+    expect(resolvers).toHaveLength(3);
+    expect(handlers.size).toBe(0);
+  });
+
+  it("unlistens the registrations that succeeded when one listen rejects", async () => {
+    // Fails with `Promise.all`: the rejection leaves the two that registered listening.
+    vi.mocked(listen).mockImplementation(async (event, handler) => {
+      if (event === "file:created") throw new Error("listen boom");
+      handlers.set(event, handler as (e: { payload: unknown }) => void);
+      return () => handlers.delete(event);
+    });
+    renderHook(() => useVaultChangeSync());
+    await flush();
+    expect(handlers.size).toBe(0);
+  });
 });

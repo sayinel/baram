@@ -30,6 +30,7 @@ describe("createVaultChangeBatcher", () => {
   afterEach(() => vi.useRealTimers());
 
   it("sends one batch per path after the quiet window, marking changed-only paths", async () => {
+    // Fails if events are sent one by one, before the quiet window, or without the changed-only bit.
     const { calls, sync } = heldSync();
     const batcher = createVaultChangeBatcher({ onSynced: vi.fn(), sync });
     batcher.touch("/v/a.md", "deleted");
@@ -97,6 +98,7 @@ describe("createVaultChangeBatcher", () => {
   });
 
   it("drops a failed batch and keeps working", async () => {
+    // Fails if a rejection escapes `send` or the failed batch is re-queued (the second call would carry stale paths).
     const onSynced = vi.fn();
     const sync = vi
       .fn()
@@ -114,11 +116,50 @@ describe("createVaultChangeBatcher", () => {
   });
 
   it("sends nothing after dispose", async () => {
+    // Fails if `dispose` leaves the timers armed.
     const { sync } = heldSync();
     const batcher = createVaultChangeBatcher({ onSynced: vi.fn(), sync });
     batcher.touch("/v/a.md", "changed");
     batcher.dispose();
     await vi.advanceTimersByTimeAsync(VAULT_SYNC_MAX_WAIT_MS);
     expect(sync).not.toHaveBeenCalled();
+  });
+
+  it("does not announce a sync that resolves after dispose", async () => {
+    // Pairs with the announce test above. Fails if `onSynced` ignores `disposed`.
+    const { calls, sync } = heldSync();
+    const onSynced = vi.fn();
+    const batcher = createVaultChangeBatcher({ onSynced, sync });
+    batcher.touch("/v/a.md", "changed");
+    await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
+    expect(sync).toHaveBeenCalledTimes(1);
+    batcher.dispose();
+    calls[0].release(["ctx-1"]);
+    await settle();
+    expect(onSynced).not.toHaveBeenCalled();
+  });
+
+  it("still sends the queued batch when onSynced throws", async () => {
+    // Fails if `onSynced` runs outside a try/catch: `send` rejects and the follow-up is never sent.
+    const { calls, sync } = heldSync();
+    const onSynced = vi.fn(() => {
+      throw new Error("listener boom");
+    });
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    const batcher = createVaultChangeBatcher({ onSynced, sync });
+    batcher.touch("/v/a.md", "changed");
+    await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
+    batcher.touch("/v/b.md", "created");
+    await vi.advanceTimersByTimeAsync(VAULT_SYNC_MAX_WAIT_MS);
+    expect(sync).toHaveBeenCalledTimes(1);
+    calls[0].release(["ctx-1"]);
+    await settle();
+    expect(onSynced).toHaveBeenCalledTimes(1);
+    expect(sync).toHaveBeenCalledTimes(2);
+    expect(calls[1].paths).toEqual([{ changedOnly: false, path: "/v/b.md" }]);
+    await settle();
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
   });
 });

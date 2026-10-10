@@ -15,6 +15,7 @@ import {
 } from "../services/vault-change-batcher";
 import { publishVaultChange } from "../services/vault-changes";
 import { useLinkStore } from "../stores/editor/link";
+import { logger } from "../utils/logger";
 
 export function useVaultChangeSync(): void {
   useEffect(() => {
@@ -28,12 +29,22 @@ export function useVaultChangeSync(): void {
     const unlistens: UnlistenFn[] = [];
     let cancelled = false;
     void (async () => {
-      const fns = await Promise.all([
+      const results = await Promise.allSettled([
         listen<{ path: string }>("file:changed", hear("changed")),
         listen<{ path: string }>("file:created", hear("created")),
         listen<{ path: string }>("file:deleted", hear("deleted")),
       ]);
-      if (cancelled) {
+      const fns = results.flatMap((r) =>
+        r.status === "fulfilled" ? [r.value] : [],
+      );
+      const failed = results.length - fns.length;
+      if (failed > 0) {
+        logger.warn(
+          "[vault-sync] watcher listen failed; sync stopped",
+          results,
+        );
+      }
+      if (cancelled || failed > 0) {
         fns.forEach((f) => f());
         return;
       }

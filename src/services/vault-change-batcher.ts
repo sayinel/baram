@@ -66,7 +66,14 @@ export function createVaultChangeBatcher(
     } finally {
       syncing = false;
     }
-    if (!disposed && ids.length > 0) options.onSynced(ids);
+    if (!disposed && ids.length > 0) {
+      try {
+        options.onSynced(ids);
+      } catch (err) {
+        // A throwing listener must not strand the batch whose timer fired during this sync.
+        logger.error("[vault-sync] onSynced failed", err);
+      }
+    }
     if (dueAfterSync) {
       dueAfterSync = false;
       void send();
