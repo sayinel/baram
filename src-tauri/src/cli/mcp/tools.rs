@@ -123,9 +123,10 @@ impl ToolName {
             ToolName::ListFiles => About {
                 name: "list_files",
                 title: "List notes",
-                description: "The Markdown notes in the vault, or in one folder of it, by path: \
-                              the files the app's file list shows. Hidden files and folders, \
-                              and the folders the app skips, are left out.",
+                description: "The Markdown notes (.md and .markdown) in the vault, or in one \
+                              folder of it, by path: the files the app reads for tags, tasks \
+                              and links. Hidden files and folders, and node_modules, are \
+                              left out.",
                 arguments: LIST_FILES,
             },
             ToolName::ListTags => About {
