@@ -1674,6 +1674,7 @@
   "video.loadError": "Cannot load the video — the file is missing or this platform does not support the format: {src}",
   "video.noDocumentPath": "Save the document before adding “{name}”.",
   "video.saveFailed": "Could not save the video “{name}”.",
+  "viewer.edit.pullFailed": "The viewer could not hand over its content, so the file is now shown as source. Changes made after it last handed over its text are not included.",
   "viewer.noPlugin": "No viewer plugin is enabled for this file type. You can turn one on in Settings › Plugins.",
   "watch.unheld": "{count} folder watch(es) could not be held — changes other programs make there will not show until they are.",
   "watch.unheld.capacity": "Too many folders are being watched. Close tabs of files from other folders to free some; Baram retries on its own.",

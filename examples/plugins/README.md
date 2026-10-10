@@ -27,6 +27,7 @@ examples/plugins/
   word-count/           # the canonical sandboxed plugin, published by Baram
   community-template/   # ← START HERE to publish your own plugin (see below)
   bullet-threading/     # full-trust editor-contribution example, published by Baram
+  sketch-pad/           # full-trust editable file viewer example (§392), one file — NOT published
   ai-summary/           # full-trust example — NOT published (see below)
   sandbox-smoke/        # internal test fixture — NOT a template (see below)
   malicious-fixture/    # internal test fixture — NOT a template (see below)
@@ -62,6 +63,10 @@ panel, which the sandboxed tier has no surface for yet). It is deliberately **no
 a published full-trust plugin would train users to click through the full-trust warning for
 ordinary functionality. Read it for the API; do not use it as the template for something you
 intend to publish.
+
+`sketch-pad/` is the example for **editable file viewers** (§392): a trusted viewer that draws
+on `.strokes` files, hands its text back to Baram and lets Baram save it. It is one hand-written
+`index.mjs` with no build step, and it runs only in a development build (its README says why).
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
 fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING

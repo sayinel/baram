@@ -51,10 +51,10 @@ const MAX_STATUS_BAR_ITEMS = 5;
 /**
  * §391 spec 0070 D11 — how many commands one plugin may declare. Each declared command is a row
  * in Settings > Keybindings and may back menu and slash items, so an unbounded list could fill
- * that tab. The repo's own manifests — the `baram-plugin.json` of each of the six
+ * that tab. The repo's own manifests — the `baram-plugin.json` of each of the seven
  * `examples/plugins` directories, the built-in in `src/plugins/builtin` and the entries of
  * `registry/index.json` — declare at most five (`sandbox-smoke`; the built-in and the registry
- * entries declare none, 2026-10-06).
+ * entries declare none, 2026-10-07).
  */
 const MAX_COMMANDS = 50;
 

@@ -1,8 +1,7 @@
 // §28 Wikilink NodeView — renders [[target]] as styled inline link
 // §87 Cross-vault link rendering with vault color badge
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 
-import type { WikilinkOptions } from "./wikilink";
 import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
@@ -18,7 +17,7 @@ import {
   isZettelId,
 } from "../../utils/zettelkasten/parse-note-title";
 
-export function WikilinkView({ node, selected, extension }: NodeViewProps) {
+export function WikilinkView({ node, selected }: NodeViewProps) {
   const { t } = useTranslation();
   const { target, display, heading, vaultAlias } = node.attrs as {
     display: null | string;
@@ -65,19 +64,9 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
     };
   }, [vaultAlias]);
 
-  // §28 Cmd+Click navigates to target document
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      // §56 Date wikilinks navigate on single click
-      if (isDate || e.metaKey || e.ctrlKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        const onNavigate = (extension.options as WikilinkOptions).onNavigate;
-        onNavigate(target, heading, vaultAlias);
-      }
-    },
-    [extension, target, heading, vaultAlias, isDate],
-  );
+  // §28 Cmd+Click navigation lives in the extension's mousedown handler
+  // (wikilink.ts — it says why a click is too late). An onClick here would
+  // navigate a second time for the same press.
 
   const isDangling = vaultAlias != null && vaultInfo != null && !vaultInfo.open;
 
@@ -86,7 +75,6 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
       as="span"
       className={`wikilink ${selected ? "wikilink-selected" : ""} ${isDate ? "wikilink-date" : ""} ${isDangling ? "wikilink--dangling" : ""}`}
       data-target={target}
-      onClick={handleClick}
       // §99 캡이 실제로 잘랐을 때만 전문을 툴팁으로 남긴다 — 자르지 않았다면
       // 툴팁이 화면의 글자를 그대로 반복할 뿐이다.
       title={

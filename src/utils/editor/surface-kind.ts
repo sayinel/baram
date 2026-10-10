@@ -36,8 +36,8 @@ export interface ResolveSurfaceKindInput {
   fileViewers: PluginFileViewer[];
   /**
    * §5.1 Is the active tab showing raw source instead of a rendered preview? Applies to
-   * both HTML and plugin-previewed text files (SVG etc.) — App's `htmlSourceTabs`, keyed by
-   * the active tab id.
+   * both HTML and plugin-previewed text files (SVG etc.) — the store's `previewSourceTabs`
+   * (§392), keyed by the active tab id.
    */
   isHtmlSourceView: boolean;
   /** §5.1 Markdown source-mode toggle for the active tab — `useSourceMode().isSourceMode`. */

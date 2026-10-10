@@ -46,8 +46,10 @@ import { type RetainedEntry, useRetainedTabs } from "./use-retained-tabs";
  * Everything else the old param list carried (`activeTab`, `activeTabId`,
  * `fileViewers`, `htmlSourceTabs`, `isCodeFile`, `isHtmlSourceView`, `isPdfTab`,
  * `markDirty`, `rootPath`) is `useActiveTabSurface`'s own derived state, not
- * this hook's or the store's — it arrives as the one `activeSurface` snapshot
- * instead of nine more loose fields. `isCodeFile`/`isPdfTab`/`isHtmlSourceView`
+ * this hook's — it arrives as the one `activeSurface` snapshot instead of nine
+ * more loose fields. `htmlSourceTabs` is the Set view that hook builds of the
+ * store's `previewSourceTabs` (§392): one identity, built once, which is why it
+ * still travels in the snapshot. `isCodeFile`/`isPdfTab`/`isHtmlSourceView`
  * are formulas (not raw store fields), so re-deriving them here from scratch
  * would risk the exact "two call sites quietly disagree" defect the
  * `isCodeFile` doc comment in `use-active-tab-surface.ts` already warns about.

@@ -351,13 +351,13 @@ describe("saving a background tab before a close", () => {
 describe("leaving an HTML tab's source view", () => {
   it("keeps the tab dirty when the buffer changed during the flush", async () => {
     setTabs(tab("h", "/v/page.html"));
+    // §392 the preview-to-source set lives in the editor store now.
+    useEditorStore.setState({ previewSourceTabs: ["h"] });
     let buffer = "<p>first</p>";
     const { result } = renderHook(() =>
       usePreviewSourceView({
         getSourceBuffer: () => buffer,
-        htmlSourceTabs: new Set(["h"]),
         markDirty: (id, d) => useEditorStore.getState().markDirty(id, d),
-        setHtmlSourceTabs: () => undefined,
         toggleSourceMode: () => undefined,
       }),
     );

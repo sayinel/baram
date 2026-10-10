@@ -113,8 +113,32 @@ export function createUIAPI(
     },
     registerFileViewer(opts) {
       require("viewer", "registerFileViewer");
+      // §392 spec 0071 §4 — refused here, at registration, so a viewer that cannot hand its
+      // text back never gets an editing mount. Thrown inside `activate`, either refusal fails
+      // the plugin's whole load.
+      if (opts.editable === true) {
+        if (typeof opts.getText !== "function") {
+          throw new Error(
+            `ui.registerFileViewer("${opts.id}"): an editable viewer needs getText(el). ` +
+              "The host calls it to take the viewer's text when it saves or switches away.",
+          );
+        }
+        // Consent, not a boundary (spec D6): `files` is what the install prompt words as
+        // "read and write files". `capabilities` is the set narrowed to that consent.
+        if (!capabilities.has("files")) {
+          throw new Error(
+            `Plugin requires "files" capability to register an editable viewer ("${opts.id}"). ` +
+              `Add "files" to the capabilities array in baram-plugin.json.`,
+          );
+        }
+      }
       const viewerId = `${pluginId}:${opts.id}`;
       usePluginUIStore.getState().registerFileViewer({
+        // §392 Only an editable registration carries these two keys, so every other viewer is
+        // stored exactly as before.
+        ...(opts.editable === true
+          ? { editable: true, getText: opts.getText }
+          : {}),
         // Normalize once at the boundary so matching never re-parses
         extensions: opts.extensions.map((e) =>
           e.replace(/^\./, "").toLowerCase(),
