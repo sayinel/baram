@@ -6,94 +6,18 @@
 //! child would read the developer's real config. CI runs ubuntu and macOS.
 #![cfg(unix)]
 
+mod common;
+
+use common::*;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
-use std::time::{Duration, Instant};
-
-/// Longer than any command here takes, far shorter than a window opened by mistake
-/// would stay up. The timeout is what catches a CLI invocation routed to the GUI.
-const TIMEOUT: Duration = Duration::from_secs(30);
-
-struct Sandbox {
-    _dir: tempfile::TempDir,
-    base: PathBuf,
-    home: PathBuf,
-    xdg: PathBuf,
-    vault: PathBuf,
-}
+use std::process::{Child, Command};
+use std::time::Duration;
 
 struct Ran {
     code: i32,
     stdout: String,
     stderr: String,
-}
-
-fn sandbox() -> Sandbox {
-    let dir = tempfile::tempdir().expect("tempdir");
-    // Canonical: macOS hands out /var/… and resolves it to /private/var/…, and the CLI
-    // prints the canonical root.
-    let base = dir.path().canonicalize().expect("canonicalize");
-    let home = base.join("home");
-    let xdg = base.join("xdg");
-    let vault = base.join("vault");
-    for created in [&home, &xdg, &vault] {
-        std::fs::create_dir_all(created).expect("mkdir");
-    }
-    Sandbox {
-        _dir: dir,
-        base,
-        home,
-        xdg,
-        vault,
-    }
-}
-
-fn write(root: &Path, rel: &str, body: &str) {
-    let path = root.join(rel);
-    std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
-    std::fs::write(path, body).expect("write");
-}
-
-/// Writes config.json where `dirs::data_dir()` points on macOS (under HOME) and on Linux
-/// (XDG_DATA_HOME). Each value is what zustand persist would have written, stored as a
-/// JSON STRING — the way `set_config` stores it.
-fn write_config(sb: &Sandbox, values: &[(&str, serde_json::Value)]) {
-    let mut map = serde_json::Map::new();
-    for (key, value) in values {
-        map.insert(
-            (*key).to_string(),
-            serde_json::Value::String(value.to_string()),
-        );
-    }
-    let text = serde_json::Value::Object(map).to_string();
-    for dir in [
-        sb.home.join("Library/Application Support/com.inel.baram"),
-        sb.xdg.join("com.inel.baram"),
-    ] {
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        std::fs::write(dir.join("config.json"), &text).expect("write config");
-    }
-}
-
-/// `baram:context` as the app persists it: the sandbox vault registered as the vault
-/// "Fixture" (alias `fx`), a folder context whose directory is gone and is the active
-/// one, and a file context.
-fn registered(sb: &Sandbox) -> serde_json::Value {
-    serde_json::json!({
-        "state": {
-            "contexts": [
-                { "id": "ctx-1", "contextType": "vault", "path": sb.vault, "label": "Fixture",
-                  "color": "#4f8cff", "alias": "fx", "vaultType": "general", "addedAt": 1 },
-                { "id": "ctx-2", "contextType": "folder", "path": sb.base.join("gone"),
-                  "label": "Gone", "color": "#ff8c4f", "addedAt": 2 },
-                { "id": "ctx-3", "contextType": "file", "path": sb.base.join("one.md"),
-                  "label": "one.md", "color": "#8c4fff", "addedAt": 3 }
-            ],
-            "activeContextId": "ctx-2"
-        },
-        "version": 1
-    })
 }
 
 fn baram(sb: &Sandbox, cwd: &Path, args: &[&str]) -> Ran {
@@ -127,22 +51,6 @@ fn baram_from_a_deleted_directory(sb: &Sandbox, parent: &Path, args: &[&str]) ->
     )
 }
 
-/// `program` with what every run here gets: the sandbox's HOME and data directory, no
-/// `BARAM_LOG`, no stdin, both outputs captured.
-fn isolated(sb: &Sandbox, program: &str) -> Command {
-    let mut command = Command::new(program);
-    command
-        // `dirs` reads these. Without them the child reads the developer's real
-        // config.json — `logging_install_unwritable.rs` isolates the same way.
-        .env("HOME", &sb.home)
-        .env("XDG_DATA_HOME", &sb.xdg)
-        .env_remove("BARAM_LOG")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    command
-}
-
 /// Waits for `command` to exit and collects what it printed. `label` names the run if
 /// it has to be killed.
 fn finish(mut command: Command, label: &str) -> Ran {
@@ -167,24 +75,6 @@ fn finish(mut command: Command, label: &str) -> Ran {
     }
 }
 
-/// Polls `child` until it exits and kills it when it outlives `TIMEOUT`. `label` names
-/// the run in that failure.
-fn wait_for_exit(child: &mut Child, label: &str) -> ExitStatus {
-    let started = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait().expect("try_wait") {
-            return status;
-        }
-        if started.elapsed() > TIMEOUT {
-            kill_and_panic(
-                child,
-                &format!("`baram {label}` did not exit within {TIMEOUT:?}"),
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
 /// Reads one byte of `child`'s stdout and closes the pipe. The read waits on the child, so
 /// it runs on a thread: a child that never writes is killed once `TIMEOUT` is up instead of
 /// being waited on for good. `label` names the run in that failure.
@@ -206,18 +96,8 @@ fn read_one_byte_and_close(child: &mut Child, label: &str) -> u8 {
     }
 }
 
-fn kill_and_panic(child: &mut Child, message: &str) -> ! {
-    let _ = child.kill();
-    let _ = child.wait();
-    panic!("{message}");
-}
-
 fn json(text: &str) -> serde_json::Value {
     serde_json::from_str(text).unwrap_or_else(|e| panic!("not JSON ({e}): {text:?}"))
-}
-
-fn vault_arg(sb: &Sandbox) -> String {
-    sb.vault.to_string_lossy().into_owned()
 }
 
 /// Whether `text` holds a Hangul syllable or jamo. The app's own error enums say their
@@ -1846,28 +1726,6 @@ fn the_nine_commands_are_the_ones_the_binary_knows() {
     listed.sort_unstable();
     tested.sort_unstable();
     assert_eq!(listed, tested, "help printed: {}", help.stdout);
-}
-
-/// Every path under `root` — hidden ones included — with its size and modification
-/// time. What "the CLI wrote nothing" is measured against. A directory's entry carries
-/// its own modification time, which a child created or removed moves, so a file written
-/// and deleted again leaves a trace there. `root`'s own entry is not recorded: the root
-/// belongs one level above whatever must stay untouched.
-fn snapshot(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
-    let mut seen = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir).expect("read_dir") {
-            let entry = entry.expect("entry");
-            let meta = entry.metadata().expect("metadata");
-            seen.push((entry.path(), meta.len(), meta.modified().expect("mtime")));
-            if meta.is_dir() {
-                stack.push(entry.path());
-            }
-        }
-    }
-    seen.sort();
-    seen
 }
 
 /// The CLI reads: it writes nothing into the vault (`.baram/` included), nothing to the
