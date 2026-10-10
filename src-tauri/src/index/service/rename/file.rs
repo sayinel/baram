@@ -7,7 +7,8 @@ use crate::index::{keys_for, normalize_file_path, reads_a_link_under, RenameTarg
 use std::collections::HashMap;
 
 use super::super::keys::{keys_of, local_aliases_of, OwnAliases};
-use super::super::state::{LinkIndexState, Mutation};
+use super::super::mutation::Mutation;
+use super::super::state::LinkIndexState;
 use super::destination::{another_entry_at, check_destination, confined_both_ways};
 use super::passes::{rewrite_renamed_note, LinkPasses};
 use super::referrers::{

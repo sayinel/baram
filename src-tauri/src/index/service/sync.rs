@@ -9,7 +9,8 @@
 //! change from refilling the whole directory.
 
 use super::keys::{buildable, owning_contexts};
-use super::state::{LinkIndexState, Mutation};
+use super::mutation::Mutation;
+use super::state::LinkIndexState;
 use crate::context::manager::{resolve_canonical, Registered};
 use crate::context::ContextManager;
 use serde::Deserialize;

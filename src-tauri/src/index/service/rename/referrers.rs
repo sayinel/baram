@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::super::keys::keys_of;
-use super::super::state::{LinkIndexState, Mutation};
+use super::super::mutation::Mutation;
+use super::super::state::LinkIndexState;
 use super::{confined_by, contexts_covering, keys_covering, push_for_keys};
 
 /// What an index query named — `(file, line)`, possibly from several

@@ -6,13 +6,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::build::{IndexBuildError, INDEX_BUILD_PENDING};
+use super::mutation::Mutation;
 
 /// A root an index was (or is being) built from: the exact spelling the
 /// frontend supplied — the spelling `LinkIndex::build` stored its paths in —
 /// and its canonical form, used only to project canonical mutation paths into
 /// that spelling.
 #[derive(Clone)]
-struct IndexRoot {
+pub(super) struct IndexRoot {
     spelling: String,
     canonical: PathBuf,
 }
@@ -27,7 +28,7 @@ impl IndexRoot {
 
     /// `canonical_path` as this root's index spells it; `None` when it does
     /// not sit under this root (then the index has nothing to do with it).
-    fn spell(&self, canonical_path: &Path) -> Option<String> {
+    pub(super) fn spell(&self, canonical_path: &Path) -> Option<String> {
         let relative = canonical_path.strip_prefix(&self.canonical).ok()?;
         if relative.as_os_str().is_empty() {
             return Some(self.spelling.clone());
@@ -100,126 +101,6 @@ pub(super) struct Slot {
     root: Option<IndexRoot>,
     /// Present only while a build is reading (between begin_build and publish).
     pending: Option<PendingBuild>,
-}
-
-/// An in-place change to an index — the unit that is applied, journaled and
-/// replayed. It names the file by its CANONICAL path; the spelling is decided
-/// by the index it meets (`apply_to`).
-#[derive(Clone)]
-pub(super) enum Mutation {
-    /// A file was re-read (saved, or rewritten by a rename).
-    Update { path: PathBuf, content: String },
-    /// A file is gone under this path (renamed away).
-    Remove { path: PathBuf },
-    /// §393 A non-markdown file to register as a link target (§278) — the build registers
-    /// every file it finds; this is the one that appeared since.
-    Target { path: PathBuf },
-    /// §393 Everything at or under each of these paths is gone — removed or replaced
-    /// folders and files, as one change (one scan of the index however many paths).
-    RemoveTree { paths: Vec<PathBuf> },
-}
-
-impl Mutation {
-    /// Canonicalises `path` — outside any lock (it touches the filesystem).
-    pub(super) fn update(path: &str, content: String) -> Result<Self, String> {
-        Ok(Self::Update {
-            path: crate::context::manager::resolve_canonical(path)?,
-            content,
-        })
-    }
-
-    /// A file that is gone (or unreadable) under `path` — canonicalised outside
-    /// any lock, on the existing ancestor when the file itself is gone.
-    pub(super) fn remove(path: &str) -> Result<Self, String> {
-        Ok(Self::Remove {
-            path: crate::context::manager::resolve_canonical(path)?,
-        })
-    }
-
-    /// §393 A link target — canonicalised outside any lock.
-    pub(super) fn target(path: &str) -> Result<Self, String> {
-        Ok(Self::Target {
-            path: crate::context::manager::resolve_canonical(path)?,
-        })
-    }
-
-    /// §393 A removed tree — canonicalised outside any lock.
-    pub(super) fn remove_tree(path: &str) -> Result<Self, String> {
-        Self::remove_trees(&[path])
-    }
-
-    /// §393 Several removed trees as one mutation. Each path may be gone, so it is
-    /// canonicalised through its PARENT and the final component is joined on as written: a
-    /// symlink that appears at the path after the caller looked is never followed (following
-    /// it would remove its TARGET — the hazard `sync::on_disk` leaves links alone for).
-    pub(super) fn remove_trees(paths: &[&str]) -> Result<Self, String> {
-        let paths = paths
-            .iter()
-            .map(|path| canonical_entry(path))
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(Self::RemoveTree { paths })
-    }
-
-    /// The `RemoveTree` mutations among `trees` merged into one (the others contribute
-    /// nothing): the same removal, one `apply`.
-    pub(super) fn merge_removals(trees: Vec<Mutation>) -> Self {
-        let paths = trees
-            .into_iter()
-            .flat_map(|tree| match tree {
-                Self::RemoveTree { paths } => paths,
-                Self::Update { .. } | Self::Remove { .. } | Self::Target { .. } => Vec::new(),
-            })
-            .collect();
-        Self::RemoveTree { paths }
-    }
-
-    /// Apply to `index`, spelled under `root`. Whether the index changed: `Update`, `Remove`
-    /// and `Target` rewrite what they name and count as a change; `RemoveTree` counts only
-    /// when something was under its path. A path not under `root` changes nothing.
-    fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) -> bool {
-        match self {
-            Self::Update { path, content } => match root.spell(path) {
-                Some(spelled) => {
-                    index.update_file_from_content(&spelled, content);
-                    true
-                }
-                None => false,
-            },
-            Self::Remove { path } => match root.spell(path) {
-                Some(spelled) => {
-                    index.remove_file(&spelled);
-                    true
-                }
-                None => false,
-            },
-            Self::Target { path } => match root.spell(path) {
-                Some(spelled) => {
-                    index.add_link_target(&spelled);
-                    true
-                }
-                None => false,
-            },
-            Self::RemoveTree { paths } => {
-                let spelled: Vec<String> =
-                    paths.iter().filter_map(|path| root.spell(path)).collect();
-                let spelled: Vec<&str> = spelled.iter().map(String::as_str).collect();
-                !spelled.is_empty() && index.remove_trees(&spelled)
-            }
-        }
-    }
-}
-
-/// `path` with its parent canonicalised and its last component kept as written; a path with
-/// no last component (`/`, `..`) falls back to `resolve_canonical`.
-fn canonical_entry(path: &str) -> Result<PathBuf, String> {
-    let path = std::path::Path::new(path);
-    match (path.parent(), path.file_name()) {
-        (Some(parent), Some(name)) if !parent.as_os_str().is_empty() => {
-            let parent = parent.to_str().ok_or("path is not UTF-8")?;
-            Ok(crate::context::manager::resolve_canonical(parent)?.join(name))
-        }
-        _ => crate::context::manager::resolve_canonical(path.to_str().ok_or("path is not UTF-8")?),
-    }
 }
 
 /// Managed state: per-context in-memory link indexes, keyed by the context's
