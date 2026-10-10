@@ -6,7 +6,9 @@ mod app_config;
 mod args;
 mod error;
 mod ops;
+mod ops_links;
 mod ops_notes;
+mod ops_search;
 mod output;
 mod paths;
 mod vault;
@@ -199,9 +201,9 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
             limit,
         } => {
             let vault = required(resolved)?;
-            let envelope = ops::search(
+            let envelope = ops_search::search(
                 &vault,
-                ops::SearchQuery {
+                ops_search::SearchQuery {
                     query: &query,
                     regex,
                     case_sensitive,
@@ -232,12 +234,12 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
         }
         Command::Backlinks { path } => {
             let vault = required(resolved)?;
-            let envelope = ops_notes::backlinks(&vault, &path, &config).await?;
+            let envelope = ops_links::backlinks(&vault, &path, &config).await?;
             output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
         Command::Links { path } => {
             let vault = required(resolved)?;
-            let envelope = ops_notes::links(&vault, &path).await?;
+            let envelope = ops_links::links(&vault, &path).await?;
             output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
         }
     }

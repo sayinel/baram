@@ -56,7 +56,7 @@ use crate::fs::SKIP_DIRS;
 
 /// Build a regex pattern from the query and options.
 ///
-/// The CLI builds it too, before it searches (`cli::ops::search`): `search_files` reports
+/// The CLI builds it too, before it searches (`cli::ops_search::search`): `search_files` reports
 /// a pattern it cannot build and a root it cannot search both as a String, told apart
 /// only by its wording.
 pub(crate) fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, regex::Error> {
