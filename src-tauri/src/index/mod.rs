@@ -14,6 +14,7 @@ mod relative_links;
 mod resolve;
 mod rewriter;
 pub mod service;
+mod tree;
 mod types;
 
 use serde::Serialize;
