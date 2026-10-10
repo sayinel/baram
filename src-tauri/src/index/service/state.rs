@@ -111,6 +111,25 @@ pub(super) enum Mutation {
     Update { path: PathBuf, content: String },
     /// A file is gone under this path (renamed away).
     Remove { path: PathBuf },
+    /// §393 A non-markdown file to register as a link target (§278) — the build registers
+    /// every file it finds; this is the one that appeared since.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
+        )
+    )]
+    Target { path: PathBuf },
+    /// §393 Everything at or under this path is gone — a removed or replaced folder.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
+        )
+    )]
+    RemoveTree { path: PathBuf },
 }
 
 impl Mutation {
@@ -130,16 +149,62 @@ impl Mutation {
         })
     }
 
-    fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) {
+    /// §393 A link target — canonicalised outside any lock.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
+        )
+    )]
+    pub(super) fn target(path: &str) -> Result<Self, String> {
+        Ok(Self::Target {
+            path: crate::context::manager::resolve_canonical(path)?,
+        })
+    }
+
+    /// §393 A removed tree — canonicalised outside any lock, on the existing ancestor when
+    /// the path itself is gone (`resolve_canonical`), so `apply_to` can still spell it.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "index::service::sync is the first caller (§393, plan 0122 Task 4)"
+        )
+    )]
+    pub(super) fn remove_tree(path: &str) -> Result<Self, String> {
+        Ok(Self::RemoveTree {
+            path: crate::context::manager::resolve_canonical(path)?,
+        })
+    }
+
+    /// Apply to `index`, spelled under `root`. Whether the index changed: `Update`, `Remove`
+    /// and `Target` rewrite what they name and count as a change; `RemoveTree` counts only
+    /// when something was under its path. A path not under `root` changes nothing.
+    fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) -> bool {
         let canonical_path = match self {
-            Self::Update { path, .. } | Self::Remove { path } => path,
+            Self::Update { path, .. }
+            | Self::Remove { path }
+            | Self::Target { path }
+            | Self::RemoveTree { path } => path,
         };
         let Some(spelled) = root.spell(canonical_path) else {
-            return;
+            return false;
         };
         match self {
-            Self::Update { content, .. } => index.update_file_from_content(&spelled, content),
-            Self::Remove { .. } => index.remove_file(&spelled),
+            Self::Update { content, .. } => {
+                index.update_file_from_content(&spelled, content);
+                true
+            }
+            Self::Remove { .. } => {
+                index.remove_file(&spelled);
+                true
+            }
+            Self::Target { .. } => {
+                index.add_link_target(&spelled);
+                true
+            }
+            Self::RemoveTree { .. } => index.remove_tree(&spelled),
         }
     }
 }
@@ -220,19 +285,31 @@ impl LinkIndexState {
     /// Every call bumps the epoch — also when there is no index yet. The live
     /// index receives them in its own root spelling; a build that is reading
     /// receives them in its journal, canonical, to replay when it publishes.
-    pub(super) async fn apply(&self, key: &str, mutations: Vec<Mutation>) {
+    ///
+    /// §393 Returns whether the LIVE index changed (`Some`), or `None` when there is no live
+    /// index — the caller cannot tell then (a reading build has the journal, and what it
+    /// read is unknown here). Judged under this lock, so no other call slips between the
+    /// change and the answer.
+    pub(super) async fn apply(&self, key: &str, mutations: Vec<Mutation>) -> Option<bool> {
         let mut map = self.slots.lock().await;
         let slot = map.entry(key.to_string()).or_default();
         slot.epoch += 1;
         let (index, live_root, pending) = (&mut slot.index, &slot.root, &mut slot.pending);
-        if let (Some(index), Some(live_root)) = (index.as_mut(), live_root.as_ref()) {
-            for mutation in &mutations {
-                mutation.apply_to(index, live_root);
+        let changed = match (index.as_mut(), live_root.as_ref()) {
+            // `apply_to` first, then `||`: every mutation is applied, none short-circuited.
+            (Some(index), Some(live_root)) => {
+                let mut any = false;
+                for mutation in &mutations {
+                    any = mutation.apply_to(index, live_root) || any;
+                }
+                Some(any)
             }
-        }
+            _ => None,
+        };
         if let Some(pending) = pending.as_mut() {
             pending.journal.extend(mutations);
         }
+        changed
     }
 
     /// The current epoch (publications and mutations alike) — observed by the

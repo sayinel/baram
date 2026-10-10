@@ -10,13 +10,6 @@ impl LinkIndex {
     /// §278 · §393 Register `file_path` as a link target, as `build` does for every file it
     /// finds — `[[Paper.pdf]]` resolves once this ran. Does nothing for an index that was
     /// never built: without a root there is no vault-relative key to give the file.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Mutation::Target / RemoveTree are the first callers (§393, plan 0122 Task 3)"
-        )
-    )]
     pub(crate) fn add_link_target(&mut self, file_path: &str) {
         if let Some(root) = self.root_path.clone() {
             self.register_link_target(file_path, &root);
@@ -30,13 +23,6 @@ impl LinkIndex {
     /// `remove_file`, so "remove a file" keeps one definition. The gathering is the part that
     /// can drift: a path held ONLY by a map not listed here would be missed — a new path-valued
     /// map in `LinkIndex` must be listed here as well as cleaned in `remove_file`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Mutation::Target / RemoveTree are the first callers (§393, plan 0122 Task 3)"
-        )
-    )]
     pub(crate) fn remove_tree(&mut self, dir: &str) -> bool {
         let dir = Path::new(dir);
         let under = |path: &str| Path::new(path).starts_with(dir);
