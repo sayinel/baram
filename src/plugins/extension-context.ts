@@ -188,29 +188,30 @@ function createEventsAPI(
         `Add "events" to the capabilities array in baram-plugin.json.`,
     );
   };
-  // §393 `EventsAPI.on` is overloaded for `vault:changed`; an object-literal method cannot be, so
-  // the implementation takes the general signature and the overloads are asserted on the way out.
-  return {
-    on(event: string, handler: EventHandler): Disposable {
-      let disposable: Disposable;
-      if (event === SETTINGS_CHANGED_EVENT || event === VAULT_CHANGED_EVENT) {
-        const off = onScopedPluginEvent(pluginId, event, handler);
-        disposable = { dispose: off };
-      } else {
-        requireApp(`on("${event}")`);
-        if (!eventListeners.has(event)) {
-          eventListeners.set(event, new Set());
-        }
-        eventListeners.get(event)!.add(handler);
-        disposable = {
-          dispose: () => {
-            eventListeners.get(event)?.delete(handler);
-          },
-        };
+  // §393 `EventsAPI.on` is overloaded for `vault:changed`; a function expression cannot be, so
+  // `on` takes the general signature and only it is asserted to the overloads on the way out —
+  // `emit` is checked against `EventsAPI` as written.
+  const on = (event: string, handler: EventHandler): Disposable => {
+    let disposable: Disposable;
+    if (event === SETTINGS_CHANGED_EVENT || event === VAULT_CHANGED_EVENT) {
+      const off = onScopedPluginEvent(pluginId, event, handler);
+      disposable = { dispose: off };
+    } else {
+      requireApp(`on("${event}")`);
+      if (!eventListeners.has(event)) {
+        eventListeners.set(event, new Set());
       }
-      disposables.push(disposable);
-      return disposable;
-    },
+      eventListeners.get(event)!.add(handler);
+      disposable = {
+        dispose: () => {
+          eventListeners.get(event)?.delete(handler);
+        },
+      };
+    }
+    disposables.push(disposable);
+    return disposable;
+  };
+  return {
     emit(event: string, ...args: unknown[]): void {
       // Always `events`, including for `settings:changed`: the settings grant buys the right
       // to be TOLD that the user's answers moved, never the right to tell other plugins so.
@@ -226,7 +227,8 @@ function createEventsAPI(
         }
       });
     },
-  } as EventsAPI;
+    on: on as EventsAPI["on"],
+  };
 }
 
 // --- Network API ---
