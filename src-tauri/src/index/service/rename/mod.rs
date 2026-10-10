@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use super::keys::{keys_of, owning_contexts};
-use super::state::Mutation;
+use super::mutation::Mutation;
 
 /// §33 Result of renaming a file (or a block ID) with wikilink updates.
 ///

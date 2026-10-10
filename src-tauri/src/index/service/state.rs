@@ -6,13 +6,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::build::{IndexBuildError, INDEX_BUILD_PENDING};
+use super::mutation::Mutation;
 
 /// A root an index was (or is being) built from: the exact spelling the
 /// frontend supplied — the spelling `LinkIndex::build` stored its paths in —
 /// and its canonical form, used only to project canonical mutation paths into
 /// that spelling.
 #[derive(Clone)]
-struct IndexRoot {
+pub(super) struct IndexRoot {
     spelling: String,
     canonical: PathBuf,
 }
@@ -27,7 +28,7 @@ impl IndexRoot {
 
     /// `canonical_path` as this root's index spells it; `None` when it does
     /// not sit under this root (then the index has nothing to do with it).
-    fn spell(&self, canonical_path: &Path) -> Option<String> {
+    pub(super) fn spell(&self, canonical_path: &Path) -> Option<String> {
         let relative = canonical_path.strip_prefix(&self.canonical).ok()?;
         if relative.as_os_str().is_empty() {
             return Some(self.spelling.clone());
@@ -100,48 +101,6 @@ pub(super) struct Slot {
     root: Option<IndexRoot>,
     /// Present only while a build is reading (between begin_build and publish).
     pending: Option<PendingBuild>,
-}
-
-/// An in-place change to an index — the unit that is applied, journaled and
-/// replayed. It names the file by its CANONICAL path; the spelling is decided
-/// by the index it meets (`apply_to`).
-#[derive(Clone)]
-pub(super) enum Mutation {
-    /// A file was re-read (saved, or rewritten by a rename).
-    Update { path: PathBuf, content: String },
-    /// A file is gone under this path (renamed away).
-    Remove { path: PathBuf },
-}
-
-impl Mutation {
-    /// Canonicalises `path` — outside any lock (it touches the filesystem).
-    pub(super) fn update(path: &str, content: String) -> Result<Self, String> {
-        Ok(Self::Update {
-            path: crate::context::manager::resolve_canonical(path)?,
-            content,
-        })
-    }
-
-    /// A file that is gone (or unreadable) under `path` — canonicalised outside
-    /// any lock, on the existing ancestor when the file itself is gone.
-    pub(super) fn remove(path: &str) -> Result<Self, String> {
-        Ok(Self::Remove {
-            path: crate::context::manager::resolve_canonical(path)?,
-        })
-    }
-
-    fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) {
-        let canonical_path = match self {
-            Self::Update { path, .. } | Self::Remove { path } => path,
-        };
-        let Some(spelled) = root.spell(canonical_path) else {
-            return;
-        };
-        match self {
-            Self::Update { content, .. } => index.update_file_from_content(&spelled, content),
-            Self::Remove { .. } => index.remove_file(&spelled),
-        }
-    }
 }
 
 /// Managed state: per-context in-memory link indexes, keyed by the context's
@@ -220,19 +179,34 @@ impl LinkIndexState {
     /// Every call bumps the epoch — also when there is no index yet. The live
     /// index receives them in its own root spelling; a build that is reading
     /// receives them in its journal, canonical, to replay when it publishes.
-    pub(super) async fn apply(&self, key: &str, mutations: Vec<Mutation>) {
+    ///
+    /// §393 Returns whether the LIVE index changed (`Some`), or `None` when there is no live
+    /// index — the caller cannot tell then (a reading build has the journal, and what it
+    /// read is unknown here). Judged under this lock, so no other call slips between the
+    /// change and the answer.
+    pub(super) async fn apply(&self, key: &str, mutations: Vec<Mutation>) -> Option<bool> {
         let mut map = self.slots.lock().await;
         let slot = map.entry(key.to_string()).or_default();
         slot.epoch += 1;
         let (index, live_root, pending) = (&mut slot.index, &slot.root, &mut slot.pending);
-        if let (Some(index), Some(live_root)) = (index.as_mut(), live_root.as_ref()) {
-            for mutation in &mutations {
-                mutation.apply_to(index, live_root);
+        let changed = match (index.as_mut(), live_root.as_ref()) {
+            // `apply_to` first, then `||`: every mutation is applied, none short-circuited. With
+            // `any()` a refill would stop at its removal once that found the old children, and
+            // the notes its walk found would never be applied — tests/sync.rs
+            // `a_folder_replaced_under_the_same_name_in_one_batch_loses_its_old_children` fails.
+            (Some(index), Some(live_root)) => {
+                let mut any = false;
+                for mutation in &mutations {
+                    any = mutation.apply_to(index, live_root) || any;
+                }
+                Some(any)
             }
-        }
+            _ => None,
+        };
         if let Some(pending) = pending.as_mut() {
             pending.journal.extend(mutations);
         }
+        changed
     }
 
     /// The current epoch (publications and mutations alike) — observed by the

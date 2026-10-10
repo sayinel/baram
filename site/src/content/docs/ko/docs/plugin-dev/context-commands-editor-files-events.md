@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: 명령·에디터·파일·이벤트"
-sourceHash: "49e88dc99db6"
+sourceHash: "863fd66136f2"
 ---
 
 
@@ -171,11 +171,20 @@ on(event: string, handler: (...args: unknown[]) => void): Disposable;
 emit(event: string, ...args: unknown[]): void;
 ```
 
-호스트가 지금 내보내는 이벤트는 `"editor:ready"`, `"file:open"`, `"file:save"`뿐입니다
-(`PluginEventName` 유니언 타입). **키 입력마다 오는 이벤트나 실시간 문서 변경 이벤트는 아직
-없습니다** — 편집에 반응해야 한다면 폴링하거나 `"editor:change"` 같은 이벤트를 기대하지 말고
-(그런 것은 없습니다) `editor:ready`/`file:open`/`file:save`에서 다시 계산하십시오. 그 패턴은
-word-count 예제를 보십시오.
+호스트가 내보내는 이벤트는 `"editor:ready"`, `"file:open"`, `"file:save"`입니다
+(`PluginEventName` 유니언 타입). `"file:save"`는 명시적 저장(저장, 다른 이름으로 저장)에서만
+발생하고 자동저장에서는 발생하지 않습니다. **키 입력마다 오는 이벤트는 없습니다** — 편집에
+반응하려면 폴링하지 말고 이 이벤트들이나 `"vault:changed"`에서 다시 계산하십시오.
+
+`"vault:changed"`는 핸들러에 `{ context }`를 넘깁니다 — 노트(`.md`, `.markdown`)나 링크가 가리킬 수
+있는 그 밖의 파일이 생성, 변경(자동저장 포함), 이름 변경, 삭제된 등록된 컨텍스트입니다. Baram이 했든 다른
+프로그램이 했든 같고, 링크 인덱스가 그 변경을 반영한 뒤에 발생합니다. 메모리에 올라 있는 인덱스를 그대로 두는
+변경으로는 오지 않을 수 있습니다(인덱스가 갖고 있지 않던 경로의 삭제, 빈 폴더가 생김). `events`가 아니라
+`files` 또는 `files:readonly`가 필요합니다. 파일이 계속 바뀌는 동안에도 변경 뒤 2초 안팎에 오고, Baram이
+감시하는 볼트(활성 볼트와 이번 세션에 연 볼트)에서만 오며, 숨김 파일 · 폴더(이름이 `.`으로 시작)와 도구
+폴더(`.git`, `.obsidian`, `.baram`, `node_modules`) 안의 변경으로는 오지 않습니다. 플러그인 자신의
+`files.writeFile`도 그 볼트 안에 쓰면 이 이벤트를 일으킬 수 있으므로, 핸들러가 끝없이 다시 불리지 않게 내용이 같은
+쓰기는 건너뛰십시오.
 
 `"file:open"`은 열린 파일의 내용이 실제로 에디터에 적재된 뒤에 발생합니다 — 탭이 열리는 순간이
 아닙니다 — 그래서 마크다운 파일이라면 핸들러 안에서 `ctx.editor.getMarkdown()`이 맞는 문서를

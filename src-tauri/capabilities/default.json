@@ -138,6 +138,7 @@
     "allow-set-vault-config",
     "allow-set-vault-config-by-path",
     "allow-set-vault-root",
+    "allow-sync-index-paths",
     "allow-theme-import-pick",
     "allow-theme-install-commit",
     "allow-theme-install-discard",

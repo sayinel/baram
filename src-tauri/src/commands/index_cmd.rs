@@ -12,7 +12,8 @@ use crate::context::ContextManager;
 use crate::index::service::{
     get_backlinks_inner, get_link_index_inner, refresh_index_inner, rename_block_id_inner,
     rename_file_with_links_inner, rename_namespace_inner, require_registered_root,
-    update_file_index_inner, LinkIndexState, NamespaceRenameResult, RenameResult,
+    sync_index_paths_inner, update_file_index_inner, LinkIndexState, NamespaceRenameResult,
+    RenameResult, SyncAnswer, SyncPath,
 };
 use crate::index::{
     find_unlinked_mentions, BacklinkResult, IndexStats, LinkGraph, UnlinkedMentionResult,
@@ -53,6 +54,20 @@ pub async fn update_file_index(
     ctx_mgr: State<'_, ContextManager>,
 ) -> Result<(), String> {
     update_file_index_inner(&state, &ctx_mgr, &file_path).await
+}
+
+/// §393 Bring the link index up to date with paths the file watcher reported, and say which
+/// contexts' reads may have changed and whether the link index did (spec 0072 §5.4,
+/// `SyncAnswer`). The frontend batches the watcher's events (`use-vault-change-sync`),
+/// announces `vault:changed` for each id in `contexts`, and refreshes the link readers only
+/// when `linksChanged`.
+#[tauri::command]
+pub async fn sync_index_paths(
+    paths: Vec<SyncPath>,
+    state: State<'_, LinkIndexState>,
+    ctx_mgr: State<'_, ContextManager>,
+) -> Result<SyncAnswer, String> {
+    sync_index_paths_inner(&state, &ctx_mgr, &paths).await
 }
 
 /// §34 Find unlinked mentions — text occurrences of a file's name in other files

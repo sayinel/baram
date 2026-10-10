@@ -175,6 +175,25 @@ export interface IndexStats {
   linksFound: number;
 }
 
+/**
+ * §393 What `sync_index_paths` answers for one batch: the contexts whose reads may have changed
+ * (announced as `vault:changed`), and whether the link index changed (the backlinks panel and the
+ * graph re-read). `linksChanged` is true when some change in the batch altered a live index (a
+ * note whose links or tags differ, a link target newly registered, a removal that took
+ * something) or found no live index for a holding context; it implies `contexts` is not empty —
+ * Rust `SyncAnswer`.
+ */
+export interface IndexSyncAnswer {
+  contexts: string[];
+  linksChanged: boolean;
+}
+
+/** §393 One path the file watcher reported, and whether every event for it in the batch was `file:changed`. */
+export interface IndexSyncPath {
+  changedOnly: boolean;
+  path: string;
+}
+
 export interface IndexUpdatedPayload {
   duration: number;
   filesIndexed: number;

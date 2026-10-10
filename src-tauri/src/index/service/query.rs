@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use super::keys::{
     active_registration, buildable, keys_of, local_aliases_of, owning_contexts, owning_registration,
 };
-use super::state::{LinkIndexState, Mutation};
+use super::mutation::Mutation;
+use super::state::LinkIndexState;
 
 /// Whether `file_path` is spelled under `root`: component-wise, so `/x/Vault`
 /// does not claim `/x/Vault-secret/a.md`, a trailing slash on the root does not

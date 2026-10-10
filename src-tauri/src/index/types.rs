@@ -5,7 +5,7 @@ use serde::Serialize;
 use super::LinkKind;
 
 /// A single link found in a source file (wikilink, block ref, or block embed)
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LinkEntry {
     /// The file containing the link
     pub source_path: String,

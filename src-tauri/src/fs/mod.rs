@@ -2,9 +2,11 @@
 
 pub(crate) mod archive;
 mod copy_dir;
+mod walk_rules;
 pub mod media;
 
 pub use copy_dir::{copy_dir_all, CopyDirReport};
+pub use walk_rules::{is_hidden_name, is_note_name, is_skipped_relative};
 
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -74,7 +76,7 @@ pub async fn collect_all_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<
     let mut read_dir = tokio::fs::read_dir(root).await.map_err(unreadable)?;
     while let Some(entry) = read_dir.next_entry().await.map_err(unreadable)? {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
+        if is_hidden_name(&name) {
             continue;
         }
         let metadata = match entry.metadata().await {
@@ -103,7 +105,7 @@ pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(
         let name = entry.file_name().to_string_lossy().to_string();
 
         // Skip hidden files/dirs
-        if name.starts_with('.') {
+        if is_hidden_name(&name) {
             continue;
         }
 
@@ -116,7 +118,7 @@ pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(
             if !SKIP_DIRS.contains(&name.as_str()) {
                 Box::pin(collect_md_files(&entry.path(), files)).await?;
             }
-        } else if metadata.is_file() && (name.ends_with(".md") || name.ends_with(".markdown")) {
+        } else if metadata.is_file() && is_note_name(&name) {
             files.push(entry.path());
         }
     }

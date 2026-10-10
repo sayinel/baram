@@ -49,6 +49,10 @@ import {
   EDITOR_WRITE_CAPABILITIES,
   UI_CAPABILITIES,
 } from "./types";
+import {
+  VAULT_CHANGED_EVENT,
+  watchVaultChanges,
+} from "./vault-change-notifier";
 
 // --- Re-export barrel (§298 review, safety proc a) ---
 // `extension-context.ts` used to define all of these itself. They now live in
@@ -167,6 +171,10 @@ function createDeniedProxy(
  * like a gate that gated nothing, which is what later gets "tightened" by someone assuming it
  * already did something (§0054 code review, LOW). WHO may be told is decided by the watcher,
  * not here; `settings` buys the subscription, delivery is what it gates.
+ *
+ * §393 `vault:changed` takes the same route for the same reasons: it goes to the per-plugin bus,
+ * and subscribing without `files` / `files:readonly` is accepted and never fires — `files` buys
+ * the delivery inside `watchVaultChanges`, as `settings` does inside `watchPluginSettings`.
  */
 function createEventsAPI(
   pluginId: string,
@@ -180,27 +188,30 @@ function createEventsAPI(
         `Add "events" to the capabilities array in baram-plugin.json.`,
     );
   };
-  return {
-    on(event: string, handler: EventHandler): Disposable {
-      let disposable: Disposable;
-      if (event === SETTINGS_CHANGED_EVENT) {
-        const off = onScopedPluginEvent(pluginId, event, handler);
-        disposable = { dispose: off };
-      } else {
-        requireApp(`on("${event}")`);
-        if (!eventListeners.has(event)) {
-          eventListeners.set(event, new Set());
-        }
-        eventListeners.get(event)!.add(handler);
-        disposable = {
-          dispose: () => {
-            eventListeners.get(event)?.delete(handler);
-          },
-        };
+  // §393 `EventsAPI.on` is overloaded for `vault:changed`; a function expression cannot be, so
+  // `on` takes the general signature and only it is asserted to the overloads on the way out —
+  // `emit` is checked against `EventsAPI` as written.
+  const on = (event: string, handler: EventHandler): Disposable => {
+    let disposable: Disposable;
+    if (event === SETTINGS_CHANGED_EVENT || event === VAULT_CHANGED_EVENT) {
+      const off = onScopedPluginEvent(pluginId, event, handler);
+      disposable = { dispose: off };
+    } else {
+      requireApp(`on("${event}")`);
+      if (!eventListeners.has(event)) {
+        eventListeners.set(event, new Set());
       }
-      disposables.push(disposable);
-      return disposable;
-    },
+      eventListeners.get(event)!.add(handler);
+      disposable = {
+        dispose: () => {
+          eventListeners.get(event)?.delete(handler);
+        },
+      };
+    }
+    disposables.push(disposable);
+    return disposable;
+  };
+  return {
     emit(event: string, ...args: unknown[]): void {
       // Always `events`, including for `settings:changed`: the settings grant buys the right
       // to be TOLD that the user's answers moved, never the right to tell other plugins so.
@@ -216,6 +227,7 @@ function createEventsAPI(
         }
       });
     },
+    on: on as EventsAPI["on"],
   };
 }
 
@@ -325,10 +337,14 @@ export function createExtensionContext(
       ? createFilesAPI(true)
       : (createDeniedProxy("files", "files") as FilesAPI);
 
-  // §0054 — `settings` is now a second way in, for `settings:changed` alone. A plugin with
-  // NEITHER grant still gets the denied proxy, unchanged.
+  // §0054 — `settings` is a second way in, for `settings:changed` alone; §393 — `files` and
+  // `files:readonly` a third, for `vault:changed` alone. A plugin with none of the four still
+  // gets the denied proxy, unchanged.
   const events: EventsAPI =
-    hasCapability("events") || hasCapability("settings")
+    hasCapability("events") ||
+    hasCapability("settings") ||
+    hasCapability("files") ||
+    hasCapability("files:readonly")
       ? createEventsAPI(manifest.id, disposables, {
           app: hasCapability("events"),
         })
@@ -369,6 +385,20 @@ export function createExtensionContext(
         capabilities: manifest.capabilities,
         deliver: () =>
           emitScopedPluginEvent(manifest.id, SETTINGS_CHANGED_EVENT),
+        label: "Plugin",
+        pluginId: manifest.id,
+      }),
+    });
+  }
+
+  // §393 — the trusted tier's half of `vault:changed`, installed here for the same reason as the
+  // settings watcher above: `disposables` is `context.subscriptions`, so unload tears it down.
+  if (hasCapability("files") || hasCapability("files:readonly")) {
+    disposables.push({
+      dispose: watchVaultChanges({
+        capabilities: manifest.capabilities,
+        deliver: (change) =>
+          emitScopedPluginEvent(manifest.id, VAULT_CHANGED_EVENT, change),
         label: "Plugin",
         pluginId: manifest.id,
       }),
