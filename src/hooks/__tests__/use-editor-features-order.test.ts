@@ -2,16 +2,16 @@
 //
 // Rendering App itself to observe hook-call order isn't practical here, so
 // instead this pins use-editor-features's OWN contract in isolation: it must
-// call its 13 subsystem hooks in the documented order (skills mode → auto-save
-// → journal cursor → file watcher → task watcher → capture shortcut →
-// auto-snapshot → zoom → external drop → ghost text → inline AI → settings
-// effects → close guard). Per CLAUDE.md's regression-test convention, this is
+// call its 14 subsystem hooks in the documented order (skills mode → auto-save
+// → journal cursor → file watcher → task watcher → vault change sync → capture
+// shortcut → auto-snapshot → zoom → external drop → ghost text → inline AI →
+// settings effects → close guard). Per CLAUDE.md's regression-test convention, this is
 // pinned by call order/count, not timing — each subsystem hook is
 // module-mocked with a spy that records its name into a shared array.
 //
 // MIGRATION GUARD: this array is the historical total order carried over from
 // the App.tsx split campaign, not a claim that any position is load-bearing.
-// An intentional reordering of these 13 hooks is fine — update the expected
+// An intentional reordering of these 14 hooks is fine — update the expected
 // array to match. The one CAUSAL ordering edge in this area lives OUTSIDE this
 // hook and this test cannot see it: App.tsx must call
 // `usePerfInstrumentation(activeEditor)` before `useEditorFeatures(activeEditor)`,
@@ -49,6 +49,11 @@ vi.mock("../use-file-watcher", () => ({
 vi.mock("../use-task-watcher", () => ({
   useTaskWatcher: () => {
     order.push("useTaskWatcher");
+  },
+}));
+vi.mock("../use-vault-change-sync", () => ({
+  useVaultChangeSync: () => {
+    order.push("useVaultChangeSync");
   },
 }));
 vi.mock("../use-global-capture-shortcut", () => ({
@@ -96,7 +101,7 @@ vi.mock("../use-close-guard", () => ({
 import { useEditorFeatures } from "../use-editor-features";
 
 describe("useEditorFeatures — subsystem hook call order", () => {
-  it("calls its 13 subsystem hooks in the documented order", () => {
+  it("calls its 14 subsystem hooks in the documented order", () => {
     order.length = 0;
 
     renderHook(() => useEditorFeatures(null));
@@ -107,6 +112,7 @@ describe("useEditorFeatures — subsystem hook call order", () => {
       "useJournalInitialCursor",
       "useFileWatcher",
       "useTaskWatcher",
+      "useVaultChangeSync",
       "useGlobalCaptureShortcut",
       "useAutoSnapshot",
       "useZoom",

@@ -59,17 +59,22 @@ describe("createVaultChangeBatcher", () => {
   });
 
   it("sends at the max wait while events keep arriving", async () => {
-    // Fails if the quiet timer alone decides: a steady writer would never be synced.
+    // Fails if the quiet timer alone decides — a steady writer would never be synced — or if the
+    // max wait runs from anything but the batch's first event: nothing at 1999 ms, the batch at
+    // 2000 ms.
     const { sync } = heldSync();
     const batcher = createVaultChangeBatcher({ onSynced: vi.fn(), sync });
-    for (
-      let t = 0;
-      t < VAULT_SYNC_MAX_WAIT_MS;
-      t += VAULT_SYNC_QUIET_MS - 100
-    ) {
+    // Each touch lands before the quiet window of the one before closes.
+    const step = VAULT_SYNC_QUIET_MS - 100;
+    let now = 0;
+    for (; now + step < VAULT_SYNC_MAX_WAIT_MS; now += step) {
       batcher.touch("/v/a.md", "changed");
-      await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS - 100);
+      await vi.advanceTimersByTimeAsync(step);
     }
+    batcher.touch("/v/a.md", "changed");
+    await vi.advanceTimersByTimeAsync(VAULT_SYNC_MAX_WAIT_MS - 1 - now);
+    expect(sync).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
     expect(sync).toHaveBeenCalledTimes(1);
   });
 
@@ -158,19 +163,23 @@ describe("createVaultChangeBatcher", () => {
     });
     const unhandled = vi.fn();
     process.on("unhandledRejection", unhandled);
-    const batcher = createVaultChangeBatcher({ onSynced, sync });
-    batcher.touch("/v/a.md", "changed");
-    await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
-    batcher.touch("/v/b.md", "created");
-    await vi.advanceTimersByTimeAsync(VAULT_SYNC_MAX_WAIT_MS);
-    expect(sync).toHaveBeenCalledTimes(1);
-    calls[0].release(answer(["ctx-1"]));
-    await settle();
-    expect(onSynced).toHaveBeenCalledTimes(1);
-    expect(sync).toHaveBeenCalledTimes(2);
-    expect(calls[1].paths).toEqual([{ changedOnly: false, path: "/v/b.md" }]);
-    await settle();
-    process.off("unhandledRejection", unhandled);
-    expect(unhandled).not.toHaveBeenCalled();
+    try {
+      const batcher = createVaultChangeBatcher({ onSynced, sync });
+      batcher.touch("/v/a.md", "changed");
+      await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
+      batcher.touch("/v/b.md", "created");
+      await vi.advanceTimersByTimeAsync(VAULT_SYNC_MAX_WAIT_MS);
+      expect(sync).toHaveBeenCalledTimes(1);
+      calls[0].release(answer(["ctx-1"]));
+      await settle();
+      expect(onSynced).toHaveBeenCalledTimes(1);
+      expect(sync).toHaveBeenCalledTimes(2);
+      expect(calls[1].paths).toEqual([{ changedOnly: false, path: "/v/b.md" }]);
+      await settle();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      // A failed assertion above must not leave the listener on the process for later tests.
+      process.off("unhandledRejection", unhandled);
+    }
   });
 });
