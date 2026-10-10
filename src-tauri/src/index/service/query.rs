@@ -101,8 +101,8 @@ pub(crate) async fn get_link_index_inner(
     // gate the renames use: it joins a build already in flight instead of
     // scanning again, and once published every later read is a pure read.
     // Every app write is in the index before its command returns (#824,
-    // `commit::committed`); a write by another program arrives through
-    // `sync_watched_paths`, a watcher batch later.
+    // `commit::committed`); a write by another program arrives through the
+    // watcher applier (`applier`), one settle window after its event.
     ensure_indexes(state, ctx_mgr, std::slice::from_ref(&registered)).await?;
     Ok(state
         .with_index_for(&registered.info.path, registered.incarnation, |idx| {

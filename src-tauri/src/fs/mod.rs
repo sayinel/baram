@@ -6,6 +6,8 @@ mod exclusion;
 pub mod media;
 mod walk;
 mod watch_filter;
+#[cfg(test)]
+pub(crate) use watch_filter::WatchFilter;
 pub(crate) mod watch_registry;
 pub use watch_filter::set_open_files;
 
@@ -787,6 +789,69 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
     .map_err(|e| FsError::ReadError(std::io::Error::other(e.to_string())))?
 }
 
+/// The host whose router panics on its next event (tests).
+#[cfg(test)]
+pub(crate) static PANIC_ROUTING: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// What one event routed: `(canonical identity, spelling)` per emitted path.
+pub(crate) type Routed = [(PathBuf, String)];
+
+/// Where a router's events go besides the webview.
+pub(crate) struct WatchSinks {
+    /// The watcher stopped (an error, its folder removed).
+    pub(crate) on_end: Box<dyn Fn() + Send>,
+    /// §29 #824 Every path one event routed, as `(canonical identity, spelling)` — before
+    /// that event's `file:*` events go out. Must not wait on the index or the registry.
+    pub(crate) on_paths: Box<dyn Fn(&Routed) + Send>,
+    /// §29 #824 The OS dropped events under this host (`Event::need_rescan`).
+    pub(crate) on_rescan: Box<dyn Fn() + Send>,
+}
+
+/// One notify event: a rescan said first if the OS asks for one, then every routed path
+/// marked under the identity the filter derived from the watcher's own path
+/// (`WatchFilter::route_identified`), then the `file:*` events emitted, in `route`'s
+/// order and number.
+pub(crate) fn route_event(
+    filter: &mut watch_filter::WatchFilter,
+    event: &Event,
+    sinks: &WatchSinks,
+    emit: &mut dyn FnMut(&'static str, serde_json::Value),
+) {
+    // Before the filter: the paths of a rescan event may be ones it drops.
+    if event.need_rescan() {
+        (sinks.on_rescan)();
+    }
+    let routed = filter.route_identified(event, &watch_filter::RealProbe);
+    let marks: Vec<(PathBuf, String)> = routed
+        .iter()
+        .map(|(identity, e)| (identity.clone(), e.path().to_string()))
+        .collect();
+    (sinks.on_paths)(&marks);
+    for (_, emitted) in routed {
+        match emitted {
+            watch_filter::Emit::Created {
+                path,
+                is_dir,
+                origin,
+            } => emit(
+                "file:created",
+                serde_json::json!({ "path": path, "isDir": is_dir, "origin": origin }),
+            ),
+            watch_filter::Emit::Deleted { path } => {
+                emit("file:deleted", serde_json::json!({ "path": path }))
+            }
+            watch_filter::Emit::Changed {
+                path,
+                mtime,
+                origin,
+            } => emit(
+                "file:changed",
+                serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
+            ),
+        }
+    }
+}
+
 /// 디렉토리 감시 시작 — notify crate 기반
 /// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
 ///
@@ -796,7 +861,7 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 pub(crate) fn start_watching<R: tauri::Runtime>(
     spec: &watch_registry::WatchSpec,
     app_handle: tauri::AppHandle<R>,
-    on_end: Box<dyn Fn() + Send>,
+    sinks: WatchSinks,
 ) -> Result<RecommendedWatcher, FsError> {
     let path = spec.root.clone();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
@@ -830,7 +895,8 @@ pub(crate) fn start_watching<R: tauri::Runtime>(
         spec.recursive,
         spec.focus.clone(),
         spec.spellings.clone(),
-    );
+    )
+    .with_host(&spec.key);
     let root = spec.key.clone();
     let spelled_root = PathBuf::from(&path);
     std::thread::spawn(move || {
@@ -842,41 +908,35 @@ pub(crate) fn start_watching<R: tauri::Runtime>(
                 Ok(event) => event,
                 Err(e) => {
                     log::warn!("§3.2 watcher on {}: {e}; ended", root.display());
-                    on_end();
+                    (sinks.on_end)();
                     return;
                 }
             };
             let root_removed = matches!(event.kind, EventKind::Remove(_))
                 && event.paths.iter().any(|p| p == &root || p == &spelled_root);
-            for emit in filter.route(&event, &watch_filter::RealProbe) {
-                let _ = match emit {
-                    watch_filter::Emit::Created {
-                        path,
-                        is_dir,
-                        origin,
-                    } => app_handle.emit(
-                        "file:created",
-                        serde_json::json!({ "path": path, "isDir": is_dir, "origin": origin }),
-                    ),
-                    watch_filter::Emit::Deleted { path } => {
-                        app_handle.emit("file:deleted", serde_json::json!({ "path": path }))
-                    }
-                    watch_filter::Emit::Changed {
-                        path,
-                        mtime,
-                        origin,
-                    } => app_handle.emit(
-                        "file:changed",
-                        serde_json::json!({ "path": path, "mtime": mtime, "origin": origin }),
-                    ),
-                };
+            // §29 #824 A router that panics must not stay up looking alive: its leases would
+            // be taken for live and the host never restarted. It ends the watch instead, so
+            // the windows ask again and the restart rescans (`ExternalChanges::started`).
+            let routed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(test)]
+                if PANIC_ROUTING.lock().unwrap().as_deref() == Some(root.as_path()) {
+                    panic!("injected panic in a router");
+                }
+                route_event(&mut filter, &event, &sinks, &mut |name, payload| {
+                    let _ = app_handle.emit(name, payload);
+                });
+            }));
+            if routed.is_err() {
+                log::error!("§3.2 router for {} panicked; watch ended", root.display());
+                (sinks.on_end)();
+                return;
             }
             if root_removed {
                 log::warn!(
                     "§3.2 watched folder {} was removed; watch ended",
                     root.display()
                 );
-                on_end();
+                (sinks.on_end)();
                 return;
             }
         }

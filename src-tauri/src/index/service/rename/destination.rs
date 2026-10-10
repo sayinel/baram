@@ -15,7 +15,7 @@ use super::confined_by;
 pub(super) struct RenameSource {
     /// The index knows a note by what its path resolves to: the build never
     /// indexes a symlink entry (`collect_md_files` does not follow one) and a
-    /// save files under the resolved path (`Mutation::update`). The rename
+    /// save files under the resolved path (`reconcile::reconcile_path_in`). The rename
     /// does the same — it drops what the old path resolved to before the move
     /// and files the note under what the new path resolves to after it. For a
     /// plain note that is the new path; after a case-only rename on a file

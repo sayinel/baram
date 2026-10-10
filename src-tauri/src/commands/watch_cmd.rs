@@ -14,6 +14,7 @@ use tauri::{Emitter, Manager};
 
 use super::fs_cmd::{check, vault_fallback_decision};
 use crate::fs::watch_registry::{LeaseRequest, LeaseView, WatchSpec, UNAUTHORIZED};
+use crate::index::service::ExternalChanges;
 
 /// §3.2 Watch `path` for the calling window and answer the lease that holds the watch
 /// (#797); `unwatch_dir` gives it back, and the window's destruction gives back every
@@ -287,6 +288,14 @@ fn with_registry<R: tauri::Runtime, T>(
     let mut registry = state.0.lock().map_err(|e| e.to_string())?;
     let out = f(&mut registry, &|spec| spawn_watcher(app, spec));
     let (ended, freed) = registry.take_news();
+    // §29 #824 A host left unwatched: whatever changes under it until a watcher covers it
+    // again is rescanned then (`ExternalChanges::started`).
+    let stopped = registry.take_stopped();
+    if let Some(changes) = app.try_state::<ExternalChanges>() {
+        for host in &stopped {
+            changes.note_ended(host);
+        }
+    }
     drop(registry);
     for lease in ended {
         let _ = app.emit_to(
@@ -302,23 +311,77 @@ fn with_registry<R: tauri::Runtime, T>(
 }
 
 /// Start a watcher whose own end — an error, its folder removed — ends the leases it
-/// serves, if it is still its host's watcher then.
+/// serves, if it is still its host's watcher then. §29 #824 A host whose last watcher
+/// ended is rescanned once the new one watches: what changed in between was never
+/// reported. Only then — a start that fails keeps the host marked, and a rescan taken
+/// while the start is still under way could not see what changes before it watches.
 fn spawn_watcher<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     spec: &WatchSpec,
 ) -> Result<notify::RecommendedWatcher, crate::fs::FsError> {
+    #[cfg(test)]
+    hold_start(&spec.key);
+    let watcher = crate::fs::start_watching(spec, app.clone(), sinks_for(app, spec))?;
+    if let Some(changes) = app.try_state::<ExternalChanges>() {
+        changes.started(&spec.key);
+    }
+    Ok(watcher)
+}
+
+/// A test-only hold on the next start of a watcher for one host: the start waits for the
+/// sender to send (or drop).
+#[cfg(test)]
+pub(crate) static START_GATE: std::sync::Mutex<Option<(PathBuf, std::sync::mpsc::Receiver<()>)>> =
+    std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn hold_start(host: &Path) {
+    let gate = {
+        let mut gate = START_GATE.lock().unwrap();
+        match gate.as_ref() {
+            Some((at, _)) if at == host => gate.take(),
+            _ => None,
+        }
+    };
+    if let Some((_, release)) = gate {
+        let _ = release.recv();
+    }
+}
+
+/// What the router of `spec`'s watcher reports to besides the webview. §29 #824 The
+/// marks go to the link index applier (`ExternalChanges`) — a std mutex, never the
+/// registry this is called under, nor an index lock.
+pub(crate) fn sinks_for<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    spec: &WatchSpec,
+) -> crate::fs::WatchSinks {
     let ended_app = app.clone();
     let key = spec.key.clone();
     let generation = spec.generation;
-    crate::fs::start_watching(
-        spec,
-        app.clone(),
-        Box::new(move || {
+    let marks = app.clone();
+    let host = spec.key.clone();
+    let rescans = app.clone();
+    let rescanned = spec.key.clone();
+    crate::fs::WatchSinks {
+        on_end: Box::new(move || {
+            if let Some(changes) = ended_app.try_state::<ExternalChanges>() {
+                changes.note_ended(&key);
+            }
             let _ = with_registry(&ended_app, |registry, spawn| {
                 registry.watch_ended(&key, generation, spawn)
             });
         }),
-    )
+        on_paths: Box::new(move |routed| {
+            if let Some(changes) = marks.try_state::<ExternalChanges>() {
+                changes.mark(&host, routed);
+            }
+        }),
+        on_rescan: Box::new(move || {
+            if let Some(changes) = rescans.try_state::<ExternalChanges>() {
+                changes.mark_rescan(&rescanned);
+            }
+        }),
+    }
 }
 
 #[cfg(test)]

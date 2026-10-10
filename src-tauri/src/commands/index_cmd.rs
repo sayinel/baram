@@ -12,8 +12,8 @@ use crate::context::ContextManager;
 use crate::index::service::{
     degrade, get_backlinks_inner, get_link_index_inner, reconcile_effects, refresh_index_inner,
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner, report,
-    require_registered_root, sync_watched_paths_inner, Effect, LinkIndexState,
-    NamespaceRenameResult, Reconciled, RenameResult, WatchedSync,
+    require_registered_root, Effect, LinkIndexState, NamespaceRenameResult, Reconciled,
+    RenameResult,
 };
 use crate::index::{
     find_unlinked_mentions, BacklinkResult, IndexStats, LinkGraph, UnlinkedMentionResult,
@@ -45,21 +45,6 @@ pub async fn refresh_index(
     ctx_mgr: State<'_, ContextManager>,
 ) -> Result<IndexStats, String> {
     refresh_index_inner(&state, &ctx_mgr, &root_path).await
-}
-
-/// §29 Bring paths the file watcher reported into the link indexes that
-/// contain them (issue 790): how many reached an index, and which failed.
-#[tauri::command]
-pub async fn sync_watched_paths(
-    app: tauri::AppHandle,
-    paths: Vec<String>,
-    state: State<'_, LinkIndexState>,
-    ctx_mgr: State<'_, ContextManager>,
-) -> Result<WatchedSync, String> {
-    let mut synced = sync_watched_paths_inner(&state, &ctx_mgr, &paths).await;
-    // §29 #824 one `index:changed` for the batch; the frontend invalidates from it.
-    report(&app, std::mem::take(&mut synced.reconciled)).await;
-    Ok(synced)
 }
 
 /// §34 Find unlinked mentions — text occurrences of a file's name in other files

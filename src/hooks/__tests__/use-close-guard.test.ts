@@ -113,7 +113,7 @@ describe("saveDirtyTab", () => {
     expect(writeFile).toHaveBeenCalledWith("/vault/bg.md", "# hello");
     expect(ok).toBe(true);
     // §34 #791 #824 the file is named on the bump by Rust's `index:changed` for this
-    // write (`use-link-index-watcher.test.ts`), not here.
+    // write (`services/__tests__/index-changes.test.ts`), not here.
     expect(
       useEditorStore.getState().tabs.find((t) => t.id === "bg")?.isDirty,
     ).toBe(false);

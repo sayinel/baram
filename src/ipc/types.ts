@@ -522,13 +522,3 @@ export interface IndexChanged {
   entries: { canonical: string; spellings: string[] }[];
   rebuilt: string[];
 }
-
-/** §29 `sync_watched_paths` — see ipc-registry.json. */
-export interface WatchedSync {
-  /** Files that reached at least one link index — each spelling of one counted once. */
-  applied: number;
-  /** How many files the paths named, each spelling of one counted once (#797). */
-  distinct: number;
-  /** Paths that could not be applied — retry them. */
-  failed: string[];
-}

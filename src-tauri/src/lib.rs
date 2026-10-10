@@ -247,6 +247,9 @@ pub fn run() {
                     "release"
                 }
             );
+            // §29 #824 The watcher applier, before any `watch_dir` can start a router:
+            // whatever a router marks before its first loop is taken on it.
+            tauri::async_runtime::spawn(index::service::run_applier(app.handle().clone()));
 
             // §56d 썸네일 캐시는 vault 밖(앱 캐시 디렉터리)에 있으므로 asset:// 스코프에
             // 따로 넣어 줘야 한다 — 정적 스코프는 $APPDATA뿐이고, vault는 set_vault_root가
@@ -296,6 +299,7 @@ pub fn run() {
         .manage(WatcherState(std::sync::Mutex::new(Default::default())))
         .manage(context::ContextManager::new())
         .manage(index::service::LinkIndexState::new())
+        .manage(index::service::ExternalChanges::new())
         .manage(llm::cancel::CancelRegistry::new())
         .manage(embedding_cmd::EmbeddingState::new())
         .manage(plugin::PluginAuthorizer::new())
@@ -340,7 +344,6 @@ pub fn run() {
             index_cmd::get_backlinks,
             index_cmd::get_link_index,
             index_cmd::refresh_index,
-            index_cmd::sync_watched_paths,
             index_cmd::rename_file_with_links,
             index_cmd::get_unlinked_mentions,
             index_cmd::rename_block_id,

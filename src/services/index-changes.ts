@@ -4,8 +4,9 @@
 //
 // Installed by `main.tsx` before the app renders, so no writer can run while it is not
 // yet listening — Rust emits before the writing command resolves, and an event with no
-// listener is gone. It is its own subscription: a failure to subscribe to the watcher's
-// `file:*` events (`useLinkIndexWatcher`) does not take it down.
+// listener is gone. It is the only subscription the link index needs: Rust's watcher
+// applier announces other programs' writes the same way, so no `file:*` listener feeds
+// the index.
 //
 // A subscription that fails is not the answer for the window's lifetime: it is retried
 // in the background with a doubling wait, and the one that finally succeeds bumps once,

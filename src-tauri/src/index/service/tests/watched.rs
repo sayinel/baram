@@ -1,6 +1,33 @@
+// §29 The guarded unit's judgement of paths a watcher reported (issue 790) — each case
+// ends where a fresh build would. The applier's own keying, coverage and batching are
+// `index/service/applier_tests.rs`'s.
 use super::*;
 
-use crate::index::service::watched::sync_watched_paths_inner;
+use super::super::reconcile::{reconcile_path_in, Batch};
+
+/// What one batch of `units` did: files that reached an index, paths that failed.
+struct Units {
+    applied: u32,
+    failed: Vec<String>,
+}
+
+/// `paths` through the guarded unit in one `Batch`, as the applier runs a batch.
+async fn units(state: &LinkIndexState, ctx: &ContextManager, paths: &[String]) -> Units {
+    let mut batch = Batch::default();
+    let mut done = Vec::new();
+    for path in paths {
+        done.push(reconcile_path_in(state, ctx, path, &mut batch).await);
+    }
+    batch.finish(state, ctx, &mut done).await;
+    Units {
+        applied: done.iter().filter(|d| d.reached).count() as u32,
+        failed: done
+            .iter()
+            .filter(|d| d.failed)
+            .filter_map(|d| d.spellings.first().cloned())
+            .collect(),
+    }
+}
 
 /// The graph as a comparable value: sorted nodes and sorted (from, to) edges.
 pub(super) fn shape(graph: &LinkGraph) -> (Vec<String>, Vec<(String, String)>) {
@@ -28,7 +55,7 @@ pub(super) async fn fresh_shape(root: &str) -> (Vec<String>, Vec<(String, String
 }
 
 async fn sync(state: &LinkIndexState, ctx: &ContextManager, paths: &[String]) {
-    let result = sync_watched_paths_inner(state, ctx, paths).await;
+    let result = units(state, ctx, paths).await;
     assert!(result.failed.is_empty(), "{:?}", result.failed);
 }
 
@@ -174,7 +201,7 @@ async fn a_structural_rebuild_never_coalesces_onto_a_build_that_read_the_old_lay
     let paths = vec![format!("{root}/moved")];
     let task = {
         let (state, ctx) = (Arc::clone(&state), Arc::clone(&ctx));
-        tokio::spawn(async move { sync_watched_paths_inner(&state, &ctx, &paths).await })
+        tokio::spawn(async move { units(&state, &ctx, &paths).await })
     };
     // Let it reach the lock. Under heavy load it may not have yet — then the
     // stale publication below precedes its request and the test proves
@@ -239,35 +266,9 @@ async fn a_root_with_an_unusable_baramignore_takes_nothing_and_reports_the_path(
     std::fs::write(d.join("b.md"), "back to [[a]]").unwrap();
     let path = format!("{root}/b.md");
 
-    let result = sync_watched_paths_inner(&state, &ctx, std::slice::from_ref(&path)).await;
+    let result = units(&state, &ctx, std::slice::from_ref(&path)).await;
     assert_eq!(result.failed, vec![path.clone()]);
     assert_eq!(result.applied, 0);
     let graph = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
     assert!(!graph.1.contains(&(path, format!("{root}/a.md"))));
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn one_note_reported_in_two_spellings_is_indexed_once() {
-    // #797: the watcher reports an event once per spelling its leases registered, so a
-    // vault opened through a link sends each change twice.
-    // 이것을 실패시키는 것: `seen` 으로 canonical 중복을 거르지 않는다 — 노트가 spelling 마다 다시 읽힌다.
-    let ctx = ContextManager::new();
-    let (dir, root) = vault_with_a_link(&ctx, "ctx-s", true).await;
-    let links = tempfile::tempdir().unwrap();
-    let alias = links.path().join("vault");
-    std::os::unix::fs::symlink(dir.path(), &alias).unwrap();
-    let state = LinkIndexState::new();
-    refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    std::fs::write(dir.path().join("b.md"), "back to [[a]]").unwrap();
-    let paths = [
-        format!("{root}/b.md"),
-        alias.join("b.md").to_string_lossy().into_owned(),
-    ];
-    let result = sync_watched_paths_inner(&state, &ctx, &paths).await;
-    assert!(result.failed.is_empty(), "{:?}", result.failed);
-    assert_eq!((result.applied, result.distinct), (1, 1));
-    // The change still landed.
-    let graph = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
-    assert!(graph.1.iter().any(|(from, _)| from.ends_with("b.md")));
 }

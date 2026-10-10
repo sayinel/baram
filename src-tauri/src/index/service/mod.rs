@@ -95,18 +95,23 @@
 // it was approved as: a symlink retargeted meanwhile cannot publish an
 // unrelated tree under a vault's key.
 
+mod applier;
 mod build;
 mod commit;
 mod keys;
 mod query;
 mod reconcile;
 mod rename;
+mod scheduler;
 mod state;
-mod watched;
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) use applier::run as run_applier;
+pub use applier::ExternalChanges;
+#[cfg(test)]
+pub(crate) use applier::{apply_batch as apply_watched_batch, SETTLE as APPLIER_SETTLE};
 pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 
@@ -123,4 +128,3 @@ pub(crate) use reconcile::Reconciled;
 pub(crate) use rename::{
     rename_block_id_inner, rename_file_with_links_inner, rename_namespace_inner,
 };
-pub(crate) use watched::{sync_watched_paths_inner, WatchedSync};

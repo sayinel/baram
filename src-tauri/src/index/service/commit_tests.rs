@@ -651,39 +651,6 @@ async fn a_failure_between_a_rebuild_s_publish_and_its_end_is_rebuilt_too() {
 }
 
 #[tokio::test]
-async fn a_failure_while_a_worker_gives_up_keeps_a_worker() {
-    // Every attempt fails (an unusable `.baramignore`); a new failure lands just as the
-    // worker would give up, and the file is fixed. The worker goes round again.
-    // 이것을 실패시키는 것: 시도를 다 쓴 worker 가 generation 을 보지 않고 끝낸다(`finish_rebuild(.., None)`).
-    let app = app();
-    let (dir, root) = vault(&app).await;
-    let state = app.state::<LinkIndexState>();
-    let at = app
-        .state::<ContextManager>()
-        .registration("v")
-        .await
-        .unwrap()
-        .1;
-    let ignore = dir.path().join(crate::fs::BARAMIGNORE);
-    std::fs::write(&ignore, "{unclosed\n").unwrap();
-    let seen = changes(&app);
-    let (reached, release) = pause_worker(&app, &root);
-    degrade(app.handle(), &root, at).await;
-    tokio::time::timeout(std::time::Duration::from_secs(10), reached.notified())
-        .await
-        .unwrap();
-    // Not vacuous: the worker paused after spending its attempts, not after a publish.
-    assert_eq!(state.rebuild_attempts.load(Ordering::SeqCst), 3);
-    assert!(!state.with_index_for(&root, at, |i| i.is_some()).await);
-    degrade(app.handle(), &root, at).await;
-    std::fs::write(&ignore, "drafts/\n").unwrap();
-    release.notify_one();
-    settle(&app, &root, at, &seen, 5).await;
-    assert!(state.with_index_for(&root, at, |i| i.is_some()).await);
-    assert_eq!(seen.lock().unwrap().len(), 1);
-}
-
-#[tokio::test]
 async fn a_healthy_nested_index_that_took_a_save_is_announced_beside_a_dropped_outer_one() {
     // The outer root's `.baramignore` is unusable, the nested root's rules are fine: the
     // save reached the nested index, so the windows hear about it now.

@@ -19,6 +19,7 @@ mod nested_roots;
 mod normalization;
 mod same_stem;
 mod stem_spelling;
+mod observed;
 mod reconcile;
 mod watched;
 
