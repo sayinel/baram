@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: 명령·에디터·파일·이벤트"
-sourceHash: "49e88dc99db6"
+sourceHash: "f85a04aacc73"
 ---
 
 
@@ -171,11 +171,18 @@ on(event: string, handler: (...args: unknown[]) => void): Disposable;
 emit(event: string, ...args: unknown[]): void;
 ```
 
-호스트가 지금 내보내는 이벤트는 `"editor:ready"`, `"file:open"`, `"file:save"`뿐입니다
-(`PluginEventName` 유니언 타입). **키 입력마다 오는 이벤트나 실시간 문서 변경 이벤트는 아직
-없습니다** — 편집에 반응해야 한다면 폴링하거나 `"editor:change"` 같은 이벤트를 기대하지 말고
-(그런 것은 없습니다) `editor:ready`/`file:open`/`file:save`에서 다시 계산하십시오. 그 패턴은
-word-count 예제를 보십시오.
+호스트가 내보내는 이벤트는 `"editor:ready"`, `"file:open"`, `"file:save"`입니다
+(`PluginEventName` 유니언 타입). `"file:save"`는 명시적 저장(저장, 다른 이름으로 저장)에서만
+발생하고 자동저장에서는 발생하지 않습니다. **키 입력마다 오는 이벤트는 없습니다** — 편집에
+반응하려면 폴링하지 말고 이 이벤트들이나 `"vault:changed"`에서 다시 계산하십시오.
+
+`"vault:changed"`는 핸들러에 `{ context }`를 넘깁니다 — 노트가 디스크에서 바뀐 등록된
+컨텍스트입니다. 자동저장을 포함한 저장, 생성, 이름 변경, 삭제가 모두 해당하고, Baram이 했든 다른
+프로그램이 했든 같습니다. 링크 인덱스가 그 변경을 반영한 뒤에 발생하고, 파일이 계속 바뀌는 동안에도
+몇 초에 한 번을 넘지 않으며, Baram이 감시하는 볼트(활성 볼트와 이번 세션에 연 볼트)에서만 옵니다.
+숨김 폴더와 도구 폴더(`.obsidian/`, `node_modules/`) 안의 변경으로는 오지 않습니다.
+`events`가 아니라 `files` 또는 `files:readonly`가 필요합니다. 플러그인 자신의 `files.writeFile`도
+이 이벤트를 일으키므로, 핸들러에서 노트를 쓸 때는 내용이 다를 때만 쓰십시오.
 
 `"file:open"`은 열린 파일의 내용이 실제로 에디터에 적재된 뒤에 발생합니다 — 탭이 열리는 순간이
 아닙니다 — 그래서 마크다운 파일이라면 핸들러 안에서 `ctx.editor.getMarkdown()`이 맞는 문서를

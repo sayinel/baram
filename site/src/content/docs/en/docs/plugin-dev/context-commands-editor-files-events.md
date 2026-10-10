@@ -179,12 +179,19 @@ on(event: string, handler: (...args: unknown[]) => void): Disposable;
 emit(event: string, ...args: unknown[]): void;
 ```
 
-The only events the host currently emits are `"editor:ready"`, `"file:open"`,
-and `"file:save"` (the `PluginEventName` union type). **There is no
-per-keystroke or live document-change event yet** — if you need to react to
-edits, recompute on `editor:ready`/`file:open`/`file:save` instead of polling
-or expecting a `"editor:change"`-style event (it does not exist). See the
-word-count example for the pattern.
+The host emits `"editor:ready"`, `"file:open"` and `"file:save"` (the
+`PluginEventName` union type). `"file:save"` fires on an explicit save only —
+Save and Save As — never on auto-save. **There is no per-keystroke event**: to
+react to edits, recompute on these or on `"vault:changed"` instead of polling.
+
+`"vault:changed"` hands your handler `{ context }` — a registered context whose
+notes changed on disk: saved (auto-save too), created, renamed or deleted, by
+Baram or another program. It fires once the link index has caught up, at most
+every couple of seconds while files keep changing, and only for vaults Baram
+watches (the active one and any opened this session), never for hidden or tool
+folders (`.obsidian/`, `node_modules/`). It needs `files` or `files:readonly`,
+not `events`. Your own `files.writeFile` triggers it too, so write a note from
+its handler only when the content differs.
 
 `"file:open"` fires once the opened file's content is actually loaded into the
 editor — not at the moment the tab opens — so for markdown files
