@@ -846,7 +846,12 @@ fn read_note_ends_a_page_at_the_character_cap() {
     assert_eq!(s.end().code, 0);
 }
 
-/// What fails this: the two tools wired to each other's function.
+/// Each tool answers for the note it is asked about: `backlinks` for `a.md` and for `nowhere.md`
+/// (no such file, and one note links to it), `outgoing_links` for `c.md` and for `b.md`.
+///
+/// What fails this: the two tools wired to each other's function; `path` read as another
+/// string, or fixed to the note the first calls ask about (`a.md` for `backlinks`, `c.md`
+/// for `outgoing_links`) — each of the later calls answers differently for those.
 #[test]
 fn backlinks_and_outgoing_links_answer_for_a_note() {
     let sb = sandbox();
@@ -874,5 +879,37 @@ fn backlinks_and_outgoing_links_answer_for_a_note() {
     assert_eq!(page["items"][0]["path"], json!("a.md"));
     let result = s.call(3, "outgoing_links", json!({ "path": "c.md", "limit": 1 }));
     assert_eq!(structured(&result)["nextOffset"], json!(1));
+    let result = s.call(4, "backlinks", json!({ "path": "nowhere.md" }));
+    assert_eq!(paths(structured(&result)), ["c.md"]);
+    let result = s.call(5, "outgoing_links", json!({ "path": "b.md" }));
+    let page = structured(&result);
+    assert_eq!(page["items"].as_array().expect("items").len(), 1, "{page}");
+    assert_eq!(page["items"][0]["target"], json!("a"));
+    assert_eq!(page["items"][0]["resolution"], json!("resolved"));
+    assert_eq!(s.end().code, 0);
+}
+
+/// `backlinks` counts a link written behind the note's own vault alias, by the config.json
+/// of the call: it is read again for each call (spec 0068 D13) and handed to the CLI's
+/// function (D14). `alias.md` holds `[[fx::plan]]`. While nothing registers a vault `fx`,
+/// the link names no vault the note is in and the answer is empty — the control. Once the
+/// app registers the sandbox vault as `fx` and approves it, in the middle of the session,
+/// the same question lists `alias.md`.
+///
+/// What fails this: `backlinks` given `AppConfig::default()` instead of the call's config,
+/// or config.json read once, when the server starts — either leaves the second answer empty.
+#[test]
+fn backlinks_count_links_behind_the_alias_config_json_gives_at_the_time_of_the_call() {
+    let sb = sandbox();
+    write(&sb.vault, "notes/plan.md", "# Plan\n");
+    write(&sb.vault, "alias.md", "[[fx::plan]]\n");
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let result = s.call(1, "backlinks", json!({ "path": "notes/plan.md" }));
+    assert!(paths(structured(&result)).is_empty(), "{result}");
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    write_approvals(&sb, &[&sb.vault]);
+    let result = s.call(2, "backlinks", json!({ "path": "notes/plan.md" }));
+    assert_eq!(paths(structured(&result)), ["alias.md"]);
     assert_eq!(s.end().code, 0);
 }

@@ -50,10 +50,14 @@ impl Drop for Running<'_> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::scope::Allowed;
+    use super::super::server::Server;
+    use super::super::tools::{self, ToolName};
     use super::*;
     use crate::cli::app_config::AppConfig;
     use crate::cli::ops_links;
     use crate::cli::vault::Vault;
+    use serde_json::json;
 
     /// The count itself: two runs alive at once are a peak of 2, and a dropped run is no
     /// longer counted. The sibling of the test below — it shows the count can see what that
@@ -97,5 +101,32 @@ mod tests {
         );
         assert!(backlinks.is_ok() && links.is_ok());
         assert_eq!(gate.peak(), 1);
+    }
+
+    /// The tools that build the index run it inside the gate. Each is called once, on a
+    /// server of its own: a call that runs inside `run` makes a peak of 1, one that runs
+    /// beside it makes 0. `two_index_builds_asked_for_at_once_run_one_at_a_time` holds `run`
+    /// to its lock; this holds the two tool arms to `run`.
+    ///
+    /// What fails this: a tool arm that runs its work outside `server.gate.run`.
+    #[tokio::test]
+    async fn each_tool_that_builds_the_index_runs_inside_the_gate() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::write(root.join("a.md"), "[[a]]\n").unwrap();
+        for tool in [ToolName::Backlinks, ToolName::OutgoingLinks] {
+            let server = Server::new(
+                Allowed::Fixed(vec![root.clone()]),
+                None,
+                Vec::new(),
+                Box::new(AppConfig::default),
+            );
+            let arguments = json!({ "path": "a.md" }).as_object().cloned();
+            assert!(
+                tools::call(&server, tool, arguments).await.is_ok(),
+                "{tool:?} answers"
+            );
+            assert_eq!(server.gate.peak(), 1, "{tool:?}");
+        }
     }
 }

@@ -86,6 +86,23 @@ pub fn registered(sb: &Sandbox) -> serde_json::Value {
     })
 }
 
+/// Writes `approved-roots.json` beside each config.json `write_config` writes, approving
+/// each of `dirs` as a folder — what the app records when you allow it in.
+pub fn write_approvals(sb: &Sandbox, dirs: &[&Path]) {
+    let entries: Vec<_> = dirs
+        .iter()
+        .map(|dir| serde_json::json!({ "path": dir, "kind": "dir", "approvedAt": 1 }))
+        .collect();
+    let text = serde_json::json!({ "version": 1, "entries": entries }).to_string();
+    for dir in [
+        sb.home.join("Library/Application Support/com.inel.baram"),
+        sb.xdg.join("com.inel.baram"),
+    ] {
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("approved-roots.json"), &text).expect("write approvals");
+    }
+}
+
 /// `program` with what every run here gets: the sandbox's HOME and data directory, no
 /// `BARAM_LOG`, no stdin, both outputs captured.
 pub fn isolated(sb: &Sandbox, program: &str) -> Command {

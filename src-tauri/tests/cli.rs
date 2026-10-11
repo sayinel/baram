@@ -1484,23 +1484,6 @@ fn contexts(list: &[serde_json::Value]) -> serde_json::Value {
     serde_json::json!({ "state": { "contexts": list, "activeContextId": null }, "version": 1 })
 }
 
-/// Writes `approved-roots.json` beside each config.json `write_config` writes, approving
-/// each of `dirs` as a folder — what the app records when you allow it in.
-fn write_approvals(sb: &Sandbox, dirs: &[&Path]) {
-    let entries: Vec<_> = dirs
-        .iter()
-        .map(|dir| serde_json::json!({ "path": dir, "kind": "dir", "approvedAt": 1 }))
-        .collect();
-    let text = serde_json::json!({ "version": 1, "entries": entries }).to_string();
-    for dir in [
-        sb.home.join("Library/Application Support/com.inel.baram"),
-        sb.xdg.join("com.inel.baram"),
-    ] {
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        std::fs::write(dir.join("approved-roots.json"), &text).expect("write approvals");
-    }
-}
-
 #[test]
 fn backlinks_count_links_behind_the_notes_own_vault_names() {
     let sb = sandbox();
