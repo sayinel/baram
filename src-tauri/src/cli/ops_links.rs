@@ -71,20 +71,30 @@ impl Row for BacklinkRow {
 /// `journal` names a context that holds the note) does not count. Two links on one line of
 /// one note are reported once. The note need not exist — links to a note not written yet
 /// are a fair question — but a directory is refused: a folder would be asked about as a
-/// note named like it.
+/// note named like it. So is a path the system refuses as written (a NUL inside it, a name
+/// too long): INVALID_ARGUMENT, not an empty answer (`paths::refused_as_written`).
 pub(crate) async fn backlinks(
     vault: &Vault,
     path: &str,
     config: &AppConfig,
 ) -> Result<Envelope<BacklinkRow>, CliError> {
     let target = paths::locate(vault, path)?;
-    // Only a directory is refused. Any other metadata error passes, as a missing file
+    // A directory is refused, and so is a path the system refuses as written
+    // (`paths::refused_as_written`). Any other metadata error passes, as a missing file
     // does: nothing here reads the file.
-    if std::fs::metadata(&target).is_ok_and(|meta| meta.is_dir()) {
-        return Err(CliError::new(
-            ErrorCode::FileNotFound,
-            format!("no file at {path}"),
-        ));
+    match std::fs::metadata(&target) {
+        Ok(meta) if meta.is_dir() => {
+            return Err(CliError::new(
+                ErrorCode::FileNotFound,
+                format!("no file at {path}"),
+            ));
+        }
+        Err(source) => {
+            if let Some(error) = paths::refused_as_written(path, "file", &source) {
+                return Err(error);
+            }
+        }
+        Ok(_) => {}
     }
     let index = build_index(vault).await?;
     let own = aliases::of_note(config, &target);

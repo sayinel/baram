@@ -112,12 +112,38 @@ pub(crate) fn file_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
     }
 }
 
+/// INVALID_ARGUMENT for a path the system refuses as written, or `None`: a NUL inside it
+/// (`InvalidInput` — std checks for it before it asks the system, and reads the system's
+/// `EINVAL` the same way), or a name longer than the file system takes (`InvalidFilename` —
+/// std's reading of `ENAMETOOLONG`). The argument is what has to change. What Windows
+/// reports for a character it does not allow has not been checked.
+pub(crate) fn refused_as_written(
+    input: &str,
+    noun: &str,
+    source: &std::io::Error,
+) -> Option<CliError> {
+    matches!(
+        source.kind(),
+        std::io::ErrorKind::InvalidInput | std::io::ErrorKind::InvalidFilename
+    )
+    .then(|| {
+        CliError::new(
+            ErrorCode::InvalidArgument,
+            format!("{input} is not a valid {noun} path: {source}"),
+        )
+    })
+}
+
 /// What a failed `metadata` on a path argument means — the one split `folder_arg` and
-/// `file_arg` share. FILE_NOT_FOUND `no <noun> at <input>` is for what is not there:
+/// `file_arg` share: INVALID_ARGUMENT for a path the system refuses as written
+/// (`refused_as_written`); FILE_NOT_FOUND `no <noun> at <input>` for what is not there —
 /// nothing at the path (`NotFound`), or a file where one of its directories should be
-/// (`NotADirectory`). Any other failure is IO `cannot read <input>: <OS error>` — a
+/// (`NotADirectory`); IO `cannot read <input>: <OS error>` for any other failure — a
 /// directory on the way that cannot be entered is one.
 fn metadata_failure(input: &str, noun: &str, source: std::io::Error) -> CliError {
+    if let Some(error) = refused_as_written(input, noun, &source) {
+        return error;
+    }
     match source.kind() {
         std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory => {
             CliError::new(ErrorCode::FileNotFound, format!("no {noun} at {input}"))
@@ -340,7 +366,10 @@ mod tests {
         );
     }
 
-    /// The split both path arguments make, one error kind at a time. On disk, the IO arm
+    /// The split between what is not there and what could not be read, which both path
+    /// arguments make, one error kind at a time. The kinds that are neither — a path the
+    /// system refuses as written — are pinned by
+    /// `a_path_the_system_cannot_take_is_an_invalid_argument`. On disk, the IO arm
     /// is pinned end to end on Unix (tests/cli.rs is `#![cfg(unix)]`) by its
     /// `…_in_a_directory_that_cannot_be_entered_…` tests — for `read`, for `files` and
     /// `search --folder`, and for `tasks --file`.
@@ -362,6 +391,47 @@ mod tests {
             denied.message.starts_with("cannot read a/b: "),
             "{}",
             denied.message
+        );
+    }
+
+    /// A path the system refuses as written — a NUL inside it, or a name longer than the file
+    /// system takes — is the caller's to fix: INVALID_ARGUMENT, not IO. A 255-byte name is
+    /// one the system takes, so it is only not there.
+    ///
+    /// What fails this: `metadata_failure` without `refused_as_written` (both end as IO);
+    /// either kind read as "not there" (FILE_NOT_FOUND).
+    #[test]
+    fn a_path_the_system_cannot_take_is_an_invalid_argument() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let vault = Vault {
+            name: "v".into(),
+            root: dir.path().canonicalize().unwrap(),
+        };
+        let long = format!("{}.md", "x".repeat(300));
+        for input in ["a\0b.md", long.as_str()] {
+            for (what, result) in [
+                ("file", file_arg(&vault, input)),
+                ("folder", folder_arg(&vault, input)),
+                ("note", note_arg(&vault, input)),
+            ] {
+                let error = result.unwrap_err();
+                assert_eq!(
+                    error.code,
+                    ErrorCode::InvalidArgument,
+                    "{what} {input:?}: {}",
+                    error.message
+                );
+                assert!(
+                    error.message.contains("is not a valid"),
+                    "{what}: {}",
+                    error.message
+                );
+            }
+        }
+        let longest = format!("{}.md", "x".repeat(252));
+        assert_eq!(
+            file_arg(&vault, &longest).unwrap_err().code,
+            ErrorCode::FileNotFound
         );
     }
 

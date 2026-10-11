@@ -913,3 +913,29 @@ fn backlinks_count_links_behind_the_alias_config_json_gives_at_the_time_of_the_c
     assert_eq!(paths(structured(&result)), ["alias.md"]);
     assert_eq!(s.end().code, 0);
 }
+
+/// A path no file system can take ends as INVALID_ARGUMENT — the model's argument to fix —
+/// whether the tool reads the note (`read_note`) or only asks about it (`backlinks`, which
+/// takes a note not written yet).
+///
+/// What fails this: `backlinks` checking only for a directory — it builds the index and
+/// answers with no links.
+#[test]
+fn a_path_no_file_system_takes_is_an_invalid_argument() {
+    let sb = sandbox();
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let long = format!("{}.md", "x".repeat(300));
+    let mut id = 0;
+    for path in ["a\u{0}b.md".to_string(), long] {
+        for tool in ["read_note", "backlinks"] {
+            id += 1;
+            let result = s.call(id, tool, json!({ "path": path }));
+            assert!(
+                tool_error(&result).starts_with("error[INVALID_ARGUMENT]: "),
+                "{tool} {path:?}"
+            );
+        }
+    }
+    assert_eq!(s.end().code, 0);
+}
