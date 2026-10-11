@@ -10,8 +10,8 @@ use super::ops::{index_failure, sort_by_path_and_line, vault_info, walk_failure,
 use super::output::{Envelope, Row};
 use super::paths;
 use super::vault::Vault;
-use crate::index::{BacklinkResult, LinkEntry, LinkIndex, LinkKind, LinkResolution};
-use crate::task::{TaskEntry, TaskError, TaskState};
+use crate::index::{BacklinkResult, LinkEntry, LinkIndex, LinkResolution};
+use crate::task::{TaskEntry, TaskError};
 use serde::Serialize;
 use std::path::Path;
 
@@ -50,7 +50,7 @@ pub(crate) async fn tags(vault: &Vault) -> Result<Envelope<TagRow>, CliError> {
 /// `baram tag <name>` — the files that carry the tag. A leading `#` is dropped: tags are
 /// stored without it, so `#work` as typed would match nothing.
 pub(crate) async fn tag(vault: &Vault, name: &str) -> Result<Envelope<PathRow>, CliError> {
-    let name = name.trim_start_matches('#');
+    let name = crate::tag::bare_tag(name);
     if name.is_empty() {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
@@ -116,25 +116,6 @@ impl Row for TaskRow {
     }
 }
 
-/// No `_` arm: a fifth task state must be named here before the crate compiles.
-fn state_name(state: TaskState) -> &'static str {
-    match state {
-        TaskState::Todo => "todo",
-        TaskState::Doing => "doing",
-        TaskState::Done => "done",
-        TaskState::Cancelled => "cancelled",
-    }
-}
-
-fn wanted(status: TaskStatus, state: TaskState) -> bool {
-    match status {
-        TaskStatus::All => true,
-        TaskStatus::Open => matches!(state, TaskState::Todo | TaskState::Doing),
-        TaskStatus::Done => state == TaskState::Done,
-        TaskStatus::Cancelled => state == TaskState::Cancelled,
-    }
-}
-
 /// `baram tasks` — the tasks of the resolved vault, minus the folders the app excludes.
 /// The app's own panel may show more or less: its scope setting decides which roots it
 /// scans (spec 0066 §3.5).
@@ -174,11 +155,11 @@ pub(crate) async fn tasks(
 fn task_rows(vault: &Vault, entries: Vec<TaskEntry>, status: TaskStatus) -> Vec<TaskRow> {
     let mut items: Vec<TaskRow> = entries
         .into_iter()
-        .filter(|entry| wanted(status, entry.state))
+        .filter(|entry| status.admits(entry.state))
         .map(|entry| TaskRow {
             path: paths::relative(vault, Path::new(&entry.path)),
             line: entry.line + 1,
-            state: state_name(entry.state),
+            state: entry.state.wire_name(),
             text: entry.text,
             priority: entry.priority,
             created: entry.created,
@@ -199,16 +180,6 @@ fn task_rows(vault: &Vault, entries: Vec<TaskEntry>, status: TaskStatus) -> Vec<
 /// The OS's reason, in English; `TaskError`'s own Display is not used.
 fn unreadable(file: &str, source: &std::io::Error) -> CliError {
     CliError::new(ErrorCode::Io, format!("cannot read {file}: {source}"))
-}
-
-/// No `_` arm: a fourth link grammar must be named here before the crate compiles —
-/// the same way `LinkKind::pass` holds the rename passes to the list.
-fn kind_name(kind: LinkKind) -> &'static str {
-    match kind {
-        LinkKind::Wikilink => "wikilink",
-        LinkKind::BlockRef => "blockRef",
-        LinkKind::BlockEmbed => "blockEmbed",
-    }
 }
 
 /// The link index, built for this one call. ONE spelling of the root goes in — the
@@ -290,7 +261,7 @@ fn backlink_rows(vault: &Vault, found: Vec<BacklinkResult>) -> Vec<BacklinkRow> 
         .map(|backlink| BacklinkRow {
             path: paths::relative(vault, Path::new(&backlink.source_path)),
             line: backlink.line,
-            kind: kind_name(backlink.link_type),
+            kind: backlink.link_type.wire_name(),
             context: backlink.context,
             block_id: backlink.block_id,
         })
@@ -375,7 +346,7 @@ fn link_rows(vault: &Vault, outgoing: Vec<(LinkEntry, LinkResolution)>) -> Vec<L
             };
             LinkRow {
                 line: entry.line,
-                kind: kind_name(entry.link_type),
+                kind: entry.link_type.wire_name(),
                 target: entry.target,
                 block_id: entry.block_id,
                 resolution,
@@ -391,6 +362,8 @@ fn link_rows(vault: &Vault, outgoing: Vec<(LinkEntry, LinkResolution)>) -> Vec<L
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::LinkKind;
+    use crate::task::TaskState;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -420,37 +393,6 @@ mod tests {
         assert_eq!(envelope.items.len(), 1);
         assert_eq!(envelope.items[0].line, expected);
         assert_eq!(envelope.items[0].path, "n.md");
-    }
-
-    #[test]
-    fn open_means_todo_and_doing() {
-        for (status, states) in [
-            (TaskStatus::Open, &[TaskState::Todo, TaskState::Doing][..]),
-            (TaskStatus::Done, &[TaskState::Done][..]),
-            (TaskStatus::Cancelled, &[TaskState::Cancelled][..]),
-            (
-                TaskStatus::All,
-                &[
-                    TaskState::Todo,
-                    TaskState::Doing,
-                    TaskState::Done,
-                    TaskState::Cancelled,
-                ][..],
-            ),
-        ] {
-            for state in [
-                TaskState::Todo,
-                TaskState::Doing,
-                TaskState::Done,
-                TaskState::Cancelled,
-            ] {
-                assert_eq!(
-                    wanted(status, state),
-                    states.contains(&state),
-                    "{status:?} {state:?}"
-                );
-            }
-        }
     }
 
     fn plain_vault() -> Vault {
@@ -753,18 +695,5 @@ mod tests {
                   "resolution": "unresolved", "path": null, "vault": null }
             ])
         );
-    }
-
-    /// The names are the ones the app serializes a link kind with — the strings the
-    /// frontend has always read — for every kind the index files, `blockEmbed` included.
-    #[test]
-    fn a_link_kind_is_named_the_way_the_app_serializes_it() {
-        for kind in LinkKind::ALL {
-            assert_eq!(
-                serde_json::to_value(kind).unwrap(),
-                serde_json::json!(kind_name(*kind)),
-                "{kind:?}"
-            );
-        }
     }
 }
