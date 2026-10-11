@@ -8,7 +8,7 @@ use super::paths;
 use super::vault::{RootKind, Vault};
 use crate::context::manager::resolve_canonical;
 use crate::fs::FsError;
-use crate::search::{SearchOptions, SearchResult};
+use crate::search::{QueryRefusal, SearchOptions, SearchResult};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -264,12 +264,6 @@ pub(crate) async fn search(
     vault: &Vault,
     query: SearchQuery<'_>,
 ) -> Result<Envelope<SearchRow>, CliError> {
-    if query.query.is_empty() {
-        return Err(CliError::new(
-            ErrorCode::InvalidArgument,
-            "the query is empty",
-        ));
-    }
     let options = SearchOptions {
         case_sensitive: query.case_sensitive,
         whole_word: query.word,
@@ -279,30 +273,15 @@ pub(crate) async fn search(
         include_glob: None,
         exclude_glob: None,
     };
-    // The two checks below run before the search because `search_files` returns a String:
-    // a pattern it cannot build and a root it cannot search could only be told apart by
-    // wording.
-    //
-    // First, a `--regex` query as typed. `--word` wraps it as text, `\b…\b`, and the wrap
-    // can turn an invalid expression into a valid one — `a\` becomes `\ba\\b`, a valid
-    // pattern that matches `a\b` after a word boundary — so only the query itself says
-    // whether it is one.
-    if query.regex {
-        if let Err(error) = regex::Regex::new(query.query) {
-            return Err(CliError::new(
-                ErrorCode::InvalidArgument,
-                format!("invalid regular expression: {error}"),
-            ));
-        }
-    }
-    // Then the pattern, built as the search builds it, from the same options — those
-    // change what is built: case-insensitively, `k{50000}` with `--regex` and fifty
-    // thousand `k`s without it both fail, and with `--case-sensitive` both build.
-    if let Err(error) = crate::search::build_pattern(query.query, &options) {
-        let message = if query.regex {
-            format!("invalid regular expression: {error}")
-        } else {
-            format!("the query cannot be searched: {error}")
+    // Before the search, which cannot tell its refusals apart (`check_query`). ‼️ No `_` arm:
+    // a fourth refusal must be worded here before the crate compiles.
+    if let Err(refusal) = crate::search::check_query(query.query, &options) {
+        let message = match refusal {
+            QueryRefusal::Empty => "the query is empty".to_string(),
+            QueryRefusal::InvalidRegex(error) => format!("invalid regular expression: {error}"),
+            QueryRefusal::Unsearchable(error) => {
+                format!("the query cannot be searched: {error}")
+            }
         };
         return Err(CliError::new(ErrorCode::InvalidArgument, message));
     }
