@@ -59,10 +59,12 @@ const LIST_FILES: &[Spec] = &[
     args::limit(200, 1000),
 ];
 
-/// The most characters one `read_note` page holds (spec 0068 §3.4). The result is carried
-/// twice — as structured content and again as text — so a page is a starting point under what
-/// a client keeps of one result. At about one token per character (an estimate), 10,000
-/// characters is the most an all-Hangul page can hold within 20,000 tokens for the two copies.
+/// A `read_note` page ends before the line that would take it past this many characters
+/// (spec 0068 §3.4); its first line is kept whole, so a page can pass it by that line. The
+/// result is carried twice — as structured content and again as text — so the cap is a
+/// starting point under what a client keeps of one result: at about one token per character
+/// (an estimate), an all-Hangul page of 10,000 characters is about 20,000 tokens for the two
+/// copies.
 const READ_NOTE_CHARS: usize = 10_000;
 
 const READ_NOTE: &[Spec] = &[

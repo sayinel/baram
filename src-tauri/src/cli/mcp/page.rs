@@ -115,8 +115,7 @@ mod tests {
     }
 
     /// What fails this: `lines()` or `split('\n')` instead of `split_inclusive` (endings lost —
-    /// the pages are not the bytes); `nextOffset` from `offset + limit` instead of the lines
-    /// taken.
+    /// the pages are not the bytes).
     #[test]
     fn a_note_is_paged_by_lines_and_the_pages_are_its_bytes() {
         let text = "a\r\nbb\n\nccc"; // a\r\n · bb\n · \n · ccc
@@ -149,7 +148,8 @@ mod tests {
     ///
     /// What fails this: the cap applied to a page's first line (an empty page for a long line,
     /// with no way past it); bytes counted for characters; the cap checked after the line is
-    /// added (a page past the cap).
+    /// added (a page past the cap); `nextOffset` from `offset + limit` instead of the lines
+    /// taken (`Some(10)` for `Some(1)`).
     #[test]
     fn a_page_stops_before_the_line_that_passes_the_cap_but_holds_a_long_first_line() {
         let text = "12345\n12\n1\n"; // 6 · 3 · 2 characters
