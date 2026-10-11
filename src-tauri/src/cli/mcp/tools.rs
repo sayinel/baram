@@ -8,6 +8,7 @@ use super::server::Server;
 use crate::cli::args::TaskStatus;
 use crate::cli::error::CliError;
 use crate::cli::ops::{self, PathRow, VaultRow};
+use crate::cli::ops_links::{self, BacklinkRow, LinkRow};
 use crate::cli::ops_notes::{self, TagRow, TaskRow};
 use crate::cli::ops_search::{self, SearchQuery, SearchRow};
 use crate::cli::output::VaultInfo;
@@ -30,6 +31,8 @@ pub(super) enum ToolName {
     ListTags,
     NotesWithTag,
     ListTasks,
+    Backlinks,
+    OutgoingLinks,
 }
 
 /// What `tools/list` says about a tool.
@@ -160,6 +163,30 @@ const LIST_TASKS: &[Spec] = &[
     args::limit(100, 500),
 ];
 
+const BACKLINKS: &[Spec] = &[
+    VAULT,
+    Spec {
+        name: "path",
+        kind: Kind::Text,
+        required: true,
+        doc: "The note, relative to the vault root. It need not exist yet.",
+    },
+    OFFSET,
+    args::limit(100, 500),
+];
+
+const OUTGOING_LINKS: &[Spec] = &[
+    VAULT,
+    Spec {
+        name: "path",
+        kind: Kind::Text,
+        required: true,
+        doc: "The note, relative to the vault root.",
+    },
+    OFFSET,
+    args::limit(100, 500),
+];
+
 impl ToolName {
     /// Every tool, in the order `tools/list` gives them. Listed by hand: the compiler holds
     /// the `match`es to every variant, not this list — `tests/mcp.rs` pins the names
@@ -172,6 +199,8 @@ impl ToolName {
         ToolName::ListTags,
         ToolName::NotesWithTag,
         ToolName::ListTasks,
+        ToolName::Backlinks,
+        ToolName::OutgoingLinks,
     ];
 
     pub(super) fn from_name(name: &str) -> Option<ToolName> {
@@ -245,6 +274,27 @@ impl ToolName {
                               left out.",
                 arguments: LIST_TASKS,
             },
+            ToolName::Backlinks => About {
+                name: "backlinks",
+                title: "Backlinks",
+                description: "The links that point at a note, as the app's backlinks panel \
+                              counts them in this vault (with registered vaults nested in \
+                              one another the panel can list more): each linking note's \
+                              path, line, link type, the line's text (trimmed, cut at 200 \
+                              bytes) and block id, by path and line. The note need not exist \
+                              yet. A path that is a folder is refused.",
+                arguments: BACKLINKS,
+            },
+            ToolName::OutgoingLinks => About {
+                name: "outgoing_links",
+                title: "Outgoing links",
+                description: "The links a note holds and where each leads, by line: link \
+                              type, target, block id, and whether it resolves to a file in \
+                              this vault (with its path — not always a note: a link can name \
+                              a PDF or an image), names another vault (with that vault's \
+                              alias), or resolves to nothing.",
+                arguments: OUTGOING_LINKS,
+            },
         }
     }
 
@@ -256,6 +306,8 @@ impl ToolName {
             ToolName::Search => schema_for_output::<Page<SearchRow>>(),
             ToolName::ListTags => schema_for_output::<Page<TagRow>>(),
             ToolName::ListTasks => schema_for_output::<Page<TaskRow>>(),
+            ToolName::Backlinks => schema_for_output::<Page<BacklinkRow>>(),
+            ToolName::OutgoingLinks => schema_for_output::<Page<LinkRow>>(),
         }
     }
 }
@@ -408,6 +460,21 @@ pub(super) async fn call(
                 args.text("file"),
             )
             .await?;
+            paged(&vault, found.items, &args)
+        }
+        ToolName::Backlinks => {
+            let vault = resolve()?;
+            let path = args.text("path").unwrap_or_default();
+            let found = server
+                .gate
+                .run(ops_links::backlinks(&vault, path, &config))
+                .await?;
+            paged(&vault, found.items, &args)
+        }
+        ToolName::OutgoingLinks => {
+            let vault = resolve()?;
+            let path = args.text("path").unwrap_or_default();
+            let found = server.gate.run(ops_links::links(&vault, path)).await?;
             paged(&vault, found.items, &args)
         }
     }

@@ -845,3 +845,34 @@ fn read_note_ends_a_page_at_the_character_cap() {
     assert_eq!(format!("{head}{tail}"), body);
     assert_eq!(s.end().code, 0);
 }
+
+/// What fails this: the two tools wired to each other's function.
+#[test]
+fn backlinks_and_outgoing_links_answer_for_a_note() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "# A\n");
+    write(&sb.vault, "b.md", "see [[a]]\n");
+    write(&sb.vault, "c.md", "and [[a]] and [[nowhere]]\n");
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let result = s.call(1, "backlinks", json!({ "path": "a.md" }));
+    assert_eq!(paths(structured(&result)), ["b.md", "c.md"]);
+    let result = s.call(2, "outgoing_links", json!({ "path": "c.md" }));
+    let page = structured(&result);
+    let links: Vec<(&str, &str)> = page["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|link| {
+            (
+                link["target"].as_str().unwrap(),
+                link["resolution"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(links, [("a", "resolved"), ("nowhere", "unresolved")]);
+    assert_eq!(page["items"][0]["path"], json!("a.md"));
+    let result = s.call(3, "outgoing_links", json!({ "path": "c.md", "limit": 1 }));
+    assert_eq!(structured(&result)["nextOffset"], json!(1));
+    assert_eq!(s.end().code, 0);
+}

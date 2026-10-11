@@ -10,6 +10,7 @@ use super::output::{Envelope, Row};
 use super::paths;
 use super::vault::Vault;
 use crate::index::{BacklinkResult, LinkEntry, LinkIndex, LinkKind, LinkResolution};
+use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::Path;
 
@@ -33,7 +34,7 @@ async fn build_index(vault: &Vault) -> Result<LinkIndex, CliError> {
     Ok(index)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BacklinkRow {
     /// The note that holds the link.
@@ -111,7 +112,7 @@ fn backlink_rows(vault: &Vault, found: Vec<BacklinkResult>) -> Vec<BacklinkRow> 
     items
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LinkRow {
     pub line: u32,

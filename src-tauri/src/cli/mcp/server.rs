@@ -2,6 +2,7 @@
 // becomes a `tools/call` result (spec 0068 §3.5–§3.6). The tools are `tools.rs`; which vault
 // a call reads is `scope.rs`.
 
+use super::gate::IndexGate;
 use super::scope::Allowed;
 use super::tools::{self, Failure, ToolName};
 use crate::cli::app_config::AppConfig;
@@ -44,6 +45,8 @@ pub(super) struct Server {
     pub(super) allowed: Allowed,
     /// For a `vault` argument that starts with `~`. Read once, at start.
     pub(super) home: Option<PathBuf>,
+    /// One link index build at a time (D13).
+    pub(super) gate: IndexGate,
     load: LoadConfig,
     /// The config warnings last written to stderr.
     warned: Mutex<Vec<String>>,
@@ -60,6 +63,7 @@ impl Server {
         Self {
             allowed,
             home,
+            gate: IndexGate::default(),
             load,
             warned: Mutex::new(warned),
         }
