@@ -740,3 +740,108 @@ fn search_and_read_note_page_through_notes() {
     );
     assert_eq!(s.end().code, 0);
 }
+
+/// A search page's rows as (path, line).
+fn hit_keys(page: &Value) -> Vec<(&str, u64)> {
+    page["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .map(|item| {
+            (
+                item["path"].as_str().expect("path"),
+                item["line"].as_u64().expect("line"),
+            )
+        })
+        .collect()
+}
+
+/// `search`'s `regex`, `caseSensitive`, `word` and `folder` each choose what is found, and a
+/// call that sets one of them sets no other (spec 0068 §3.3).
+///
+/// The fixture gives every option something to choose between: `docs/a.md` holds `Needle`,
+/// `needles` and `needle` on its lines 1 to 3, and `other/b.md` holds `needle`. With no option,
+/// `needle` finds all four lines; each call below turns on one option and none else, so a call
+/// whose option is lost, or lands on another option, finds another set.
+///
+/// What fails this: any of the four hard-coded to `false` or `None`; `regex`, `caseSensitive`
+/// and `word` passed to one another's place.
+#[test]
+fn search_options_each_choose_what_is_found() {
+    let sb = sandbox();
+    write(&sb.vault, "docs/a.md", "Needle\nneedles\nneedle\n");
+    write(&sb.vault, "other/b.md", "needle\n");
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let all = [
+        ("docs/a.md", 1),
+        ("docs/a.md", 2),
+        ("docs/a.md", 3),
+        ("other/b.md", 1),
+    ];
+    let whole_words = [("docs/a.md", 1), ("docs/a.md", 3), ("other/b.md", 1)];
+    for (id, arguments, expected) in [
+        (1, json!({ "query": "needle" }), &all[..]),
+        (2, json!({ "query": "Needle" }), &all[..]),
+        (
+            3,
+            json!({ "query": "Needle", "caseSensitive": true }),
+            &[("docs/a.md", 1)][..],
+        ),
+        (
+            4,
+            json!({ "query": "needle", "word": true }),
+            &whole_words[..],
+        ),
+        (
+            5,
+            json!({ "query": "needle$", "regex": true }),
+            &whole_words[..],
+        ),
+        (6, json!({ "query": "needle$" }), &[][..]),
+        (7, json!({ "query": "needle", "folder": "docs" }), &all[..3]),
+    ] {
+        let result = s.call(id, "search", arguments.clone());
+        assert_eq!(hit_keys(structured(&result)), expected, "{arguments}");
+    }
+    assert_eq!(s.end().code, 0);
+}
+
+/// `read_note` ends a page before the line that would take it past 10,000 characters, with
+/// the default `limit` of 2000 lines far above that (spec 0068 §3.4).
+///
+/// The note is 150 lines: 100 of 100 characters each (99 and the `\n`), an empty line, and 49
+/// more of 100. The first 100 lines are exactly 10,000 characters and the empty line would
+/// make it 10,001, so the page is the first 100 lines for a cap of 10,000 and for no other
+/// whole number.
+///
+/// What fails this: the cap passed to `page::lines` as `usize::MAX`, 40,000 (one page of all
+/// 150 lines), 9,999 (99 lines) or 10,001 (101 lines).
+#[test]
+fn read_note_ends_a_page_at_the_character_cap() {
+    let sb = sandbox();
+    let body: String = (0..150)
+        .map(|n| match n {
+            100 => "\n".to_string(),
+            _ => format!("{n:03}{}\n", "x".repeat(96)),
+        })
+        .collect();
+    write(&sb.vault, "long.md", &body);
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let first = s.call(1, "read_note", json!({ "path": "long.md" }));
+    let page = structured(&first);
+    let head = page["content"].as_str().expect("content");
+    assert_eq!(head.chars().count(), 10_000, "{page}");
+    assert_eq!(page["truncated"], json!(true));
+    assert_eq!(page["nextOffset"], json!(100));
+    assert_eq!(page["totalLines"], json!(150));
+    let rest = s.call(2, "read_note", json!({ "path": "long.md", "offset": 100 }));
+    let page = structured(&rest);
+    assert_eq!(page["truncated"], json!(false));
+    assert!(page.get("nextOffset").is_none(), "{page}");
+    assert_eq!(page["totalLines"], json!(150));
+    let tail = page["content"].as_str().expect("content");
+    assert_eq!(format!("{head}{tail}"), body);
+    assert_eq!(s.end().code, 0);
+}
