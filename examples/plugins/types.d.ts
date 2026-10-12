@@ -110,16 +110,18 @@ export interface EditorSelection {
 export interface EventsAPI {
     emit(event: string, ...args: unknown[]): void;
     /**
-     * §393 In a registered context, a note (`.md`, `.markdown`) or any other file a link can point
-     * at was created, changed (auto-save too), renamed or deleted — by Baram or another program —
-     * and the link index already reflects it. A change that leaves a live index as it was may not
-     * fire it (deleting a path the index never held, an empty folder appearing). Fires within
-     * about two seconds of a change, even while files keep changing, and only for vaults the app
-     * watches (the active one and any opened this session); never for hidden files or folders (a
-     * name starting with `.`) or tool folders (`.git`, `.obsidian`, `.baram`, `node_modules`). Your
-     * own `files.writeFile` in those vaults can fire it too: skip writes whose content
-     * is unchanged, or the handler loops. Needs `files` or `files:readonly`, not `events`; without
-     * either the subscription is accepted and never fires.
+     * §393 In a registered context, a note (`.md`, `.markdown`) or any other file a link can point at
+     * was created, changed (auto-save too), renamed or deleted — by Baram or another program — and
+     * the link index already reflects it. A change that leaves a live index as it was may not fire it
+     * (deleting a path the index never held, an empty folder appearing). Fires within about two
+     * seconds of a change, even while files keep changing, and only for vaults the app watches (the
+     * active one and any opened this session); a change that makes the app read the whole vault again
+     * (a folder moved in, an edited `.baramignore`) fires once that read is done. Never for hidden
+     * files or folders (a name starting with `.`) or inside the folders a vault leaves out of its
+     * index (`node_modules`, `target`, `build`, `dist`, `__pycache__`, `.next`, `.git` by default,
+     * plus what its `.baramignore` lists). Your own `files.writeFile` in those vaults can fire it
+     * too: skip writes whose content is unchanged, or the handler loops. Needs `files` or
+     * `files:readonly`, not `events`; without either the subscription is accepted and never fires.
      */
     on(event: "vault:changed", handler: (change: VaultChange) => void): Disposable;
     on(event: string, handler: (...args: unknown[]) => void): Disposable;

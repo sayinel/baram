@@ -189,9 +189,12 @@ or any other file a link can point at was created, changed (auto-save too), rena
 another program, once the link index reflects it. A change that leaves a live index as it was may not fire
 it (deleting a path the index never held, an empty folder appearing). It needs `files` or `files:readonly`,
 not `events`, and fires within about two seconds of a change, even while files keep changing, only in vaults
-Baram watches (the active one and any opened this session), never for hidden files or folders (a name
-starting with `.`) or tool folders (`.git`, `.obsidian`, `.baram`, `node_modules`). Your own
-`files.writeFile` in those vaults can fire it too: skip unchanged writes to avoid a loop.
+Baram watches (the active one and any opened this session). A change that makes Baram read the whole vault
+again (a folder moved in, an edited `.baramignore`) fires once that read is done. It never fires for hidden
+files or folders (a name starting with `.`) or inside the folders a vault leaves out of its index — build
+output and `.git` by default, plus what its `.baramignore` lists (see
+[Folders Baram leaves out](/en/docs/workspace/excluded-folders/)). Your own `files.writeFile` in those vaults
+can fire it too: skip unchanged writes to avoid a loop.
 
 `"file:open"` fires once the opened file's content is actually loaded into the
 editor — not at the moment the tab opens — so for markdown files
