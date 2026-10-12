@@ -193,7 +193,7 @@ pub(crate) async fn reconcile_path_in(
     reconcile_at(
         state,
         ctx_mgr,
-        path,
+        Entry::Resolved(path),
         canonical,
         vec![path.to_string()],
         batch,
@@ -211,11 +211,10 @@ pub(crate) async fn reconcile_identity_in(
     spellings: Vec<String>,
     batch: &mut Batch,
 ) -> Reconciled {
-    let at = canonical.to_string_lossy().into_owned();
     let mut out = reconcile_at(
         state,
         ctx_mgr,
-        &at,
+        Entry::Lexical,
         canonical.to_path_buf(),
         spellings,
         batch,
@@ -239,16 +238,21 @@ fn resolve(state: &LinkIndexState, path: &str) -> Result<PathBuf, String> {
     resolve_canonical(path)
 }
 
-/// The unit itself: `path` is where it stats and reads, `canonical` the identity it is
+/// The unit itself: `entry` says where it stats and reads, `canonical` the identity it is
 /// guarded and judged under.
 async fn reconcile_at(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
-    path: &str,
+    entry: Entry<'_>,
     canonical: PathBuf,
     spellings: Vec<String>,
     batch: &mut Batch,
 ) -> Reconciled {
+    let lexical = canonical.to_string_lossy().into_owned();
+    let path = match entry {
+        Entry::Resolved(path) => path,
+        Entry::Lexical => lexical.as_str(),
+    };
     let mut out = Reconciled {
         spellings,
         ..Reconciled::default()
@@ -261,6 +265,11 @@ async fn reconcile_at(
     }
     let mut points: Vec<(Registered, Point)> = Vec::new();
     let metadata = tokio::fs::metadata(path).await;
+    // §393 Not an entry the build would index under this key: a symlink (the walk does not
+    // follow one), or a spelling the volume no longer stores (`Note.md` after a case-only
+    // rename to `note.md` reaches the one file). What the index holds under it goes, as for a
+    // vanished path; the stored spelling's own event brings the file back.
+    let gone = entry == Entry::Lexical && metadata.is_ok() && not_its_own_entry(&canonical);
     let mut read: Option<Point> = None;
     for ctx in contexts {
         // Before any matcher: the matcher skips dot files, `.baramignore` among them.
@@ -275,6 +284,7 @@ async fn reconcile_at(
             continue;
         };
         let point = match &metadata {
+            Ok(_) if gone => vanished(state, &ctx, &canonical).await,
             Ok(meta) if meta.is_dir() => {
                 directory_point(state, &ctx, path, &canonical, &exclusion).await
             }
@@ -294,21 +304,8 @@ async fn reconcile_at(
                     copy
                 }
             },
-            // §393 What a fresh build leaves of a vanished path is nothing at or below it:
-            // the tree's removal, in place, rather than a rebuild of the whole registration.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                if state
-                    .holds_under(&ctx.info.path, ctx.incarnation, &canonical)
-                    .await
-                {
-                    Point::Mutation(Mutation::RemoveTree {
-                        paths: vec![canonical.clone()],
-                    })
-                } else {
-                    Point::Mutation(Mutation::Remove {
-                        path: canonical.clone(),
-                    })
-                }
+                vanished(state, &ctx, &canonical).await
             }
             Err(_) => Point::Failed,
         };
@@ -473,6 +470,55 @@ pub(crate) async fn rebuild_registration(
             .await
             .is_ok(),
         Err(_) => false,
+    }
+}
+
+/// Where a unit stats and reads, and how that path names its directory entry.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Entry<'a> {
+    /// The path as given, its identity resolved through every link (`resolve_canonical`):
+    /// a command's write through a link is a write to its target.
+    Resolved(&'a str),
+    /// The identity itself, as the watcher reported it — spelled under the host's canonical
+    /// root and never resolved (`WatchFilter::identity_of`): the entry, which may be a link
+    /// or a spelling the volume does not store.
+    Lexical,
+}
+
+/// §393 Whether `canonical`, resolved, names another entry than its own name does: the last
+/// component is a link, or a spelling the volume does not store — on a volume that folds case
+/// `Note.md` still reaches a file renamed to `note.md`. The parent is resolved the same way on
+/// both sides, so what can differ is the last name. A platform whose canonicalisation answers
+/// the name as written sees no case difference, and there the old key stays until a build.
+fn not_its_own_entry(canonical: &Path) -> bool {
+    let Some(name) = canonical.file_name() else {
+        return false;
+    };
+    let written = match canonical.parent().map(resolve_canonical_path) {
+        Some(Ok(parent)) => parent.join(name),
+        _ => return false,
+    };
+    resolve_canonical_path(canonical).is_ok_and(|resolved| resolved != written)
+}
+
+fn resolve_canonical_path(path: &Path) -> Result<PathBuf, String> {
+    resolve_canonical(&path.to_string_lossy())
+}
+
+/// What a fresh build leaves of a path with no entry of its own: nothing at or below it —
+/// §393 the tree's removal, in place, rather than a rebuild of the whole registration.
+async fn vanished(state: &LinkIndexState, ctx: &Registered, canonical: &Path) -> Point {
+    if state
+        .holds_under(&ctx.info.path, ctx.incarnation, canonical)
+        .await
+    {
+        Point::Mutation(Mutation::RemoveTree {
+            paths: vec![canonical.to_path_buf()],
+        })
+    } else {
+        Point::Mutation(Mutation::Remove {
+            path: canonical.to_path_buf(),
+        })
     }
 }
 

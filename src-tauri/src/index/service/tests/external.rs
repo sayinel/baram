@@ -233,3 +233,78 @@ async fn deleted_notes_in_one_batch_are_one_exclusion_load_and_no_rebuild() {
     );
     assert!(!rebuilt);
 }
+
+#[tokio::test]
+async fn an_external_case_only_rename_leaves_only_the_new_spelling() {
+    // A file manager renames `Note.md` to `note.md`; on a volume that folds case both
+    // spellings still reach the one file, and the watcher reports both. On a volume that
+    // keeps case `note.md` does not exist before the rename and the test returns there.
+    // RED on the umbrella before this (`[Note.md, a.md, note.md]`: the unit at the written
+    // `Note.md` stats the one file through it and re-reads it under that key).
+    // 이것을 실패시키는 것: 감시 unit 이 적힌 이름과 디스크가 저장한 이름을 비교하지 않는다(`not_its_own_entry`).
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("Note.md", "see [[b]]")]).await;
+    if !dir.path().join("note.md").exists() {
+        eprintln!("the file system under {root} keeps case; the case-only test is not run");
+        return;
+    }
+    let b = format!("{root}/b.md");
+    assert_eq!(
+        sources_of(&state, &ctx, &b).await,
+        vec![format!("{root}/Note.md"), format!("{root}/a.md")]
+    );
+    std::fs::rename(dir.path().join("Note.md"), dir.path().join("note.md")).unwrap();
+
+    applier_batch(&state, &ctx, &root, &["Note.md", "note.md"]).await;
+
+    assert_eq!(
+        sources_of(&state, &ctx, &b).await,
+        vec![format!("{root}/a.md"), format!("{root}/note.md")]
+    );
+}
+
+#[tokio::test]
+async fn an_external_case_only_rename_of_an_attachment_resolves_to_the_new_spelling() {
+    // The `Target` half of the one above.
+    // 이것을 실패시키는 것: 적힌 이름이 낡은 표기일 때 대상 등록을 지우지 않는다 — `[[paper.pdf]]` 가 먼저
+    // 등록된 `Paper.pdf` 로 계속 resolve 된다.
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(
+        &ctx,
+        &[("n.md", "see [[paper.pdf]]"), ("Paper.pdf", "%PDF")],
+    )
+    .await;
+    if !dir.path().join("paper.pdf").exists() {
+        eprintln!("the file system under {root} keeps case; the case-only test is not run");
+        return;
+    }
+    let key = active_index_key(&ctx).await.unwrap();
+    let note = format!("{root}/n.md");
+    let resolved = |p: &str| crate::index::LinkResolution::Resolved(format!("{root}/{p}"));
+    assert_eq!(first_link(&state, &key, &note).await, resolved("Paper.pdf"));
+    std::fs::rename(dir.path().join("Paper.pdf"), dir.path().join("paper.pdf")).unwrap();
+
+    applier_batch(&state, &ctx, &root, &["Paper.pdf", "paper.pdf"]).await;
+
+    assert_eq!(first_link(&state, &key, &note).await, resolved("paper.pdf"));
+}
+
+/// A symlink is not a note or a link target to the build (the walk does not follow one),
+/// and a change reported at one is not a change to its target.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlink_the_watcher_reports_is_not_indexed_and_its_target_keeps_its_links() {
+    // RED on the umbrella before this (`[a.md, link.md]`: the unit stats through the link and
+    // indexes `link.md` with `a.md`'s content).
+    // 이것을 실패시키는 것: 감시 unit 이 적힌 항목과 그것이 resolve 된 항목을 비교하지 않는다(`not_its_own_entry`).
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[]).await;
+    std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("link.md")).unwrap();
+
+    applier_batch(&state, &ctx, &root, &["link.md"]).await;
+
+    assert_eq!(
+        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
+        vec![format!("{root}/a.md")]
+    );
+}
