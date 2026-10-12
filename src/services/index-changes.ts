@@ -17,6 +17,7 @@ import type { IndexChanged } from "../ipc/types";
 
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
+import { publishVaultChange } from "./vault-changes";
 
 /** The wait before a failed subscription is first tried again; it doubles per failure. */
 export const RETRY_FIRST_MS = 250;
@@ -66,14 +67,22 @@ function subscribe(wait: number): Promise<void> {
 /**
  * One file is named, in the spelling the active tab uses when it is among the event's
  * spellings or is its canonical path (#797: one file can arrive under several), so
- * Backlinks can tell its own save (#791); anything else re-reads everything.
+ * Backlinks can tell its own save (#791); anything else re-reads everything. §393 An event
+ * that names no path and no rebuild — a watcher batch that left every index as it was —
+ * re-reads nothing and only announces its contexts (`vault:changed`).
  */
-export function onIndexChanged({ entries, rebuilt }: IndexChanged): void {
+export function onIndexChanged({
+  contexts = [],
+  entries,
+  rebuilt,
+}: IndexChanged): void {
   if (rebuilt.length === 0 && entries.length === 1) {
     useLinkStore.getState().invalidate(spellingShown(entries[0]));
-  } else {
+  } else if (rebuilt.length > 0 || entries.length > 0) {
     useLinkStore.getState().invalidate();
   }
+  // §393 After the bump: a plugin that reads the index on hearing reads the new state.
+  contexts.forEach(publishVaultChange);
 }
 
 function spellingShown(entry: IndexChanged["entries"][number]): string {

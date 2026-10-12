@@ -456,9 +456,16 @@ async fn attempt<R: Runtime>(app: &tauri::AppHandle<R>, key: &str, incarnation: 
     #[cfg(test)]
     pause_before_finish(&state, key).await;
     if state.finish_rebuild(key, incarnation, Some(seen)) {
+        // §393 What the rebuild read is what the context's files are now.
+        let contexts: Vec<String> = ctx_mgr
+            .context_registered_at(key)
+            .await
+            .map(|r| r.info.id)
+            .into_iter()
+            .collect();
         let _ = app.emit(
             "index:changed",
-            serde_json::json!({ "entries": [], "rebuilt": [key] }),
+            serde_json::json!({ "entries": [], "rebuilt": [key], "contexts": contexts }),
         );
     }
 }

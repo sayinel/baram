@@ -99,6 +99,7 @@ mod applier;
 mod build;
 mod commit;
 mod keys;
+mod mutation;
 mod query;
 mod reconcile;
 mod rename;

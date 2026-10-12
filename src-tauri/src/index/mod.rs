@@ -15,6 +15,7 @@ mod relative_links;
 mod removal_tests;
 mod resolve;
 mod rewriter;
+mod tree;
 pub mod service;
 mod types;
 
@@ -541,30 +542,44 @@ impl LinkIndex {
     /// what a fresh build makes of it — `build` registers every walked note and link
     /// target before reading and skips the content it cannot read — so its path still
     /// resolves as a link target while its own links, tags and block ids are gone.
-    pub(crate) fn mark_unreadable(&mut self, file_path: &str) {
+    ///
+    /// §393 Whether the index changed: `false` when it already held the note this way (no
+    /// links, no tags, registered), or, for a path its build never walks, held nothing of it.
+    pub(crate) fn mark_unreadable(&mut self, file_path: &str) -> bool {
+        let had_content =
+            self.outgoing.contains_key(file_path) || self.file_tags.contains_key(file_path);
+        let held = self.holds_path(file_path);
         self.remove_file(file_path);
         if self
             .exclusion
             .walk_skips(std::path::Path::new(file_path), false)
         {
-            return;
+            return held;
         }
         if let Some(root) = self.root_path.clone() {
             self.register_file_path(file_path, &root);
             self.register_link_target(file_path, &root);
         }
+        had_content || !held
     }
 
     /// §278 #824 A non-markdown file as a link target, judged by this index's own
     /// exclusion: one its build would not walk is taken out instead (#794).
-    pub(crate) fn update_link_target(&mut self, file_path: &str) {
+    ///
+    /// §393 Whether the index changed: the file newly registered, or taken out from where
+    /// the index held it.
+    pub(crate) fn update_link_target(&mut self, file_path: &str) -> bool {
         let excluded = self
             .exclusion
             .walk_skips(std::path::Path::new(file_path), false);
         match self.root_path.clone() {
-            Some(_) if excluded => self.remove_file(file_path),
+            Some(_) if excluded => {
+                let held = self.holds_path(file_path);
+                self.remove_file(file_path);
+                held
+            }
             Some(root) => self.register_link_target(file_path, &root),
-            None => {}
+            None => false,
         }
     }
 
@@ -581,29 +596,50 @@ impl LinkIndex {
                 .any(|key| named(self.name_map.get(key)))
     }
 
-    /// Update index for a single file using already-read content (sync, no I/O)
-    pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
-        self.remove_file(file_path);
+    /// Update index for a single file using already-read content (sync, no I/O).
+    ///
+    /// §393 Whether the index changed. A note whose extracted links (line and context
+    /// included) and tags equal what the index holds for it is not rewritten — what the
+    /// write would leave is what is there, so the watcher's echo of a save changes nothing.
+    /// A path this index's build never walks is taken out, and counts when it was held.
+    pub fn update_file_from_content(&mut self, file_path: &str, content: &str) -> bool {
         if self
             .exclusion
             .walk_skips(std::path::Path::new(file_path), false)
         {
-            return;
+            let held = self.holds_path(file_path);
+            self.remove_file(file_path);
+            return held;
         }
+        let entries = extract_links(file_path, content);
+        let tags = extract_file_tags(content);
+        let same_tags = match self.file_tags.get(file_path) {
+            Some(held) => held.len() == tags.len() && tags.iter().all(|tag| held.contains(tag)),
+            None => tags.is_empty(),
+        };
+        if same_tags && self.outgoing.get(file_path) == Some(&entries) {
+            return false;
+        }
+        self.write_note(file_path, entries, tags);
+        true
+    }
+
+    /// What `update_file_from_content` writes for `file_path`, given the links and tags read
+    /// from it.
+    fn write_note(&mut self, file_path: &str, entries: Vec<LinkEntry>, tags: Vec<String>) {
+        self.remove_file(file_path);
 
         // Re-register in file maps for target resolution
         if let Some(root) = self.root_path.clone() {
             self.register_file_path(file_path, &root);
         }
 
-        let entries = extract_links(file_path, content);
         for entry in &entries {
             self.file_incoming(entry);
         }
         self.outgoing.insert(file_path.to_string(), entries);
 
-        // Extract tags for graph tag nodes
-        let tags = extract_file_tags(content);
+        // Tags for graph tag nodes
         if !tags.is_empty() {
             self.file_tags.insert(file_path.to_string(), tags);
         }

@@ -18,8 +18,11 @@
 //! - a change to `<registration root>/.baramignore` (it changes what every entry means);
 //! - a file where the index holds entries below the path (a directory became a file);
 //! - a directory where the index holds the path itself, or one that holds files (moved
-//!   in: its files arrive without events of their own);
-//! - a vanished path with entries below it.
+//!   in: its files arrive without events of their own).
+//!
+//! §393 A vanished path with entries below it, and an empty directory where the index holds
+//! entries below, lose those entries in place (`Mutation::RemoveTree`): a fresh build of that
+//! disk differs by nothing else.
 //!
 //! A root whose `.baramignore` cannot be used gets nothing and the path is a failure, as
 //! a build of that root fails (#794). Any registration a unit cannot judge the path for
@@ -43,7 +46,8 @@ use crate::fs::{VaultExclusion, BARAMIGNORE};
 
 use super::build::{prepare_index_build, rebuild_and_publish};
 use super::keys::buildable;
-use super::state::{tick, ApplyOutcome, LinkIndexState, Mutation};
+use super::mutation::Mutation;
+use super::state::{tick, ApplyOutcome, LinkIndexState};
 
 /// A registration, as the units name it: its key and the incarnation they resolved.
 pub(crate) type RegistrationAt = (String, u64);
@@ -70,6 +74,21 @@ pub(crate) struct Reconciled {
     /// Those rebuilds were handed to the scheduler rather than run (the watcher applier):
     /// the scheduler announces them once they publish.
     pub(crate) deferred: bool,
+    /// §393 Some covering index changed, or may have: a mutation that changed what an index
+    /// held (`mutation::Effect`), one whose effect cannot be seen (a journal, a newer
+    /// snapshot, no index yet), a rebuild, a degrade. `false` when every covering index took
+    /// the path and held the same afterwards — the watcher's echo of a save.
+    pub(crate) changed: bool,
+    /// §393 The watcher applier's unit: `index:changed` leaves the path out when nothing
+    /// changed (`commit::emit_changed`). A command's units keep the 824-a1 rule — every
+    /// path the command reconciled is named.
+    pub(crate) watched: bool,
+    /// §393 The context ids to announce as `vault:changed` for this path — a watched unit's
+    /// only (a command's write is announced by the watcher's echo of it): a covering index
+    /// that took a note or file its build walks, or changed, or has none yet to compare
+    /// with; a removal that took something; a registration it had to drop. A rebuild it
+    /// asked for is announced by the scheduler once it publishes.
+    pub(crate) announce: BTreeSet<String>,
 }
 
 /// What the units of one batch — one command's effects, one watcher sync — share
@@ -180,7 +199,7 @@ pub(crate) async fn reconcile_path_in(
     reconcile_at(
         state,
         ctx_mgr,
-        path,
+        Entry::Resolved(path),
         canonical,
         vec![path.to_string()],
         batch,
@@ -198,16 +217,17 @@ pub(crate) async fn reconcile_identity_in(
     spellings: Vec<String>,
     batch: &mut Batch,
 ) -> Reconciled {
-    let at = canonical.to_string_lossy().into_owned();
-    reconcile_at(
+    let mut out = reconcile_at(
         state,
         ctx_mgr,
-        &at,
+        Entry::Lexical,
         canonical.to_path_buf(),
         spellings,
         batch,
     )
-    .await
+    .await;
+    out.watched = true;
+    out
 }
 
 #[cfg(not(test))]
@@ -224,16 +244,21 @@ fn resolve(state: &LinkIndexState, path: &str) -> Result<PathBuf, String> {
     resolve_canonical(path)
 }
 
-/// The unit itself: `path` is where it stats and reads, `canonical` the identity it is
+/// The unit itself: `entry` says where it stats and reads, `canonical` the identity it is
 /// guarded and judged under.
 async fn reconcile_at(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
-    path: &str,
+    entry: Entry<'_>,
     canonical: PathBuf,
     spellings: Vec<String>,
     batch: &mut Batch,
 ) -> Reconciled {
+    let lexical = canonical.to_string_lossy().into_owned();
+    let path = match entry {
+        Entry::Resolved(path) => path,
+        Entry::Lexical => lexical.as_str(),
+    };
     let mut out = Reconciled {
         spellings,
         ..Reconciled::default()
@@ -246,6 +271,11 @@ async fn reconcile_at(
     }
     let mut points: Vec<(Registered, Point)> = Vec::new();
     let metadata = tokio::fs::metadata(path).await;
+    // §393 Not an entry the build would index under this key: a symlink (the walk does not
+    // follow one), or a spelling the volume no longer stores (`Note.md` after a case-only
+    // rename to `note.md` reaches the one file). What the index holds under it goes, as for a
+    // vanished path; the stored spelling's own event brings the file back.
+    let gone = entry == Entry::Lexical && metadata.is_ok() && not_its_own_entry(&canonical);
     let mut read: Option<Point> = None;
     for ctx in contexts {
         // Before any matcher: the matcher skips dot files, `.baramignore` among them.
@@ -260,6 +290,7 @@ async fn reconcile_at(
             continue;
         };
         let point = match &metadata {
+            Ok(_) if gone => vanished(state, &ctx, &canonical).await,
             Ok(meta) if meta.is_dir() => {
                 directory_point(state, &ctx, path, &canonical, &exclusion).await
             }
@@ -280,16 +311,7 @@ async fn reconcile_at(
                 }
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                if state
-                    .holds_under(&ctx.info.path, ctx.incarnation, &canonical)
-                    .await
-                {
-                    Point::Rebuild
-                } else {
-                    Point::Mutation(Mutation::Remove {
-                        path: canonical.clone(),
-                    })
-                }
+                vanished(state, &ctx, &canonical).await
             }
             Err(_) => Point::Failed,
         };
@@ -306,20 +328,39 @@ async fn reconcile_at(
         match point {
             Point::Mutation(m) => {
                 out.reached = true;
+                let present = matches!(
+                    m,
+                    Mutation::Update { .. } | Mutation::Target { .. } | Mutation::Unreadable { .. }
+                );
                 // `Stale` needs no second try. The registrations were resolved under
                 // the guard, after the commit this unit follows; a registration of the
                 // same path that replaced one of them since was registered after that
                 // commit, so its first build reads the disk as this unit did.
-                if state
+                match state
                     .apply_for(&ctx.info.path, ctx.incarnation, vec![m], observed)
                     .await
-                    == ApplyOutcome::Applied
                 {
-                    out.applied.push(ctx.info.path.clone());
+                    ApplyOutcome::Applied(effect) => {
+                        out.applied.push(ctx.info.path.clone());
+                        out.changed |= effect.changed;
+                        // §393 Tags, tasks and search read a present note from disk whatever
+                        // its links; a removal is news only when it took something.
+                        if effect.changed || (present && !effect.excluded) {
+                            out.announce.insert(ctx.info.id.clone());
+                        }
+                    }
+                    // Its first build reads the disk as this unit did. Nothing to compare
+                    // with: a missing signal is worse than an extra one.
+                    ApplyOutcome::NoIndex => {
+                        out.changed = true;
+                        out.announce.insert(ctx.info.id.clone());
+                    }
+                    ApplyOutcome::Stale => {}
                 }
             }
             Point::Rebuild => {
                 out.reached = true;
+                out.changed = true;
                 out.wants.push(at.clone());
                 batch.rebuild.insert(at);
             }
@@ -327,9 +368,17 @@ async fn reconcile_at(
             // rather than left trusted (`commit::degrade`).
             Point::Failed => {
                 out.failed = true;
+                out.changed = true;
+                out.announce.insert(ctx.info.id.clone());
                 out.degrade.push(at);
             }
-            Point::Nothing => {}
+            // §393 An empty folder the index cannot compare with: announced, as a missing
+            // signal is worse than an extra one.
+            Point::Nothing => {
+                if !state.has_index(&ctx.info.path, ctx.incarnation).await {
+                    out.announce.insert(ctx.info.id.clone());
+                }
+            }
         }
     }
     for ctx in buildable(&ctx_mgr.contexts_holding(&canonical).await) {
@@ -428,6 +477,7 @@ pub(crate) fn reconcile_registrations(
     };
     for registration in at {
         out.reached = true;
+        out.changed = true;
         out.wants.push(registration.clone());
         batch.rebuild.insert(registration);
     }
@@ -449,8 +499,59 @@ pub(crate) async fn rebuild_registration(
     }
 }
 
+/// Where a unit stats and reads, and how that path names its directory entry.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Entry<'a> {
+    /// The path as given, its identity resolved through every link (`resolve_canonical`):
+    /// a command's write through a link is a write to its target.
+    Resolved(&'a str),
+    /// The identity itself, as the watcher reported it — spelled under the host's canonical
+    /// root and never resolved (`WatchFilter::identity_of`): the entry, which may be a link
+    /// or a spelling the volume does not store.
+    Lexical,
+}
+
+/// §393 Whether `canonical`, resolved, names another entry than its own name does: the last
+/// component is a link, or a spelling the volume does not store — on a volume that folds case
+/// `Note.md` still reaches a file renamed to `note.md`. The parent is resolved the same way on
+/// both sides, so what can differ is the last name. A platform whose canonicalisation answers
+/// the name as written sees no case difference, and there the old key stays until a build.
+fn not_its_own_entry(canonical: &Path) -> bool {
+    let Some(name) = canonical.file_name() else {
+        return false;
+    };
+    let written = match canonical.parent().map(resolve_canonical_path) {
+        Some(Ok(parent)) => parent.join(name),
+        _ => return false,
+    };
+    resolve_canonical_path(canonical).is_ok_and(|resolved| resolved != written)
+}
+
+fn resolve_canonical_path(path: &Path) -> Result<PathBuf, String> {
+    resolve_canonical(&path.to_string_lossy())
+}
+
+/// What a fresh build leaves of a path with no entry of its own: nothing at or below it —
+/// §393 the tree's removal, in place, rather than a rebuild of the whole registration.
+async fn vanished(state: &LinkIndexState, ctx: &Registered, canonical: &Path) -> Point {
+    if state
+        .holds_under(&ctx.info.path, ctx.incarnation, canonical)
+        .await
+    {
+        Point::Mutation(Mutation::RemoveTree {
+            paths: vec![canonical.to_path_buf()],
+        })
+    } else {
+        Point::Mutation(Mutation::Remove {
+            path: canonical.to_path_buf(),
+        })
+    }
+}
+
 /// A directory on disk: rebuild if the index holds the path itself (a file became a
-/// directory) or the directory holds files a build would register.
+/// directory) or the directory holds files a build would register. §393 An empty one where
+/// the index holds entries below — a folder replaced by an empty one, reported as the folder
+/// alone — loses them in place: that is all a fresh build would differ by.
 async fn directory_point(
     state: &LinkIndexState,
     ctx: &Registered,
@@ -466,6 +567,15 @@ async fn directory_point(
     }
     match holds_files(path, exclusion).await {
         Ok(true) => Point::Rebuild,
+        Ok(false)
+            if state
+                .holds_under(&ctx.info.path, ctx.incarnation, canonical)
+                .await =>
+        {
+            Point::Mutation(Mutation::RemoveTree {
+                paths: vec![canonical.to_path_buf()],
+            })
+        }
         Ok(false) => Point::Nothing,
         Err(_) => Point::Failed,
     }
@@ -512,9 +622,9 @@ fn clone_point(point: &Point) -> Point {
     }
 }
 
-/// The markdown rule a vault build reads notes by (`fs::collect_md_files`).
+/// The markdown rule a vault build reads notes by (`fs::is_note_name`).
 pub(crate) fn is_note(path: &str) -> bool {
-    path.ends_with(".md") || path.ends_with(".markdown")
+    crate::fs::is_note_name(path)
 }
 
 /// Whether a directory holds any file a vault build would register. A walk that fails

@@ -43,11 +43,6 @@ pub enum Collect {
     Both,
 }
 
-/// The markdown rule a note is read by: `.md` or `.markdown`, case as written.
-fn is_markdown(name: &str) -> bool {
-    name.ends_with(".md") || name.ends_with(".markdown")
-}
-
 /// Sets its flag when dropped. `walk_vault` holds one while it waits for the blocking
 /// walk, so a caller that stops waiting — a build dropped mid-walk — stops the walk at
 /// its next step instead of leaving it to run the tree out behind a newer build.
@@ -112,7 +107,7 @@ fn walk_blocking(
             source,
         })?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') {
+        if super::is_hidden_name(&name) {
             continue;
         }
         let Some(kind) = entry_kind(entry.metadata()) else {
@@ -125,7 +120,7 @@ fn walk_blocking(
         match kind {
             Kind::Folder => open.push(open_folder(&path)?),
             Kind::File => {
-                let markdown = is_markdown(&name);
+                let markdown = super::is_note_name(&name);
                 match collect {
                     Collect::Markdown if markdown => found.markdown.push(path),
                     Collect::Markdown => {}

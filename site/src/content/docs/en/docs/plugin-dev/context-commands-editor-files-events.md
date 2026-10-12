@@ -179,12 +179,20 @@ on(event: string, handler: (...args: unknown[]) => void): Disposable;
 emit(event: string, ...args: unknown[]): void;
 ```
 
-The only events the host currently emits are `"editor:ready"`, `"file:open"`,
-and `"file:save"` (the `PluginEventName` union type). **There is no
-per-keystroke or live document-change event yet** — if you need to react to
-edits, recompute on `editor:ready`/`file:open`/`file:save` instead of polling
-or expecting a `"editor:change"`-style event (it does not exist). See the
-word-count example for the pattern.
+The host emits `"editor:ready"`, `"file:open"` and `"file:save"` (the
+`PluginEventName` union type). `"file:save"` fires on an explicit save only —
+Save and Save As — never on auto-save. **There is no per-keystroke event**: to
+react to edits, recompute on these or on `"vault:changed"` instead of polling.
+
+`"vault:changed"` hands your handler `{ context }`, a registered context where a note (`.md`, `.markdown`) or
+any other file a link can point at was created, changed (auto-save too), renamed or deleted, by Baram or another
+program, once the link index reflects it. A change that leaves a live index as it was may not fire it (deleting
+a path the index never held, an empty folder appearing). It needs `files` or `files:readonly`, not `events`, and
+fires within about two seconds of a change, even while files keep changing, only in vaults Baram watches (the
+active one and any opened this session); one that makes Baram re-read the vault (a folder moved in, a
+`.baramignore` edit) fires after that read. Never for names starting with `.`, or inside [folders Baram leaves
+out](/en/docs/workspace/excluded-folders/): build output and `.git` by default plus what `.baramignore` lists.
+Your own `files.writeFile` can fire it too: skip unchanged writes to avoid a loop.
 
 `"file:open"` fires once the opened file's content is actually loaded into the
 editor — not at the moment the tab opens — so for markdown files

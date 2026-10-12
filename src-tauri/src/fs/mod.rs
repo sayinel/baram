@@ -3,6 +3,7 @@
 pub(crate) mod archive;
 mod copy_dir;
 mod exclusion;
+mod walk_rules;
 pub mod media;
 mod walk;
 mod watch_filter;
@@ -16,6 +17,7 @@ pub use copy_dir::{copy_dir_all, CopyDirReport};
 pub(crate) use exclusion::{note_folder_read, take_folders_read};
 pub use exclusion::{VaultExclusion, BARAMIGNORE, DEFAULT_EXCLUDED_DIRS};
 pub use walk::{collect_all_files, collect_md_files, walk_vault, Collect};
+pub use walk_rules::{is_hidden_name, is_note_name};
 
 use crate::commands::fs_cmd::FileEntry;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};

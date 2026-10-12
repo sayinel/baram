@@ -6,13 +6,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::build::{IndexBuildError, INDEX_BUILD_PENDING};
+use super::mutation::{Effect, Mutation};
 
 /// A root an index was (or is being) built from: the exact spelling the
 /// frontend supplied — the spelling `LinkIndex::build` stored its paths in —
 /// and its canonical form, used only to project canonical mutation paths into
 /// that spelling.
 #[derive(Clone)]
-struct IndexRoot {
+pub(super) struct IndexRoot {
     spelling: String,
     canonical: PathBuf,
 }
@@ -27,7 +28,7 @@ impl IndexRoot {
 
     /// `canonical_path` as this root's index spells it; `None` when it does
     /// not sit under this root (then the index has nothing to do with it).
-    fn spell(&self, canonical_path: &Path) -> Option<String> {
+    pub(super) fn spell(&self, canonical_path: &Path) -> Option<String> {
         let relative = canonical_path.strip_prefix(&self.canonical).ok()?;
         if relative.as_os_str().is_empty() {
             return Some(self.spelling.clone());
@@ -117,59 +118,13 @@ pub(super) struct Slot {
     covered_from: Option<(u64, u64)>,
 }
 
-/// An in-place change to an index — the unit that is applied, journaled and
-/// replayed. It names the file by its CANONICAL path; the spelling is decided
-/// by the index it meets (`apply_to`).
-#[derive(Clone)]
-pub(super) enum Mutation {
-    /// A file was re-read (saved, or rewritten by a rename).
-    Update { path: PathBuf, content: String },
-    /// A file is gone under this path (renamed away).
-    Remove { path: PathBuf },
-    /// §278 A non-markdown file appeared: a link target only (issue 790).
-    Target { path: PathBuf },
-    /// #824 A note that exists but cannot be read: registered, without content — what
-    /// a fresh build makes of it (`LinkIndex::mark_unreadable`).
-    Unreadable { path: PathBuf },
-}
-
-impl Mutation {
-    /// Canonicalises `path` — outside any lock (it touches the filesystem). Production
-    /// mutations are built by the reconcile unit from the identity it is guarded under.
-    #[cfg(test)]
-    pub(super) fn update(path: &str, content: String) -> Result<Self, String> {
-        Ok(Self::Update {
-            path: crate::context::manager::resolve_canonical(path)?,
-            content,
-        })
-    }
-
-    fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) {
-        let canonical_path = match self {
-            Self::Update { path, .. }
-            | Self::Remove { path }
-            | Self::Target { path }
-            | Self::Unreadable { path } => path,
-        };
-        let Some(spelled) = root.spell(canonical_path) else {
-            return;
-        };
-        match self {
-            Self::Update { content, .. } => index.update_file_from_content(&spelled, content),
-            Self::Remove { .. } => index.remove_file(&spelled),
-            // #824 judged by this index's own exclusion, as `Update` is.
-            Self::Target { .. } => index.update_link_target(&spelled),
-            Self::Unreadable { .. } => index.mark_unreadable(&spelled),
-        }
-    }
-}
-
 /// What `apply_for` did with a mutation (#824).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ApplyOutcome {
     /// It reached the index published for that registration, or the journal of the
-    /// build reading for it.
-    Applied,
+    /// build reading for it. §393 What it did to the published index — `Effect::UNKNOWN`
+    /// when it reached only a journal, or a published index a newer snapshot covers.
+    Applied(Effect),
     /// Nothing is published or building for that registration yet: its first build
     /// reads the file as it is after this.
     NoIndex,
@@ -416,10 +371,12 @@ impl LinkIndexState {
         }
         let newer_snapshot = slot.covered_from.is_some_and(|(_, began)| began > observed);
         let (index, live_root, pending) = (&mut slot.index, &slot.root, &mut slot.pending);
+        let mut effect = Effect::UNKNOWN;
         if live && !newer_snapshot {
             if let (Some(index), Some(live_root)) = (index.as_mut(), live_root.as_ref()) {
+                effect = Effect::NOTHING;
                 for mutation in &mutations {
-                    mutation.apply_to(index, live_root);
+                    effect = effect.and(mutation.apply_to(index, live_root));
                 }
             }
         }
@@ -427,9 +384,37 @@ impl LinkIndexState {
             .as_mut()
             .filter(|p| journaled && p.began_at < observed)
         {
+            effect = Effect::UNKNOWN;
             pending.journal.extend(mutations);
         }
-        ApplyOutcome::Applied
+        ApplyOutcome::Applied(effect)
+    }
+
+    /// §393 Whether an index is published for `incarnation` under `key`.
+    pub(super) async fn has_index(&self, key: &str, incarnation: u64) -> bool {
+        self.slots
+            .lock()
+            .await
+            .get(key)
+            .is_some_and(|s| s.published_incarnation == incarnation && s.index.is_some())
+    }
+
+    /// §393 Whether the index published for `incarnation` under `key` would walk
+    /// `canonical_path` — not hidden, not left out by its `VaultExclusion`. `false` with no
+    /// index.
+    pub(super) async fn walks(&self, key: &str, incarnation: u64, canonical_path: &Path) -> bool {
+        let map = self.slots.lock().await;
+        let Some(slot) = map
+            .get(key)
+            .filter(|s| s.published_incarnation == incarnation)
+        else {
+            return false;
+        };
+        let (Some(index), Some(root)) = (slot.index.as_ref(), slot.root.as_ref()) else {
+            return false;
+        };
+        root.spell(canonical_path)
+            .is_some_and(|spelled| !index.exclusion().walk_skips(Path::new(&spelled), false))
     }
 
     /// #824 Whether the index published for `incarnation` under `key` holds

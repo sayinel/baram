@@ -704,3 +704,48 @@ async fn a_namespace_rename_whose_rebuild_did_not_publish_is_announced_once_one_
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0]["rebuilt"], serde_json::json!([root]));
 }
+
+#[tokio::test]
+async fn a_command_names_a_note_it_reconciled_even_when_its_links_did_not_change() {
+    // §393 The Update gate leaves the index alone, but a command keeps the 824-a1 rule:
+    // what it reconciled is named, so a window waiting on its own write hears it.
+    // 이것을 실패시키는 것: `emit_changed` 가 `watched` 를 보지 않고 바뀌지 않은 경로를 모두 뺀다.
+    let app = app();
+    let (_dir, root) = vault(&app).await;
+    let a = format!("{root}/a.md");
+    let seen = changes(&app);
+    super::reconcile_effects(app.handle(), &[super::Effect::Path(a.clone())]).await;
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0]["entries"].as_array().unwrap().len(), 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_command_write_through_a_link_is_a_write_to_its_target() {
+    // A command's path is resolved through links (`Entry::Resolved`): writing through
+    // `link.md` reconciles `a.md`. The watcher's unit judges the link itself instead (§393).
+    // 이것을 실패시키는 것: 링크 판정(`not_its_own_entry`)을 명령의 unit 에도 건다 — 대상 `a.md` 가 사라진 것으로
+    // 읽혀 index 에서 빠진다.
+    let app = app();
+    let (dir, root) = vault(&app).await;
+    std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("link.md")).unwrap();
+    std::fs::write(dir.path().join("c.md"), "x").unwrap();
+    std::fs::write(dir.path().join("a.md"), "see [[c]]").unwrap();
+
+    super::reconcile_effects(
+        app.handle(),
+        &[super::Effect::Path(format!("{root}/link.md"))],
+    )
+    .await;
+
+    assert!(
+        edge(
+            &app,
+            &root,
+            &format!("{root}/a.md"),
+            &format!("{root}/c.md")
+        )
+        .await
+    );
+}

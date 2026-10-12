@@ -1,5 +1,6 @@
 use super::build::*;
 use super::keys::*;
+use super::mutation::{Effect, Mutation};
 use super::query::*;
 use super::rename::*;
 use super::state::*;
@@ -12,6 +13,7 @@ mod boundary;
 mod builds;
 mod contexts;
 mod excluded;
+mod external;
 mod file_rename;
 mod namespace;
 mod namespace_exclusion;
