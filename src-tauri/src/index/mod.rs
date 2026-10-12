@@ -563,7 +563,9 @@ impl LinkIndex {
             .walk_skips(std::path::Path::new(file_path), false);
         match self.root_path.clone() {
             Some(_) if excluded => self.remove_file(file_path),
-            Some(root) => self.register_link_target(file_path, &root),
+            Some(root) => {
+                self.register_link_target(file_path, &root);
+            }
             None => {}
         }
     }
@@ -581,8 +583,16 @@ impl LinkIndex {
                 .any(|key| named(self.name_map.get(key)))
     }
 
-    /// Update index for a single file using already-read content (sync, no I/O)
+    /// Update index for a single file using already-read content (sync, no I/O).
     pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
+        let entries = extract_links(file_path, content);
+        let tags = extract_file_tags(content);
+        self.write_note(file_path, entries, tags);
+    }
+
+    /// What `update_file_from_content` writes for `file_path`, given the links and tags read
+    /// from it — §393 `update_file_unless_held` reads once and writes through this too.
+    fn write_note(&mut self, file_path: &str, entries: Vec<LinkEntry>, tags: Vec<String>) {
         self.remove_file(file_path);
         if self
             .exclusion
@@ -596,14 +606,12 @@ impl LinkIndex {
             self.register_file_path(file_path, &root);
         }
 
-        let entries = extract_links(file_path, content);
         for entry in &entries {
             self.file_incoming(entry);
         }
         self.outgoing.insert(file_path.to_string(), entries);
 
-        // Extract tags for graph tag nodes
-        let tags = extract_file_tags(content);
+        // Tags for graph tag nodes
         if !tags.is_empty() {
             self.file_tags.insert(file_path.to_string(), tags);
         }

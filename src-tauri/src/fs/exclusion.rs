@@ -165,7 +165,8 @@ impl VaultExclusion {
         for (i, name) in names.iter().enumerate() {
             prefix.push(name);
             let dir = i + 1 < names.len() || is_dir;
-            if name.to_string_lossy().starts_with('.') || matcher.matched(&prefix, dir).is_ignore()
+            if super::is_hidden_name(&name.to_string_lossy())
+                || matcher.matched(&prefix, dir).is_ignore()
             {
                 return true;
             }

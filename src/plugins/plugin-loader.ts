@@ -54,6 +54,10 @@ import {
   SETTINGS_CHANGED_EVENT,
   watchPluginSettings,
 } from "./settings-change-notifier";
+import {
+  VAULT_CHANGED_EVENT,
+  watchVaultChanges,
+} from "./vault-change-notifier";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
 /** §260 3c-2a — bound on closing a sandbox webview, so a wedged close cannot eat
@@ -807,6 +811,17 @@ export class PluginLoader {
       dispose: watchPluginSettings({
         capabilities: manifest.capabilities,
         deliver: () => session.deliverEvent(SETTINGS_CHANGED_EVENT, []),
+        label: "Sandbox",
+        pluginId: manifest.id,
+      }),
+    });
+    // §393 — and to a context's files changing (`vault:changed`). Not the event bridge either,
+    // for the same reason: gated on `files` / `files:readonly` inside the watcher, not on `events`.
+    disposables.push({
+      dispose: watchVaultChanges({
+        capabilities: manifest.capabilities,
+        deliver: (change) =>
+          session.deliverEvent(VAULT_CHANGED_EVENT, [change]),
         label: "Sandbox",
         pluginId: manifest.id,
       }),

@@ -43,7 +43,8 @@ use crate::fs::{VaultExclusion, BARAMIGNORE};
 
 use super::build::{prepare_index_build, rebuild_and_publish};
 use super::keys::buildable;
-use super::state::{tick, ApplyOutcome, LinkIndexState, Mutation};
+use super::mutation::Mutation;
+use super::state::{tick, ApplyOutcome, LinkIndexState};
 
 /// A registration, as the units name it: its key and the incarnation they resolved.
 pub(crate) type RegistrationAt = (String, u64);
@@ -512,9 +513,9 @@ fn clone_point(point: &Point) -> Point {
     }
 }
 
-/// The markdown rule a vault build reads notes by (`fs::collect_md_files`).
+/// The markdown rule a vault build reads notes by (`fs::is_note_name`).
 pub(crate) fn is_note(path: &str) -> bool {
-    path.ends_with(".md") || path.ends_with(".markdown")
+    crate::fs::is_note_name(path)
 }
 
 /// Whether a directory holds any file a vault build would register. A walk that fails

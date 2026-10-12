@@ -20,6 +20,7 @@ vi.mock("../../ipc/plugin-invoke", () => ({
 import type { PluginManifest } from "../types";
 
 import { type Locale, t as lookup } from "../../i18n";
+import { publishVaultChange } from "../../services/vault-changes";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { executePluginCommand } from "../extension-context";
@@ -791,4 +792,44 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
   // asserted — creating one in a packaged build is now the point. What still must hold
   // is that a sandboxed manifest goes to the sandbox and nowhere else, which
   // `plugin-containment.test.ts` pins against the trust routing.
+  describe("vault:changed (§393)", () => {
+    it("delivers { context } to a sandboxed plugin with files:readonly", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "files:readonly"] }),
+      );
+      f.deliverEvent.mockClear();
+      publishVaultChange("ctx-1");
+      expect(f.deliverEvent).toHaveBeenCalledWith("vault:changed", [
+        { context: "ctx-1" },
+      ]);
+    });
+
+    it("does not deliver to a sandboxed plugin without a file capability", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "events"] }),
+      );
+      f.deliverEvent.mockClear();
+      publishVaultChange("ctx-1");
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+
+    it("stops delivering after unload", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "files"] }),
+      );
+      await loader.unloadPlugin("demo");
+      f.deliverEvent.mockClear();
+      publishVaultChange("ctx-1");
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+  });
 });

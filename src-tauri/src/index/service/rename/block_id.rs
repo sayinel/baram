@@ -9,7 +9,8 @@ use crate::index::{replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths}
 use std::collections::HashMap;
 
 use super::super::keys::keys_of;
-use super::super::state::{LinkIndexState, Mutation};
+use super::super::mutation::Mutation;
+use super::super::state::LinkIndexState;
 use super::referrers::{
     apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers,
     ReferrerRewrite, Unchanged,
