@@ -372,7 +372,13 @@ async fn reconcile_at(
                 out.announce.insert(ctx.info.id.clone());
                 out.degrade.push(at);
             }
-            Point::Nothing => {}
+            // §393 An empty folder the index cannot compare with: announced, as a missing
+            // signal is worse than an extra one.
+            Point::Nothing => {
+                if !state.has_index(&ctx.info.path, ctx.incarnation).await {
+                    out.announce.insert(ctx.info.id.clone());
+                }
+            }
         }
     }
     for ctx in buildable(&ctx_mgr.contexts_holding(&canonical).await) {

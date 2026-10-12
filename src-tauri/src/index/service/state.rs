@@ -390,6 +390,15 @@ impl LinkIndexState {
         ApplyOutcome::Applied(effect)
     }
 
+    /// §393 Whether an index is published for `incarnation` under `key`.
+    pub(super) async fn has_index(&self, key: &str, incarnation: u64) -> bool {
+        self.slots
+            .lock()
+            .await
+            .get(key)
+            .is_some_and(|s| s.published_incarnation == incarnation && s.index.is_some())
+    }
+
     /// §393 Whether the index published for `incarnation` under `key` would walk
     /// `canonical_path` — not hidden, not left out by its `VaultExclusion`. `false` with no
     /// index.

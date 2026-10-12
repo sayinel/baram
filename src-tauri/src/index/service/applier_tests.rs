@@ -1686,3 +1686,34 @@ async fn a_registration_the_batch_cannot_judge_is_announced() {
         vec!["v"]
     );
 }
+
+#[tokio::test]
+async fn an_empty_folder_is_announced_when_there_is_no_live_index() {
+    // The pair of `an_empty_folder_that_appears_is_not_announced_with_a_live_index`.
+    // 이것을 실패시키는 것: index 가 없을 때도 빈 폴더(`Point::Nothing`)를 알리지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = registered_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::create_dir(root.join("empty")).unwrap();
+    assert_eq!(
+        announced(&app, &root, &[root.join("empty")]).await,
+        vec!["v"]
+    );
+}
+
+#[tokio::test]
+async fn an_attachment_is_announced_when_it_appears_and_when_its_echo_comes() {
+    // A target newly registered, and the same file reported again: both announced — tags,
+    // tasks and search do not read attachments, but a plugin reading the file does.
+    // 이것을 실패시키는 것: 이미 등록된 대상(바뀌지 않음)을 알리지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    let pdf = root.join("paper.pdf");
+    std::fs::write(&pdf, "%PDF").unwrap();
+    assert_eq!(
+        announced(&app, &root, std::slice::from_ref(&pdf)).await,
+        vec!["v"]
+    );
+    assert_eq!(announced(&app, &root, &[pdf]).await, vec!["v"]);
+}
