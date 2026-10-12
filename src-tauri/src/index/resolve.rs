@@ -171,7 +171,7 @@ impl LinkIndex {
     /// matched first by the root-relative path as written, then by the first
     /// matching file name in registration order. These are the two keys
     /// `register_link_target` gives a file. Not `name_map` itself: a save
-    /// that rewrites the note (its links or tags changed — `update_file_unless_held`
+    /// that rewrites the note (its links or tags changed — `update_file_from_content`
     /// → `write_note`) drops the note from it through `remove_file` and re-registers it
     /// with `register_file_path` alone, so such a note would miss there while
     /// `file_map` holds it again.
@@ -181,8 +181,8 @@ impl LinkIndex {
     /// `[[Paper.pdf]]` — takes exactly the chain in `resolve_target_from_map`,
     /// and the §278 order stays. The guard is needed: `file_map` is not only
     /// notes, since a save that rewrites the file registers
-    /// whatever path it is given (`update_file_index_inner` → `update_file_unless_held`
-    /// → `write_note` → `register_file_path`), and an
+    /// whatever path it is given (the reconcile unit's `Mutation::Update` →
+    /// `update_file_from_content` → `write_note` → `register_file_path`), and an
     /// extension-less file's name equals its key, so `[[architecture]]` would
     /// match `architecture` by name. With no candidate, `[[foo.markdown]]`
     /// beside only `foo.md` falls through to the stem `foo`: the note, not the
@@ -357,9 +357,9 @@ mod tests {
     /// An index over `/vault` whose `r.md` holds `content`, built the way
     /// `build` registers files: the markdown pass over the names ending in
     /// `.md` or `.markdown` (`collect_md_files`' filter), then every file as a
-    /// target. Then each of `saved` is saved (`update_file_from_content`, the
-    /// test-only unconditional write — the app's `update_file_unless_held` writes the same
-    /// way when the links or tags changed). The edge targets from `r.md`, in the order
+    /// target. Then each of `saved` is saved empty (`update_file_from_content`, which
+    /// writes since a registered note without links has none recorded yet). The edge
+    /// targets from `r.md`, in the order
     /// its links are written (`get_link_graph` walks each source's entries in
     /// order).
     fn graph_targets_of(files: &[&str], saved: &[&str], content: &str) -> Vec<String> {
