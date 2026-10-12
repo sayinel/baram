@@ -145,6 +145,13 @@ impl LinkIndexState {
 
     /// The failure generation an attempt for `(key, incarnation)` starts from, and the
     /// stamp of the latest request.
+    /// #852 When the rebuild job for `(key, incarnation)` was last requested, if it has one.
+    pub(super) fn rebuild_requested_at(&self, key: &str, incarnation: u64) -> Option<u64> {
+        self.jobs()
+            .get(&(key.to_string(), incarnation))
+            .map(|j| j.requested_at)
+    }
+
     fn rebuild_request(&self, key: &str, incarnation: u64) -> (u64, u64) {
         self.jobs()
             .get(&(key.to_string(), incarnation))

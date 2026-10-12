@@ -1154,3 +1154,110 @@ async fn a_restarted_outer_watch_vouches_for_the_index_its_rescan_rebuilt() {
         .await
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_nested_start_during_the_outer_rebuild_does_not_run_it_again() {
+    // Both vaults were built before their watches. The outer one's start asks for both
+    // rebuilds; while the outer rebuild runs, the nested watch starts. The outer job was
+    // requested after the outer watch began, so it is not asked for again — asking would
+    // move its generation on and run the attempt a second time.
+    // 이것을 실패시키는 것: `read_before` 가 horizon 뒤에 요청된 rebuild job 을 보지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let outer_path = dir.path().join("v");
+    std::fs::create_dir_all(outer_path.join("sub")).unwrap();
+    let (outer, outer_root) = vault_at(&app, "v", &outer_path).await;
+    let (inner, inner_root) = vault_at(&app, "s", &outer_path.join("sub")).await;
+    let attempts = Arc::new(Mutex::new(HashMap::<String, usize>::new()));
+    let release = Arc::new(tokio::sync::Notify::new());
+    {
+        let (attempts, release, outer) =
+            (Arc::clone(&attempts), Arc::clone(&release), outer.clone());
+        *app.state::<LinkIndexState>().fake_rebuild.lock().unwrap() =
+            Some(Arc::new(move |key: String| {
+                let first = {
+                    let mut seen = attempts.lock().unwrap();
+                    let n = seen.entry(key.clone()).or_insert(0);
+                    *n += 1;
+                    *n == 1 && key == outer
+                };
+                let release = Arc::clone(&release);
+                Box::pin(async move {
+                    if first {
+                        release.notified().await;
+                    }
+                    true
+                })
+            }));
+    }
+    let changes = app.state::<ExternalChanges>();
+    changes.started(&outer_root, true);
+    apply_batch(app.handle()).await;
+    let attempted = |key: &str| attempts.lock().unwrap().get(key).copied().unwrap_or(0);
+    for _ in 0..100 {
+        if attempted(&outer) == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(attempted(&outer), 1, "the outer rebuild never ran");
+    changes.started(&inner_root, true);
+    apply_batch(app.handle()).await;
+    release.notify_one();
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    assert_eq!(attempted(&outer), 1);
+    assert!(attempted(&inner) >= 1);
+    assert_eq!(app.state::<LinkIndexState>().rebuild_jobs_len(), 0);
+}
+
+#[tokio::test]
+async fn an_old_publication_keeps_the_rescan_while_a_later_build_reads() {
+    // The index published before the start; a refresh that began after it is still
+    // reading when the rescan is taken. That refresh may never publish — here it is
+    // aborted — so the rescan stands on the old publication.
+    // 이것을 실패시키는 것: `earliest_read` 가 published 와 pending 중 늦은 쪽(`max`)을 고른다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    app.state::<ExternalChanges>().started(&root, true);
+    let reached = Arc::new(tokio::sync::Notify::new());
+    *app.state::<LinkIndexState>()
+        .pause_before_publish
+        .lock()
+        .unwrap() = Some(crate::index::service::state::PauseAfterRead {
+        path: key.clone().into(),
+        reached: Arc::clone(&reached),
+        release: Arc::new(tokio::sync::Notify::new()),
+    });
+    let refresh = {
+        let (handle, key) = (app.handle().clone(), key.clone());
+        tokio::spawn(async move {
+            let _ = refresh_index_inner(
+                &handle.state::<LinkIndexState>(),
+                &handle.state::<ContextManager>(),
+                &key,
+            )
+            .await;
+        })
+    };
+    tokio::time::timeout(Duration::from_secs(5), reached.notified())
+        .await
+        .expect("the later build never read");
+    let rebuilt = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::clone(&rebuilt);
+    *app.state::<LinkIndexState>().fake_rebuild.lock().unwrap() =
+        Some(Arc::new(move |key: String| {
+            log.lock().unwrap().push(key);
+            Box::pin(async { true })
+        }));
+    apply_batch(app.handle()).await;
+    refresh.abort();
+    assert_eq!((counts(&app).rescans, counts(&app).rescans_skipped), (1, 0));
+    assert!(
+        eventually(|| {
+            let (rebuilt, key) = (Arc::clone(&rebuilt), key.clone());
+            async move { rebuilt.lock().unwrap().contains(&key) }
+        })
+        .await
+    );
+}

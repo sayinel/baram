@@ -256,8 +256,17 @@ impl ExternalChanges {
     }
 
     /// #852 Since when `root` (canonical) has been watched recursively, if it is.
-    fn watched_since(&self, root: &Path) -> Option<u64> {
+    pub(crate) fn watched_since(&self, root: &Path) -> Option<u64> {
         self.watching().get(root).copied()
+    }
+
+    /// Whether `host`'s next start is a restart (tests).
+    #[cfg(test)]
+    pub(crate) fn has_ended(&self, host: &Path) -> bool {
+        self.ended
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(host)
     }
 
     /// Wait until a burst is over: `SETTLE` without a mark, or `MAX_LATENCY` after its first.
@@ -470,8 +479,15 @@ pub(crate) async fn apply_batch<R: Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 /// #852 The registrations a rescan of `host` would rebuild that hold a read begun before
-/// `start` — their published index, or a build still reading — and whose own root has not
-/// been watched recursively since before that read.
+/// the start's gap closed for them — their published index, or a build still reading.
+///
+/// The gap closes at `start` for the part of the registration this host watches, and
+/// earlier if its own root has been watched recursively since before (`horizon`). A read
+/// that began after the horizon saw everything since, and so does the rebuild job the
+/// scheduler already has for it if that job was requested after the horizon: a job ends
+/// only on a publication whose build began after its latest request (`scheduler`'s
+/// `attempt`). Requesting it again would only make a running attempt go again. A build a
+/// refresh is still reading may be cancelled, so the oldest read decides (`earliest_read`).
 async fn read_before(
     state: &LinkIndexState,
     changes: &ExternalChanges,
@@ -484,14 +500,18 @@ async fn read_before(
         let Some(began) = state.earliest_read(&key, incarnation).await else {
             continue;
         };
-        if began >= start {
-            continue;
-        }
         let watched = ctx_mgr
             .context_registered_at(&key)
             .await
             .and_then(|r| changes.watched_since(&r.canonical_path));
-        if watched.is_some_and(|since| since < began) {
+        let horizon = watched.map_or(start, |since| since.min(start));
+        if began > horizon {
+            continue;
+        }
+        if state
+            .rebuild_requested_at(&key, incarnation)
+            .is_some_and(|at| at > horizon)
+        {
             continue;
         }
         stale.insert((key, incarnation));
