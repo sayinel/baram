@@ -18,8 +18,11 @@
 //! - a change to `<registration root>/.baramignore` (it changes what every entry means);
 //! - a file where the index holds entries below the path (a directory became a file);
 //! - a directory where the index holds the path itself, or one that holds files (moved
-//!   in: its files arrive without events of their own);
-//! - a vanished path with entries below it.
+//!   in: its files arrive without events of their own).
+//!
+//! §393 A vanished path with entries below it, and an empty directory where the index holds
+//! entries below, lose those entries in place (`Mutation::RemoveTree`): a fresh build of that
+//! disk differs by nothing else.
 //!
 //! A root whose `.baramignore` cannot be used gets nothing and the path is a failure, as
 //! a build of that root fails (#794). Any registration a unit cannot judge the path for
@@ -291,12 +294,16 @@ async fn reconcile_at(
                     copy
                 }
             },
+            // §393 What a fresh build leaves of a vanished path is nothing at or below it:
+            // the tree's removal, in place, rather than a rebuild of the whole registration.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 if state
                     .holds_under(&ctx.info.path, ctx.incarnation, &canonical)
                     .await
                 {
-                    Point::Rebuild
+                    Point::Mutation(Mutation::RemoveTree {
+                        paths: vec![canonical.clone()],
+                    })
                 } else {
                     Point::Mutation(Mutation::Remove {
                         path: canonical.clone(),
@@ -470,7 +477,9 @@ pub(crate) async fn rebuild_registration(
 }
 
 /// A directory on disk: rebuild if the index holds the path itself (a file became a
-/// directory) or the directory holds files a build would register.
+/// directory) or the directory holds files a build would register. §393 An empty one where
+/// the index holds entries below — a folder replaced by an empty one, reported as the folder
+/// alone — loses them in place: that is all a fresh build would differ by.
 async fn directory_point(
     state: &LinkIndexState,
     ctx: &Registered,
@@ -486,6 +495,15 @@ async fn directory_point(
     }
     match holds_files(path, exclusion).await {
         Ok(true) => Point::Rebuild,
+        Ok(false)
+            if state
+                .holds_under(&ctx.info.path, ctx.incarnation, canonical)
+                .await =>
+        {
+            Point::Mutation(Mutation::RemoveTree {
+                paths: vec![canonical.to_path_buf()],
+            })
+        }
         Ok(false) => Point::Nothing,
         Err(_) => Point::Failed,
     }

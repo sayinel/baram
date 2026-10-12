@@ -15,6 +15,7 @@ mod relative_links;
 mod removal_tests;
 mod resolve;
 mod rewriter;
+mod tree;
 pub mod service;
 mod types;
 

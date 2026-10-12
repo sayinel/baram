@@ -721,3 +721,85 @@ async fn a_refresh_dropped_mid_build_does_not_block_the_next_one() {
         .unwrap();
     assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
 }
+
+/// §393 What fails this: a `RemoveTree` that is applied to the live index but not journaled
+/// — the build read `sub/c.md` before the folder went, and would publish it back.
+#[tokio::test]
+async fn a_tree_removed_while_a_build_reads_is_gone_from_what_it_publishes() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    std::fs::create_dir(dir.path().join("sub")).unwrap();
+    std::fs::write(dir.path().join("sub/c.md"), "see [[b]]").unwrap();
+    let state = LinkIndexState::new();
+    let key = active_index_key(&ctx).await.unwrap();
+
+    let (token, snapshot, stats) = staged_build(&state, &ctx, &key, &root).await;
+    let sub = crate::context::manager::resolve_canonical(&format!("{root}/sub")).unwrap();
+    std::fs::remove_dir_all(dir.path().join("sub")).unwrap();
+    state
+        .apply(&key, vec![Mutation::RemoveTree { paths: vec![sub] }])
+        .await;
+    assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
+
+    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+        .await
+        .unwrap();
+    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+}
+
+/// §393 The same for a link target that appeared while the build read. What fails this: a
+/// `Target` that reaches the live index but not the journal.
+#[tokio::test]
+async fn a_target_that_appears_while_a_build_reads_resolves_in_what_it_publishes() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    std::fs::write(dir.path().join("n.md"), "see [[paper.pdf]]").unwrap();
+    let state = LinkIndexState::new();
+    let key = active_index_key(&ctx).await.unwrap();
+
+    let (token, snapshot, stats) = staged_build(&state, &ctx, &key, &root).await;
+    std::fs::write(dir.path().join("paper.pdf"), "%PDF").unwrap();
+    let paper = crate::context::manager::resolve_canonical(&format!("{root}/paper.pdf")).unwrap();
+    state
+        .apply(&key, vec![Mutation::Target { path: paper }])
+        .await;
+    state.publish(&key, token, snapshot, stats).await.unwrap();
+
+    let resolved = state
+        .with_index(&key, |idx| {
+            idx.unwrap()
+                .outgoing_resolved(&format!("{root}/n.md"))
+                .unwrap()
+        })
+        .await;
+    assert!(
+        matches!(&resolved[0].1, crate::index::LinkResolution::Resolved(p) if p.ends_with("paper.pdf")),
+        "{:?}",
+        resolved[0].1
+    );
+}
+
+/// §393 What fails this: a `RemoveTree` that reports a change whatever it found.
+#[tokio::test]
+async fn the_live_index_reports_whether_a_tree_removal_found_anything() {
+    let ctx = ContextManager::new();
+    let (_dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let key = active_index_key(&ctx).await.unwrap();
+    let incarnation = incarnation_of(&ctx, "ctx-abc").await;
+    let canonical = crate::context::manager::resolve_canonical(&root).unwrap();
+    let removal = |relative: &str| Mutation::RemoveTree {
+        paths: vec![canonical.join(relative)],
+    };
+    let tick = crate::index::service::state::tick;
+
+    let nothing = state
+        .apply_for(&key, incarnation, vec![removal("no-such-dir")], tick())
+        .await;
+    assert!(matches!(nothing, ApplyOutcome::Applied(e) if !e.changed));
+    let a = state
+        .apply_for(&key, incarnation, vec![removal("a.md")], tick())
+        .await;
+    assert!(matches!(a, ApplyOutcome::Applied(e) if e.changed));
+}

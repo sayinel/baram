@@ -19,6 +19,9 @@ pub(super) enum Mutation {
     /// #824 A note that exists but cannot be read: registered, without content — what
     /// a fresh build makes of it (`LinkIndex::mark_unreadable`).
     Unreadable { path: PathBuf },
+    /// §393 Everything at or under each of these paths is gone — a folder removed, or
+    /// replaced by an empty one (`LinkIndex::remove_trees`).
+    RemoveTree { paths: Vec<PathBuf> },
 }
 
 impl Mutation {
@@ -35,31 +38,48 @@ impl Mutation {
     /// Apply to `index`, spelled under `root`, and say what that did (`Effect`). A path not
     /// under `root` changes nothing.
     pub(super) fn apply_to(&self, index: &mut LinkIndex, root: &IndexRoot) -> Effect {
-        let canonical_path = match self {
-            Self::Update { path, .. }
-            | Self::Remove { path }
-            | Self::Target { path }
-            | Self::Unreadable { path } => path,
-        };
-        let Some(spelled) = root.spell(canonical_path) else {
-            return Effect::NOTHING;
-        };
-        // §393 Judged before the change, by the same matcher the change consults.
-        let excluded = index
-            .exclusion()
-            .walk_skips(std::path::Path::new(&spelled), false);
-        let changed = match self {
-            Self::Update { content, .. } => index.update_file_from_content(&spelled, content),
-            Self::Remove { .. } => {
-                let held = index.holds_path(&spelled);
-                index.remove_file(&spelled);
+        match self {
+            Self::Update { path, content } => one(index, root, path, |i, p| {
+                i.update_file_from_content(p, content)
+            }),
+            Self::Remove { path } => one(index, root, path, |i, p| {
+                let held = i.holds_path(p);
+                i.remove_file(p);
                 held
-            }
+            }),
             // #824 judged by this index's own exclusion, as `Update` is.
-            Self::Target { .. } => index.update_link_target(&spelled),
-            Self::Unreadable { .. } => index.mark_unreadable(&spelled),
-        };
-        Effect { changed, excluded }
+            Self::Target { path } => one(index, root, path, LinkIndex::update_link_target),
+            Self::Unreadable { path } => one(index, root, path, LinkIndex::mark_unreadable),
+            Self::RemoveTree { paths } => {
+                let spelled: Vec<String> =
+                    paths.iter().filter_map(|path| root.spell(path)).collect();
+                let spelled: Vec<&str> = spelled.iter().map(String::as_str).collect();
+                Effect {
+                    changed: !spelled.is_empty() && index.remove_trees(&spelled),
+                    excluded: false,
+                }
+            }
+        }
+    }
+}
+
+/// One path's change, spelled under `root`: whether it changed the index, and whether its
+/// build never walks the path — judged before the change, by the matcher the change consults.
+fn one(
+    index: &mut LinkIndex,
+    root: &IndexRoot,
+    canonical_path: &std::path::Path,
+    change: impl FnOnce(&mut LinkIndex, &str) -> bool,
+) -> Effect {
+    let Some(spelled) = root.spell(canonical_path) else {
+        return Effect::NOTHING;
+    };
+    let excluded = index
+        .exclusion()
+        .walk_skips(std::path::Path::new(&spelled), false);
+    Effect {
+        changed: change(index, &spelled),
+        excluded,
     }
 }
 
