@@ -18,6 +18,14 @@
 //! ended (`watch_cmd`): a rescan rebuilds every registration containing the host or under
 //! it, and while one waits, no path under that host is added.
 //!
+//! #852 A host that starts watching recursively for the first time, or widens to it, marks
+//! a CONDITIONAL rescan with the stamp of that start: an index that read before it may hold
+//! a change no watcher reported. At the take it rebuilds only the registrations holding a
+//! read — published, or a build still reading — that began before the newest such start,
+//! unless the registration's own root has been watched recursively since before that read.
+//! An unconditional rescan of the host dominates it. A conditional one may come to nothing,
+//! so paths under it are still added and applied.
+//!
 //! The applier takes a batch after `SETTLE` without a new mark, or `MAX_LATENCY` after the
 //! first mark of a burst, whichever comes first. Each rescan is a tree effect, and each
 //! path a unit at its identity (`reconcile::reconcile_identity_in`), all in one `Batch`,
@@ -45,7 +53,9 @@ use tokio::time::Instant;
 
 use super::commit::report;
 use super::keys::buildable;
-use super::reconcile::{reconcile_identity_in, reconcile_tree_at, Batch};
+use super::reconcile::{
+    reconcile_identity_in, reconcile_registrations, tree_registrations, Batch, RegistrationAt,
+};
 use super::state::{tick, LinkIndexState};
 use crate::context::ContextManager;
 
@@ -64,11 +74,21 @@ struct Entry {
     stamp: u64,
 }
 
+/// What a waiting rescan of a host asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Rescan {
+    /// Everything under the host may have changed unseen: rebuild every registration.
+    Unconditional,
+    /// #852 The host started watching recursively at `newest_start` (the latest of the
+    /// starts it stands for): rebuild what read before it.
+    Conditional { newest_start: u64 },
+}
+
 #[derive(Default)]
 struct Dirty {
     paths: HashMap<PathBuf, Entry>,
-    /// Host canonical → the stamp it was marked at.
-    rescans: HashMap<PathBuf, u64>,
+    /// Host canonical → the rescan it waits for.
+    rescans: HashMap<PathBuf, Rescan>,
     first_mark: Option<Instant>,
     last_mark: Option<Instant>,
 }
@@ -80,6 +100,9 @@ pub struct ExternalChanges {
     wake: tokio::sync::Notify,
     /// Hosts whose watcher ended: the next start of one is a rescan (`watch_cmd`).
     ended: std::sync::Mutex<HashSet<PathBuf>>,
+    /// #852 Hosts watched recursively now, and the stamp since which they have been: a
+    /// registration whose root has been watched since before its index read misses nothing.
+    watching_since: std::sync::Mutex<HashMap<PathBuf, u64>>,
     /// Batches taken, units run, entries skipped as covered (tests).
     #[cfg(test)]
     pub(crate) counts: std::sync::Mutex<Counts>,
@@ -95,6 +118,8 @@ pub(crate) struct Counts {
     pub(crate) units: usize,
     pub(crate) covered: usize,
     pub(crate) rescans: usize,
+    /// #852 Conditional rescans that found nothing read before their start.
+    pub(crate) rescans_skipped: usize,
 }
 
 impl ExternalChanges {
@@ -117,8 +142,10 @@ impl ExternalChanges {
         let now = Instant::now();
         let mut dirty = self.dirty();
         for (identity, spelling) in routed {
-            // A rescan of this host is waiting: it reads this path.
-            if dirty.rescans.contains_key(host) && identity.starts_with(host) {
+            // A rescan of this host is waiting: it reads this path. A conditional one may
+            // read nothing, so it does not stand in for the path.
+            if dirty.rescans.get(host) == Some(&Rescan::Unconditional) && identity.starts_with(host)
+            {
                 continue;
             }
             let stamp = tick();
@@ -130,7 +157,9 @@ impl ExternalChanges {
                     entry.stamp = entry.stamp.max(stamp);
                 }
                 None if full => {
-                    dirty.rescans.entry(host.to_path_buf()).or_insert(stamp);
+                    dirty
+                        .rescans
+                        .insert(host.to_path_buf(), Rescan::Unconditional);
                 }
                 None => {
                     dirty.paths.insert(
@@ -150,11 +179,33 @@ impl ExternalChanges {
         self.wake.notify_one();
     }
 
-    /// Everything under `host` (canonical) may have changed unseen.
+    /// Everything under `host` (canonical) may have changed unseen. Replaces a
+    /// conditional rescan of it.
     pub(crate) fn mark_rescan(&self, host: &Path) {
+        self.mark_host(host, |_| Rescan::Unconditional);
+    }
+
+    /// #852 `host` started watching recursively at `start`: what read before it is
+    /// rescanned. Stands with an unconditional rescan of it, and keeps the newest start
+    /// of earlier conditional ones — a build that published between two starts read
+    /// before the second.
+    fn mark_started(&self, host: &Path, start: u64) {
+        self.mark_host(host, |waiting| match waiting {
+            Some(Rescan::Unconditional) => Rescan::Unconditional,
+            Some(Rescan::Conditional { newest_start }) => Rescan::Conditional {
+                newest_start: newest_start.max(start),
+            },
+            None => Rescan::Conditional {
+                newest_start: start,
+            },
+        });
+    }
+
+    fn mark_host(&self, host: &Path, rescan: impl FnOnce(Option<Rescan>) -> Rescan) {
         let now = Instant::now();
         let mut dirty = self.dirty();
-        dirty.rescans.entry(host.to_path_buf()).or_insert_with(tick);
+        let next = rescan(dirty.rescans.get(host).copied());
+        dirty.rescans.insert(host.to_path_buf(), next);
         dirty.last_mark = Some(now);
         dirty.first_mark.get_or_insert(now);
         drop(dirty);
@@ -163,24 +214,59 @@ impl ExternalChanges {
 
     /// The watcher on `host` ended; its next start rescans it.
     pub(crate) fn note_ended(&self, host: &Path) {
+        self.watching().remove(host);
         self.ended
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(host.to_path_buf());
     }
 
-    /// A watcher on `host` now watches: if the last one ended, what changed meanwhile was
-    /// never reported, so the host is rescanned. Called after the start succeeded, so a
-    /// failed start keeps the mark for the next.
-    pub(crate) fn started(&self, host: &Path) {
+    fn watching(&self) -> std::sync::MutexGuard<'_, HashMap<PathBuf, u64>> {
+        self.watching_since
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// A watcher on `host` now watches, `recursive` or not: if the last one ended, what
+    /// changed meanwhile was never reported, so the host is rescanned. #852 Otherwise a
+    /// recursive start — a host's first, or a widening — rescans what read before it.
+    /// Called after the start succeeded, so a failed start keeps the mark for the next and
+    /// a rescan is never taken before the watcher reports.
+    pub(crate) fn started(&self, host: &Path, recursive: bool) {
         let ended = self
             .ended
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(host);
-        if ended {
-            self.mark_rescan(host);
+        if !recursive {
+            // A narrowing replaces the recursive watcher: the host's subtree is unwatched
+            // from now on.
+            self.watching().remove(host);
         }
+        if ended {
+            if recursive {
+                self.watching().insert(host.to_path_buf(), tick());
+            }
+            self.mark_rescan(host);
+        } else if recursive {
+            let start = tick();
+            self.watching().insert(host.to_path_buf(), start);
+            self.mark_started(host, start);
+        }
+    }
+
+    /// #852 Since when `root` (canonical) has been watched recursively, if it is.
+    pub(crate) fn watched_since(&self, root: &Path) -> Option<u64> {
+        self.watching().get(root).copied()
+    }
+
+    /// Whether `host`'s next start is a restart (tests).
+    #[cfg(test)]
+    pub(crate) fn has_ended(&self, host: &Path) -> bool {
+        self.ended
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(host)
     }
 
     /// Wait until a burst is over: `SETTLE` without a mark, or `MAX_LATENCY` after its first.
@@ -219,13 +305,30 @@ impl ExternalChanges {
         identities
     }
 
-    /// Host rescans waiting (tests).
+    /// Unconditional host rescans waiting (tests).
     #[cfg(test)]
     pub(crate) fn pending_rescans(&self) -> usize {
-        self.dirty().rescans.len()
+        self.dirty()
+            .rescans
+            .values()
+            .filter(|r| **r == Rescan::Unconditional)
+            .count()
     }
 
-    fn take(&self) -> (HashMap<PathBuf, Entry>, HashMap<PathBuf, u64>) {
+    /// #852 Conditional host rescans waiting, with their newest start (tests).
+    #[cfg(test)]
+    pub(crate) fn pending_started(&self) -> Vec<(PathBuf, u64)> {
+        self.dirty()
+            .rescans
+            .iter()
+            .filter_map(|(host, r)| match r {
+                Rescan::Conditional { newest_start } => Some((host.clone(), *newest_start)),
+                Rescan::Unconditional => None,
+            })
+            .collect()
+    }
+
+    fn take(&self) -> (HashMap<PathBuf, Entry>, HashMap<PathBuf, Rescan>) {
         let mut dirty = self.dirty();
         dirty.first_mark = None;
         dirty.last_mark = None;
@@ -289,9 +392,27 @@ pub(crate) async fn apply_batch<R: Runtime>(app: &tauri::AppHandle<R>) {
         takes: 1,
         ..Counts::default()
     };
-    for host in rescans.keys() {
+    for (host, rescan) in &rescans {
+        let registrations = match rescan {
+            Rescan::Unconditional => tree_registrations(&ctx_mgr, host).await,
+            Rescan::Conditional { newest_start } => {
+                read_before(&state, &changes, &ctx_mgr, host, *newest_start).await
+            }
+        };
+        if registrations.is_empty() && matches!(rescan, Rescan::Conditional { .. }) {
+            #[cfg(test)]
+            {
+                counts.rescans_skipped += 1;
+            }
+            continue;
+        }
         state.poke_under(host);
-        done.push(reconcile_tree_at(&ctx_mgr, &host.to_string_lossy(), host, &mut batch).await);
+        done.push(reconcile_registrations(
+            &host.to_string_lossy(),
+            host,
+            registrations,
+            &mut batch,
+        ));
         #[cfg(test)]
         {
             counts.rescans += 1;
@@ -301,8 +422,13 @@ pub(crate) async fn apply_batch<R: Runtime>(app: &tauri::AppHandle<R>) {
     paths.sort_by(|a, b| a.0.cmp(&b.0));
     for (identity, entry) in paths {
         // A rescan of a host it came through reads it: every registration covering it
-        // contains that host or lies under it.
-        if entry.hosts.iter().any(|h| rescans.contains_key(h)) {
+        // contains that host or lies under it. Not a conditional one, which rebuilds only
+        // what read before its start.
+        if entry
+            .hosts
+            .iter()
+            .any(|h| rescans.get(h) == Some(&Rescan::Unconditional))
+        {
             continue;
         }
         state.poke_under(&identity);
@@ -348,7 +474,49 @@ pub(crate) async fn apply_batch<R: Runtime>(app: &tauri::AppHandle<R>) {
         total.units += counts.units;
         total.covered += counts.covered;
         total.rescans += counts.rescans;
+        total.rescans_skipped += counts.rescans_skipped;
     }
+}
+
+/// #852 The registrations a rescan of `host` would rebuild that hold a read begun before
+/// the start's gap closed for them — their published index, or a build still reading.
+///
+/// The gap closes at `start` for the part of the registration this host watches, and
+/// earlier if its own root has been watched recursively since before (`horizon`). A read
+/// that began after the horizon saw everything since, and so does the rebuild job the
+/// scheduler already has for it if that job was requested after the horizon: a job ends
+/// only on a publication whose build began after its latest request (`scheduler`'s
+/// `attempt`). Requesting it again would only make a running attempt go again. A build a
+/// refresh is still reading may be cancelled, so the oldest read decides (`earliest_read`).
+async fn read_before(
+    state: &LinkIndexState,
+    changes: &ExternalChanges,
+    ctx_mgr: &ContextManager,
+    host: &Path,
+    start: u64,
+) -> BTreeSet<RegistrationAt> {
+    let mut stale = BTreeSet::new();
+    for (key, incarnation) in tree_registrations(ctx_mgr, host).await {
+        let Some(began) = state.earliest_read(&key, incarnation).await else {
+            continue;
+        };
+        let watched = ctx_mgr
+            .context_registered_at(&key)
+            .await
+            .and_then(|r| changes.watched_since(&r.canonical_path));
+        let horizon = watched.map_or(start, |since| since.min(start));
+        if began > horizon {
+            continue;
+        }
+        if state
+            .rebuild_requested_at(&key, incarnation)
+            .is_some_and(|at| at > horizon)
+        {
+            continue;
+        }
+        stale.insert((key, incarnation));
+    }
+    stale
 }
 
 /// Whether every registration covering `identity` has published, for its incarnation, a

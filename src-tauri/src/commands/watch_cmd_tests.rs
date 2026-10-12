@@ -444,6 +444,34 @@ fn a_host_whose_watcher_ended_is_rescanned_when_it_is_started_again() {
     assert_eq!(changes.pending_rescans(), 1);
 }
 
+#[test]
+fn a_recursive_first_start_marks_a_conditional_rescan_and_a_folder_watch_does_not() {
+    // #852 The start's scope reaches the applier: a recursive first start may have to
+    // rescan what an index read before it, a folder watched for one file never does.
+    // 이것을 실패시키는 것: `spawn_watcher` 가 `started` 에 `spec.recursive` 대신 상수를 넘긴다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let changes = app.state::<ExternalChanges>();
+    let folder = WatchSpec {
+        recursive: false,
+        ..host_spec(&root)
+    };
+    let narrow = spawn_watcher(app.handle(), &folder).unwrap();
+    assert!(changes.pending_started().is_empty());
+    drop(narrow);
+    let _wide = spawn_watcher(app.handle(), &host_spec(&root)).unwrap();
+    let started: Vec<PathBuf> = changes
+        .pending_started()
+        .into_iter()
+        .map(|(h, _)| h)
+        .collect();
+    assert_eq!(started, vec![root]);
+    assert_eq!(changes.pending_rescans(), 0);
+}
+
 #[tokio::test]
 async fn a_failed_restart_keeps_the_host_marked_until_a_watcher_starts() {
     // The host's watcher ended; the next start fails (its folder is away), a note is
@@ -580,4 +608,103 @@ fn a_router_that_panics_ends_its_watch_and_its_restart_rescans() {
     let changes = app.state::<ExternalChanges>();
     let _again = lease(app.handle(), &root.to_string_lossy(), &root);
     assert_eq!(changes.pending_rescans(), 1);
+}
+
+#[test]
+fn a_replaced_generation_s_end_leaves_its_successor_vouching() {
+    // A folder watched for one file widens to a recursive watch: the registry starts a new
+    // generation and drops the old one. The old router then reports its end late. The
+    // registry ignores it, and so must the applier: the new watcher still vouches for its
+    // root, and its next start is not taken for a restart.
+    // 이것을 실패시키는 것: `on_end` 가 registry 의 판정 전에 `note_ended` 를 부른다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(dir.path()).unwrap();
+    let file = root.join("n.md");
+    std::fs::write(&file, "x").unwrap();
+    let narrow = with_registry(app.handle(), |registry, spawn| {
+        registry.acquire(
+            LeaseRequest {
+                window: "main",
+                path: &root.to_string_lossy(),
+                recursive: false,
+                focus: Some(&file.to_string_lossy()),
+                authority: file.clone(),
+                page: 0,
+            },
+            spawn,
+        )
+    })
+    .unwrap()
+    .unwrap();
+    let _wide = lease(app.handle(), &root.to_string_lossy(), &root);
+    let changes = app.state::<ExternalChanges>();
+    let vouching = changes.watched_since(&root);
+    assert!(vouching.is_some());
+    // The first start was generation 1, the widening generation 2.
+    let replaced = WatchSpec {
+        recursive: false,
+        generation: 1,
+        ..host_spec(&root)
+    };
+    (sinks_for(app.handle(), &replaced).on_end)();
+    assert_eq!(changes.watched_since(&root), vouching);
+    assert!(!changes.has_ended(&root));
+    assert_eq!(
+        held(app.handle()).len(),
+        2,
+        "the stale end ended a lease ({narrow})"
+    );
+}
+
+#[tokio::test]
+async fn a_vault_watched_under_another_spelling_vouches_for_its_index() {
+    // Registered and leased through a spelling that is not canonical (a temporary
+    // folder under `/var` on macOS resolves to `/private/var`): the watch is recorded under
+    // the canonical host, which is what the registration's own root resolves to. A nested
+    // first start later rebuilds the nested index only.
+    // 이것을 실패시키는 것: `read_before` 가 `watching_since` 를 등록의 적힌 key 로 찾는다.
+    use tauri::Manager;
+    let app = mock_app();
+    app.manage(ExternalChanges::new());
+    let dir = tempfile::tempdir().unwrap();
+    let outer = dir.path().join("v");
+    std::fs::create_dir_all(outer.join("sub")).unwrap();
+    let outer_key = outer.to_string_lossy().into_owned();
+    let inner_key = outer.join("sub").to_string_lossy().into_owned();
+    let ctx = app.state::<crate::context::ContextManager>();
+    let state = app.state::<crate::index::service::LinkIndexState>();
+    ctx.add(context(
+        "v",
+        &outer_key,
+        crate::context::ContextType::Folder,
+    ))
+    .await
+    .unwrap();
+    let outer_root = std::fs::canonicalize(&outer).unwrap();
+    let _outer_watch = lease(app.handle(), &outer_key, &outer_root);
+    crate::index::service::refresh_index_inner(&state, &ctx, &outer_key)
+        .await
+        .unwrap();
+    ctx.add(context(
+        "s",
+        &inner_key,
+        crate::context::ContextType::Folder,
+    ))
+    .await
+    .unwrap();
+    crate::index::service::refresh_index_inner(&state, &ctx, &inner_key)
+        .await
+        .unwrap();
+    crate::index::service::apply_watched_batch(app.handle()).await;
+    // Rebuilds that never finish, so the jobs the batch asks for stay to be counted.
+    *state.fake_rebuild.lock().unwrap() = Some(std::sync::Arc::new(|_key: String| {
+        Box::pin(std::future::pending::<bool>())
+    }));
+    let inner_root = std::fs::canonicalize(outer.join("sub")).unwrap();
+    let _inner_watch = lease(app.handle(), &inner_key, &inner_root);
+    crate::index::service::apply_watched_batch(app.handle()).await;
+    assert_eq!(state.rebuild_jobs_len(), 1);
 }

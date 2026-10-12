@@ -135,7 +135,8 @@ pub(crate) struct WatchRegistry<H> {
     ended: Vec<Ended>,
     freed: bool,
     /// §29 #824 Hosts left without a watcher since the caller last asked
-    /// (`take_stopped`): no lease needs them any more, or their start failed.
+    /// (`take_stopped`): no lease needs them any more, their start failed, or their
+    /// current watcher stopped on its own (`watch_ended`).
     stopped: Vec<PathBuf>,
 }
 
@@ -276,12 +277,14 @@ impl<H> WatchRegistry<H> {
 
     /// The watcher of `key` started as `generation` stopped on its own. If it is still
     /// that host's watcher — not one a scope change already replaced — the leases it
-    /// served end.
+    /// served end, and the host is reported stopped (`take_stopped`). A replaced
+    /// generation's end changes nothing: its successor is watching.
     pub(crate) fn watch_ended(&mut self, key: &Path, generation: u64, spawn: SpawnFn<'_, H>) {
         if self.watches.get(key).map(|w| w.generation) != Some(generation) {
             return;
         }
         self.watches.remove(key);
+        self.stopped.push(key.to_path_buf());
         self.freed = true;
         let ids: Vec<u64> = self
             .leases

@@ -289,7 +289,9 @@ fn with_registry<R: tauri::Runtime, T>(
     let out = f(&mut registry, &|spec| spawn_watcher(app, spec));
     let (ended, freed) = registry.take_news();
     // §29 #824 A host left unwatched: whatever changes under it until a watcher covers it
-    // again is rescanned then (`ExternalChanges::started`).
+    // again is rescanned then (`ExternalChanges::started`). Still under the registry lock:
+    // a start of the same host is decided under it too, so it cannot land between the stop
+    // and this note and then inherit it.
     let stopped = registry.take_stopped();
     if let Some(changes) = app.try_state::<ExternalChanges>() {
         for host in &stopped {
@@ -313,8 +315,10 @@ fn with_registry<R: tauri::Runtime, T>(
 /// Start a watcher whose own end — an error, its folder removed — ends the leases it
 /// serves, if it is still its host's watcher then. §29 #824 A host whose last watcher
 /// ended is rescanned once the new one watches: what changed in between was never
-/// reported. Only then — a start that fails keeps the host marked, and a rescan taken
-/// while the start is still under way could not see what changes before it watches.
+/// reported. #852 A recursive start of a host never watched so, or a widening, rescans the
+/// indexes that read before it. Only then — a start that fails keeps the host marked, and a
+/// rescan taken while the start is still under way could not see what changes before it
+/// watches.
 fn spawn_watcher<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     spec: &WatchSpec,
@@ -323,7 +327,7 @@ fn spawn_watcher<R: tauri::Runtime>(
     hold_start(&spec.key);
     let watcher = crate::fs::start_watching(spec, app.clone(), sinks_for(app, spec))?;
     if let Some(changes) = app.try_state::<ExternalChanges>() {
-        changes.started(&spec.key);
+        changes.started(&spec.key, spec.recursive);
     }
     Ok(watcher)
 }
@@ -363,10 +367,10 @@ pub(crate) fn sinks_for<R: tauri::Runtime>(
     let rescans = app.clone();
     let rescanned = spec.key.clone();
     crate::fs::WatchSinks {
+        // #852 Only the registry knows whether this is still the host's watcher: a
+        // replaced generation's end must not tell the applier that its successor stopped.
+        // `with_registry` passes on the stops the registry decided (`take_stopped`).
         on_end: Box::new(move || {
-            if let Some(changes) = ended_app.try_state::<ExternalChanges>() {
-                changes.note_ended(&key);
-            }
             let _ = with_registry(&ended_app, |registry, spawn| {
                 registry.watch_ended(&key, generation, spawn)
             });
