@@ -83,6 +83,12 @@ pub(crate) struct Reconciled {
     /// changed (`commit::emit_changed`). A command's units keep the 824-a1 rule — every
     /// path the command reconciled is named.
     pub(crate) watched: bool,
+    /// §393 The context ids to announce as `vault:changed` for this path — a watched unit's
+    /// only (a command's write is announced by the watcher's echo of it): a covering index
+    /// that took a note or file its build walks, or changed, or has none yet to compare
+    /// with; a removal that took something; a registration it had to drop. A rebuild it
+    /// asked for is announced by the scheduler once it publishes.
+    pub(crate) announce: BTreeSet<String>,
 }
 
 /// What the units of one batch — one command's effects, one watcher sync — share
@@ -322,6 +328,10 @@ async fn reconcile_at(
         match point {
             Point::Mutation(m) => {
                 out.reached = true;
+                let present = matches!(
+                    m,
+                    Mutation::Update { .. } | Mutation::Target { .. } | Mutation::Unreadable { .. }
+                );
                 // `Stale` needs no second try. The registrations were resolved under
                 // the guard, after the commit this unit follows; a registration of the
                 // same path that replaced one of them since was registered after that
@@ -333,9 +343,18 @@ async fn reconcile_at(
                     ApplyOutcome::Applied(effect) => {
                         out.applied.push(ctx.info.path.clone());
                         out.changed |= effect.changed;
+                        // §393 Tags, tasks and search read a present note from disk whatever
+                        // its links; a removal is news only when it took something.
+                        if effect.changed || (present && !effect.excluded) {
+                            out.announce.insert(ctx.info.id.clone());
+                        }
                     }
-                    // Its first build reads the disk as this unit did.
-                    ApplyOutcome::NoIndex => out.changed = true,
+                    // Its first build reads the disk as this unit did. Nothing to compare
+                    // with: a missing signal is worse than an extra one.
+                    ApplyOutcome::NoIndex => {
+                        out.changed = true;
+                        out.announce.insert(ctx.info.id.clone());
+                    }
                     ApplyOutcome::Stale => {}
                 }
             }
@@ -350,6 +369,7 @@ async fn reconcile_at(
             Point::Failed => {
                 out.failed = true;
                 out.changed = true;
+                out.announce.insert(ctx.info.id.clone());
                 out.degrade.push(at);
             }
             Point::Nothing => {}

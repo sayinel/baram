@@ -15,6 +15,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { installIndexChanges, onIndexChanged } from "../index-changes";
+import { subscribeVaultChanges } from "../vault-changes";
 
 function changed(
   entries: { canonical: string; spellings: string[] }[],
@@ -105,5 +106,40 @@ describe("index:changed", () => {
     changed([], ["/v"]);
     expect(version()).toBe(2);
     expect(useLinkStore.getState().savedPath).toBeNull();
+  });
+
+  // §393 `vault:changed`: what used to be `useVaultChangeSync`'s answer now rides on Rust's
+  // event — each context once, and the panel left alone when no path or index changed.
+  // 이것을 실패시키는 것: 이름 붙인 경로도 rebuild 도 없는 이벤트에 `invalidate()` 를 부른다(watcher 메아리가
+  // Graph · Backlinks 를 다시 읽게 한다), 또는 `contexts` 를 publish 하지 않는다.
+  it("announces each context and re-reads nothing when no path changed", () => {
+    const heard: string[] = [];
+    const off = subscribeVaultChanges((id) => heard.push(id));
+    onIndexChanged({ contexts: ["a", "b"], entries: [], rebuilt: [] });
+    off();
+    expect(heard).toEqual(["a", "b"]);
+    expect(version()).toBe(0);
+  });
+
+  // 이것을 실패시키는 것: 구독자에게 알린 뒤에 `invalidate` 를 부른다 — 듣자마자 읽는 플러그인이 옛 판을 읽는다.
+  it("announces after the bump, so a listener reads the new state", () => {
+    const seenAt: number[] = [];
+    const off = subscribeVaultChanges(() => seenAt.push(version()));
+    onIndexChanged({
+      contexts: ["a"],
+      entries: [{ canonical: "/v/a.md", spellings: ["/v/a.md"] }],
+      rebuilt: [],
+    });
+    off();
+    expect(seenAt).toEqual([1]);
+  });
+
+  it("announces nothing for an event without contexts — a command's", () => {
+    const heard: string[] = [];
+    const off = subscribeVaultChanges((id) => heard.push(id));
+    changed([{ canonical: "/v/a.md", spellings: ["/v/a.md"] }]);
+    off();
+    expect(heard).toEqual([]);
+    expect(version()).toBe(1);
   });
 });

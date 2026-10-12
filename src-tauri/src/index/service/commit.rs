@@ -175,10 +175,18 @@ pub(crate) async fn report<R: Runtime>(app: &tauri::AppHandle<R>, done: Vec<Reco
     fresh
 }
 
-/// One `index:changed` for `done`, or nothing when no index was reached.
+/// One `index:changed` for `done`, or nothing when no index was reached and no context is
+/// announced.
 pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconciled]) {
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut rebuilt: Vec<String> = Vec::new();
+    // §393 `vault:changed`, per context: a watcher batch's only — a command's write is
+    // announced when the watcher's echo of it comes through.
+    let contexts: std::collections::BTreeSet<&String> = done
+        .iter()
+        .filter(|d| d.watched)
+        .flat_map(|d| &d.announce)
+        .collect();
     for d in done.iter().filter(|d| d.reached) {
         // A path whose only index had to be dropped is announced by that index's rebuild
         // (`degrade`), not here: telling a window to re-read it now would read nothing.
@@ -205,12 +213,12 @@ pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconc
             }
         }
     }
-    if entries.is_empty() && rebuilt.is_empty() {
+    if entries.is_empty() && rebuilt.is_empty() && contexts.is_empty() {
         return;
     }
     let _ = app.emit(
         "index:changed",
-        serde_json::json!({ "entries": entries, "rebuilt": rebuilt }),
+        serde_json::json!({ "entries": entries, "rebuilt": rebuilt, "contexts": contexts }),
     );
 }
 

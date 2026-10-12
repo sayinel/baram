@@ -54,7 +54,8 @@ use tokio::time::Instant;
 use super::commit::report;
 use super::keys::buildable;
 use super::reconcile::{
-    reconcile_identity_in, reconcile_registrations, tree_registrations, Batch, RegistrationAt,
+    reconcile_identity_in, reconcile_registrations, tree_registrations, Batch, Reconciled,
+    RegistrationAt,
 };
 use super::state::{tick, LinkIndexState};
 use crate::context::ContextManager;
@@ -437,6 +438,13 @@ pub(crate) async fn apply_batch<R: Runtime>(app: &tauri::AppHandle<R>) {
             {
                 counts.covered += 1;
             }
+            // §393 The covering build read it: the index has followed, and the contexts
+            // whose build walks the path are announced (`vault:changed`).
+            done.push(Reconciled {
+                watched: true,
+                announce: walking_contexts(&state, &ctx_mgr, &identity).await,
+                ..Reconciled::default()
+            });
             continue;
         }
         #[cfg(test)]
@@ -541,6 +549,24 @@ async fn covered(
         }
     }
     true
+}
+
+/// The ids of the contexts holding `identity` whose published index's build walks it.
+async fn walking_contexts(
+    state: &LinkIndexState,
+    ctx_mgr: &ContextManager,
+    identity: &Path,
+) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    for registration in buildable(&ctx_mgr.contexts_holding(identity).await) {
+        if state
+            .walks(&registration.info.path, registration.incarnation, identity)
+            .await
+        {
+            ids.insert(registration.info.id);
+        }
+    }
+    ids
 }
 
 #[cfg(test)]

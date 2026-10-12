@@ -2,9 +2,10 @@
 //
 // The shape of `settings-change-notifier.ts`: WHO may be told (`files` or `files:readonly`, not
 // `events` — the capability of the data the event is about, §0054's rule) and WHEN (once per
-// context per synced batch, after the index caught up — `useVaultChangeSync` decides that) are
-// tier-neutral and live here; only the delivery differs, so `deliver` is a callback. No debounce
-// here: the batcher already sends one batch per quiet window (plan 0122 P10).
+// context per watcher batch, after the index caught up — Rust's applier decides that and
+// `index-changes.ts` publishes it) are tier-neutral and live here; only the delivery differs, so
+// `deliver` is a callback. No debounce here: the applier already takes one batch per quiet
+// window.
 import type { PluginCapability, VaultChange } from "./types";
 
 import { subscribeVaultChanges } from "../services/vault-changes";

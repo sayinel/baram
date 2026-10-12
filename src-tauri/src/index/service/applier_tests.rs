@@ -844,9 +844,10 @@ async fn a_batch_names_its_applied_note_once_and_the_rebuild_announces_its_vault
         .iter()
         .any(|s| s.as_str() == Some(note.to_str().unwrap())));
     assert_eq!(seen[0]["rebuilt"], serde_json::json!([]));
+    // §393 The rebuild also announces its context (`vault:changed`).
     assert_eq!(
         seen[1],
-        serde_json::json!({ "entries": [], "rebuilt": [key] })
+        serde_json::json!({ "entries": [], "rebuilt": [key], "contexts": ["v"] })
     );
     let ignored = ignore.to_string_lossy().into_owned();
     assert!(!seen.iter().any(|e| e.to_string().contains(&ignored)));
@@ -1263,15 +1264,24 @@ async fn an_old_publication_keeps_the_rescan_while_a_later_build_reads() {
 }
 
 // §393 The Update gate: a watcher unit whose path left every covering index as it was is
-// not named in `index:changed` (the echo of an auto-save, a file the index already held).
+// not named in `index:changed`'s entries (the echo of an auto-save, a file the index already
+// held). Its context may still be announced (`contexts`).
 
-/// The `index:changed` payloads one applier batch over `path` emits, after `edit` ran.
+/// The `index:changed` payloads one applier batch over `path` emits.
 async fn batch_events(app: &App, root: &Path, path: &Path) -> Vec<serde_json::Value> {
     let seen = changes(app);
     mark(app, root, path, &path.to_string_lossy());
     apply_batch(app.handle()).await;
     let seen = seen.lock().unwrap().clone();
     seen
+}
+
+/// The paths those payloads name — what Graph and Backlinks re-read for.
+fn named(events: &[serde_json::Value]) -> usize {
+    events
+        .iter()
+        .map(|e| e["entries"].as_array().unwrap().len())
+        .sum()
 }
 
 #[tokio::test]
@@ -1293,12 +1303,10 @@ async fn an_unchanged_note_the_watcher_reports_is_left_out_of_index_changed() {
     .await
     .unwrap();
 
-    assert!(batch_events(&app, &root, &note).await.is_empty());
+    assert_eq!(named(&batch_events(&app, &root, &note).await), 0);
 
     std::fs::write(&note, "see [[y]]").unwrap();
-    let events = batch_events(&app, &root, &note).await;
-    assert_eq!(events.len(), 1);
-    assert_eq!(events[0]["entries"].as_array().unwrap().len(), 1);
+    assert_eq!(named(&batch_events(&app, &root, &note).await), 1);
 }
 
 /// Whether one applier batch names `n.md` after its content goes from `before` to `after`.
@@ -1316,7 +1324,7 @@ async fn named_after_edit(before: &str, after: &str) -> bool {
     .await
     .unwrap();
     std::fs::write(&note, after).unwrap();
-    !batch_events(&app, &root, &note).await.is_empty()
+    named(&batch_events(&app, &root, &note).await) > 0
 }
 
 #[tokio::test]
@@ -1348,14 +1356,15 @@ async fn the_echo_of_a_held_attachment_is_left_out_of_index_changed() {
     std::fs::create_dir_all(dir.path().join("v")).unwrap();
     std::fs::write(dir.path().join("v/paper.pdf"), "%PDF").unwrap();
     let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
-    assert!(batch_events(&app, &root, &root.join("paper.pdf"))
-        .await
-        .is_empty());
+    assert_eq!(
+        named(&batch_events(&app, &root, &root.join("paper.pdf")).await),
+        0
+    );
 
     // The positive half: a target that appears after the build is named.
     std::fs::write(root.join("new.pdf"), "%PDF").unwrap();
     assert_eq!(
-        batch_events(&app, &root, &root.join("new.pdf")).await.len(),
+        named(&batch_events(&app, &root, &root.join("new.pdf")).await),
         1
     );
 }
@@ -1384,4 +1393,296 @@ async fn a_note_the_gate_leaves_alone_is_what_a_fresh_build_reads() {
     batch_events(&app, &root, &note).await;
 
     assert_eq!(edges(&app, &key).await, built);
+}
+
+// §393 `vault:changed`: the contexts a watcher batch announces in `index:changed`'s
+// `contexts`, once the index has followed. Ported from main's `sync_index_paths` tests.
+
+/// The context ids one applier batch over `paths` (under `root`) announces.
+async fn announced(app: &App, root: &Path, paths: &[PathBuf]) -> Vec<String> {
+    let seen = changes(app);
+    for path in paths {
+        mark(app, root, path, &path.to_string_lossy());
+    }
+    apply_batch(app.handle()).await;
+    let seen = seen.lock().unwrap();
+    let mut ids: Vec<String> = seen
+        .iter()
+        .flat_map(|e| e["contexts"].as_array().cloned().unwrap_or_default())
+        .map(|id| id.as_str().unwrap().to_string())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+#[tokio::test]
+async fn a_new_note_and_a_markdown_extension_note_are_indexed_and_announced() {
+    // 이것을 실패시키는 것: `emit_changed` 가 watched unit 의 `announce` 를 `contexts` 로 내보내지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join("c.md"), "see [[x]]").unwrap();
+    std::fs::write(root.join("d.markdown"), "see [[x]]").unwrap();
+
+    let ids = announced(&app, &root, &[root.join("c.md"), root.join("d.markdown")]).await;
+
+    assert_eq!(ids, vec!["v"]);
+    let sources: Vec<String> = edges(&app, &key)
+        .await
+        .into_iter()
+        .map(|(f, _)| f)
+        .collect();
+    assert!(sources.iter().any(|f| f.ends_with("/c.md")), "{sources:?}");
+    assert!(
+        sources.iter().any(|f| f.ends_with("/d.markdown")),
+        "{sources:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_unchanged_note_is_announced_though_the_link_index_stays() {
+    // Tags, tasks and search read the note from disk whatever its links.
+    // 이것을 실패시키는 것: 존재하는 노트를 index 가 바뀐 때만 알린다(`present && !excluded` 를 뺀다).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join("n.md"), "see [[x]]").unwrap();
+    refresh_index_inner(
+        &app.state::<LinkIndexState>(),
+        &app.state::<ContextManager>(),
+        &key,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        announced(&app, &root, &[root.join("n.md")]).await,
+        vec!["v"]
+    );
+}
+
+#[tokio::test]
+async fn a_removed_path_the_live_index_never_knew_is_not_announced() {
+    // The positive half: the removal of a note it held is.
+    // 이것을 실패시키는 것: `Remove` 가 무엇을 가졌든 바뀐 것으로 센다(`holds_path` 를 보지 않는다).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    assert!(announced(&app, &root, &[root.join("never.png")])
+        .await
+        .is_empty());
+
+    std::fs::write(root.join("held.md"), "x").unwrap();
+    mark(&app, &root, &root.join("held.md"), "held");
+    apply_batch(app.handle()).await;
+    std::fs::remove_file(root.join("held.md")).unwrap();
+    assert_eq!(
+        announced(&app, &root, &[root.join("held.md")]).await,
+        vec!["v"]
+    );
+}
+
+#[tokio::test]
+async fn an_empty_folder_that_appears_is_not_announced_with_a_live_index() {
+    // The positive pair is `a_folder_replaced_by_an_empty_one_is_announced`.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::create_dir(root.join("empty")).unwrap();
+    assert!(announced(&app, &root, &[root.join("empty")])
+        .await
+        .is_empty());
+}
+
+#[tokio::test]
+async fn a_folder_replaced_by_an_empty_one_is_announced() {
+    // 이것을 실패시키는 것: `RemoveTree` 가 무엇을 지웠든 바뀌지 않은 것으로 센다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("v/sub")).unwrap();
+    std::fs::write(dir.path().join("v/sub/e.md"), "see [[x]]").unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::remove_dir_all(root.join("sub")).unwrap();
+    std::fs::create_dir(root.join("sub")).unwrap();
+    assert_eq!(announced(&app, &root, &[root.join("sub")]).await, vec!["v"]);
+}
+
+#[tokio::test]
+async fn a_context_without_an_index_is_announced_for_notes_and_removals() {
+    // Nothing to compare with: a missing signal is worse than an extra one.
+    // 이것을 실패시키는 것: `NoIndex` 를 알리지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = registered_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join("c.md"), "x").unwrap();
+    for path in ["c.md", "gone.md"] {
+        assert_eq!(
+            announced(&app, &root, &[root.join(path)]).await,
+            vec!["v"],
+            "{path}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn hidden_and_left_out_paths_are_not_announced() {
+    // A hidden file at the root (the router drops hidden FOLDERS only), and files under the
+    // default list (#794) — marked directly, past the router's filter. The positive half: a
+    // plain note in the same batch is.
+    // 이것을 실패시키는 것: 존재하는 파일을 build 가 걷지 않는 경로여도 알린다(`excluded` 를 보지 않는다).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    for path in [
+        ".hidden.md",
+        "node_modules/x.md",
+        "target/y.md",
+        ".obsidian/w.json",
+    ] {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "see [[x]]").unwrap();
+        assert!(
+            announced(&app, &root, std::slice::from_ref(&path))
+                .await
+                .is_empty(),
+            "{}",
+            path.display()
+        );
+    }
+    std::fs::write(root.join("plain.md"), "x").unwrap();
+    assert_eq!(
+        announced(&app, &root, &[root.join("plain.md")]).await,
+        vec!["v"]
+    );
+}
+
+#[tokio::test]
+async fn nested_contexts_are_each_updated_and_announced() {
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (outer, root) = vault_at(&app, "outer", &dir.path().join("v")).await;
+    let (inner, _) = vault_at(&app, "inner", &dir.path().join("v/sub")).await;
+    let note = root.join("sub/n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+
+    assert_eq!(
+        announced(&app, &root, &[note]).await,
+        vec!["inner", "outer"]
+    );
+    assert!(edges(&app, &outer)
+        .await
+        .iter()
+        .any(|(f, _)| f.ends_with("sub/n.md")));
+    assert!(edges(&app, &inner)
+        .await
+        .iter()
+        .any(|(f, _)| f.ends_with("sub/n.md")));
+}
+
+#[tokio::test]
+async fn a_path_a_later_build_read_is_skipped_and_still_announced() {
+    // The build began after the mark: it read the path, so the batch skips the unit — and
+    // the context is announced, since the index has followed.
+    // 이것을 실패시키는 것: 덮인 경로를 건너뛰면서 그 context 를 알리지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    let note = root.join("n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    let seen = changes(&app);
+    mark(&app, &root, &note, &note.to_string_lossy());
+    let state = app.state::<LinkIndexState>();
+    let ctx = app.state::<ContextManager>();
+    assert!(crate::index::service::reconcile::rebuild_registration(&state, &ctx, &key).await);
+    apply_batch(app.handle()).await;
+    assert_eq!(counts(&app).covered, 1);
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(seen[0]["contexts"], serde_json::json!(["v"]));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_symlink_the_watcher_reports_is_not_announced() {
+    // Not an entry the build indexes; nothing under its key to take out.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join("a.md"), "see [[x]]").unwrap();
+    std::os::unix::fs::symlink(root.join("a.md"), root.join("link.md")).unwrap();
+    assert!(announced(&app, &root, &[root.join("link.md")])
+        .await
+        .is_empty());
+}
+
+#[tokio::test]
+async fn an_unreadable_note_loses_its_links_as_a_fresh_build_would_and_is_announced() {
+    // The 824-a1 rule, which main's §393 sync did the other way (kept the old links and
+    // announced nothing): a note that cannot be read stays a link target and loses its own
+    // links and tags — what a build of the same disk makes of it, so the index never depends
+    // on what it read before. Read again, the links come back.
+    // 이것을 실패시키는 것: 읽지 못한 노트에 `Unreadable` 대신 아무것도 하지 않는다(옛 링크가 남는다).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join("x.md"), "target").unwrap();
+    let note = root.join("c.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    refresh_index_inner(
+        &app.state::<LinkIndexState>(),
+        &app.state::<ContextManager>(),
+        &key,
+    )
+    .await
+    .unwrap();
+    let from_c = |edges: Vec<(String, String)>| edges.iter().any(|(f, _)| f.ends_with("/c.md"));
+    assert!(from_c(edges(&app, &key).await));
+    std::fs::write(&note, [0xff, 0xfe, 0xfd]).unwrap();
+
+    assert_eq!(
+        announced(&app, &root, std::slice::from_ref(&note)).await,
+        vec!["v"]
+    );
+    assert!(!from_c(edges(&app, &key).await));
+
+    std::fs::write(&note, "see [[x]]").unwrap();
+    assert_eq!(announced(&app, &root, &[note]).await, vec!["v"]);
+    assert!(from_c(edges(&app, &key).await));
+}
+
+#[tokio::test]
+async fn a_hidden_path_a_later_build_read_is_not_announced() {
+    // The covered pair of `hidden_and_left_out_paths_are_not_announced`.
+    // 이것을 실패시키는 것: 덮인 경로의 context 를 그 build 가 걷는지 보지 않고 알린다(`walks` 를 뺀다).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    let hidden = root.join(".hidden.md");
+    std::fs::write(&hidden, "see [[x]]").unwrap();
+    let seen = changes(&app);
+    mark(&app, &root, &hidden, &hidden.to_string_lossy());
+    let state = app.state::<LinkIndexState>();
+    let ctx = app.state::<ContextManager>();
+    assert!(crate::index::service::reconcile::rebuild_registration(&state, &ctx, &key).await);
+    apply_batch(app.handle()).await;
+    assert_eq!(counts(&app).covered, 1);
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_registration_the_batch_cannot_judge_is_announced() {
+    // An unusable `.baramignore`: the index is dropped (nothing stale left to read), and the
+    // context is announced now — its rebuild may never come.
+    // 이것을 실패시키는 것: 판정하지 못한 등록(`Point::Failed`)을 알리지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join(crate::fs::BARAMIGNORE), "{unclosed\n").unwrap();
+    std::fs::write(root.join("n.md"), "see [[x]]").unwrap();
+    scheduler_stand_in(&app, None);
+    assert_eq!(
+        announced(&app, &root, &[root.join("n.md")]).await,
+        vec!["v"]
+    );
 }

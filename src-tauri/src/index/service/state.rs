@@ -390,6 +390,24 @@ impl LinkIndexState {
         ApplyOutcome::Applied(effect)
     }
 
+    /// §393 Whether the index published for `incarnation` under `key` would walk
+    /// `canonical_path` — not hidden, not left out by its `VaultExclusion`. `false` with no
+    /// index.
+    pub(super) async fn walks(&self, key: &str, incarnation: u64, canonical_path: &Path) -> bool {
+        let map = self.slots.lock().await;
+        let Some(slot) = map
+            .get(key)
+            .filter(|s| s.published_incarnation == incarnation)
+        else {
+            return false;
+        };
+        let (Some(index), Some(root)) = (slot.index.as_ref(), slot.root.as_ref()) else {
+            return false;
+        };
+        root.spell(canonical_path)
+            .is_some_and(|spelled| !index.exclusion().walk_skips(Path::new(&spelled), false))
+    }
+
     /// #824 Whether the index published for `incarnation` under `key` holds
     /// `canonical_path` itself, as a note or a link target. `false` with no index.
     pub(super) async fn holds_path(

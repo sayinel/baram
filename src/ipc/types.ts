@@ -519,6 +519,11 @@ export interface WriteOutcome {
  * index's spelling; `rebuilt` names registrations whose whole index was rebuilt.
  */
 export interface IndexChanged {
+  /**
+   * §393 The contexts whose files changed, for `vault:changed` — a watcher batch's or a
+   * rebuild's, never a command's (the watcher's echo of a command's write announces it).
+   */
+  contexts?: string[];
   entries: { canonical: string; spellings: string[] }[];
   rebuilt: string[];
 }
