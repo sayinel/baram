@@ -1261,3 +1261,127 @@ async fn an_old_publication_keeps_the_rescan_while_a_later_build_reads() {
         .await
     );
 }
+
+// §393 The Update gate: a watcher unit whose path left every covering index as it was is
+// not named in `index:changed` (the echo of an auto-save, a file the index already held).
+
+/// The `index:changed` payloads one applier batch over `path` emits, after `edit` ran.
+async fn batch_events(app: &App, root: &Path, path: &Path) -> Vec<serde_json::Value> {
+    let seen = changes(app);
+    mark(app, root, path, &path.to_string_lossy());
+    apply_batch(app.handle()).await;
+    let seen = seen.lock().unwrap().clone();
+    seen
+}
+
+#[tokio::test]
+async fn an_unchanged_note_the_watcher_reports_is_left_out_of_index_changed() {
+    // The echo of a save: the bytes the index already read. The positive half shows the
+    // same batch does name the note once its links change.
+    // 이것을 실패시키는 것: `update_file_from_content` 가 같은 추출에도 `true` 를 낸다(관문을 뗀다), 또는
+    // `emit_changed` 가 `watched && !changed` 를 건너뛰지 않는다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    let note = root.join("n.md");
+    std::fs::write(&note, "see [[x]]").unwrap();
+    refresh_index_inner(
+        &app.state::<LinkIndexState>(),
+        &app.state::<ContextManager>(),
+        &key,
+    )
+    .await
+    .unwrap();
+
+    assert!(batch_events(&app, &root, &note).await.is_empty());
+
+    std::fs::write(&note, "see [[y]]").unwrap();
+    let events = batch_events(&app, &root, &note).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["entries"].as_array().unwrap().len(), 1);
+}
+
+/// Whether one applier batch names `n.md` after its content goes from `before` to `after`.
+async fn named_after_edit(before: &str, after: &str) -> bool {
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    let note = root.join("n.md");
+    std::fs::write(&note, before).unwrap();
+    refresh_index_inner(
+        &app.state::<LinkIndexState>(),
+        &app.state::<ContextManager>(),
+        &key,
+    )
+    .await
+    .unwrap();
+    std::fs::write(&note, after).unwrap();
+    !batch_events(&app, &root, &note).await.is_empty()
+}
+
+#[tokio::test]
+async fn a_link_added_to_a_note_is_named() {
+    // 이것을 실패시키는 것: 관문이 링크 항목을 비교하지 않는다(태그만 본다).
+    assert!(named_after_edit("plain", "see [[x]]").await);
+}
+
+#[tokio::test]
+async fn a_tag_added_to_a_note_is_named() {
+    // On a line of its own, so the link's line and context stay as they were.
+    // 이것을 실패시키는 것: 관문이 태그를 비교하지 않는다(링크 항목만 본다).
+    assert!(named_after_edit("see [[x]]", "see [[x]]\n#t").await);
+}
+
+#[tokio::test]
+async fn a_link_moved_to_another_line_is_named() {
+    // Backlinks show the line and its context, so moving a link is a change.
+    // 이것을 실패시키는 것: 관문이 링크 항목의 target 만 비교하고 줄 · 문맥을 보지 않는다.
+    assert!(named_after_edit("see [[x]]", "\nsee [[x]]").await);
+}
+
+#[tokio::test]
+async fn the_echo_of_a_held_attachment_is_left_out_of_index_changed() {
+    // A link target the build registered, reported again: nothing newly registered.
+    // 이것을 실패시키는 것: `update_link_target` 가 이미 있는 대상에도 `true` 를 낸다.
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("v")).unwrap();
+    std::fs::write(dir.path().join("v/paper.pdf"), "%PDF").unwrap();
+    let (_key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    assert!(batch_events(&app, &root, &root.join("paper.pdf"))
+        .await
+        .is_empty());
+
+    // The positive half: a target that appears after the build is named.
+    std::fs::write(root.join("new.pdf"), "%PDF").unwrap();
+    assert_eq!(
+        batch_events(&app, &root, &root.join("new.pdf")).await.len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_note_the_gate_leaves_alone_is_what_a_fresh_build_reads() {
+    // The skipped write would have left the same links and tags: after the echo, the
+    // graph is the fresh build's.
+    // 이것을 실패시키는 것: 관문이 `false` 를 내기 전에 노트를 index 에서 뺀다(`remove_file` 을 먼저 부른다).
+    let app = app();
+    let dir = tempfile::tempdir().unwrap();
+    let (key, root) = vault_at(&app, "v", &dir.path().join("v")).await;
+    std::fs::write(root.join("x.md"), "target").unwrap();
+    let note = root.join("n.md");
+    std::fs::write(&note, "see [[x]] #t").unwrap();
+    refresh_index_inner(
+        &app.state::<LinkIndexState>(),
+        &app.state::<ContextManager>(),
+        &key,
+    )
+    .await
+    .unwrap();
+    let built = edges(&app, &key).await;
+    assert!(!built.is_empty());
+
+    batch_events(&app, &root, &note).await;
+
+    assert_eq!(edges(&app, &key).await, built);
+}

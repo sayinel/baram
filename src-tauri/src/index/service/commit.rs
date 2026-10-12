@@ -184,6 +184,11 @@ pub(crate) fn emit_changed<R: Runtime>(app: &tauri::AppHandle<R>, done: &[Reconc
         // (`degrade`), not here: telling a window to re-read it now would read nothing.
         // A covering index that did take it (a healthy nested vault beside a dropped
         // outer one) is announced now, and so is what else the same path rebuilt.
+        // §393 The watcher's echo of a save, or of a file the index already held, left
+        // every covering index as it was: nothing for Graph and Backlinks to re-read.
+        if d.watched && !d.changed {
+            continue;
+        }
         if ((d.degrade.is_empty() && !d.deferred) || !d.applied.is_empty())
             && !entries
                 .iter()

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::build::{IndexBuildError, INDEX_BUILD_PENDING};
-use super::mutation::Mutation;
+use super::mutation::{Effect, Mutation};
 
 /// A root an index was (or is being) built from: the exact spelling the
 /// frontend supplied — the spelling `LinkIndex::build` stored its paths in —
@@ -122,8 +122,9 @@ pub(super) struct Slot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ApplyOutcome {
     /// It reached the index published for that registration, or the journal of the
-    /// build reading for it.
-    Applied,
+    /// build reading for it. §393 What it did to the published index — `Effect::UNKNOWN`
+    /// when it reached only a journal, or a published index a newer snapshot covers.
+    Applied(Effect),
     /// Nothing is published or building for that registration yet: its first build
     /// reads the file as it is after this.
     NoIndex,
@@ -370,10 +371,12 @@ impl LinkIndexState {
         }
         let newer_snapshot = slot.covered_from.is_some_and(|(_, began)| began > observed);
         let (index, live_root, pending) = (&mut slot.index, &slot.root, &mut slot.pending);
+        let mut effect = Effect::UNKNOWN;
         if live && !newer_snapshot {
             if let (Some(index), Some(live_root)) = (index.as_mut(), live_root.as_ref()) {
+                effect = Effect::NOTHING;
                 for mutation in &mutations {
-                    mutation.apply_to(index, live_root);
+                    effect = effect.and(mutation.apply_to(index, live_root));
                 }
             }
         }
@@ -381,9 +384,10 @@ impl LinkIndexState {
             .as_mut()
             .filter(|p| journaled && p.began_at < observed)
         {
+            effect = Effect::UNKNOWN;
             pending.journal.extend(mutations);
         }
-        ApplyOutcome::Applied
+        ApplyOutcome::Applied(effect)
     }
 
     /// #824 Whether the index published for `incarnation` under `key` holds

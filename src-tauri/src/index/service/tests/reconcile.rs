@@ -275,7 +275,7 @@ async fn apply_for_tells_a_stale_registration_from_one_with_no_index_yet() {
                 crate::index::service::state::tick()
             )
             .await,
-        ApplyOutcome::Applied
+        ApplyOutcome::Applied(Effect::UNKNOWN)
     );
     let mut index = LinkIndex::new();
     index.build(&root).await.unwrap();

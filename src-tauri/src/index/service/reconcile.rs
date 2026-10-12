@@ -71,6 +71,15 @@ pub(crate) struct Reconciled {
     /// Those rebuilds were handed to the scheduler rather than run (the watcher applier):
     /// the scheduler announces them once they publish.
     pub(crate) deferred: bool,
+    /// §393 Some covering index changed, or may have: a mutation that changed what an index
+    /// held (`mutation::Effect`), one whose effect cannot be seen (a journal, a newer
+    /// snapshot, no index yet), a rebuild, a degrade. `false` when every covering index took
+    /// the path and held the same afterwards — the watcher's echo of a save.
+    pub(crate) changed: bool,
+    /// §393 The watcher applier's unit: `index:changed` leaves the path out when nothing
+    /// changed (`commit::emit_changed`). A command's units keep the 824-a1 rule — every
+    /// path the command reconciled is named.
+    pub(crate) watched: bool,
 }
 
 /// What the units of one batch — one command's effects, one watcher sync — share
@@ -200,7 +209,7 @@ pub(crate) async fn reconcile_identity_in(
     batch: &mut Batch,
 ) -> Reconciled {
     let at = canonical.to_string_lossy().into_owned();
-    reconcile_at(
+    let mut out = reconcile_at(
         state,
         ctx_mgr,
         &at,
@@ -208,7 +217,9 @@ pub(crate) async fn reconcile_identity_in(
         spellings,
         batch,
     )
-    .await
+    .await;
+    out.watched = true;
+    out
 }
 
 #[cfg(not(test))]
@@ -311,16 +322,22 @@ async fn reconcile_at(
                 // the guard, after the commit this unit follows; a registration of the
                 // same path that replaced one of them since was registered after that
                 // commit, so its first build reads the disk as this unit did.
-                if state
+                match state
                     .apply_for(&ctx.info.path, ctx.incarnation, vec![m], observed)
                     .await
-                    == ApplyOutcome::Applied
                 {
-                    out.applied.push(ctx.info.path.clone());
+                    ApplyOutcome::Applied(effect) => {
+                        out.applied.push(ctx.info.path.clone());
+                        out.changed |= effect.changed;
+                    }
+                    // Its first build reads the disk as this unit did.
+                    ApplyOutcome::NoIndex => out.changed = true,
+                    ApplyOutcome::Stale => {}
                 }
             }
             Point::Rebuild => {
                 out.reached = true;
+                out.changed = true;
                 out.wants.push(at.clone());
                 batch.rebuild.insert(at);
             }
@@ -328,6 +345,7 @@ async fn reconcile_at(
             // rather than left trusted (`commit::degrade`).
             Point::Failed => {
                 out.failed = true;
+                out.changed = true;
                 out.degrade.push(at);
             }
             Point::Nothing => {}
@@ -429,6 +447,7 @@ pub(crate) fn reconcile_registrations(
     };
     for registration in at {
         out.reached = true;
+        out.changed = true;
         out.wants.push(registration.clone());
         batch.rebuild.insert(registration);
     }
