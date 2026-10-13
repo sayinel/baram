@@ -467,6 +467,45 @@ fn a_path_below_a_file_is_file_not_found() {
     );
 }
 
+/// A name longer than the file system takes is the caller's to fix: INVALID_ARGUMENT and
+/// exit 2, for `read`, which reads the file, and for `backlinks`, which takes a note not
+/// written yet. A 255-byte name is one the file system takes, so there the answer is the one
+/// for a missing note: FILE_NOT_FOUND for `read`, no links for `backlinks`.
+///
+/// What fails this: `metadata_failure` without `refused_as_written` (`read` ends as IO, exit
+/// 1); `backlinks` without its own call to it (exit 0, no links).
+#[test]
+fn a_name_too_long_for_the_file_system_is_a_usage_error() {
+    let sb = sandbox();
+    let vault = vault_arg(&sb);
+    let long = format!("{}.md", "x".repeat(300));
+    let longest = format!("{}.md", "x".repeat(252));
+    for command in ["read", "backlinks"] {
+        let ran = baram(&sb, &sb.home, &["--vault", &vault, command, &long]);
+        assert_eq!(ran.code, 2, "{command}: {}", ran.stderr);
+        assert!(ran.stdout.is_empty(), "{command}: {}", ran.stdout);
+        assert!(
+            ran.stderr.starts_with("error[INVALID_ARGUMENT]: "),
+            "{command}: {}",
+            ran.stderr
+        );
+    }
+    let read = baram(&sb, &sb.home, &["--vault", &vault, "read", &longest]);
+    assert_eq!(read.code, 1, "{}", read.stderr);
+    assert!(
+        read.stderr.starts_with("error[FILE_NOT_FOUND]: "),
+        "{}",
+        read.stderr
+    );
+    let backlinks = baram(&sb, &sb.home, &["--vault", &vault, "backlinks", &longest]);
+    assert_eq!(
+        (backlinks.code, backlinks.stdout.as_str()),
+        (0, ""),
+        "{}",
+        backlinks.stderr
+    );
+}
+
 /// `v/locked/a.md` exists; `v/locked` cannot be entered. That is not "no such file": the
 /// reason is the OS's, and the exit code says the run failed.
 #[test]

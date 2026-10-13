@@ -400,7 +400,10 @@ mod tests {
         assert_eq!(schema["required"], json!(["tag"]));
     }
 
-    /// What fails this: `check` accepting `"true"` or `1` for a flag; `flag` defaulting to true.
+    /// The schema says the same: a boolean, `false` by default.
+    ///
+    /// What fails this: `check` accepting `"true"` or `1` for a flag; `flag` defaulting to true;
+    /// the schema giving a flag another type, or a `default` other than `false`.
     #[test]
     fn a_flag_is_true_or_false_and_false_when_left_out() {
         const FLAGGED: &[Spec] = &[Spec {
@@ -419,5 +422,8 @@ mod tests {
         assert!(read(object(json!({ "regex": true })), FLAGGED)
             .unwrap()
             .flag("regex"));
+        let schema = Value::Object(schema(FLAGGED).as_ref().clone());
+        assert_eq!(schema["properties"]["regex"]["type"], json!("boolean"));
+        assert_eq!(schema["properties"]["regex"]["default"], json!(false));
     }
 }

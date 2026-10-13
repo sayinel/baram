@@ -227,7 +227,8 @@ mod tests {
     /// offset and limit near `usize::MAX` saturate instead of overflowing.
     ///
     /// What fails this: `offset + limit` written with `+` (overflow panics in a debug
-    /// build); `truncated` computed from the hits left after the skip.
+    /// build); `truncated` from `hits.len() - offset` without saturating (an overflow panic
+    /// in a debug build at an offset past the end).
     #[test]
     fn an_offset_past_the_hits_is_an_empty_last_page() {
         let vault = vault_in("/vault");

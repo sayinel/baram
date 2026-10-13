@@ -179,6 +179,7 @@ mod tests {
         );
     }
 
+    /// What fails this: `INSTRUCTIONS` grown past the 2,048 characters Claude Code keeps.
     #[test]
     fn instructions_fit_what_claude_code_keeps() {
         assert!(

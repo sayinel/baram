@@ -52,8 +52,8 @@ fn spawn(sb: &Sandbox, cwd: &Path, argv: &[&str], env: &[(&str, &str)]) -> Sessi
     command
         .args(argv)
         .current_dir(cwd)
-        // Claude Code sets this for the servers it starts, and for these tests when it runs
-        // them. The default vault reads it, so a test sets it or leaves it out on purpose.
+        // The default vault reads it (Claude Code sets it for the servers it starts), so a
+        // test sets it or leaves it out on purpose.
         .env_remove("CLAUDE_PROJECT_DIR")
         .stdin(Stdio::piped());
     for (key, value) in env {
@@ -235,6 +235,9 @@ fn closing_stdin_before_any_message_exits_0_and_writes_nothing() {
 /// goes on waiting for `initialize` (its pre-handshake loop in `service/server.rs`); the
 /// session then starts as usual. Pinned here because an rmcp update can move it — 3.5.0 ended
 /// the session at that refusal.
+///
+/// What fails this: an rmcp that ends the session at that refusal — the `initialize` after it
+/// gets no answer — or that answers the request instead of refusing it.
 #[test]
 fn a_request_before_the_handshake_is_refused_and_the_handshake_still_works() {
     let sb = sandbox();
@@ -279,7 +282,8 @@ fn a_first_message_that_is_no_request_ends_the_server_with_exit_1() {
 /// is not a path to `mcp` — it is read as a name.
 ///
 /// What fails this: the server serving without the vault; the CLI's `is_path_form`
-/// instead of `mcp`'s — `notes/x` would be a missing directory.
+/// instead of `mcp`'s — `notes/x` would be a relative path, refused with
+/// ``error[IO]: `mcp --vault` takes no relative path``.
 #[test]
 fn a_vault_flag_that_does_not_resolve_stops_the_server_before_stdout() {
     let sb = sandbox();
@@ -360,6 +364,47 @@ fn list_vaults_shows_the_scope_and_the_vault_a_call_reads() {
     assert_eq!(s.end().code, 0);
 }
 
+/// A data tool's `vault` gets one answer for a directory outside the scope and for a path
+/// that is not there (spec 0068 §3.2): `read_note` through each gives the same error text,
+/// candidates included, but for the path it repeats. The scope's own vault is read, so the
+/// error is the scope's.
+///
+/// What fails this: an existence check before the scope (the CLI's `no directory at …` for
+/// the missing path); candidates listed for one of the two and not the other.
+#[test]
+fn a_data_tool_answers_a_vault_outside_the_scope_as_it_answers_a_missing_one() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "inside\n");
+    let outside = sb.base.join("outside");
+    write(&outside, "a.md", "outside\n");
+    let missing = sb.base.join("missing");
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let mut answers = Vec::new();
+    for (id, vault) in [(1, &outside), (2, &missing)] {
+        let vault = vault.to_string_lossy().into_owned();
+        let result = s.call(id, "read_note", json!({ "vault": vault, "path": "a.md" }));
+        answers.push(tool_error(&result).replace(&vault, "<vault>"));
+    }
+    assert_eq!(answers[0], answers[1]);
+    let mut lines = answers[0].lines();
+    assert_eq!(
+        lines.next(),
+        Some("error[VAULT_NOT_FOUND]: `<vault>` is not a vault this server reads")
+    );
+    assert_eq!(
+        lines.collect::<Vec<_>>(),
+        [format!("  vault\t{}", vault_arg(&sb))]
+    );
+    let result = s.call(
+        3,
+        "read_note",
+        json!({ "vault": vault_arg(&sb), "path": "a.md" }),
+    );
+    assert_eq!(structured(&result)["content"], json!("inside\n"));
+    assert_eq!(s.end().code, 0);
+}
+
 /// Every `--vault` written before `mcp` reaches the server, the first of them as its default:
 /// the refusal of a `--vault` on both sides of the command name does not touch the form
 /// where they are all on one side.
@@ -397,8 +442,11 @@ fn vault_flags_before_the_command_name_all_reach_the_server() {
 /// and without that variable, the one that holds the directory the server started in
 /// (spec 0068 D4). Both are read from the server's real environment here.
 ///
+/// A relative `CLAUDE_PROJECT_DIR` is not used: `../../vault`, which from the server's
+/// directory `other/sub` would reach Main, leaves the default to that directory.
+///
 /// What fails this: the two inputs taken in the other order; `CLAUDE_PROJECT_DIR` not read,
-/// or read only when it is relative.
+/// or read when it is relative (the relative row would answer Main).
 #[test]
 fn without_vault_flags_the_project_directory_comes_before_the_current_one() {
     let sb = sandbox();
@@ -418,7 +466,12 @@ fn without_vault_flags_the_project_directory_comes_before_the_current_one() {
     write_config(&sb, &[("baram:context", contexts)]);
     let project = sb.vault.to_string_lossy().into_owned();
     let with_project = [("CLAUDE_PROJECT_DIR", project.as_str())];
-    for (env, expected) in [(&with_project[..], "Main"), (&[][..], "Other")] {
+    let relative = [("CLAUDE_PROJECT_DIR", "../../vault")];
+    for (env, expected) in [
+        (&with_project[..], "Main"),
+        (&[][..], "Other"),
+        (&relative[..], "Other"),
+    ] {
         let mut s = session_with(&sb, &other.join("sub"), &[], env);
         s.handshake();
         let result = s.call(1, "list_vaults", json!({}));
@@ -455,6 +508,9 @@ fn an_unknown_tool_is_a_protocol_error_and_a_bad_argument_a_tool_error() {
 
 /// A line that is not JSON gets no answer and does not end the session (spec 0068 §3.5 —
 /// rmcp decides this; pinned here).
+///
+/// What fails this: an rmcp that ends the session at that line — the call after it gets no
+/// answer — or that answers it, so the call reads that answer in place of its own.
 #[test]
 fn a_line_that_is_not_json_leaves_the_session_open() {
     let sb = sandbox();
@@ -653,7 +709,8 @@ fn list_tools_page_what_the_cli_lists() {
 /// does find (D6).
 ///
 /// What fails this: `read_note` written with `paths::file_arg`; lines split without their
-/// endings; `search` given offset 0 whatever the call asked.
+/// endings; `search` given offset 0 whatever the call asked; `nextOffset` or `truncated` on
+/// the last search page.
 #[test]
 fn search_and_read_note_page_through_notes() {
     let sb = sandbox();
@@ -679,8 +736,12 @@ fn search_and_read_note_page_through_notes() {
             item["path"].as_str().unwrap().to_string(),
             item["line"].as_u64().unwrap(),
         ));
+        assert_eq!(page["truncated"], json!(id < 3), "{page}");
         match page["nextOffset"].as_u64() {
-            Some(next) => offset = next,
+            Some(next) => {
+                assert!(id < 3, "the last hit's page has no nextOffset: {page}");
+                offset = next;
+            }
             None => assert_eq!(id, 3, "{page}"),
         }
     }
@@ -941,11 +1002,12 @@ fn a_path_no_file_system_takes_is_an_invalid_argument() {
 }
 
 /// The nine tools of spec 0068 §3.3 as `tools/list` gives them: each says it only reads,
-/// each output schema is an object, and each list tool bounds `limit` and `offset` in its
-/// input schema, so a model knows the range from the list alone.
+/// each output schema is an object, and each page tool bounds `limit` and `offset` in its
+/// input schema, so a model knows the range from the list alone. Each page tool's default
+/// and largest `limit` are pinned here: a change to one is a change to this test.
 ///
 /// What fails this: a tool missing, renamed or added; a read-only hint dropped; a bound
-/// left out of a schema.
+/// left out of a schema; a page tool's default or largest `limit` changed.
 #[test]
 fn tools_list_gives_the_nine_tools_of_the_spec() {
     let sb = sandbox();
@@ -991,10 +1053,23 @@ fn tools_list_gives_the_nine_tools_of_the_spec() {
             json!("string"),
             "{name}"
         );
-        if name != "list_vaults" {
-            assert_eq!(input["properties"]["limit"]["minimum"], json!(1), "{name}");
-            assert!(input["properties"]["limit"]["maximum"].is_u64(), "{name}");
-            assert_eq!(input["properties"]["offset"]["minimum"], json!(0), "{name}");
+        let limit = match name {
+            "list_files" | "notes_with_tag" => Some((200, 1000)),
+            "read_note" => Some((2000, 5000)),
+            "search" => Some((50, 500)),
+            "list_tags" => Some((500, 2000)),
+            "list_tasks" | "backlinks" | "outgoing_links" => Some((100, 500)),
+            _ => None,
+        };
+        match limit {
+            Some((default, maximum)) => {
+                let limit = &input["properties"]["limit"];
+                assert_eq!(limit["minimum"], json!(1), "{name}");
+                assert_eq!(limit["default"], json!(default), "{name}");
+                assert_eq!(limit["maximum"], json!(maximum), "{name}");
+                assert_eq!(input["properties"]["offset"]["minimum"], json!(0), "{name}");
+            }
+            None => assert!(input["properties"].get("limit").is_none(), "{name}"),
         }
         let required = match name {
             "read_note" | "backlinks" | "outgoing_links" => json!(["path"]),
