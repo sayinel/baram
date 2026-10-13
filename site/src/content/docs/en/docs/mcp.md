@@ -16,7 +16,7 @@ Name the vaults the client may read with `--vault` — see [which vaults it read
 claude mcp add --scope user baram -- /Applications/Baram.app/Contents/MacOS/baram mcp --vault ~/Notes
 ```
 
-With `--scope project` instead, it is written to the project's `.mcp.json`, to share with everyone who works on the project. Your shell has already turned `~/Notes` into your own home folder by then, so give a path that exists for each of them.
+With `--scope project` instead, it is written to the project's `.mcp.json`, to share with everyone who works on the project. Your shell has already turned `~/Notes` into a path in your own home folder by then. Quote it — `'~/Notes'` — and the `~` is kept: the server expands it to the home folder of whoever runs it. Or give a path that exists for each of them.
 
 **Claude Desktop** — add it to `claude_desktop_config.json` (on macOS, in `~/Library/Application Support/Claude/`), then restart the app:
 
@@ -36,9 +36,9 @@ With `--scope project` instead, it is written to the project's `.mcp.json`, to s
 - **Without `--vault`, every vault and folder registered in the app is open to the client.** The default is then the registered vault or folder that contains the project directory Claude Code gives the server, or else the one that contains the directory the server was started in. A vault inside the project folder does not contain the project directory, so it is not picked from it: pass `--vault` to read it by default.
 - **With `--vault`**, the tools read only the vaults you name. Give it once for each vault; the first is the default. A value is a path when it is absolute, is `~` alone, or starts with `~/` (on Windows, `~\` too), and that folder does not have to be registered in the app. Any other value — `.notes` and `~notes` included — is the name or alias of a registered vault or folder.
 - Each tool takes a `vault` argument to pick one of these by name, by alias, or by a path of the same forms. A vault outside them cannot be picked, and a path that does not exist gets the same answer as a path outside them.
-- The vaults are read again on each call: a vault you register, rename or remove in the app shows on the next call. With `--vault`, only the names can change — the folders are the ones you named.
+- The vaults are read again on each call: a vault you register, rename or remove in the app shows on the next call. With `--vault`, the folders stay the ones you named, but what the app calls them is read again: a name or alias changed in the app shows on the next call, and a folder the app no longer registers is listed as `unregistered`.
 
-When a `--vault` cannot be found, the server stops before the client connects and writes the reason to its standard error. Claude Desktop keeps that in a log for each server — on macOS, `~/Library/Logs/Claude/mcp-server-baram.log`.
+When a `--vault` does not resolve — for example a path with no folder, or a name that no vault has or that two vaults share — the server stops before the client connects and writes the reason to its standard error. Claude Desktop keeps that in a log for each server — on macOS, `~/Library/Logs/Claude/mcp-server-baram.log`.
 
 ## Tools
 
@@ -66,8 +66,8 @@ A vault can change between two calls, so a later page can shift.
 
 ## What differs from the command line
 
-- **`read_note` reads notes only** — the `.md` and `.markdown` files `list_files` lists, the ones the app reads for tags, tasks and links. Hidden files, files in hidden folders or in `node_modules`, and all other files are refused. The command line's `read` reads any text file in the vault, hidden ones included.
+- **`read_note` reads notes only** — the `.md` and `.markdown` files `list_files` lists, the ones the app's walk finds for tags, tasks and links. Hidden files, files in hidden folders or in `node_modules`, and all other files are refused. The command line's `read` reads any text file in the vault, hidden ones included.
 - **`search` also reads hidden `.md` files inside ordinary folders**, such as `notes/.draft.md`, as the command does. `read_note` cannot open them.
-- **`backlinks` takes a note that does not exist yet.** It refuses a path that is a folder, so its answer can show that a folder exists inside the vault.
-- **A `vault` that starts with `.` is a name**, not a path: `.notes` is the vault the app lists under that name. Relative paths are not accepted — not every client says which directory they would start from.
+- **`backlinks` takes a note that does not exist yet**, as the command does, and refuses a path that is a folder. So an error can show whether a file or folder exists inside the vault: `backlinks` answers for a missing note but refuses a folder, `read_note` and `list_tasks` answer a file that is not a note with another error than a missing one, and a `folder` that is a file is refused as a file. An error never shows a file's content.
+- **A `vault` that starts with `.` is a name**, not a path: `.notes` is the vault the app lists under that name. Relative paths are not accepted — not every client says which directory it starts the server in.
 - **Errors are the command line's.** A tool that fails returns `error[CODE]: message` with the [same codes](/en/docs/command-line/#errors-and-exit-codes). Calling a tool the server does not have is a protocol error instead, and a line that is not JSON gets no answer.

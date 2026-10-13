@@ -67,14 +67,19 @@ PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 �
   CLI 가 읽는 필드의 이름을 바꾸면 `src/stores/__tests__/cli-persisted-config-contract.test.ts` 가 깨진다.
 - **`baram mcp` 의 stdout 은 JSON-RPC 만 싣는다.** `mcp` 갈래 안에서 `print!` · `println!` 을 쓰지 않는다 — 경고 · 시작 오류는 stderr 로
   (`tests/mcp.rs` 의 `stdout_carries_only_protocol_messages_when_the_config_warns` 가 세션의 stdout 줄이 모두 JSON 인지 본다).
-- **도구는 모두 `readOnlyHint: true` · `openWorldHint: false` 다**(`cli/mcp/tools.rs` 의 `definitions`). 클라이언트가 그 표시로 확인을
+- **도구는 모두 `readOnlyHint: true` · `openWorldHint: false` 다**(`cli/mcp/catalog.rs` 의 `definitions`). 클라이언트가 그 표시로 확인을
   건너뛸 수 있으므로, 쓰기 · 네트워크 · 디스크 캐시가 있는 도구를 이 표시로 더하지 않는다. 읽기 전용은
   `a_session_writes_nothing_into_the_vault_the_config_or_the_logs` 가 CLI 와 같은 스냅샷으로 잰다.
-- **도구의 `vault` 는 허용 집합 안만 받는다**(`cli/mcp/scope.rs`) — 없는 경로와 집합 밖의 경로가 같은 메시지다. 핸들러 경로에
-  `unwrap` · 색인 접근을 두지 않는다: 릴리스는 `panic = "abort"` 이고 `rmcp` 는 핸들러 패닉을 잡지 않는다.
-- **도구를 더할 때**: `ToolName` 에 변형을 더하면 `about` · `output_schema` · `call` 의 `match` 가 컴파일을 멈춘다. 도구마다 `cli/mcp/tools.rs` 의
-  인자 표(`About.arguments`) 하나에서 `cli/mcp/args.rs` 의 `schema` · `read` 가 입력 스키마와 인자 검사를 함께 만든다. `ToolName::ALL` 은 손으로 쓴
-  목록이라 `tools_list_gives_the_nine_tools_of_the_spec` 가 이름을 고정한다.
+- **도구의 `vault` 는 허용 집합 안만 받는다**(`cli/mcp/scope.rs`) — 없는 경로와 집합 밖의 경로가 같은 메시지다. 그 vault 안에서 도구의 파일
+  경계는 `paths::locate` · `note_arg` · `folder_arg` 다 — 도구가 받는 노트 · 폴더 경로는 모두 이 셋을 거친다(`backlinks` 는 `locate` 를 직접,
+  나머지는 `folder_arg` · `note_arg` 로). CLI 에서는 범위 규칙이지만(호출자의 셸이 그 파일을 어차피 읽을 수 있다), MCP 에서는 도구의 파일 경계다 —
+  호출자는 셸이 없는 모델이고, 그 인자는 노트 본문이 움직일 수 있다(스펙 D6).
+- **핸들러 경로는 패닉하지 않는다**: `unwrap` · `expect` · `unreachable!` · 색인 접근(`v[i]`, serde_json `Value` 의 `IndexMut` 도)을 두지 않고, 덧셈은
+  포화한다(`saturating_add`). 릴리스는 `panic = "abort"` 이고 `rmcp` 는 핸들러 패닉을 잡지 않는다.
+- **도구를 더할 때**: `ToolName` 에 변형을 더하면 `about` · `output_schema`(`cli/mcp/catalog.rs`) · `call`(`cli/mcp/tools.rs`) 의 `match` 가 컴파일을
+  멈춘다. 도구마다 `cli/mcp/catalog.rs` 의 인자 표(`About.arguments`) 하나에서 `cli/mcp/args.rs` 의 `schema` · `read` 가 입력 스키마와 인자 검사를
+  함께 만든다. `ToolName::ALL` 은 손으로 쓴 목록이라 `tools_list_gives_the_nine_tools_of_the_spec` 가 이름을 고정한다. 링크 인덱스를 짓는 도구는
+  `server.gate.run` 안에서 짓고, `cli/mcp/gate.rs` 의 `each_tool_that_builds_the_index_runs_inside_the_gate` 에 더한다 — 그 시험은 도구를 손으로 나열한다.
 
 ## IPC 커맨드 규칙
 
