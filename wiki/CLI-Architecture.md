@@ -22,15 +22,21 @@ vault::resolve        vault 하나를 고른다. 못 찾으면 실패한다
 paths                 경로 인자를 그 vault 안의 경로로 바꾸고, 앱이 보지 않는 자리를 거른다
    │  PathBuf
    ▼
-ops · ops_notes       명령 함수. 조회 결과를 봉투에 담아 돌려준다
+ops · ops_notes ·     명령 함수. 조회 결과를 봉투에 담아 돌려준다
+ops_search · ops_links
    │  Envelope { vault, truncated, items }
    ▼
 run · execute         결과를 stdout 에, 실패를 stderr 에 쓰고 종료 코드를 돌려준다
 ```
 
 경로 인자는 흐름에서 명령 함수 앞에 서지만, 그 판정은 명령 함수가 조회 전에 `paths` 의 함수를 불러
-한다. `backlinks` 는 그 위에 폴더를 거절하는 검사를 직접 한다 — `paths::locate` 다음, 인덱스를 짓기
-전이다. 각 층의 계약은 `src-tauri/src/cli/` 의 모듈 헤더와 문서 주석에 있다.
+한다. `backlinks` 는 그 위에 검사를 직접 한다 — `paths::locate` 다음, 인덱스를 짓기 전에 폴더를
+거절하고, 시스템이 적힌 대로 받지 못하는 경로(예: NUL 이 든 경로, 너무 긴 이름)도 거절한다
+(`paths::refused_as_written`). 각 층의 계약은 `src-tauri/src/cli/` 의 모듈 헤더와 문서 주석에 있다.
+
+`baram mcp` 는 `cli::run` 이 stdout 을 잡기 전에 이 흐름에서 갈라져 `cli::mcp` 로 간다 — 명령 하나를 돌리는
+대신 stdin 이 닫힐 때까지 서버로 돌고, stdout 은 프로토콜만 싣는다. vault 는 `vault::resolve` 대신
+서버가 호출마다 자기 허용 집합 안에서 고르고, 그 아래의 `paths` 와 명령 함수는 CLI 와 공유한다.
 
 ## 층별 책임
 
@@ -45,8 +51,8 @@ run · execute         결과를 stdout 에, 실패를 stderr 에 쓰고 종료 
 ## 경계 1: 모드 분기
 
 `main()` 이 Tauri 를 시작하기 **전에** argv 로 모드를 정한다. CLI 면 Tauri 를 시작하지 않고 tokio
-런타임을 직접 만들어 명령 하나를 돌린 뒤 종료 코드로 끝난다. 앱이 떠 있어도 CLI 는 별도 프로세스이고,
-둘은 통신하지 않는다.
+런타임을 직접 만들어 명령 하나를 돌린 뒤 종료 코드로 끝난다(`mcp` 는 명령이 아니라 서버를 돌린다). 앱이 떠 있어도
+CLI 는 별도 프로세스이고, 둘은 통신하지 않는다.
 
 판정은 **GUI 로 보낼 argv 를 열거하고 나머지를 전부 CLI 로 보낸다.** GUI 쪽은 인자가 없을 때와, 첫
 인자가 macOS 가 앱 번들을 띄우며 붙이는 `-psn_` · `-NS` · `-Apple` 로 시작하거나, 절대 경로이거나,
@@ -82,8 +88,9 @@ vault 를 조회하는 로직은 원래 Tauri 타입이 없는 Rust 함수였다
 
 ## 경계 3: 명령 함수는 쓰지 않는다
 
-**명령 함수는 쓰지 않는다** — 봉투를 돌려줄 뿐, stdout 에 쓰는 것은 `cli` 모듈의 진입부(`run` ·
-`execute`)다. 같은 함수가 다른 앞단(MCP 서버 같은)의 뒤에 설 수 있다.
+**명령 함수는 쓰지 않는다** — 봉투를 돌려줄 뿐, stdout 에 쓰는 것은 `cli` 모듈의 진입부다. CLI 에서는
+`run` · `execute` 이고, MCP 에서는 `cli::mcp` 의 서버다. 이 서버가 명령 함수의 다른 앞단이다 — 도구는 같은
+명령 함수를 불러 받은 결과로 답하고, `read_note` 만 `read` 대신 노트만 받는 짝(`ops::read_note`)을 부른다.
 
 명령 함수는 `--json` 을 받지 않는다 — 텍스트로 쓸지 JSON 으로 쓸지는 진입부가 정한다. `read` 를 뺀
 명령은 진입부가 그 플래그를 `output::write_envelope` 에 넘기고, `read` 는 `execute` 가 직접 가른다. 그

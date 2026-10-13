@@ -146,3 +146,5 @@ Paths are relative to the vault root. Exit code 0 with no items means "nothing f
 ```
 
 On Linux with the `.deb` package, `baram` is already on the `PATH`, so the full path is not needed.
+
+For a client without a shell, such as Claude Desktop, the same commands are tools of an [MCP server](/en/docs/mcp/).

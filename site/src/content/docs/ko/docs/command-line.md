@@ -1,6 +1,6 @@
 ---
 title: "명령줄 도구"
-sourceHash: "88838e25b5c2"
+sourceHash: "0b86d6932101"
 ---
 
 편집기를 여는 바로 그 프로그램 `baram`은 터미널에서 볼트에 대한 질문에도 답합니다. 스크립트와 AI 에이전트를 위한 기능입니다. 앱을 열지 않고도 노트를 검색하고, 태스크를 나열하고, 링크를 따라갈 수 있습니다.
@@ -147,3 +147,5 @@ Paths are relative to the vault root. Exit code 0 with no items means "nothing f
 ```
 
 Linux에서 `.deb` 패키지로 설치했다면 `baram`이 이미 `PATH`에 있으므로 전체 경로가 필요 없습니다.
+
+Claude Desktop처럼 셸이 없는 클라이언트에는 같은 명령이 [MCP 서버](/ko/docs/mcp/)의 도구로 있습니다.
