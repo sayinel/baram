@@ -939,3 +939,145 @@ fn a_path_no_file_system_takes_is_an_invalid_argument() {
     }
     assert_eq!(s.end().code, 0);
 }
+
+/// The nine tools of spec 0068 §3.3 as `tools/list` gives them: each says it only reads,
+/// each output schema is an object, and each list tool bounds `limit` and `offset` in its
+/// input schema, so a model knows the range from the list alone.
+///
+/// What fails this: a tool missing, renamed or added; a read-only hint dropped; a bound
+/// left out of a schema.
+#[test]
+fn tools_list_gives_the_nine_tools_of_the_spec() {
+    let sb = sandbox();
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    let reply = s.request(1, "tools/list", json!({}));
+    let tools = reply["result"]["tools"].as_array().expect("tools").clone();
+    let names: Vec<&str> = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "list_vaults",
+            "list_files",
+            "read_note",
+            "search",
+            "list_tags",
+            "notes_with_tag",
+            "list_tasks",
+            "backlinks",
+            "outgoing_links",
+        ]
+    );
+    for tool in &tools {
+        let name = tool["name"].as_str().unwrap();
+        assert_eq!(tool["annotations"]["readOnlyHint"], json!(true), "{name}");
+        assert_eq!(tool["annotations"]["openWorldHint"], json!(false), "{name}");
+        assert!(tool["title"].is_string(), "{name}");
+        assert!(
+            tool["description"]
+                .as_str()
+                .is_some_and(|d| d.chars().count() <= 2048),
+            "{name}"
+        );
+        assert_eq!(tool["outputSchema"]["type"], json!("object"), "{name}");
+        let input = &tool["inputSchema"];
+        assert_eq!(input["type"], json!("object"), "{name}");
+        assert_eq!(input["additionalProperties"], json!(false), "{name}");
+        assert_eq!(
+            input["properties"]["vault"]["type"],
+            json!("string"),
+            "{name}"
+        );
+        if name != "list_vaults" {
+            assert_eq!(input["properties"]["limit"]["minimum"], json!(1), "{name}");
+            assert!(input["properties"]["limit"]["maximum"].is_u64(), "{name}");
+            assert_eq!(input["properties"]["offset"]["minimum"], json!(0), "{name}");
+        }
+        let required = match name {
+            "read_note" | "backlinks" | "outgoing_links" => json!(["path"]),
+            "search" => json!(["query"]),
+            "notes_with_tag" => json!(["tag"]),
+            _ => Value::Null,
+        };
+        assert_eq!(input["required"], required, "{name}");
+    }
+    assert_eq!(s.end().code, 0);
+}
+
+/// The new protocol (`2026-07-28`) needs no handshake: `server/discover`, then a call that
+/// carries the `_meta` that revision requires (spec 0068 D1 — rmcp serves it; pinned here).
+///
+/// What fails this: `get_info` naming another server; an rmcp that answers `server/discover`
+/// without `2026-07-28` among `supportedVersions`, or refuses a call that is not preceded by
+/// `initialize`.
+#[test]
+fn the_new_protocol_is_served_without_a_handshake() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "a\n");
+    let meta = json!({
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {}
+    });
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    let discover = s.request(1, "server/discover", json!({ "_meta": meta }));
+    let result = &discover["result"];
+    assert!(
+        result["supportedVersions"]
+            .as_array()
+            .is_some_and(|versions| versions.contains(&json!("2026-07-28"))),
+        "{discover}"
+    );
+    assert_eq!(
+        result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+        json!("baram")
+    );
+    let call = s.request(
+        2,
+        "tools/call",
+        json!({ "name": "list_files", "arguments": {}, "_meta": meta }),
+    );
+    assert_eq!(paths(structured(&call["result"])), ["a.md"]);
+    assert_eq!(s.end().code, 0);
+}
+
+/// A session that calls every tool writes nothing into the vault, the app's config or its
+/// logs (spec 0068 §7), measured the way `tests/cli.rs` measures the CLI: a snapshot of the
+/// whole sandbox before and after.
+///
+/// What fails this: a tool that writes — a cache, a lock file, a rewritten config.
+#[test]
+fn a_session_writes_nothing_into_the_vault_the_config_or_the_logs() {
+    let sb = sandbox();
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    write(&sb.vault, "a.md", "#work\n- [ ] task\nsee [[b]]\n");
+    write(&sb.vault, "b.md", "needle\n");
+    let before = snapshot(&sb.base);
+    // Whole-second modification times cannot show a rewrite made in the fixture's second.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let mut s = session(&sb, &["--vault", "Fixture"]);
+    s.handshake();
+    for (id, tool, arguments) in [
+        (1, "list_vaults", json!({})),
+        (2, "list_files", json!({})),
+        (3, "read_note", json!({ "path": "a.md" })),
+        (4, "search", json!({ "query": "needle" })),
+        (5, "list_tags", json!({})),
+        (6, "notes_with_tag", json!({ "tag": "work" })),
+        (7, "list_tasks", json!({})),
+        (8, "backlinks", json!({ "path": "b.md" })),
+        (9, "outgoing_links", json!({ "path": "a.md" })),
+    ] {
+        let result = s.call(id, tool, arguments);
+        structured(&result);
+    }
+    let ended = s.end();
+    assert_eq!(ended.code, 0, "{}", ended.stderr);
+    assert_eq!(
+        snapshot(&sb.base),
+        before,
+        "a tool wrote into the vault, the app's config or its logs"
+    );
+}
