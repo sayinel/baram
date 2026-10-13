@@ -25,15 +25,9 @@ pub(super) const NOT_UNDER_INDEX_ROOT: &str =
 
 /// An answer from one index, with the root spelling its paths are written in.
 #[derive(Debug)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "first caller: plan 0124 Task 3 (plugin::index_reads)"
-    )
-)]
 pub(crate) struct Spelled<T> {
-    /// The spelling the index was built from (`IndexRoot`). Every path in `items` starts with it.
+    /// The spelling the index was built from (`IndexRoot`). Every path an item carries starts
+    /// with it.
     pub root: String,
     pub items: T,
 }
@@ -42,19 +36,13 @@ pub(crate) struct Spelled<T> {
 /// (`LinkIndex::get_backlinks`), and behind the aliases `ctx` answers to (§87,
 /// `local_aliases_of` over this one context — an outer vault's alias is the outer vault's
 /// question).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "first caller: plan 0124 Task 3 (plugin::index_reads)"
-    )
-)]
 pub(crate) async fn backlinks_in(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
     ctx: &Registered,
     file: &Path,
 ) -> Result<Spelled<Vec<BacklinkResult>>, String> {
+    // Before the build: the aliases come from the registrations, not from the index.
     let local = local_aliases_of(ctx_mgr, std::slice::from_ref(ctx))
         .await
         .local;
@@ -67,13 +55,6 @@ pub(crate) async fn backlinks_in(
 /// The links `file` (canonical) holds, each resolved as `baram links` resolves it
 /// (`LinkIndex::outgoing_resolved`). `items` is `None` when the index holds no note at that
 /// path — the caller decides what that means.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "first caller: plan 0124 Task 3 (plugin::index_reads)"
-    )
-)]
 pub(crate) async fn links_in(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,

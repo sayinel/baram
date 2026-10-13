@@ -112,6 +112,7 @@ pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 
 pub(crate) use build::refresh_index_inner;
+pub(crate) use context_reads::{backlinks_in, links_in};
 pub(crate) use keys::{
     active_registration, graph_term_for, own_aliases, require_registered_root, space_name,
     AliasHolder,

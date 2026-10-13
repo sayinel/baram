@@ -27,13 +27,6 @@ impl IndexRoot {
     }
 
     /// The spelling this root was given — the one every path in its index starts with.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "first caller: plan 0124 Task 3 (plugin::index_reads)"
-        )
-    )]
     pub(super) fn spelling(&self) -> &str {
         &self.spelling
     }
@@ -192,13 +185,6 @@ impl LinkIndexState {
     /// same critical section, the way `Mutation::apply_to` does, so no rebuild from another
     /// spelling can land between the spelling and the lookup. `None` for a missing index, one
     /// another registration published, or one without a recorded root.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "first caller: plan 0124 Task 3 (plugin::index_reads)"
-        )
-    )]
     pub(super) async fn with_index_and_root_for<R>(
         &self,
         key: &str,

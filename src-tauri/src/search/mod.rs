@@ -75,8 +75,8 @@ pub(crate) fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, 
         .build()
 }
 
-/// Why `check_query` refuses a query. The caller words it in its own contract
-/// (`cli::ops::search`).
+/// Why `check_query` refuses a query. Each of its two callers words it in its own contract:
+/// `baram search` (`cli::ops::search`) and a plugin's search (`plugin::index_reads`).
 #[derive(Debug)]
 pub(crate) enum QueryRefusal {
     /// The query is empty — `search_files` would answer it with no hits.

@@ -75,6 +75,9 @@ pub(crate) mod vault_path;
 // §379 개발자 모드의 상태와 판정. `pub(crate)` 인 이유는 `vault_path` 와 같다 —
 // `commands::plugin_dev_cmd` 가 이 모듈의 항목을 직접 쓴다.
 pub(crate) mod dev_mode;
+// §393 `ctx.index` 의 읽기 층. `pub(crate)` 인 이유는 `vault_path` 와 같다 —
+// `commands::plugin_index_cmd` 와 `commands::plugin_cmd` 가 이 모듈의 항목을 직접 쓴다.
+pub(crate) mod index_reads;
 // Re-exported for the `plugin_call` broker + sandbox register/deregister
 // commands (Phase 3a Task 2, src-tauri/src/commands/plugin_cmd.rs).
 pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
