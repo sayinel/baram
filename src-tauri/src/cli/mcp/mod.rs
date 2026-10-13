@@ -3,6 +3,7 @@
 // dev/design/specs/0068-mcp-server-design.md.
 
 mod args;
+mod catalog;
 mod gate;
 mod page;
 mod scope;

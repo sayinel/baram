@@ -2,6 +2,7 @@
 // becomes a `tools/call` result (spec 0068 §3.5–§3.6). The tools are `tools.rs`; which vault
 // a call reads is `scope.rs`.
 
+use super::catalog;
 use super::gate::IndexGate;
 use super::scope::Allowed;
 use super::tools::{self, Failure, ToolName};
@@ -109,7 +110,7 @@ impl ServerHandler for Server {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult {
-            tools: tools::definitions(),
+            tools: catalog::definitions(),
             ..Default::default()
         })
     }
