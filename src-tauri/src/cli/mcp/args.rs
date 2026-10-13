@@ -41,8 +41,9 @@ pub(super) const VAULT: Spec = Spec {
     name: "vault",
     kind: Kind::Text,
     required: false,
-    doc: "The vault to read: a name or alias list_vaults shows, or the vault's absolute \
-          path (a path may start with ~). Default: the default vault.",
+    doc: "The vault to read: a name or alias list_vaults shows, or the vault's path — \
+          absolute, ~ alone, or starting with ~/ (or ~\\ on Windows). Default: the default \
+          vault.",
 };
 
 /// A list tool's `offset` (spec 0068 §3.4). No maximum: past the end is an empty page.
@@ -67,7 +68,7 @@ pub(super) const fn limit(default: u64, max: u64) -> Spec {
             default,
         },
         required: false,
-        doc: "The most a page holds.",
+        doc: "The most items a page holds.",
     }
 }
 
@@ -75,22 +76,34 @@ pub(super) const fn limit(default: u64, max: u64) -> Spec {
 pub(super) fn schema(specs: &[Spec]) -> Arc<JsonObject> {
     let mut properties = JsonObject::new();
     for spec in specs {
-        let mut property = match spec.kind {
-            Kind::Text => json!({ "type": "string" }),
-            Kind::Flag => json!({ "type": "boolean", "default": false }),
+        // Built by `insert`, not by indexing a `Value`: serde_json's `IndexMut` panics on a
+        // value that is neither an object nor null, and `tools/list` runs this — a handler
+        // path, where the release build aborts on a panic.
+        let mut property = JsonObject::new();
+        match spec.kind {
+            Kind::Text => {
+                property.insert("type".into(), json!("string"));
+            }
+            Kind::Flag => {
+                property.insert("type".into(), json!("boolean"));
+                property.insert("default".into(), json!(false));
+            }
             Kind::Count { min, max, default } => {
-                let mut property = json!({ "type": "integer", "minimum": min, "default": default });
+                property.insert("type".into(), json!("integer"));
+                property.insert("minimum".into(), json!(min));
+                property.insert("default".into(), json!(default));
                 if let Some(max) = max {
-                    property["maximum"] = json!(max);
+                    property.insert("maximum".into(), json!(max));
                 }
-                property
             }
             Kind::Choice { values, default } => {
-                json!({ "type": "string", "enum": values, "default": default })
+                property.insert("type".into(), json!("string"));
+                property.insert("enum".into(), json!(values));
+                property.insert("default".into(), json!(default));
             }
-        };
-        property["description"] = json!(spec.doc);
-        properties.insert(spec.name.to_string(), property);
+        }
+        property.insert("description".into(), json!(spec.doc));
+        properties.insert(spec.name.to_string(), Value::Object(property));
     }
     let required: Vec<&str> = specs
         .iter()

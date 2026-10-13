@@ -128,8 +128,8 @@ pub(crate) struct LinkRow {
     pub line: u32,
     #[serde(rename = "type")]
     pub kind: &'static str,
-    /// The target the index files: the name inside the brackets, trimmed, without alias,
-    /// heading or display text. A self-reference `((#^id))` writes none, so it holds the
+    /// The target as the link index records it: the name inside the brackets, trimmed,
+    /// without alias, heading or display text. A self-reference `((#^id))` writes none, so it holds the
     /// note's own file stem.
     pub target: String,
     pub block_id: Option<String>,

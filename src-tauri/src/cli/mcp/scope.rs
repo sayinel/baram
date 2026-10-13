@@ -1,7 +1,9 @@
 // §389 Which vaults the tools may read, and which one a call reads (spec 0068 §3.1–§3.2).
-// The CLI resolves `--vault` once per run. Here the set and the default are decided again
-// on every call, from the config.json that call read (D13): a vault registered, renamed or
-// removed in the app shows on the next call.
+// The CLI resolves `--vault` once per run. Here every call reads config.json again (D13).
+// Without `--vault`, the registrations that call read decide the set and the default: a
+// vault registered, renamed or removed in the app shows on the next call. With `--vault`,
+// the roots and the default are the ones fixed at start; what each call reads again is what
+// they are called — each root's name and aliases, and whether the app registers it.
 
 use crate::cli::app_config::AppConfig;
 use crate::cli::error::{Candidate, CliError, ErrorCode};
@@ -46,7 +48,8 @@ pub(super) fn start(
         return Ok(Allowed::Registered { inputs });
     }
     // `from_path` joins a relative path to the current directory. The path form above is
-    // never relative once `from_path` has expanded `~`, so this error is never returned.
+    // relative once `from_path` has expanded `~` only when the home directory itself is —
+    // `dirs::home_dir` takes `$HOME` as it is set — and only then is this error returned.
     let no_cwd = CliError::new(ErrorCode::Io, "`mcp --vault` takes no relative path");
     let mut roots: Vec<PathBuf> = Vec::new();
     for value in values {
@@ -435,8 +438,8 @@ mod tests {
         );
     }
 
-    /// What fails this: the CLI's `is_path_form` (`.notes` would be a relative path, `a/x` a
-    /// missing directory); `~user` expanded.
+    /// What fails this: the CLI's `is_path_form`, under which `.notes` and `a/x` are paths —
+    /// relative ones, which a call refuses with the scope's error; `~user` expanded.
     #[test]
     fn a_name_is_whatever_is_not_absolute_or_tilde() {
         assert!(is_path_form("~"));
@@ -472,8 +475,7 @@ mod tests {
         );
     }
 
-    /// What fails this: the default taken from the last `--vault`, or from the inputs when
-    /// `--vault` is given.
+    /// What fails this: the default taken from the last `--vault` instead of the first.
     #[test]
     fn the_first_vault_flag_is_the_default() {
         let d = disk();

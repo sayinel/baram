@@ -18,8 +18,9 @@ use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::Value;
 
-/// The tools. No `_` arm in the `match`es below: a new tool must be given its name, title,
-/// description, arguments, output and call before the crate compiles.
+/// The tools. No `_` arm in the `match`es over them — `about` and `output_schema` in
+/// `catalog.rs`, `call` below: a new tool must be given its name, title, description,
+/// arguments, output and call before the crate compiles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ToolName {
     ListVaults,
@@ -99,7 +100,9 @@ pub(super) struct NoteText {
     content: String,
     /// How many lines the whole note has.
     total_lines: usize,
+    /// More lines come after this page.
     truncated: bool,
+    /// The `offset` that asks for the next page; there only when `truncated` is.
     #[serde(skip_serializing_if = "Option::is_none")]
     next_offset: Option<usize>,
 }

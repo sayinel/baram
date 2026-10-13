@@ -1,6 +1,6 @@
 // §389 The MCP server: what `initialize` answers, the tool list, and how a call's outcome
-// becomes a `tools/call` result (spec 0068 §3.5–§3.6). The tools are `tools.rs`; which vault
-// a call reads is `scope.rs`.
+// becomes a `tools/call` result (spec 0068 §3.5–§3.6). What `tools/list` shows of each tool
+// is `catalog.rs` and what a call runs is `tools.rs`; which vault a call reads is `scope.rs`.
 
 use super::catalog;
 use super::gate::IndexGate;
@@ -28,11 +28,12 @@ Read-only access to Baram vaults: folders of Markdown notes the Baram app manage
 here changes a file or the app's settings.
 
 Every tool takes an optional `vault`: the name or alias of a vault list_vaults shows, or \
-its absolute path (a path may start with ~). Without it, a tool reads the default vault. \
-The vaults this server reads are the ones its --vault options named when it started, the \
-first being the default; with no --vault, every vault registered in the app at the time \
-of the call, the default being the one that holds the project directory or the directory \
-the server started in. list_vaults shows them and which one a call reads.
+its path — absolute, ~ alone, or starting with ~/ (or ~\\ on Windows). Without it, a tool \
+reads the default vault. The vaults this server reads are the ones its --vault options \
+named when it started, the first being the default; with no --vault, every vault and \
+folder registered in the app at the time of the call, the default being the one that \
+holds the project directory or the directory the server started in. list_vaults shows \
+them and which one a call reads.
 
 Paths are relative to the vault root and separated by /. A list tool returns one page: \
 `truncated` says more follows, and `nextOffset` is the `offset` that asks for it. \

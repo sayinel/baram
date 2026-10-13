@@ -4,14 +4,15 @@ use crate::cli::output::VaultInfo;
 use schemars::JsonSchema;
 use serde::Serialize;
 
-/// A list tool's result. `truncated`: more items come after this page. `nextOffset`: the
-/// `offset` that asks for them — there only then.
+/// A list tool's result. The field docs are also the descriptions its output schema gives.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Page<T> {
     pub vault: VaultInfo,
     pub items: Vec<T>,
+    /// More items come after this page.
     pub truncated: bool,
+    /// The `offset` that asks for the next page; there only when `truncated` is.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<usize>,
 }
@@ -58,7 +59,7 @@ pub(super) fn lines(text: &str, offset: usize, limit: usize, max_chars: usize) -
         }
         content.push_str(line);
         chars = chars.saturating_add(length);
-        end += 1;
+        end = end.saturating_add(1);
     }
     let truncated = end < total;
     Lines {

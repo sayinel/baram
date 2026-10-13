@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::Serialize;
 use std::io::{self, Write};
 
-/// The vault a command read, as the envelope names it.
+/// The vault a command or a tool call read: its name, and the canonical path of its root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub(crate) struct VaultInfo {
     pub name: String,

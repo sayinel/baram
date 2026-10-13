@@ -32,11 +32,14 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     #[command(flatten)]
     Query(Query),
-    /// Serve the commands above to an MCP client as read-only tools, over stdin and stdout.
+    /// Serve the commands that read a vault to an MCP client as read-only tools, over stdin
+    /// and stdout.
     ///
-    /// Each `--vault` adds a vault the tools may read; the first is the default. Without
-    /// `--vault`, every vault registered in the app is open to the client. Here a path is
-    /// absolute or starts with `~`; anything else is a vault's name or alias.
+    /// Each `--vault` adds a vault the tools may read; the first is the default. Write every
+    /// `--vault` on the same side of `mcp`. Without `--vault`, every vault and folder
+    /// registered in the app is open to the client. Here a path is absolute, `~` alone, or
+    /// starts with `~/` (`~\` on Windows too); anything else is the name or alias of a
+    /// registered vault or folder.
     Mcp,
 }
 

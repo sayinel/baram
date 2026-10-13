@@ -24,12 +24,15 @@ pub(crate) struct VaultRow {
     pub name: String,
     pub path: String,
     pub alias: Option<String>,
-    /// `vault` or `folder` — or `unregistered`, which only the MCP server's `list_vaults` gives, for a `--vault` the app does not register.
+    /// `vault` or `folder`, as the app registers it; or `unregistered`, which only the MCP
+    /// server's `list_vaults` gives: a `--vault` the app does not register, or one whose
+    /// folder is gone (`exists` is then false).
     #[serde(rename = "type")]
     pub kind: &'static str,
-    /// The vault this run resolved to.
+    /// Whether this is the vault the command, or the tool call, resolved to.
     pub current: bool,
-    /// The context that was active in the app when it last wrote config.json.
+    /// Whether this was the vault or folder active in the app when the app last wrote its
+    /// config.json.
     pub active: bool,
     pub exists: bool,
 }

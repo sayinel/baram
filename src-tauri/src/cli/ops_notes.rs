@@ -80,14 +80,18 @@ fn tag_rows(found: &[String]) -> Vec<PathRow> {
     items
 }
 
-/// One task as the CLI reports it. A deliberate subset of the app's `TaskEntry`
-/// (spec 0066 D5): `indent`, `raw` (the optimistic-lock baseline) and `timer` (a raw
-/// value the frontend interprets) are internal and stay out.
+// A deliberate subset of the app's `TaskEntry` (spec 0066 D5): `indent`, `raw` (the
+// optimistic-lock baseline) and `timer` (a raw value the frontend interprets) are internal
+// and stay out. These are `//` comments because the `///` ones in this struct are also the
+// descriptions the MCP server's `list_tasks` output schema gives the model.
+/// One task in a note.
 #[derive(Debug, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TaskRow {
     pub path: String,
-    /// 1-based, like every line number the CLI prints. The index underneath is 0-based.
+    // Counted from 1, like every line number the CLI prints; the task index underneath
+    // counts from 0, and `task_rows` adds 1.
+    /// The line the task is on, counted from 1.
     pub line: u32,
     /// `todo`, `doing`, `done` or `cancelled`.
     pub state: &'static str,

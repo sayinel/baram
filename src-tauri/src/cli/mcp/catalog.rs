@@ -58,7 +58,10 @@ const READ_NOTE: &[Spec] = &[
         doc: "How many lines to skip: the nextOffset of the page before, or a search \
               match's line minus 1. Default 0.",
     },
-    args::limit(2000, 5000),
+    Spec {
+        doc: "The most lines a page holds.",
+        ..args::limit(2000, 5000)
+    },
 ];
 
 const SEARCH: &[Spec] = &[
@@ -171,8 +174,8 @@ impl ToolName {
                 name: "list_files",
                 title: "List notes",
                 description: "The Markdown notes (.md and .markdown) in the vault, or in one \
-                              folder of it, by path: the files the app reads for tags, tasks \
-                              and links. Hidden files and folders, and node_modules, are \
+                              folder of it, by path: the files the app's walk finds for tags, \
+                              tasks and links. Hidden files and folders, and node_modules, are \
                               left out.",
                 arguments: LIST_FILES,
             },
@@ -192,11 +195,11 @@ impl ToolName {
                 title: "Search notes",
                 description: "Full-text search of the vault's .md files, as the app's search \
                               runs it: each match's path, line (from 1) and a snippet of the \
-                              line around the match. A page holds matches in the order the \
-                              search finds them, sorted by path and line. Hidden .md files \
-                              inside ordinary folders are searched too; read_note does not \
-                              open those. read_note with offset = line - 1 starts at a \
-                              match's line.",
+                              line around the match. Each page is cut from the matches in the \
+                              order the search finds them, then sorted by path and line. \
+                              Hidden .md files inside ordinary folders are searched too; \
+                              read_note does not open those. read_note with offset = line - 1 \
+                              starts at a match's line.",
                 arguments: SEARCH,
             },
             ToolName::ListTags => About {
@@ -227,9 +230,10 @@ impl ToolName {
                 description: "The links that point at a note, as the app's backlinks panel \
                               counts them in this vault (with registered vaults nested in \
                               one another the panel can list more): each linking note's \
-                              path, line, link type, the line's text (trimmed, cut at 200 \
-                              bytes) and block id, by path and line. The note need not exist \
-                              yet. A path that is a folder is refused.",
+                              path, line, link type, the line's text (trimmed; past 200 \
+                              bytes, cut at the last character boundary at or before byte \
+                              200 and followed by …) and block id, by path and line. The note \
+                              need not exist yet. A path that is a folder is refused.",
                 arguments: BACKLINKS,
             },
             ToolName::OutgoingLinks => About {
@@ -294,8 +298,9 @@ mod tests {
         }
     }
 
-    /// What fails this: a status added to or renamed in the CLI and not here, which would
-    /// end as `-32603` in `list_tasks`.
+    /// What fails this: a status the CLI renames or drops and this list keeps — `list_tasks`
+    /// would take it and end as `-32603` — or one the CLI adds and this list lacks, which
+    /// `list_tasks` could not reach.
     #[test]
     fn list_tasks_takes_the_statuses_the_cli_takes() {
         use clap::ValueEnum;
