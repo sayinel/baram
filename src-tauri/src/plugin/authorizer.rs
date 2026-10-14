@@ -122,11 +122,22 @@ impl PluginOp {
     /// Which rate budget this op spends (§260 3c-2c). On the op for the same reason
     /// the capability requirement is: so a new variant cannot quietly inherit the
     /// wrong bucket by being handled at some call site.
+    ///
+    /// §393 ‼️ No `_` arm (spec 0072 D8): a new op must pick its bucket here to compile. With
+    /// `_ => Default`, an op that walks a whole vault would inherit the budget of one file read.
     pub fn rate_class(&self) -> RateClass {
         match self {
             // The CORS-free proxy is the one op whose cost lands on a third party.
             PluginOp::HttpFetch { .. } => RateClass::Network,
-            _ => RateClass::Default,
+            PluginOp::FilesList { .. }
+            | PluginOp::FilesRead { .. }
+            | PluginOp::FilesWrite { .. }
+            | PluginOp::SourceRead
+            | PluginOp::StagedRead
+            | PluginOp::StorageList
+            | PluginOp::StorageRead { .. }
+            | PluginOp::StorageRemove { .. }
+            | PluginOp::StorageWrite { .. } => RateClass::Default,
         }
     }
 }
