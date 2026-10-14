@@ -5,8 +5,9 @@
 # - only diverge from defaults where the project has an explicit policy
 
 # Minimum Supported Rust Version (MSRV) for lint suggestions.
-# The backend currently uses std::sync::LazyLock, which requires Rust 1.80+.
-msrv = "1.80.0"
+# rmcp (`baram mcp`, §389) declares rust-version 1.88, so the backend does not build on
+# anything older.
+msrv = "1.88.0"
 
 # Stricter than Clippy's default (25) to keep handlers and services decomposed.
 cognitive-complexity-threshold = 20

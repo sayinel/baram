@@ -103,12 +103,11 @@ pub(super) async fn tasks(
     rows::tasks(scope.form, root, entries, status)
 }
 
-/// Full-text search the way `baram search` searches (`search` in `cli/ops.rs`, or
-/// `cli/ops_search.rs` once the MCP PR moved it): the query checked first by the same
-/// `search::check_query`, `folder` MOVES the root (an `include_glob` folder is a string prefix
-/// that also takes `docs-old/`), `max_results` is `limit + 1` so the cut shows, and the first
-/// `limit` hits are sorted by (path, line) — stably, so two matches on one line stay in the
-/// order they were found (spec D10).
+/// Full-text search the way `baram search` searches (`search` in `cli/ops_search.rs`): the
+/// query checked first by the same `search::check_query`, `folder` MOVES the root (an
+/// `include_glob` folder is a string prefix that also takes `docs-old/`), `max_results` is
+/// `limit + 1` so the cut shows, and the first `limit` hits are sorted by (path, line) —
+/// stably, so two matches on one line stay in the order they were found (spec D10).
 pub(super) async fn search(
     scope: &Scope,
     query: &str,

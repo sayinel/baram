@@ -43,7 +43,7 @@ pub(crate) struct Vault {
 /// Registered roots that are directories right now, canonical, one per directory.
 /// Vault contexts are taken first, so where a vault and a folder context name the same
 /// directory the vault's label and kind are the ones kept.
-fn live(registered: &[Registered]) -> Vec<(&Registered, PathBuf)> {
+pub(crate) fn live(registered: &[Registered]) -> Vec<(&Registered, PathBuf)> {
     let mut out: Vec<(&Registered, PathBuf)> = Vec::new();
     for kind in [RootKind::Vault, RootKind::Folder] {
         for entry in registered.iter().filter(|r| r.kind == kind) {
@@ -104,7 +104,7 @@ fn is_path_form(arg: &str) -> bool {
         || arg.starts_with('~')
 }
 
-fn from_path(
+pub(crate) fn from_path(
     arg: &str,
     cwd: Result<&Path, &CliError>,
     home: Option<&Path>,
@@ -148,7 +148,7 @@ fn from_path(
     Ok(Vault { name, root })
 }
 
-fn folder_name(root: &Path) -> String {
+pub(crate) fn folder_name(root: &Path) -> String {
     root.file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.to_string_lossy().into_owned())
@@ -158,7 +158,7 @@ fn folder_name(root: &Path) -> String {
 /// directory exists, one per canonical path. Counting fields instead would make a vault
 /// ambiguous with itself — a vault's default alias is its default label — and counting
 /// list entries would trip over the same path persisted twice.
-fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, CliError> {
+pub(crate) fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, CliError> {
     let wanted = name.to_lowercase();
     let matched: Vec<Registered> = registered
         .iter()
@@ -207,7 +207,7 @@ fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, CliError> {
 /// `/x/Vault-secret`. Among several, a vault context beats a folder context and the
 /// outermost wins — the app's task scan drops roots that sit under another root, and
 /// its default scope reads vault contexts only (spec 0066 §3.3-2).
-fn from_cwd(cwd: &Path, registered: &[Registered]) -> Result<Vault, CliError> {
+pub(crate) fn from_cwd(cwd: &Path, registered: &[Registered]) -> Result<Vault, CliError> {
     let here = resolve_canonical(&cwd.to_string_lossy()).map_err(|e| {
         CliError::new(
             ErrorCode::Io,
