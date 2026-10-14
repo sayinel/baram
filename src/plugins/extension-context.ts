@@ -8,6 +8,7 @@ import type {
   EventsAPI,
   ExtensionContext,
   FilesAPI,
+  IndexAPI,
   NetworkAPI,
   PluginCapability,
   PluginManifest,
@@ -43,6 +44,7 @@ import {
   watchPluginSettings,
 } from "./settings-change-notifier";
 import { createEditorAPI } from "./trusted/editor-api";
+import { createIndexAPI } from "./trusted/index-api";
 import { createUIAPI } from "./trusted/ui-api";
 import {
   EDITOR_READ_CAPABILITIES,
@@ -337,6 +339,13 @@ export function createExtensionContext(
       ? createFilesAPI(true)
       : (createDeniedProxy("files", "files") as FilesAPI);
 
+  // §393 — the two grants that open `files` open the index too (spec D3): every answer is
+  // something those files could be read for.
+  const index: IndexAPI =
+    hasCapability("files") || hasCapability("files:readonly")
+      ? createIndexAPI()
+      : (createDeniedProxy("index", "files") as IndexAPI);
+
   // §0054 — `settings` is a second way in, for `settings:changed` alone; §393 — `files` and
   // `files:readonly` a third, for `vault:changed` alone. A plugin with none of the four still
   // gets the denied proxy, unchanged.
@@ -415,6 +424,7 @@ export function createExtensionContext(
     commands,
     editor,
     files,
+    index,
     events,
     network,
     settings,

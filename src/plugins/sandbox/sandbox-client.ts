@@ -27,6 +27,7 @@ import { logger } from "../../utils/logger";
 import { promptFrameProblem } from "../prompt-shape";
 import { isEditorRefusalCode } from "./protocol";
 import { createSandboxEditorAPI } from "./sandbox-editor-client";
+import { createSandboxIndexAPI } from "./sandbox-index";
 
 /**
  * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
@@ -300,6 +301,10 @@ export function startSandboxClient(
 
   const editor = createSandboxEditorAPI(hostRequest, readStaged);
 
+  // §393 — brokered and exposed unconditionally, like `files`: the Rust authorizer admits the
+  // six index ops on `files` or `files:readonly`, and nothing here decides.
+  const index = createSandboxIndexAPI(brokerJson);
+
   const ctx: SandboxContext = {
     ai,
     commands: { register: (id, handler) => void commands.set(id, handler) },
@@ -325,6 +330,7 @@ export function startSandboxClient(
     },
     editor,
     files,
+    index,
     network,
     prompts,
     settings,

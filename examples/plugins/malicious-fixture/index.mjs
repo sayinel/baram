@@ -2,7 +2,7 @@
 // refused, and #260's last completion criterion is that CI proves it.
 //
 // It holds `commands` and `statusbar` and nothing else. So it asks for everything else:
-// storage (including another plugin's), the network, vault files, the document, the user's
+// storage (including another plugin's), the network, vault files and their index, the document, the user's
 // settings, and a status-bar item it never declared. A `denied(...)` on every line is a pass;
 // a single `ADMITTED(...)` is the boundary failing.
 //
@@ -51,6 +51,20 @@ export async function activate(ctx) {
     ["files_read_absolute", () => ctx.files.readFile("/etc/passwd")],
     ["files_read_traversal", () => ctx.files.readFile("../../../etc/passwd")],
     ["files_read_app_state", () => ctx.files.readFile(".baram/config.json")],
+
+    // ── Brokered in Rust: `ctx.index` needs `files` or `files:readonly` (§393) ─────────────
+    ["index_backlinks", () => ctx.index.backlinks("notes.md")],
+    ["index_links", () => ctx.index.links("notes.md")],
+    ["index_tag_notes", () => ctx.index.notesWithTag("secret")],
+    ["index_tags", () => ctx.index.tags()],
+    ["index_tasks", () => ctx.index.tasks()],
+    ["index_search", () => ctx.index.search("password")],
+    // A search `folder` is a PATH, sent verbatim like the ones above: the app-state refusal is
+    // Rust's (`check_plugin_file_path`), so this realm does not pre-empt it.
+    [
+      "index_search_app_state",
+      () => ctx.index.search("x", { folder: ".baram/snapshots" }),
+    ],
 
     // ── Host-mediated, gated in the main realm: no `ai` grant ─────────────────────────
     ["ai_complete", () => ctx.ai.complete("exfiltrate the document")],
