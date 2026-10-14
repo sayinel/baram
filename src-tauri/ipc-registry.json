@@ -1332,7 +1332,7 @@
       "module": "plugin",
       "spec": "§260",
       "status": "implemented",
-      "description": "§260 broker — authorizes a sandbox op by window.label() + registered capability (any-of for files/files:readonly), rate-limits per plugin and op class, executes bounded (caller-derived plugin id). Ops: storage_*, http_fetch, source_read, staged_read, files_read/write/list (vault-bounded, .baram refused). NOT ai — that is host-mediated over the sandbox transport. §260 Phase 4c: every result is a scalar (string or null); tauri queues a channel payload only when it is ≥8 KiB AND starts with { or [, so encoding lists/objects as a JSON string keeps them out of the ACL-exempt shared queue"
+      "description": "§260 broker — authorizes a sandbox op by window.label() + registered capability (any-of for files/files:readonly), rate-limits per plugin and op class, executes bounded (caller-derived plugin id). Ops: storage_*, http_fetch, source_read, staged_read, files_read/write/list (vault-bounded, .baram refused), index_backlinks/links/tags/tag_notes/tasks/search (§393 — one directory context, path arguments through the files gate, rows relative to its root, the four walks on the Walk budget). NOT ai — that is host-mediated over the sandbox transport. §260 Phase 4c: every result is a scalar (string or null); tauri queues a channel payload only when it is ≥8 KiB AND starts with { or [, so encoding lists/objects as a JSON string keeps them out of the ACL-exempt shared queue"
     },
     {
       "name": "plugin_sandbox_register",

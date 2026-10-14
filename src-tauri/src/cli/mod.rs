@@ -11,6 +11,9 @@ mod output;
 mod paths;
 mod vault;
 
+// §393 `plugin_index_cmd` reads the task panel's exclusions the way the CLI does.
+pub(crate) use app_config::tasks_exclude_paths;
+
 use args::{Cli, Command};
 use clap::Parser;
 use error::{CliError, ErrorCode};

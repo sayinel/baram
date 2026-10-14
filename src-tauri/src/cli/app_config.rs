@@ -225,6 +225,32 @@ fn read_settings(state: &Value, config: &mut AppConfig) {
         .collect();
 }
 
+/// §393 The task panel's excluded folders, for the app's own process (spec 0072 D9): a plugin's
+/// `ctx.index.tasks` reads them from the persisted settings the CLI reads, through the same
+/// two readers. The settings key alone — `load` would also read the contexts and the approval
+/// store. Never fails: what `load` would warn about goes to the log.
+pub(crate) fn tasks_exclude_paths(config_json: &Path) -> Vec<String> {
+    let mut config = AppConfig::default();
+    match crate::config::read_config_map(&config_json.to_path_buf()) {
+        Ok(map) => {
+            if let Some(state) =
+                persisted_state(map.get(SETTINGS_KEY), SETTINGS_KEY, &mut config.warnings)
+            {
+                read_settings(&state, &mut config);
+            }
+        }
+        Err(error) => config.warnings.push(format!(
+            "cannot read {}: {}",
+            config_json.display(),
+            describe(&error)
+        )),
+    }
+    for warning in &config.warnings {
+        log::warn!("[plugin index] task exclusions: {warning}");
+    }
+    config.tasks_exclude_paths
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -533,5 +559,19 @@ mod tests {
         )))
         .unwrap();
         assert_eq!(conf["identifier"], APP_IDENTIFIER);
+    }
+
+    /// §393 D9 — the app's own copy of the task panel's exclusions: the settings store alone,
+    /// through this file's reader. What fails this: reading another key, or failing on a
+    /// missing file (an unreadable config is no exclusions plus a log line). The pair: `load`
+    /// reads the same list from the same file.
+    #[test]
+    fn tasks_exclude_paths_reads_the_settings_store_alone() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, FIXTURE).unwrap();
+        assert_eq!(tasks_exclude_paths(&path), ["archive", "templates/"]);
+        assert_eq!(tasks_exclude_paths(&path), load(&path).tasks_exclude_paths);
+        assert!(tasks_exclude_paths(&dir.path().join("missing.json")).is_empty());
     }
 }

@@ -1,5 +1,6 @@
 // §69 Plugin Marketplace — IPC command handlers
 use crate::plugin;
+use crate::plugin::index_reads::IndexRead;
 use crate::plugin::vault_path::{
     authorized_path_str, plugin_target_path, redact_fs_error, reject_app_state_path,
 };
@@ -410,8 +411,8 @@ const MAX_PLUGIN_FILE_BYTES: u64 = 8 * 1024 * 1024;
 /// registered context, so this reaches the same tree either way. It exists because a
 /// plugin that hears `file:open` for context A must be able to read that file while the
 /// user works in context B.
-async fn plugin_path_anchor(
-    app: &tauri::AppHandle,
+async fn plugin_path_anchor<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     context: Option<&str>,
 ) -> Result<(std::path::PathBuf, crate::context::types::ContextType), String> {
     use tauri::Manager;
@@ -460,8 +461,11 @@ async fn plugin_path_anchor(
 ///
 /// §260 Phase 4a — the incoming `path` is vault-RELATIVE (`vault_relative`) and is
 /// joined onto the anchor context's canonical root before any of that runs.
-async fn check_plugin_file_path(
-    app: &tauri::AppHandle,
+///
+/// §393 Also the gate of every path argument of a sandboxed `ctx.index` read
+/// (`plugin_index_cmd`). Generic over the runtime so those tests run it on a mock app.
+pub(super) async fn check_plugin_file_path<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     context: Option<&str>,
     path: &str,
 ) -> Result<std::path::PathBuf, String> {
@@ -614,7 +618,43 @@ async fn execute_op(
                 .map_err(|e| redact_fs_error(&e, &path))?;
             BrokerResult::encoded(&entries.into_iter().map(|e| e.name).collect::<Vec<_>>())
         }
+        // §393 `ctx.index`. Authorization (files / files:readonly) and the rate class (Walk for
+        // the four walks) happened in `plugin_call`; the context, the paths and the reads are
+        // `plugin_index_cmd`'s.
+        IndexBacklinks { context, path } => {
+            index_read(app, context, IndexRead::Backlinks { path }).await
+        }
+        IndexLinks { context, path } => index_read(app, context, IndexRead::Links { path }).await,
+        IndexSearch {
+            context,
+            options,
+            query,
+        } => index_read(app, context, IndexRead::Search { options, query }).await,
+        IndexTagNotes { context, tag } => {
+            index_read(app, context, IndexRead::NotesWithTag { tag }).await
+        }
+        IndexTags { context } => index_read(app, context, IndexRead::Tags).await,
+        IndexTasks {
+            context,
+            file,
+            status,
+        } => index_read(app, context, IndexRead::Tasks { file, status }).await,
     }
+}
+
+/// §393 A `ctx.index` answer — a list or an object — encoded out of the shared queue like
+/// every other (`BrokerResult::encoded`).
+async fn index_read(
+    app: &tauri::AppHandle,
+    context: Option<String>,
+    read: IndexRead,
+) -> Result<BrokerResult, String> {
+    BrokerResult::encoded(
+        &super::plugin_index_cmd::sandboxed_read(app, context, read, || {
+            super::plugin_index_cmd::tasks_exclude(app)
+        })
+        .await?,
+    )
 }
 
 /// §260 host-only — register a sandbox plugin's granted capabilities. Rejects
@@ -1483,5 +1523,37 @@ mod tests {
                  (plan 0106 P25) is unwired"
             );
         }
+    }
+
+    /// §393 — the four walks spend `Walk`, the two link reads `Default` (spec 0072 D8), through
+    /// the production gate. What fails this: a walk on `Default` (call 11 would be admitted) or
+    /// a link read on `Walk` (refused once the walks drained the bucket).
+    #[test]
+    fn index_walks_spend_the_walk_budget_and_link_reads_do_not() {
+        let (authorizer, _, limiter) = state();
+        authorizer.register(
+            "plugin-reader".into(),
+            vec!["files:readonly".into()],
+            "/p/reader".into(),
+        );
+        let walk = plugin::PluginOp::IndexTags { context: None };
+        let link = plugin::PluginOp::IndexBacklinks {
+            context: None,
+            path: "a.md".into(),
+        };
+        let now = Instant::now();
+        for i in 0..plugin::RateClass::Walk.burst() {
+            assert!(
+                admit_op_at("plugin-reader", &walk, &authorizer, &limiter, now).is_ok(),
+                "walk {i} of the burst must be admitted"
+            );
+        }
+        let err = admit_op_at("plugin-reader", &walk, &authorizer, &limiter, now)
+            .expect_err("past the walk burst must be refused");
+        assert!(err.contains("rate limit"), "unexpected error: {err}");
+        assert!(
+            admit_op_at("plugin-reader", &link, &authorizer, &limiter, now).is_ok(),
+            "a link read spends the Default bucket"
+        );
     }
 }

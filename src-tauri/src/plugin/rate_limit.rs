@@ -34,10 +34,6 @@ pub enum RateClass {
     /// §393 — a walk of one context's whole directory: `ctx.index` tags, notes with a tag, tasks
     /// and search (spec 0072 D8). One call reads every note, so the budget counts walks, not
     /// files. Sized from a 10,000-note vault (plan 0124 Task 4, ledger `impl-notes/0093`).
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "first caller: plan 0124 Task 5 (the index ops)")
-    )]
     Walk,
 }
 

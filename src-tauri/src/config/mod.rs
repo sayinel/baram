@@ -25,7 +25,8 @@ static CONFIG_MUTEX: Mutex<()> = Mutex::new(());
 /// Resolve config.json path: {app_data_dir}/config.json
 ///
 /// Generic over the runtime — see `get_config`'s doc comment for why.
-fn config_path<R: tauri::Runtime>(
+/// §393 Also `plugin_index_cmd`'s source for the task panel's exclusions (spec 0072 D9).
+pub(crate) fn config_path<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, ConfigError> {
     let dir = app_handle

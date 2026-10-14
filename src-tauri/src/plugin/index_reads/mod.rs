@@ -18,11 +18,6 @@
 //! reason). Where the error underneath names the vault root, it goes to the log instead. A
 //! gate's refusal is the tier's own: `check_paths` hands it back unchanged.
 
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "first caller: plan 0124 Task 5 (the broker ops)")
-)]
-
 mod reads;
 mod rows;
 #[cfg(test)]
@@ -95,6 +90,13 @@ pub(crate) struct SearchArgs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PathForm {
     /// Trusted: absolute, in the spelling of the root the read used.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "first constructor: plan 0124 Task 6 (the trusted command)"
+        )
+    )]
     Absolute,
     /// Sandboxed: relative to the context root, `/`-separated — the shape of `PluginFileEvent.path`.
     Relative,
