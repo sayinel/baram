@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
  *  and `micromark-util-character`, not only in the wrappers. */
 const MEASURED: Record<string, string> = {
   "mdast-util-find-and-replace": "3.0.2",
-  "mdast-util-from-markdown": "2.0.3",
+  "mdast-util-from-markdown": "2.1.0",
   "mdast-util-frontmatter": "2.0.1",
   "mdast-util-gfm": "3.1.0",
   "mdast-util-gfm-autolink-literal": "2.0.1",
@@ -29,7 +29,7 @@ const MEASURED: Record<string, string> = {
   "mdast-util-gfm-task-list-item": "2.0.0",
   "mdast-util-math": "3.0.0",
   "mdast-util-phrasing": "4.1.0",
-  "mdast-util-to-markdown": "2.1.2",
+  "mdast-util-to-markdown": "2.2.0",
   "mdast-util-to-string": "4.0.0",
   micromark: "4.0.2",
   "micromark-core-commonmark": "2.0.3",
