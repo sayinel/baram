@@ -197,7 +197,7 @@ export interface IndexAPI {
   backlinks(path: string, opts?: IndexOptions): Promise<IndexBacklink[]>;
   /** The links `path` holds, in line order. The note must exist. */
   links(path: string, opts?: IndexOptions): Promise<IndexLink[]>;
-  /** The notes carrying `tag`, in path order. A leading `#` is dropped; case is not compared. */
+  /** The notes carrying `tag`, in path order. Every leading `#` is dropped; case is not compared. */
   notesWithTag(tag: string, opts?: IndexOptions): Promise<string[]>;
   /** Full-text search of the `.md` files. Stops after `limit` matches; two matches on one line are two rows. */
   search(query: string, opts?: IndexSearchOptions): Promise<IndexSearchResult>;

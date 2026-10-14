@@ -6,8 +6,8 @@ title: "Context: index"
 
 Ask Baram what it already knows about a vault — which notes link to a note, which links a note
 holds, its tags, its tasks, and where a phrase occurs — instead of reading every file and
-parsing links yourself. The answers follow the same rules as the app's backlinks panel, tag
-panel, task panel and global search.
+parsing links yourself. The answers follow the same link, tag, task and search rules as the
+app's backlinks panel, tag panel, task panel and global search, answered from one context.
 
 ```typescript
 backlinks(path: string, opts?: IndexOptions): Promise<IndexBacklink[]>;
@@ -119,8 +119,9 @@ with the open tasks next to the backlinks.
 
 - A sandboxed plugin's `tags`, `notesWithTag`, `tasks` and `search` each read the whole vault,
   so they share a budget: 10 back to back, then about 1 a second. A refused call says
-  `rate limit exceeded`. `backlinks` and `links` read the link index in memory and share the
-  larger budget of the file operations. Trusted plugins have no budget here.
+  `rate limit exceeded`. `backlinks` and `links` read the link index and share the larger budget
+  of the file operations; the first read of a context — or the first after a failed build —
+  builds that index, which walks the vault. Trusted plugins have no budget here.
 - A vault Baram has not opened this session sends no `vault:changed`; its link index is built on
   your first read and can go stale after edits made outside Baram.
 - The errors these reads return carry only what you sent — a path, a context id, a tag or a

@@ -1,13 +1,14 @@
 ---
 title: "컨텍스트: 인덱스"
-sourceHash: "2bbfbf0128c4"
+sourceHash: "2365566ab3a6"
 ---
 
 ## `context.index` (`files` 또는 `files:readonly` 필요)
 
 파일을 하나씩 읽어 링크를 직접 파싱하는 대신, Baram이 이미 아는 것을 물으십시오 — 어떤 노트가 이 노트를
 링크하는지, 이 노트가 어떤 링크를 갖는지, 볼트의 태그와 태스크, 어떤 글이 어디에 있는지입니다. 답은 앱의
-백링크 패널, 태그 패널, 태스크 패널, 전역 검색과 같은 규칙으로 나옵니다.
+백링크 패널, 태그 패널, 태스크 패널, 전역 검색과 같은 링크·태그·태스크·검색 규칙으로, 컨텍스트 하나에서
+나옵니다.
 
 ```typescript
 backlinks(path: string, opts?: IndexOptions): Promise<IndexBacklink[]>;
@@ -76,8 +77,7 @@ interface IndexSearchResult { items: { line: number; path: string; snippet: stri
   자신의 별칭 뒤의 링크, 블록 참조와 블록 임베드가 모두 해당합니다. 노트가 아직 없어도 물을 수 있고,
   폴더는 거부됩니다.
 - **`links(path)`** — 노트가 있어야 하고, 노트(`.md`, `.markdown`)여야 하며, 볼트 걷기가 들어가는 곳이어야
-  합니다 — 숨김 폴더나 `node_modules` 안은 거부됩니다. `type`은 위키링크(`"wikilink"`), 블록
-  참조(`"blockRef"`), 블록 임베드(`"blockEmbed"`) 가운데 하나입니다.
+  합니다 — 숨김 폴더나 `node_modules` 안은 거부됩니다.
 - **`tags()`와 `notesWithTag(tag)`** — 태그는 소문자로 비교하고 앞의 `#`는 모두 떼므로 `#Work`로 `work`를
   찾습니다. 빈 태그는 거부됩니다.
 - **`tasks(opts)`** — `status`의 기본값은 `"open"`(할 일과 진행 중)입니다. **설정 → 태스크 → 제외할
@@ -115,8 +115,8 @@ sandboxed 티어의 모양입니다. 저장소의 `examples/plugins/link-count`�
 
 - sandboxed 플러그인의 `tags`, `notesWithTag`, `tasks`, `search`는 볼트 전체를 읽으므로 예산을 함께 씁니다 —
   연달아 10번, 그 뒤로는 초당 1번 안팎입니다. 거부된 호출은 `rate limit exceeded`라고 합니다. `backlinks`와
-  `links`는 메모리의 링크 인덱스를 읽어 파일 작업의 더 큰 예산을 함께 씁니다. trusted 플러그인에는 이 예산이
-  없습니다.
+  `links`는 링크 인덱스를 읽어 파일 작업의 더 큰 예산을 함께 씁니다. 컨텍스트의 첫 읽기(또는 빌드가 실패한
+  뒤의 첫 읽기)는 그 인덱스를 만들며, 이때 볼트를 걷습니다. trusted 플러그인에는 이 예산이 없습니다.
 - 이번 세션에 Baram이 열지 않은 볼트는 `vault:changed`를 보내지 않습니다. 그 볼트의 링크 인덱스는 첫 읽기에서
   만들어지고, Baram 밖에서 고친 뒤에는 낡을 수 있습니다.
 - 이 읽기들이 돌려주는 오류에는 보낸 값(경로, 컨텍스트 id, 태그, 질의)만 실리고 볼트의 위치는 실리지 않습니다.
