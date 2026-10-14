@@ -1,11 +1,12 @@
 // §387 CLI output — tab-separated text for people and grep, one JSON envelope for agents.
 
 use super::error::CliError;
+use schemars::JsonSchema;
 use serde::Serialize;
 use std::io::{self, Write};
 
-/// The vault a command read, as the envelope names it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// The vault a command or a tool call read: its name, and the canonical path of its root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub(crate) struct VaultInfo {
     pub name: String,
     pub path: String,

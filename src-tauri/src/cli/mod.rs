@@ -5,13 +5,16 @@ mod aliases;
 mod app_config;
 mod args;
 mod error;
+mod mcp;
 mod ops;
+mod ops_links;
 mod ops_notes;
+mod ops_search;
 mod output;
 mod paths;
 mod vault;
 
-use args::{Cli, Command};
+use args::{Cli, Command, Query};
 use clap::Parser;
 use error::{CliError, ErrorCode};
 use std::ffi::OsString;
@@ -90,6 +93,8 @@ impl From<CliError> for Failure {
 /// Runs one CLI invocation and returns its exit code: 0 on success — an empty result is
 /// a success — 1 when the command failed, 2 for a usage error (spec 0066 §3.7).
 pub fn run(args: Vec<OsString>) -> i32 {
+    // Counted before clap takes `args`; `misuse` compares it with what clap kept.
+    let written = vault_flags(&args);
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         // clap prints help and the version to stdout (exit 0) and usage errors to stderr
@@ -99,6 +104,10 @@ pub fn run(args: Vec<OsString>) -> i32 {
             return error.exit_code();
         }
     };
+    if let Some(error) = misuse(&cli, written) {
+        let _ = error.print();
+        return error.exit_code();
+    }
     install_stderr_log();
     let json = cli.json;
     let runtime = match tokio::runtime::Builder::new_current_thread()
@@ -116,10 +125,21 @@ pub fn run(args: Vec<OsString>) -> i32 {
             )
         }
     };
+    let query = match cli.command {
+        // Before stdout is taken below: in this mode it carries the protocol and nothing
+        // else (spec 0068 §3.1).
+        Command::Mcp => return mcp::run(runtime, &cli.vault),
+        Command::Query(query) => query,
+    };
     let stdout = std::io::stdout();
     let mut out = std::io::BufWriter::new(stdout.lock());
     let outcome = runtime
-        .block_on(execute(cli, &mut out))
+        .block_on(execute(
+            query,
+            cli.vault.first().map(String::as_str),
+            json,
+            &mut out,
+        ))
         .and_then(|()| out.flush().map_err(Failure::Output));
     match outcome {
         Ok(()) => 0,
@@ -139,7 +159,52 @@ fn report(error: &CliError, json: bool) -> i32 {
     error.code.exit_code()
 }
 
-async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
+/// How many `--vault` options `args` write: the tokens equal to `--vault` or starting with
+/// `--vault=`, after the program name and before the first `--`. When a global option is
+/// written on both sides of the command name, clap keeps one side's values and drops the
+/// other's — `baram --vault a mcp --vault b` parses as `[b]`; the forms checked are the ones
+/// `clap_keeps_one_side_of_a_global_option` pins — so `misuse` compares this count with what
+/// clap kept.
+fn vault_flags(args: &[OsString]) -> usize {
+    args.iter()
+        .skip(1)
+        .take_while(|arg| arg.to_str() != Some("--"))
+        .filter(|arg| {
+            arg.to_str()
+                .is_some_and(|arg| arg == "--vault" || arg.starts_with("--vault="))
+        })
+        .count()
+}
+
+/// What clap cannot declare: `--json` and `--vault` are global, so no subcommand can
+/// refuse them. `mcp` writes JSON-RPC on stdout whatever `--json` says, and every other
+/// command reads one vault. `--vault` on both sides of the command name is refused first:
+/// `written` (`vault_flags`) is then higher than what clap kept, and a vault the user named
+/// would be dropped without a word. A usage error like clap's own: exit 2, on stderr.
+fn misuse(cli: &Cli, written: usize) -> Option<clap::Error> {
+    let message = match cli.command {
+        _ if written != cli.vault.len() => {
+            "every `--vault` must be on the same side of the command name"
+        }
+        Command::Mcp if cli.json => "`--json` does not apply to `mcp`: it always writes JSON-RPC",
+        Command::Mcp => return None,
+        Command::Query(_) if cli.vault.len() > 1 => {
+            "`--vault` can be given more than once only to `mcp`"
+        }
+        Command::Query(_) => return None,
+    };
+    Some(
+        <Cli as clap::CommandFactory>::command()
+            .error(clap::error::ErrorKind::ArgumentConflict, message),
+    )
+}
+
+async fn execute(
+    query: Query,
+    vault_arg: Option<&str>,
+    json: bool,
+    out: &mut dyn Write,
+) -> Result<(), Failure> {
     // Not `?`: `vault::resolve` fails on this only where it reads the current directory
     // (no `--vault`, or a relative path), so `vaults` and an absolute `--vault` still run.
     let cwd = std::env::current_dir().map_err(|e| {
@@ -154,7 +219,7 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
         let mut stderr = std::io::stderr().lock();
         for warning in &config.warnings {
             // A warning that cannot be written is dropped; the command still runs.
-            let _ = output::write_warning(&mut stderr, warning, cli.json);
+            let _ = output::write_warning(&mut stderr, warning, json);
         }
     }
     log::debug!("cli: {} registered roots", config.registered.len());
@@ -162,20 +227,20 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
     // `let vault = required(resolved)?;`. `vaults` is what a caller runs to FIND a vault,
     // so it does not fail when none resolves (spec 0066 §3.3-4).
     let resolved = vault::resolve(
-        cli.vault.as_deref(),
+        vault_arg,
         cwd.as_deref(),
         home.as_deref(),
         &config.registered,
     );
-    match cli.command {
-        Command::Vaults => {
+    match query {
+        Query::Vaults => {
             let envelope = ops::vaults(&config, resolved.as_ref().ok());
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
-        Command::Read { path } => {
+        Query::Read { path } => {
             let vault = required(resolved)?;
             let envelope = ops::read(&vault, &path).await?;
-            if cli.json {
+            if json {
                 output::write_json(out, &envelope).map_err(Failure::Output)?;
             } else {
                 // Text mode prints the file itself: no escaping, no added newline.
@@ -185,12 +250,12 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
                 }
             }
         }
-        Command::Files { folder } => {
+        Query::Files { folder } => {
             let vault = required(resolved)?;
             let envelope = ops::files(&vault, folder.as_deref()).await?;
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
-        Command::Search {
+        Query::Search {
             query,
             regex,
             case_sensitive,
@@ -199,46 +264,47 @@ async fn execute(cli: Cli, out: &mut dyn Write) -> Result<(), Failure> {
             limit,
         } => {
             let vault = required(resolved)?;
-            let envelope = ops::search(
+            let envelope = ops_search::search(
                 &vault,
-                ops::SearchQuery {
+                ops_search::SearchQuery {
                     query: &query,
                     regex,
                     case_sensitive,
                     word,
                     folder: folder.as_deref(),
+                    offset: 0,
                     limit: limit as usize,
                 },
             )
             .await?;
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
-        Command::Tags => {
+        Query::Tags => {
             let vault = required(resolved)?;
             let envelope = ops_notes::tags(&vault).await?;
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
-        Command::Tag { name } => {
+        Query::Tag { name } => {
             let vault = required(resolved)?;
             let envelope = ops_notes::tag(&vault, &name).await?;
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
-        Command::Tasks { status, file } => {
+        Query::Tasks { status, file } => {
             let vault = required(resolved)?;
             let envelope =
                 ops_notes::tasks(&vault, &config.tasks_exclude_paths, status, file.as_deref())
                     .await?;
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
-        Command::Backlinks { path } => {
+        Query::Backlinks { path } => {
             let vault = required(resolved)?;
-            let envelope = ops_notes::backlinks(&vault, &path, &config).await?;
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            let envelope = ops_links::backlinks(&vault, &path, &config).await?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
-        Command::Links { path } => {
+        Query::Links { path } => {
             let vault = required(resolved)?;
-            let envelope = ops_notes::links(&vault, &path).await?;
-            output::write_envelope(out, &envelope, cli.json).map_err(Failure::Output)?;
+            let envelope = ops_links::links(&vault, &path).await?;
+            output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
         }
     }
     Ok(())
@@ -279,6 +345,51 @@ fn install_stderr_log() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn argv(args: &[&str]) -> Vec<OsString> {
+        std::iter::once("baram")
+            .chain(args.iter().copied())
+            .map(OsString::from)
+            .collect()
+    }
+
+    /// What fails this: `--vault=x` not counted; the count running past `--`; `--vaults`
+    /// counted; the program name counted.
+    #[test]
+    fn vault_flags_counts_the_options_written_before_a_double_dash() {
+        for (args, expected) in [
+            (&[][..], 0),
+            (&["--vault", "a", "--vault=b", "tags"][..], 2),
+            (&["tags", "--vault", "a"][..], 1),
+            (
+                &["--vault", "a", "search", "--", "--vault=x", "--vault"][..],
+                1,
+            ),
+            (&["search", "--", "--vault", "x"][..], 0),
+            (&["--vaults", "x", "--vaultx=y"][..], 0),
+        ] {
+            assert_eq!(vault_flags(&argv(args)), expected, "{args:?}");
+        }
+        assert_eq!(
+            vault_flags(&[OsString::from("--vault"), OsString::from("a")]),
+            0
+        );
+    }
+
+    /// The premise of `vault_flags`, pinned: when both sides of the command name give
+    /// `--vault`, clap keeps one side's values and drops the other's; when only one side
+    /// does, it keeps all of them.
+    ///
+    /// What fails this: a clap that merges the two sides. Then `misuse` would refuse what
+    /// clap parses whole, and this test says it is time to take the count out.
+    #[test]
+    fn clap_keeps_one_side_of_a_global_option() {
+        let kept = |args: &[&str]| Cli::try_parse_from(argv(args)).expect("parses").vault;
+        assert_eq!(kept(&["--vault", "a", "mcp", "--vault", "b"]), ["b"]);
+        assert_eq!(kept(&["--vault", "a", "files", "--vault", "b"]), ["b"]);
+        assert_eq!(kept(&["--vault", "a", "--vault", "b", "mcp"]), ["a", "b"]);
+        assert_eq!(kept(&["mcp", "--vault", "a", "--vault", "b"]), ["a", "b"]);
+    }
 
     fn mode(args: &[&str]) -> Mode {
         let argv: Vec<OsString> = std::iter::once("baram")

@@ -26,15 +26,24 @@ canonical 이다.
 ## 없음과 닿지 못함
 
 **경로 인자는 없음과 닿지 못함을 가른다** — `read` · `links` · `tasks --file` · `--folder` 에서 없는 것은
-`FILE_NOT_FOUND`, 있는데 닿지 못한 것은 `IO` 와 OS 의 사유다.
+`FILE_NOT_FOUND`, 있는데 닿지 못한 것은 `IO` 와 OS 의 사유다. 셋째 갈래로, 시스템이 적힌 대로 받지 못하는
+경로(NUL 이 든 경로, 너무 긴 이름이나 경로)는 `INVALID_ARGUMENT` 다 — 고칠 것은 디스크가 아니라 인자다
+(`paths::refused_as_written`). 아직 없는 노트를 받는 `backlinks` 도 이 판정을 불러, 그런 경로를 빈 답 대신
+오류로 끝낸다.
 
 권한 없는 파일을 "없다" 고 하면 사용자는 파일이 지워졌다고 믿는다. 경로 인자의 판정은
 `paths::file_arg` · `paths::folder_arg` 에 모여 있다.
 
-## vault 경계는 범위 규칙이다
+## vault 경계가 지키는 것
 
-`PATH_OUTSIDE_VAULT` 는 보안 경계가 아니라 에이전트가 범위를 벗어나지 않게 하는 규칙이다 — 왜인지는
-[Decisions and history](CLI-Decisions-and-history) 의 승인 저장소 결정이 답한다.
+**`PATH_OUTSIDE_VAULT` 가 무엇을 지키는지는 호출자가 정한다.** CLI 에서는 보안 경계가 아니라 에이전트가
+범위를 벗어나지 않게 하는 규칙이다 — 호출자의 셸은 그 파일을 어차피 읽을 수 있다. 왜 승인 저장소와
+대조하지 않는지는 [Decisions and history](CLI-Decisions-and-history) 의 승인 저장소 결정이 답한다.
+
+`baram mcp` 에서는 도구의 파일 경계다. 호출자는 셸이 없는 모델이고, 그 인자는 모델이 읽은 노트 본문이
+움직일 수 있다. 도구가 받는 노트 · 폴더 경로는 모두 `paths::locate` 를 지난다 — `backlinks` 는 직접,
+나머지는 `paths::note_arg` · `paths::folder_arg` 를 거쳐서. 그래서 이 셋이 도구와 vault 밖의 파일 사이에
+선 판정이다.
 
 ## 두 번 밟지 말 것
 

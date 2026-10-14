@@ -8,7 +8,7 @@ use super::paths;
 use super::vault::{RootKind, Vault};
 use crate::context::manager::resolve_canonical;
 use crate::fs::FsError;
-use crate::search::{SearchOptions, SearchResult};
+use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -19,16 +19,20 @@ pub(crate) fn vault_info(vault: &Vault) -> VaultInfo {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub(crate) struct VaultRow {
     pub name: String,
     pub path: String,
     pub alias: Option<String>,
+    /// `vault` or `folder`, as the app registers it; or `unregistered`, which only the MCP
+    /// server's `list_vaults` gives: a `--vault` the app does not register, or one whose
+    /// folder is gone (`exists` is then false).
     #[serde(rename = "type")]
     pub kind: &'static str,
-    /// The vault this run resolved to.
+    /// Whether this is the vault the command, or the tool call, resolved to.
     pub current: bool,
-    /// The context that was active in the app when it last wrote config.json.
+    /// Whether this was the vault or folder active in the app when the app last wrote its
+    /// config.json.
     pub active: bool,
     pub exists: bool,
 }
@@ -76,14 +80,19 @@ pub(crate) fn vaults(config: &AppConfig, current: Option<&Vault>) -> Envelope<Va
             }
         })
         .collect();
-    items.sort_by(|a, b| {
-        (a.name.as_str(), a.path.as_str()).cmp(&(b.name.as_str(), b.path.as_str()))
-    });
+    sort_vault_rows(&mut items);
     Envelope {
         vault: current.map(vault_info),
         truncated: false,
         items,
     }
+}
+
+/// The order roots are listed in: by (name, path).
+pub(crate) fn sort_vault_rows(items: &mut [VaultRow]) {
+    items.sort_by(|a, b| {
+        (a.name.as_str(), a.path.as_str()).cmp(&(b.name.as_str(), b.path.as_str()))
+    });
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +103,25 @@ pub(crate) struct FileContent {
 
 /// `baram read <path>` — one file, as it is on disk.
 pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileContent>, CliError> {
+    let file = paths::file_arg(vault, path)?;
+    Ok(Envelope {
+        vault: Some(vault_info(vault)),
+        truncated: false,
+        items: vec![read_text(vault, path, file).await?],
+    })
+}
+
+/// `read` for the MCP server's `read_note`, which reads notes only (spec 0068 D6): the path
+/// passes `paths::note_arg`, so a file that is there but hidden, in a folder the walk skips,
+/// or not `.md` or `.markdown` is INVALID_ARGUMENT — and one that is not there is
+/// FILE_NOT_FOUND, as for `read`.
+pub(crate) async fn read_note(vault: &Vault, path: &str) -> Result<FileContent, CliError> {
+    let file = paths::note_arg(vault, path)?;
+    read_text(vault, path, file).await
+}
+
+/// The text of `file` — `path` is the argument as given, for the messages.
+async fn read_text(vault: &Vault, path: &str, file: PathBuf) -> Result<FileContent, CliError> {
     let missing = || CliError::new(ErrorCode::FileNotFound, format!("no file at {path}"));
     // The io::Error's own text is the OS's or std's, in English, and carries no path
     // ("Permission denied (os error 13)", "stream did not contain valid UTF-8"). The
@@ -101,7 +129,6 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
     let unreadable = |source: &std::io::Error| {
         CliError::new(ErrorCode::Io, format!("cannot read {path}: {source}"))
     };
-    let file = paths::file_arg(vault, path)?;
     let content = crate::fs::read_file(&file.to_string_lossy())
         .await
         .map_err(|error| match error {
@@ -109,13 +136,9 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
             FsError::ReadError(source) => unreadable(&source),
             _ => CliError::new(ErrorCode::Io, format!("cannot read {path}")),
         })?;
-    Ok(Envelope {
-        vault: Some(vault_info(vault)),
-        truncated: false,
-        items: vec![FileContent {
-            path: paths::relative(vault, &file),
-            content,
-        }],
+    Ok(FileContent {
+        path: paths::relative(vault, &file),
+        content,
     })
 }
 
@@ -178,7 +201,7 @@ pub(crate) fn sort_by_path_and_line<T>(
     items.sort_by(|a, b| key(a).cmp(&key(b)));
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub(crate) struct PathRow {
     pub path: String,
 }
@@ -223,119 +246,6 @@ fn path_rows(vault: &Vault, found: Vec<PathBuf>) -> Vec<PathRow> {
         .collect();
     sort_by_path_and_line(&mut items, |row| (row.path.as_str(), 0));
     items
-}
-
-pub(crate) struct SearchQuery<'a> {
-    pub query: &'a str,
-    pub regex: bool,
-    pub case_sensitive: bool,
-    pub word: bool,
-    pub folder: Option<&'a str>,
-    pub limit: usize,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct SearchRow {
-    pub path: String,
-    pub line: usize,
-    pub snippet: String,
-}
-
-impl Row for SearchRow {
-    fn fields(&self) -> Vec<String> {
-        vec![
-            self.path.clone(),
-            self.line.to_string(),
-            self.snippet.clone(),
-        ]
-    }
-}
-
-/// `baram search <query>` — the app's full-text search over `.md` files.
-///
-/// `--folder` MOVES THE SEARCH ROOT instead of passing `include_glob`. That option's
-/// folder form is a string prefix (`docs` also takes `docs-old/`), and the limit is
-/// applied while walking — `docs-old/` sorts first and would fill it, so filtering the
-/// hits afterwards comes too late. With the root moved, neither can happen.
-///
-/// The match's `column` is left out: it is a byte offset, which is not a character
-/// position in Korean text.
-pub(crate) async fn search(
-    vault: &Vault,
-    query: SearchQuery<'_>,
-) -> Result<Envelope<SearchRow>, CliError> {
-    if query.query.is_empty() {
-        return Err(CliError::new(
-            ErrorCode::InvalidArgument,
-            "the query is empty",
-        ));
-    }
-    let options = SearchOptions {
-        case_sensitive: query.case_sensitive,
-        whole_word: query.word,
-        regex: query.regex,
-        // One more than asked for: `search_files` does not say whether it stopped early.
-        max_results: query.limit + 1,
-        include_glob: None,
-        exclude_glob: None,
-    };
-    // The two checks below run before the search because `search_files` returns a String:
-    // a pattern it cannot build and a root it cannot search could only be told apart by
-    // wording.
-    //
-    // First, a `--regex` query as typed. `--word` wraps it as text, `\b…\b`, and the wrap
-    // can turn an invalid expression into a valid one — `a\` becomes `\ba\\b`, a valid
-    // pattern that matches `a\b` after a word boundary — so only the query itself says
-    // whether it is one.
-    if query.regex {
-        if let Err(error) = regex::Regex::new(query.query) {
-            return Err(CliError::new(
-                ErrorCode::InvalidArgument,
-                format!("invalid regular expression: {error}"),
-            ));
-        }
-    }
-    // Then the pattern, built as the search builds it, from the same options — those
-    // change what is built: case-insensitively, `k{50000}` with `--regex` and fifty
-    // thousand `k`s without it both fail, and with `--case-sensitive` both build.
-    if let Err(error) = crate::search::build_pattern(query.query, &options) {
-        let message = if query.regex {
-            format!("invalid regular expression: {error}")
-        } else {
-            format!("the query cannot be searched: {error}")
-        };
-        return Err(CliError::new(ErrorCode::InvalidArgument, message));
-    }
-    let start = match query.folder {
-        Some(folder) => paths::folder_arg(vault, folder)?,
-        None => vault.root.clone(),
-    };
-    let hits = crate::search::search_files(&start.to_string_lossy(), query.query, &options)
-        .await
-        .map_err(|_| CliError::new(ErrorCode::Io, format!("cannot search {}", start.display())))?;
-    let (truncated, items) = search_rows(vault, hits, query.limit);
-    Ok(Envelope {
-        vault: Some(vault_info(vault)),
-        truncated,
-        items,
-    })
-}
-
-/// The rows `search` prints, and whether `hits` held more than `limit`: the first `limit`
-/// hits the search gave, each path relative to the vault, in (path, line) order.
-fn search_rows(vault: &Vault, hits: Vec<SearchResult>, limit: usize) -> (bool, Vec<SearchRow>) {
-    let truncated = hits.len() > limit;
-    let mut items: Vec<SearchRow> = hits
-        .into_iter()
-        .take(limit)
-        .map(|hit| SearchRow {
-            path: paths::relative(vault, Path::new(&hit.file_path)),
-            line: hit.line,
-            snippet: hit.snippet,
-        })
-        .collect();
-    sort_by_path_and_line(&mut items, |row| (row.path.as_str(), row.line as u64));
-    (truncated, items)
 }
 
 #[cfg(test)]
@@ -435,43 +345,39 @@ mod tests {
         );
     }
 
-    fn hit(rel: &str, line: usize) -> SearchResult {
-        SearchResult {
-            file_path: format!("/vault/{rel}"),
-            line,
-            column: 1,
-            snippet: format!("{rel}:{line}"),
+    /// `read_note` reads notes only (spec 0068 D6), where `read` reads any file in the vault.
+    ///
+    /// What fails this: `read_note` written with `paths::file_arg`.
+    #[tokio::test]
+    async fn read_note_reads_notes_and_nothing_else() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let vault = Vault {
+            name: "v".into(),
+            root: dir.path().canonicalize().unwrap(),
+        };
+        for (rel, body) in [
+            ("n.md", "note"),
+            (".git/config", "[core]"),
+            (".h.md", "hidden"),
+            ("t.txt", "text"),
+        ] {
+            let path = vault.root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
         }
-    }
-
-    fn pairs(rows: &[SearchRow]) -> Vec<(&str, usize)> {
-        rows.iter()
-            .map(|row| (row.path.as_str(), row.line))
-            .collect()
-    }
-
-    /// The hits come in an order other than the sorted one (`a0/` before `a/`, line 10
-    /// before line 2). The cut is made on that order and the sort comes after it, so with
-    /// a limit of 2 the rows are the first two hits, sorted.
-    #[test]
-    fn search_hits_come_out_by_path_then_line_and_the_cut_is_reported() {
-        let vault = vault_in("/vault");
-        let hits = || vec![hit("a0/x.md", 1), hit("a/y.md", 10), hit("a/y.md", 2)];
-
-        let (truncated, rows) = search_rows(&vault, hits(), 3);
-        assert!(!truncated, "as many hits as the limit is not a cut");
+        let note = read_note(&vault, "n.md").await.unwrap();
         assert_eq!(
-            pairs(&rows),
-            [("a/y.md", 2), ("a/y.md", 10), ("a0/x.md", 1)]
+            (note.path.as_str(), note.content.as_str()),
+            ("n.md", "note")
         );
-        assert_eq!(rows[0].snippet, "a/y.md:2");
-
-        let (truncated, rows) = search_rows(&vault, hits(), 2);
-        assert!(truncated);
-        assert_eq!(pairs(&rows), [("a/y.md", 10), ("a0/x.md", 1)]);
-
-        let (truncated, rows) = search_rows(&vault, hits(), 1);
-        assert!(truncated);
-        assert_eq!(pairs(&rows), [("a0/x.md", 1)]);
+        for rel in [".git/config", ".h.md", "t.txt"] {
+            let error = read_note(&vault, rel).await.unwrap_err();
+            assert_eq!(
+                error.code,
+                super::super::error::ErrorCode::InvalidArgument,
+                "{rel}"
+            );
+            assert!(read(&vault, rel).await.is_ok(), "{rel}: `read` takes it");
+        }
     }
 }
