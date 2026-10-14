@@ -1268,6 +1268,20 @@
       "description": "Plugin network proxy — reqwest fetch, http/https only, 30s timeout, 10MiB cap (§69 Phase D)"
     },
     {
+      "name": "plugin_index_read",
+      "input": {
+        "context": "string?",
+        "read": "PluginIndexRead (internally-tagged on \"read\": backlinks · links · notesWithTag · search · tags · tasks)"
+      },
+      "output": "IndexBacklink[] | IndexLink[] | string[] | IndexSearchResult | IndexTag[] | IndexTask[]",
+      "module": "plugin",
+      "spec": "§393",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "trusted 플러그인의 ctx.index — 호스트 창 전용(plugin-sandbox.json 에 없다). sandboxed 브로커 op(index_*)과 같은 Rust 읽기(plugin::index_reads)를 지나 같은 행을 절대 경로로 돌려준다. context 는 이름 → 경로를 받는 읽기면 그 경로를 담는 가장 안쪽 디렉터리 context → 활성 순. 경로는 절대 경로 · 등록 context 안 · .baram 밖 · 고른 context 의 root 아래여야 한다. 오류는 고정 문구(스펙 0072 §5.3 · §7)"
+    },
+    {
       "name": "plugin_storage_read",
       "input": {
         "pluginId": "string",

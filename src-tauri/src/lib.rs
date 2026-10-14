@@ -34,8 +34,8 @@ use std::sync::Mutex;
 
 use commands::{
     approval_cmd, config_cmd, context_cmd, embedding_cmd, export_cmd, font_cmd, fs_cmd, git_cmd,
-    index_cmd, keyring_cmd, llm_cmd, plugin_cmd, plugin_dev_cmd, search_cmd, snapshot_cmd, tag_cmd,
-    task_cmd, theme_cmd, thumbnail_cmd,
+    index_cmd, keyring_cmd, llm_cmd, plugin_cmd, plugin_dev_cmd, plugin_index_cmd, search_cmd,
+    snapshot_cmd, tag_cmd, task_cmd, theme_cmd, thumbnail_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -415,6 +415,7 @@ pub fn run() {
             plugin_dev_cmd::plugin_record_dev_consent,
             plugin_dev_cmd::plugin_set_developer_mode,
             plugin_cmd::plugin_http_fetch,
+            plugin_index_cmd::plugin_index_read,
             plugin_cmd::plugin_storage_read,
             plugin_cmd::plugin_storage_write,
             plugin_cmd::plugin_storage_list,

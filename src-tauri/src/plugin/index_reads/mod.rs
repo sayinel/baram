@@ -70,6 +70,20 @@ pub(crate) enum IndexRead {
     },
 }
 
+impl IndexRead {
+    /// The path a trusted read with no named context is answered for (spec §4
+    /// `IndexOptions.context`): the note of `backlinks` and `links`, a `tasks` `file`, a
+    /// `search` `folder`. ‼️ No `_` arm: a seventh read must say whether it takes a path.
+    pub(crate) fn path_arg(&self) -> Option<&str> {
+        match self {
+            IndexRead::Backlinks { path } | IndexRead::Links { path } => Some(path.as_str()),
+            IndexRead::Search { options, .. } => options.folder.as_deref(),
+            IndexRead::Tasks { file, .. } => file.as_deref(),
+            IndexRead::NotesWithTag { .. } | IndexRead::Tags => None,
+        }
+    }
+}
+
 /// `IndexSearchOptions` without `context` (spec §4). Every field may be left out.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,13 +104,6 @@ pub(crate) struct SearchArgs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PathForm {
     /// Trusted: absolute, in the spelling of the root the read used.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "first constructor: plan 0124 Task 6 (the trusted command)"
-        )
-    )]
     Absolute,
     /// Sandboxed: relative to the context root, `/`-separated — the shape of `PluginFileEvent.path`.
     Relative,

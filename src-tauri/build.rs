@@ -93,6 +93,7 @@ fn main() {
         "plugin_fetch_revocations",
         "plugin_get_dir",
         "plugin_http_fetch",
+        "plugin_index_read",
         "plugin_install_commit",
         "plugin_install_discard",
         "plugin_install_stage",

@@ -3,11 +3,14 @@
 // read to `plugin::index_reads::run` — one function for both tiers, so their rows cannot
 // drift. Generic over the runtime so the tests run the real gates on a mock app.
 
-use crate::context::ContextManager;
+use crate::context::manager::Registered;
+use crate::context::{ContextManager, ContextType};
 use crate::index::service::LinkIndexState;
 use crate::plugin::index_reads::{
     check_paths, resolve_scope, run, IndexRead, PathArg, PathForm, Scope,
 };
+use crate::plugin::vault_path::{authorized_path_str, reject_app_state_path};
+use std::path::Path;
 use tauri::Manager;
 
 /// §393 One read from a sandboxed plugin (`PluginOp::Index*`, spec §5.2): the context it
@@ -59,10 +62,88 @@ pub(super) fn tasks_exclude<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Vec
     }
 }
 
+/// §393 One read from a trusted plugin (spec §5.3): a host-window command — the trusted tier's
+/// way to the same Rust reads the broker runs, so the two tiers' rows cannot drift. The plugin
+/// shares the app's realm and could reach the app's own commands (`get_backlinks`), so this adds
+/// no boundary, and like those commands it has no rate budget. The context is the one named,
+/// else — for a read that takes a path — the innermost directory context holding that path,
+/// else the active one. Every path must be absolute, inside a registered context, outside
+/// `.baram`, and under the chosen context's root (`index_reads`). Rows are absolute.
+#[tauri::command]
+pub async fn plugin_index_read<R: tauri::Runtime>(
+    context: Option<String>,
+    read: IndexRead,
+    app: tauri::AppHandle<R>,
+) -> Result<serde_json::Value, String> {
+    index_read_with(context, read, &app, || tasks_exclude(&app)).await
+}
+
+/// `plugin_index_read` with the task panel's exclusions injected (m3): the command passes the
+/// app's `config.json` reader, tests pass a list, so none reads the developer's real one.
+async fn index_read_with<R: tauri::Runtime>(
+    context: Option<String>,
+    read: IndexRead,
+    app: &tauri::AppHandle<R>,
+    exclude: impl FnOnce() -> Vec<String>,
+) -> Result<serde_json::Value, String> {
+    let ctx_mgr = app.state::<ContextManager>();
+    let state = app.state::<LinkIndexState>();
+    let scope = Scope {
+        ctx: trusted_scope(ctx_mgr.inner(), context, &read).await?,
+        form: PathForm::Absolute,
+    };
+    let checked = check_paths(read, |given| trusted_path(app, given), exclude).await?;
+    run(state.inner(), ctx_mgr.inner(), &scope, checked).await
+}
+
+/// The context a trusted read answers from (spec §4 `IndexOptions.context`): the one named;
+/// else, for a read that takes an absolute path, the innermost directory context holding it
+/// (`contexts_containing` lists them deepest first); else the active one.
+async fn trusted_scope(
+    ctx_mgr: &ContextManager,
+    context: Option<String>,
+    read: &IndexRead,
+) -> Result<Registered, String> {
+    if context.is_none() {
+        if let Some(path) = read.path_arg().filter(|path| Path::new(path).is_absolute()) {
+            let innermost =
+                ctx_mgr
+                    .contexts_containing(path)
+                    .await
+                    .into_iter()
+                    .find(|ctx| match ctx.info.context_type {
+                        ContextType::Vault | ContextType::Folder => true,
+                        ContextType::File => false,
+                    });
+            if let Some(innermost) = innermost {
+                return Ok(innermost);
+            }
+        }
+    }
+    resolve_scope(ctx_mgr, context).await
+}
+
+/// A trusted path argument: absolute, inside a registered context, outside `.baram` — the
+/// gates `read_file` and the sandboxed file ops share (`fs_cmd::ensure_path_in_vault`,
+/// `vault_path::reject_app_state_path`). A relative path is refused rather than resolved
+/// against the process's directory.
+async fn trusted_path<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    given: String,
+) -> Result<PathArg, String> {
+    if !Path::new(&given).is_absolute() {
+        return Err(format!("path \"{given}\" must be absolute"));
+    }
+    let canonical = crate::context::manager::resolve_canonical(&given)?;
+    super::fs_cmd::ensure_path_in_vault(app, authorized_path_str(&canonical)?).await?;
+    reject_app_state_path(&canonical)?;
+    Ok(PathArg { given, canonical })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{ContextInfo, ContextType};
+    use crate::context::ContextInfo;
     use crate::plugin::index_reads::SearchArgs;
     use serde_json::json;
 
@@ -292,5 +373,229 @@ mod tests {
         assert_eq!(paths(excluded), ["a.md"]);
         assert_eq!(paths(all), ["a.md", "archive/o.md"]);
         assert!(tags.is_ok());
+    }
+
+    /// Spec §5.3: a named context answers, and a path outside it is refused rather than
+    /// answered from wherever the path lies. What fails this: choosing the context by the path
+    /// even when one is named, or no root check (P12). The pair: naming the path's own context
+    /// answers, with absolute rows in its registered spelling.
+    #[tokio::test]
+    async fn a_trusted_read_answers_from_the_named_context_and_refuses_a_path_outside_it() {
+        let app = app_with_states();
+        let (_a, _a_root) = folder_with(&app, "ctx-a", &[("x.md", "x\n")]).await;
+        let (_b, b_root) = folder_with(&app, "ctx-b", LINKED).await;
+        app.state::<ContextManager>()
+            .set_active("ctx-a")
+            .await
+            .unwrap();
+        let note = format!("{b_root}/b.md");
+        let backlinks = |context: &str| {
+            index_read_with(
+                Some(context.into()),
+                IndexRead::Backlinks { path: note.clone() },
+                app.handle(),
+                Vec::new,
+            )
+        };
+
+        assert_eq!(
+            backlinks("ctx-a").await.unwrap_err(),
+            format!("path \"{note}\" is not inside context \"ctx-a\"")
+        );
+        assert_eq!(
+            backlinks("ctx-b").await.unwrap(),
+            json!([{ "blockId": null, "line": 1, "path": format!("{b_root}/a.md"), "snippet": "see [[b]] #t", "type": "wikilink" }])
+        );
+    }
+
+    /// Spec §4 `IndexOptions.context`: with no name, a read that takes a path answers from the
+    /// innermost vault or folder holding it — one context (D7). What fails this: answering from
+    /// the active context (the outer vault here), whose rows include the note outside the
+    /// folder. The pair: naming the outer vault gets those rows.
+    #[tokio::test]
+    async fn without_a_name_a_path_read_answers_from_the_innermost_directory_context() {
+        let app = app_with_states();
+        let (_outer, outer_root) = folder_with(
+            &app,
+            "ctx-outer",
+            &[
+                ("sub/n.md", "target\n"),
+                ("sub/in.md", "[[n]]\n"),
+                ("out.md", "[[n]]\n"),
+            ],
+        )
+        .await;
+        let inner_root = format!("{outer_root}/sub");
+        app.state::<ContextManager>()
+            .add(info("ctx-inner", &inner_root, ContextType::Folder))
+            .await
+            .unwrap();
+        app.state::<ContextManager>()
+            .set_active("ctx-outer")
+            .await
+            .unwrap();
+        let note = format!("{inner_root}/n.md");
+
+        let unnamed = index_read_with(
+            None,
+            IndexRead::Backlinks { path: note.clone() },
+            app.handle(),
+            Vec::new,
+        )
+        .await
+        .unwrap();
+        let named = index_read_with(
+            Some("ctx-outer".into()),
+            IndexRead::Backlinks { path: note },
+            app.handle(),
+            Vec::new,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(paths(unnamed), [format!("{inner_root}/in.md")]);
+        assert_eq!(
+            paths(named),
+            [
+                format!("{outer_root}/out.md"),
+                format!("{outer_root}/sub/in.md")
+            ]
+        );
+    }
+
+    /// With no name and no path, the active context answers; switching it switches the answer.
+    /// What fails this: a context fixed at the first read.
+    #[tokio::test]
+    async fn without_a_name_or_a_path_the_active_context_answers() {
+        let app = app_with_states();
+        let (_a, _) = folder_with(&app, "ctx-a", &[("a.md", "#alpha\n")]).await;
+        let (_b, _) = folder_with(&app, "ctx-b", &[("b.md", "#beta\n")]).await;
+        let ctx_mgr = app.state::<ContextManager>();
+
+        ctx_mgr.set_active("ctx-a").await.unwrap();
+        let first = index_read_with(None, IndexRead::Tags, app.handle(), Vec::new)
+            .await
+            .unwrap();
+        ctx_mgr.set_active("ctx-b").await.unwrap();
+        let second = index_read_with(None, IndexRead::Tags, app.handle(), Vec::new)
+            .await
+            .unwrap();
+
+        assert_eq!(first, json!([{ "count": 1, "tag": "alpha" }]));
+        assert_eq!(second, json!([{ "count": 1, "tag": "beta" }]));
+    }
+
+    /// Spec §5.3 · §7: a trusted path must be absolute, inside a registered context and outside
+    /// `.baram`. What fails this: resolving a relative path against the process's directory, or
+    /// skipping `ensure_path_in_vault` / `reject_app_state_path`. The pair: the same read with
+    /// the note's absolute path answers.
+    #[tokio::test]
+    async fn a_trusted_path_must_be_absolute_registered_and_not_app_state() {
+        let app = app_with_states();
+        let (_a, root) = folder_with(&app, "ctx-a", LINKED).await;
+        let elsewhere = tempfile::tempdir().unwrap();
+        std::fs::write(elsewhere.path().join("x.md"), "x\n").unwrap();
+        app.state::<ContextManager>()
+            .set_active("ctx-a")
+            .await
+            .unwrap();
+        let links =
+            |path: String| index_read_with(None, IndexRead::Links { path }, app.handle(), Vec::new);
+
+        assert_eq!(
+            links("a.md".into()).await.unwrap_err(),
+            "path \"a.md\" must be absolute"
+        );
+        assert!(links(format!("{root}/.baram/x.md"))
+            .await
+            .unwrap_err()
+            .contains(".baram/ is app state"));
+        assert!(
+            links(elsewhere.path().join("x.md").to_string_lossy().into_owned())
+                .await
+                .unwrap_err()
+                .contains("outside all registered contexts")
+        );
+        assert!(links(format!("{root}/a.md")).await.is_ok());
+    }
+
+    /// D9 (m3): the trusted edge hands the exclusions it is given to the tasks read, and the
+    /// tests inject them — none reads the developer's real `config.json`. What fails this: the
+    /// edge dropping `exclude` before `check_paths`. The pair: an empty list keeps the excluded
+    /// folder's task, in its absolute spelling.
+    #[tokio::test]
+    async fn a_trusted_tasks_read_applies_the_exclusions_it_is_handed() {
+        let app = app_with_states();
+        let (_a, root) = folder_with(
+            &app,
+            "ctx-a",
+            &[("a.md", "- [ ] keep\n"), ("archive/o.md", "- [ ] hidden\n")],
+        )
+        .await;
+        app.state::<ContextManager>()
+            .set_active("ctx-a")
+            .await
+            .unwrap();
+        let tasks = IndexRead::Tasks {
+            status: None,
+            file: None,
+        };
+
+        let excluded = index_read_with(None, tasks.clone(), app.handle(), || {
+            vec!["archive".to_string()]
+        })
+        .await
+        .unwrap();
+        let all = index_read_with(None, tasks, app.handle(), Vec::new)
+            .await
+            .unwrap();
+
+        assert_eq!(paths(excluded), [format!("{root}/a.md")]);
+        assert_eq!(
+            paths(all),
+            [format!("{root}/a.md"), format!("{root}/archive/o.md")]
+        );
+    }
+
+    /// The command is reachable by name, with its camelCase arguments and its `read` tag. The
+    /// tests above call the function directly and would not notice it unregistered or its
+    /// argument shape changed — `search_cmd`'s twin exists for the same reason. What fails
+    /// this: a `read` that does not deserialize (serde's error instead) or an unknown command.
+    #[test]
+    fn plugin_index_read_is_dispatchable_by_name() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::plugin_index_read])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(crate::VaultRootState(tokio::sync::RwLock::new(None)));
+        app.manage(ContextManager::new());
+        app.manage(LinkIndexState::new());
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        let res = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "plugin_index_read".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::Json(json!({ "read": { "read": "tags" } })),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        );
+
+        assert_eq!(
+            res.expect_err("no context is registered yet"),
+            json!("no context is open")
+        );
     }
 }
