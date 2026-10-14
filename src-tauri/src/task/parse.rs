@@ -82,6 +82,18 @@ impl TaskState {
             TaskState::Todo => "[ ]",
         }
     }
+
+    /// §393 The state's name on the wire — the word serde writes for it — for the rows that
+    /// carry it as text (the CLI's `TaskRow.state`, a plugin's `IndexTask.state`). ‼️ No `_`
+    /// arm: a fifth state must be named here before the crate compiles.
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            TaskState::Todo => "todo",
+            TaskState::Doing => "doing",
+            TaskState::Done => "done",
+            TaskState::Cancelled => "cancelled",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -469,5 +481,23 @@ mod tests {
     fn ignores_a_malformed_date_value() {
         let t = parse_task_line("- [ ] 본문 📅2026-13-99").unwrap();
         assert_eq!(t.due, None);
+    }
+
+    /// §393 What fails this: a `wire_name` that drifts from the word serde writes — the word the
+    /// frontend's `TaskState` reads, and the CLI's and a plugin's `state` field.
+    #[test]
+    fn a_task_state_is_named_the_way_serde_writes_it() {
+        for state in [
+            TaskState::Todo,
+            TaskState::Doing,
+            TaskState::Done,
+            TaskState::Cancelled,
+        ] {
+            assert_eq!(
+                serde_json::to_value(state).unwrap(),
+                serde_json::json!(state.wire_name()),
+                "{state:?}"
+            );
+        }
     }
 }

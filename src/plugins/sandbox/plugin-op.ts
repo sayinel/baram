@@ -14,7 +14,11 @@
 // members alphabetically on every lint run, so a comment written above a member gets
 // left behind when the member moves — reattached to whatever sorts into that slot.
 // (It happened to the `source_read` note twice.)
-import type { PluginFetchInit } from "../types";
+import type {
+  IndexSearchOptions,
+  IndexTaskOptions,
+  PluginFetchInit,
+} from "../types";
 
 export type PluginOp =
   | {
@@ -22,6 +26,44 @@ export type PluginOp =
       // Rust resolves the slot from the caller's window label, so a sandbox cannot name
       // whose payload it wants, and the slot is consumed by the read.
       kind: "staged_read";
+    }
+  | {
+      // §393 `ctx.index.backlinks` — `path` is context-relative and meets the files gate in Rust.
+      context?: string;
+      kind: "index_backlinks";
+      path: string;
+    }
+  | {
+      // §393 `ctx.index.links`.
+      context?: string;
+      kind: "index_links";
+      path: string;
+    }
+  | {
+      // §393 `ctx.index.notesWithTag`. A walk.
+      context?: string;
+      kind: "index_tag_notes";
+      tag: string;
+    }
+  | {
+      // §393 `ctx.index.search` — `options.folder` is a path and meets the same gate; the rest
+      // are values. A walk: it spends the `Walk` budget.
+      context?: string;
+      kind: "index_search";
+      options: Omit<IndexSearchOptions, "context">;
+      query: string;
+    }
+  | {
+      // §393 `ctx.index.tags`. A walk.
+      context?: string;
+      kind: "index_tags";
+    }
+  | {
+      // §393 `ctx.index.tasks` — `file` is a path and meets the same gate. A walk.
+      context?: string;
+      file?: string;
+      kind: "index_tasks";
+      status?: IndexTaskOptions["status"];
     }
   | {
       // §260 3c-2b — this sandbox's OWN bundle. No path field exists by design: Rust

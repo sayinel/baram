@@ -8,7 +8,7 @@ use super::ops::{sort_by_path_and_line, vault_info, walk_failure, PathRow};
 use super::output::{Envelope, Row};
 use super::paths;
 use super::vault::Vault;
-use crate::task::{TaskEntry, TaskError, TaskState};
+use crate::task::{TaskEntry, TaskError};
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::Path;
@@ -48,7 +48,7 @@ pub(crate) async fn tags(vault: &Vault) -> Result<Envelope<TagRow>, CliError> {
 /// `baram tag <name>` — the files that carry the tag. A leading `#` is dropped: tags are
 /// stored without it, so `#work` as typed would match nothing.
 pub(crate) async fn tag(vault: &Vault, name: &str) -> Result<Envelope<PathRow>, CliError> {
-    let name = name.trim_start_matches('#');
+    let name = crate::tag::bare_tag(name);
     if name.is_empty() {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
@@ -119,25 +119,6 @@ impl Row for TaskRow {
     }
 }
 
-/// No `_` arm: a fifth task state must be named here before the crate compiles.
-fn state_name(state: TaskState) -> &'static str {
-    match state {
-        TaskState::Todo => "todo",
-        TaskState::Doing => "doing",
-        TaskState::Done => "done",
-        TaskState::Cancelled => "cancelled",
-    }
-}
-
-fn wanted(status: TaskStatus, state: TaskState) -> bool {
-    match status {
-        TaskStatus::All => true,
-        TaskStatus::Open => matches!(state, TaskState::Todo | TaskState::Doing),
-        TaskStatus::Done => state == TaskState::Done,
-        TaskStatus::Cancelled => state == TaskState::Cancelled,
-    }
-}
-
 /// `baram tasks` — the tasks of the resolved vault, minus the folders the app excludes.
 /// The app's own panel may show more or less: its scope setting decides which roots it
 /// scans (spec 0066 §3.5).
@@ -177,11 +158,11 @@ pub(crate) async fn tasks(
 fn task_rows(vault: &Vault, entries: Vec<TaskEntry>, status: TaskStatus) -> Vec<TaskRow> {
     let mut items: Vec<TaskRow> = entries
         .into_iter()
-        .filter(|entry| wanted(status, entry.state))
+        .filter(|entry| status.admits(entry.state))
         .map(|entry| TaskRow {
             path: paths::relative(vault, Path::new(&entry.path)),
             line: entry.line + 1,
-            state: state_name(entry.state),
+            state: entry.state.wire_name(),
             text: entry.text,
             priority: entry.priority,
             created: entry.created,
@@ -207,6 +188,7 @@ fn unreadable(file: &str, source: &std::io::Error) -> CliError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::task::TaskState;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -236,37 +218,6 @@ mod tests {
         assert_eq!(envelope.items.len(), 1);
         assert_eq!(envelope.items[0].line, expected);
         assert_eq!(envelope.items[0].path, "n.md");
-    }
-
-    #[test]
-    fn open_means_todo_and_doing() {
-        for (status, states) in [
-            (TaskStatus::Open, &[TaskState::Todo, TaskState::Doing][..]),
-            (TaskStatus::Done, &[TaskState::Done][..]),
-            (TaskStatus::Cancelled, &[TaskState::Cancelled][..]),
-            (
-                TaskStatus::All,
-                &[
-                    TaskState::Todo,
-                    TaskState::Doing,
-                    TaskState::Done,
-                    TaskState::Cancelled,
-                ][..],
-            ),
-        ] {
-            for state in [
-                TaskState::Todo,
-                TaskState::Doing,
-                TaskState::Done,
-                TaskState::Cancelled,
-            ] {
-                assert_eq!(
-                    wanted(status, state),
-                    states.contains(&state),
-                    "{status:?} {state:?}"
-                );
-            }
-        }
     }
 
     fn plain_vault() -> Vault {

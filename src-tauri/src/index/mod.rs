@@ -101,6 +101,17 @@ impl LinkKind {
             LinkKind::BlockRef | LinkKind::BlockEmbed => RewritePass::BlockReferences,
         }
     }
+
+    /// §393 The kind's name on the wire — what serde writes for it (`rename_all = "camelCase"`)
+    /// — for the rows that carry it as text: the CLI's `type` and a plugin's `IndexLink.type`.
+    /// ‼️ No `_` arm, like `pass`: a fourth grammar must be named here before the crate compiles.
+    pub fn wire_name(self) -> &'static str {
+        match self {
+            LinkKind::Wikilink => "wikilink",
+            LinkKind::BlockRef => "blockRef",
+            LinkKind::BlockEmbed => "blockEmbed",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1062,6 +1073,21 @@ mod tests {
                 ("/v/z.md".to_string(), 2),
             ]
         );
+    }
+
+    /// Moved here with the names from the CLI (`kind_name`): they are the strings the app
+    /// serializes a link kind with — what the frontend has always read — for every kind the
+    /// index files, `blockEmbed` included. What fails this: a `wire_name` arm that differs from
+    /// `#[serde(rename_all = "camelCase")]`.
+    #[test]
+    fn a_link_kind_is_named_the_way_the_app_serializes_it() {
+        for kind in LinkKind::ALL {
+            assert_eq!(
+                serde_json::to_value(kind).unwrap(),
+                serde_json::json!(kind.wire_name()),
+                "{kind:?}"
+            );
+        }
     }
 }
 

@@ -93,9 +93,11 @@
 // not satisfy the gate. A build re-checks, after taking the build lock and
 // again before publishing, that the root's spelling still names the directory
 // it was approved as: a symlink retargeted meanwhile cannot publish an
-// unrelated tree under a vault's key.
+// unrelated tree under a vault's key. A plugin's link reads (§393, context_reads.rs) ask
+// one context's index and spell the canonical path with that slot's root, under the same lock.
 
 mod build;
+mod context_reads;
 mod keys;
 mod mutation;
 mod query;
@@ -110,6 +112,7 @@ pub use rename::{NamespaceRenameResult, RenameResult};
 pub use state::LinkIndexState;
 
 pub(crate) use build::refresh_index_inner;
+pub(crate) use context_reads::{backlinks_in, links_in};
 pub(crate) use keys::{
     active_registration, graph_term_for, own_aliases, require_registered_root, space_name,
     AliasHolder,

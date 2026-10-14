@@ -26,6 +26,11 @@ impl IndexRoot {
         })
     }
 
+    /// The spelling this root was given — the one every path in its index starts with.
+    pub(super) fn spelling(&self) -> &str {
+        &self.spelling
+    }
+
     /// `canonical_path` as this root's index spells it; `None` when it does
     /// not sit under this root (then the index has nothing to do with it).
     pub(super) fn spell(&self, canonical_path: &Path) -> Option<String> {
@@ -173,6 +178,24 @@ impl LinkIndexState {
             .get(key)
             .filter(|s| s.published_incarnation == incarnation)
             .and_then(|s| s.index.as_ref()))
+    }
+
+    /// `with_index_for`, handing over the root the live index was built from as well (§393,
+    /// spec 0072 D18): a reader holding a canonical path spells it with this root inside the
+    /// same critical section, the way `Mutation::apply_to` does, so no rebuild from another
+    /// spelling can land between the spelling and the lookup. `None` for a missing index, one
+    /// another registration published, or one without a recorded root.
+    pub(super) async fn with_index_and_root_for<R>(
+        &self,
+        key: &str,
+        incarnation: u64,
+        f: impl FnOnce(Option<(&LinkIndex, &IndexRoot)>) -> R,
+    ) -> R {
+        let map = self.slots.lock().await;
+        f(map
+            .get(key)
+            .filter(|s| s.published_incarnation == incarnation)
+            .and_then(|s| s.index.as_ref().zip(s.root.as_ref())))
     }
 
     /// Apply mutations under `key` while holding the lock; same discipline.

@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: 명령·에디터·파일·이벤트"
-sourceHash: "863fd66136f2"
+sourceHash: "1be599a9bef8"
 ---
 
 
@@ -184,7 +184,7 @@ emit(event: string, ...args: unknown[]): void;
 감시하는 볼트(활성 볼트와 이번 세션에 연 볼트)에서만 오며, 숨김 파일 · 폴더(이름이 `.`으로 시작)와 도구
 폴더(`.git`, `.obsidian`, `.baram`, `node_modules`) 안의 변경으로는 오지 않습니다. 플러그인 자신의
 `files.writeFile`도 그 볼트 안에 쓰면 이 이벤트를 일으킬 수 있으므로, 핸들러가 끝없이 다시 불리지 않게 내용이 같은
-쓰기는 건너뛰십시오.
+쓰기는 건너뛰십시오. 다시 읽을 때는 [`ctx.index`](/ko/docs/plugin-dev/context-index/)를 쓰십시오.
 
 `"file:open"`은 열린 파일의 내용이 실제로 에디터에 적재된 뒤에 발생합니다 — 탭이 열리는 순간이
 아닙니다 — 그래서 마크다운 파일이라면 핸들러 안에서 `ctx.editor.getMarkdown()`이 맞는 문서를

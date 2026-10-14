@@ -150,6 +150,13 @@ pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> 
     Ok(entries)
 }
 
+/// §393 A tag name as the index keeps it: without the `#`s a user types in front — every
+/// leading one, the rule `baram tag` has always applied. Case is left alone; the walks compare
+/// lowercased.
+pub fn bare_tag(name: &str) -> &str {
+    name.trim_start_matches('#')
+}
+
 /// Returns relative paths of .md files that contain the given tag (inline or frontmatter).
 pub async fn get_files_by_tag(root_path: &str, tag: &str) -> Result<Vec<String>, TagError> {
     let root = PathBuf::from(root_path);
@@ -569,5 +576,16 @@ mod tests {
         let (d, root) = vault("메모 #project/baram 끝\n").await;
         rename_tag(&root, "project", "work").await.unwrap();
         assert_eq!(read(&d).await, "메모 #work/baram 끝\n");
+    }
+
+    /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match
+    /// nothing), or touching a `#` inside the name. The pair: a name without `#` is untouched.
+    #[test]
+    fn a_bare_tag_drops_every_leading_hash_and_nothing_else() {
+        assert_eq!(bare_tag("#work"), "work");
+        assert_eq!(bare_tag("##work"), "work");
+        assert_eq!(bare_tag("work"), "work");
+        assert_eq!(bare_tag("work#1"), "work#1");
+        assert_eq!(bare_tag("#"), "");
     }
 }

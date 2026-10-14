@@ -130,6 +130,8 @@ export interface ExtensionContext {
     editor: EditorAPI;
     events: EventsAPI;
     files: FilesAPI;
+    /** §393 Needs `files` or `files:readonly` — see {@link IndexAPI}. Paths are absolute. */
+    index: IndexAPI;
     network: NetworkAPI;
     pluginId: string;
     pluginPath: string;
@@ -145,6 +147,115 @@ export interface FilesAPI {
     listDir(path: string): Promise<string[]>;
     readFile(path: string): Promise<string>;
     writeFile(path: string, content: string): Promise<void>;
+}
+/**
+ * §393 Reads of one registered vault or folder: its links, tags, tasks and text (spec 0072 §4).
+ * `files` or `files:readonly` opens it. Answers come from the files on disk — text not saved yet
+ * is not in them. Paths follow the tier's file paths (sandboxed: `/`-relative to the context
+ * root; trusted: absolute); lines count from 1; a field with no value is `null`, never left out.
+ * Read again on `vault:changed`.
+ */
+export interface IndexAPI {
+    /** Links to `path`, in (path, line) order, one per line. The note need not exist yet; a folder is refused. */
+    backlinks(path: string, opts?: IndexOptions): Promise<IndexBacklink[]>;
+    /** The links `path` holds, in line order. The note must exist. */
+    links(path: string, opts?: IndexOptions): Promise<IndexLink[]>;
+    /** The notes carrying `tag`, in path order. Every leading `#` is dropped; case is not compared. */
+    notesWithTag(tag: string, opts?: IndexOptions): Promise<string[]>;
+    /** Full-text search of the `.md` files. Stops after `limit` matches; two matches on one line are two rows. */
+    search(query: string, opts?: IndexSearchOptions): Promise<IndexSearchResult>;
+    /** The tags and how often each occurs, most frequent first, then by name. */
+    tags(opts?: IndexOptions): Promise<IndexTag[]>;
+    /** Tasks in (path, line) order, without the folders the app's task panel excludes. */
+    tasks(opts?: IndexTaskOptions): Promise<IndexTask[]>;
+}
+/** §393 One link to a note (`IndexAPI.backlinks`). */
+export interface IndexBacklink {
+    /** The block a block reference or embed names; `null` for a wikilink. */
+    blockId: null | string;
+    line: number;
+    /** The note that holds the link. */
+    path: string;
+    /** The text of the line the link is on, trimmed and cut at 200 bytes with `…`. */
+    snippet: string;
+    type: IndexLinkType;
+}
+/** §393 One link a note holds (`IndexAPI.links`). */
+export interface IndexLink {
+    blockId: null | string;
+    line: number;
+    /** Only when `resolution` is `"resolved"`: the file the link leads to — a non-note file too (`[[Paper.pdf]]`). */
+    path: null | string;
+    resolution: "otherVault" | "resolved" | "unresolved";
+    /** The name inside the brackets, without alias, heading or display text. */
+    target: string;
+    type: IndexLinkType;
+    /** Only when `resolution` is `"otherVault"`: the vault alias the link names. */
+    vault: null | string;
+}
+/** §393 The grammar a link is written in: `[[…]]`, `((…#^id))`, `{{embed ((…#^id))}}`. */
+export type IndexLinkType = "blockEmbed" | "blockRef" | "wikilink";
+/** §393 Which context a read answers from. */
+export interface IndexOptions {
+    /**
+     * A registered context id. Omitted — sandboxed: the active context. Trusted: a read that
+     * takes a path (`backlinks`, `links`, `tasks` with `file`, `search` with `folder`) answers
+     * from the innermost vault or folder holding that path, the others from the active context.
+     */
+    context?: string;
+}
+/** §393 One search match (`IndexSearchResult.items`). */
+export interface IndexSearchMatch {
+    line: number;
+    path: string;
+    /** The matched line, cut about 100 bytes either side of the match (`…` marks a cut). */
+    snippet: string;
+}
+/** §393 `IndexAPI.search` options. */
+export interface IndexSearchOptions extends IndexOptions {
+    caseSensitive?: boolean;
+    /** Only this folder: the search starts there, so `docs` does not also search `docs-old`. */
+    folder?: string;
+    /** From 1 to 1000, default 200 — the number of matches, not of lines or files. */
+    limit?: number;
+    regex?: boolean;
+    /** Whole words only (`\b…\b`). */
+    word?: boolean;
+}
+/** §393 What `IndexAPI.search` found, and whether it stopped at `limit` with more to find. */
+export interface IndexSearchResult {
+    items: IndexSearchMatch[];
+    truncated: boolean;
+}
+/** §393 A tag and how many times it occurs — occurrences, not notes. */
+export interface IndexTag {
+    count: number;
+    tag: string;
+}
+/** §393 One task (`IndexAPI.tasks`) — the fields of the `baram tasks` row. */
+export interface IndexTask {
+    cancelled: null | string;
+    created: null | string;
+    done: null | string;
+    due: null | string;
+    /** From 1, through front matter: the line an editor shows. */
+    line: number;
+    links: string[];
+    path: string;
+    priority: number;
+    recurrence: null | string;
+    scheduled: null | string;
+    start: null | string;
+    state: "cancelled" | "doing" | "done" | "todo";
+    tags: string[];
+    text: string;
+}
+/** §393 `IndexAPI.tasks` options. */
+export interface IndexTaskOptions extends IndexOptions {
+    /** Only this note's tasks. */
+    file?: string;
+    /** Default `"open"` — todo and doing. */
+    status?: "all" | "cancelled" | "done" | "open";
 }
 /**
  * §385 An input box's options (spec 0061 §4). `title` and `placeholder` are shown, cut to 100
@@ -699,6 +810,12 @@ export interface SandboxContext {
         on(event: string, handler: (...args: unknown[]) => void): void;
     };
     files: SandboxFilesAPI;
+    /**
+     * §393 — brokered like `files`, and exposed unconditionally for the same reason: the Rust
+     * authorizer admits the six index ops on `files` or `files:readonly`. Paths are relative to the
+     * context root, as in `files`; pass `opts.context` from a `PluginFileEvent` or a `VaultChange`.
+     */
+    index: IndexAPI;
     network: NetworkAPI;
     /**
      * §385 — host-drawn prompts. The `PromptsAPI` contract (see its doc comment) plus two

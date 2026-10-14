@@ -9,20 +9,10 @@ use super::ops::{index_failure, sort_by_path_and_line, vault_info};
 use super::output::{Envelope, Row};
 use super::paths;
 use super::vault::Vault;
-use crate::index::{BacklinkResult, LinkEntry, LinkIndex, LinkKind, LinkResolution};
+use crate::index::{BacklinkResult, LinkEntry, LinkIndex, LinkResolution};
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::Path;
-
-/// No `_` arm: a fourth link grammar must be named here before the crate compiles —
-/// the same way `LinkKind::pass` holds the rename passes to the list.
-fn kind_name(kind: LinkKind) -> &'static str {
-    match kind {
-        LinkKind::Wikilink => "wikilink",
-        LinkKind::BlockRef => "blockRef",
-        LinkKind::BlockEmbed => "blockEmbed",
-    }
-}
 
 /// The link index, built for this one call. ONE spelling of the root goes in — the
 /// canonical one — because `outgoing` is keyed by the paths the build walked.
@@ -113,7 +103,7 @@ fn backlink_rows(vault: &Vault, found: Vec<BacklinkResult>) -> Vec<BacklinkRow> 
         .map(|backlink| BacklinkRow {
             path: paths::relative(vault, Path::new(&backlink.source_path)),
             line: backlink.line,
-            kind: kind_name(backlink.link_type),
+            kind: backlink.link_type.wire_name(),
             context: backlink.context,
             block_id: backlink.block_id,
         })
@@ -198,7 +188,7 @@ fn link_rows(vault: &Vault, outgoing: Vec<(LinkEntry, LinkResolution)>) -> Vec<L
             };
             LinkRow {
                 line: entry.line,
-                kind: kind_name(entry.link_type),
+                kind: entry.link_type.wire_name(),
                 target: entry.target,
                 block_id: entry.block_id,
                 resolution,
@@ -214,6 +204,7 @@ fn link_rows(vault: &Vault, outgoing: Vec<(LinkEntry, LinkResolution)>) -> Vec<L
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::index::LinkKind;
     use std::path::PathBuf;
 
     fn plain_vault() -> Vault {
@@ -382,18 +373,5 @@ mod tests {
                   "resolution": "unresolved", "path": null, "vault": null }
             ])
         );
-    }
-
-    /// The names are the ones the app serializes a link kind with — the strings the
-    /// frontend has always read — for every kind the index files, `blockEmbed` included.
-    #[test]
-    fn a_link_kind_is_named_the_way_the_app_serializes_it() {
-        for kind in LinkKind::ALL {
-            assert_eq!(
-                serde_json::to_value(kind).unwrap(),
-                serde_json::json!(kind_name(*kind)),
-                "{kind:?}"
-            );
-        }
     }
 }

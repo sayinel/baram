@@ -1,6 +1,6 @@
 // §387 `baram <command>` — the argument grammar.
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -94,10 +94,6 @@ pub(crate) enum Query {
     Links { path: String },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub(crate) enum TaskStatus {
-    Open,
-    Done,
-    Cancelled,
-    All,
-}
+// §393 Moved to `crate::task` so a plugin's `ctx.index.tasks` filters with the same enum; the
+// path stays because callers name it (`ops_notes`, and the MCP server's tools).
+pub(crate) use crate::task::TaskStatus;

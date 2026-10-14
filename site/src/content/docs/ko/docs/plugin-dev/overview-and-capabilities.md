@@ -1,6 +1,6 @@
 ---
 title: "개요와 권한"
-sourceHash: "986741c9f039"
+sourceHash: "5b945991acd2"
 ---
 
 ## 개요
@@ -43,8 +43,8 @@ Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandbox
 | `editor:readonly` | 문서 내용 읽기(수정 불가)                |               |
 | `events`          | 에디터 이벤트 수신                       |               |
 | `extensions`      | 에디터에 ProseMirror 플러그인 기여(trusted 티어 전용) | |
-| `files`           | 볼트 안 파일 읽기·쓰기                   | 민감          |
-| `files:readonly`  | 볼트 안 파일 읽기(쓰기 불가)             |               |
+| `files`           | 볼트 안 파일 읽기·쓰기, [`ctx.index`](/ko/docs/plugin-dev/context-index/)와 `vault:changed` 포함 | 민감          |
+| `files:readonly`  | 볼트 안 파일 읽기(쓰기 불가), [`ctx.index`](/ko/docs/plugin-dev/context-index/)와 `vault:changed` 포함 |               |
 | `sidebar`         | 사이드바에 패널 추가                     |               |
 | `statusbar`       | 상태바에 항목 표시                       |               |
 | `settings`        | 설정 화면에 옵션 선언                    |               |

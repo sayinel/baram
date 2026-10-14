@@ -89,6 +89,7 @@
     "allow-plugin-fetch-revocations",
     "allow-plugin-get-dir",
     "allow-plugin-http-fetch",
+    "allow-plugin-index-read",
     "allow-plugin-install-commit",
     "allow-plugin-install-discard",
     "allow-plugin-install-stage",

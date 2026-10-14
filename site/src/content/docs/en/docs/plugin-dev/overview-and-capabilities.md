@@ -47,8 +47,8 @@ Accessing an API whose capability was not declared throws a clear error
 | `editor:readonly` | Read document content (no modification) |               |
 | `events`          | Listen to editor events                 |               |
 | `extensions`      | Contribute a ProseMirror plugin to the editor (trusted tier only) | |
-| `files`           | Read and write files in the vault       | sensitive     |
-| `files:readonly`  | Read files in the vault (no writing)    |               |
+| `files`           | Read and write files in the vault; also [`ctx.index`](/en/docs/plugin-dev/context-index/) and `vault:changed` | sensitive     |
+| `files:readonly`  | Read files in the vault (no writing); also [`ctx.index`](/en/docs/plugin-dev/context-index/) and `vault:changed` |               |
 | `sidebar`         | Add panels to the sidebar               |               |
 | `statusbar`       | Display items in the status bar         |               |
 | `settings`        | Declare options in the settings screen  |               |

@@ -25,6 +25,7 @@ examples/plugins/
   plugin-api.d.ts       # generated public type barrel (commit this)
   types.d.ts            # generated sibling the barrel re-exports from (commit this)
   word-count/           # the canonical sandboxed plugin, published by Baram
+  link-count/           # the reference reader of ctx.index (§393), sandboxed — NOT published
   community-template/   # ← START HERE to publish your own plugin (see below)
   bullet-threading/     # full-trust editor-contribution example, published by Baram
   sketch-pad/           # full-trust editable file viewer example (§392), one file — NOT published
@@ -67,6 +68,10 @@ intend to publish.
 `sketch-pad/` is the example for **editable file viewers** (§392): a trusted viewer that draws
 on `.strokes` files, hands its text back to Baram and lets Baram save it. It is one hand-written
 `index.mjs` with no build step, and it runs only in a development build (its README says why).
+
+`link-count/` is the example for **`ctx.index`** (§393): a sandboxed plugin that shows the open
+note's backlinks and open tasks in the status bar and reads them again on `vault:changed`. It is
+not published — read it for the pattern, and copy `community-template/` to publish your own.
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
 fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING
