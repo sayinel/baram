@@ -118,6 +118,7 @@ export const TITLES = {
   "plugin-dev/manifest": "The plugin manifest",
   "plugin-dev/entry-point-and-types": "Entry point and public types",
   "plugin-dev/context-commands-editor-files-events": "Context: commands, editor, files, events",
+  "plugin-dev/context-index": "Context: index",
   "plugin-dev/context-ui-and-shadow-dom": "Context: UI and Shadow-DOM isolation",
   "plugin-dev/editable-file-viewers": "Editable file viewers",
   "plugin-dev/context-prompts": "Context: prompts",
@@ -275,6 +276,8 @@ export const PAGES = [
     { h2: "ExtensionContext API" },
     "context.commands (requires commands)", "context.editor (requires editor or editor:readonly)",
     "context.files (requires files or files:readonly)", "context.events (requires events)" ] },
+  // §393 스펙 0072 §10 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
+  { slug: "plugin-dev/context-index" },
   { slug: "plugin-dev/context-ui-and-shadow-dom", src: PD, items: [
     "context.ui", "Shadow-DOM UI isolation" ] },
   // §392 스펙 0071 §11 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
