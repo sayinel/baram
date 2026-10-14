@@ -123,10 +123,12 @@ async fn trusted_scope(
     resolve_scope(ctx_mgr, context).await
 }
 
-/// A trusted path argument: absolute, inside a registered context, outside `.baram` — the
-/// gates `read_file` and the sandboxed file ops share (`fs_cmd::ensure_path_in_vault`,
-/// `vault_path::reject_app_state_path`). A relative path is refused rather than resolved
-/// against the process's directory.
+/// A trusted path argument: absolute, free of a `..` segment and a null byte (the first check
+/// `fs_cmd::read_file` runs, `fs::validate_path`, applied to the path as given, before it is
+/// resolved), inside a registered context (`fs_cmd::ensure_path_in_vault`, the vault check
+/// `read_file` also runs) and outside `.baram` (`vault_path::reject_app_state_path`, which the
+/// sandboxed file ops run). A relative path is refused rather than resolved against the
+/// process's directory.
 async fn trusted_path<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     given: String,
@@ -134,6 +136,7 @@ async fn trusted_path<R: tauri::Runtime>(
     if !Path::new(&given).is_absolute() {
         return Err(format!("path \"{given}\" must be absolute"));
     }
+    crate::fs::validate_path(&given).map_err(|e| e.to_string())?;
     let canonical = crate::context::manager::resolve_canonical(&given)?;
     super::fs_cmd::ensure_path_in_vault(app, authorized_path_str(&canonical)?).await?;
     reject_app_state_path(&canonical)?;
@@ -517,6 +520,27 @@ mod tests {
                 .contains("outside all registered contexts")
         );
         assert!(links(format!("{root}/a.md")).await.is_ok());
+    }
+
+    /// Spec §7: a trusted path with a `..` segment is refused with the file ops' own wording
+    /// (`fs::validate_path`, the first check `fs_cmd::read_file` runs). What fails this:
+    /// canonicalising before checking, which resolves `a/../a.md` to an in-vault note and
+    /// answers. The pair: the same note without the `..` answers.
+    #[tokio::test]
+    async fn a_trusted_path_with_a_parent_segment_is_refused_as_the_file_ops_refuse_it() {
+        let app = app_with_states();
+        let (_a, root) =
+            folder_with(&app, "ctx-a", &[("a/a.md", "see [[b]]\n"), ("b.md", "t\n")]).await;
+        let links =
+            |path: String| index_read_with(None, IndexRead::Links { path }, app.handle(), Vec::new);
+
+        let traversal = format!("{root}/a/../a/a.md");
+        let refusal = crate::fs::validate_path(&traversal)
+            .unwrap_err()
+            .to_string();
+        assert!(refusal.contains("Path traversal is not allowed"));
+        assert_eq!(links(traversal).await.unwrap_err(), refusal);
+        assert!(links(format!("{root}/a/a.md")).await.is_ok());
     }
 
     /// D9 (m3): the trusted edge hands the exclusions it is given to the tasks read, and the

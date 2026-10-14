@@ -255,8 +255,8 @@ async fn path_arguments_are_refused_by_what_they_name() {
 
 /// Spec §7: value arguments are checked as values and named in the refusal; a regex refusal
 /// carries the compiler's reason. What fails this: a missing range check (`limit: 0` would
-/// search for one match plus one), or the regex checked only after `word` wrapped it. The
-/// pair: the limits' own edges, 1 and 1000, are accepted.
+/// search for one match plus one). The pair: the limits' own edges, 1 and 1000, are
+/// accepted.
 #[tokio::test]
 async fn value_arguments_are_refused_by_name() {
     let ctx = ContextManager::new();
