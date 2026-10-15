@@ -68,8 +68,13 @@ async fn serve(server: Server) -> i32 {
         },
         // stdin ended before the handshake: a client checking that the server starts.
         Err(ServerInitializeError::ConnectionClosed(_)) => 0,
-        // A request it refuses before the handshake, rmcp answers and goes on waiting; what
-        // ends here is a first message that is no request, or a handshake that failed.
+        // Before the handshake (rmcp 3.5.1, `serve_server_with_ct_inner`), in this order: a
+        // `ping` is answered; an `initialize` starts the handshake; another request without
+        // the `_meta` keys the new protocol needs is refused; a `server/discover` is answered;
+        // a request naming a version it does not support is refused. After an answer or a
+        // refusal rmcp goes on waiting; any other request starts the session. What ends here
+        // is a message that is no request (a notification or a response, first or after
+        // those), a failed `initialize` or version negotiation, or a failed write.
         Err(error) => failed(format!("the MCP session did not start: {error}")),
     }
 }

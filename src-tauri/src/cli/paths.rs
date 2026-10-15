@@ -8,7 +8,7 @@ use std::path::{Component, Path, PathBuf};
 
 /// Folds `.` and `..` without touching the filesystem. `None` when `..` would climb
 /// past the start of the path.
-fn fold(path: &Path) -> Option<PathBuf> {
+pub(crate) fn fold(path: &Path) -> Option<PathBuf> {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {

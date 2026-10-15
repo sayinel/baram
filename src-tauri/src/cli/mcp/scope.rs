@@ -8,6 +8,7 @@
 use crate::cli::app_config::AppConfig;
 use crate::cli::error::{Candidate, CliError, ErrorCode};
 use crate::cli::ops::{self, VaultRow};
+use crate::cli::paths;
 use crate::cli::vault::{self, Registered, Vault};
 use crate::context::manager::resolve_canonical;
 use std::path::{Path, PathBuf};
@@ -198,11 +199,18 @@ impl<'a> Scope<'a> {
         }
     }
 
-    /// Only a path that IS one of the roots, after both are canonicalized. A path that does
-    /// not exist and one that exists outside the scope get the same error: the server does
-    /// not tell which directories are there (spec 0068 §3.2).
+    /// Only a path that IS one of the roots, after `..` is folded and both are canonicalized,
+    /// so a path that does not exist and one that exists outside the scope get the same
+    /// error (spec 0068 §3.2). The `..` is folded BEFORE the disk is asked, as `paths::locate`
+    /// folds a note path: `canonicalize` gets through `<dir>/..` only when `<dir>` is a
+    /// directory, so asking first would tell of any directory on disk whether it is there.
+    /// What still shows is a symbolic link on the way to a root: a path that resolves through
+    /// links onto a root is accepted — a link to the root, or a path through a link to a
+    /// folder above it (`/tmp/…` for `/private/tmp/…` on macOS) — and the same path with the
+    /// link missing is refused.
     fn by_path(&self, arg: &str, home: Option<&Path>) -> Result<Vault, CliError> {
         expand(arg, home)
+            .and_then(|path| paths::fold(&path))
             .and_then(|path| resolve_canonical(&path.to_string_lossy()).ok())
             .and_then(|root| self.members.iter().find(|member| member.root == root))
             .map(Member::vault)
@@ -408,6 +416,53 @@ mod tests {
             error(scope.resolve(Some("Beta"), None)).code,
             ErrorCode::VaultNotFound
         );
+    }
+
+    /// A `..` in a `vault` path is folded before the disk is asked (spec 0068 §3.2), so a path
+    /// that climbs out of a folder answers the same whether that folder is there or not.
+    ///
+    /// What fails this: `by_path` resolving the path as written — `<a>/gone/..` and
+    /// `<gone>/../a` are then refused while `<a>/sub/..` and `<u>/../a` answer.
+    #[test]
+    fn a_dot_dot_answers_alike_whether_the_folder_it_climbs_out_of_is_there() {
+        let d = disk();
+        let cfg = config(vec![entry("Alpha", None, &d.a)]);
+        let registered = everything(Vec::new());
+        let only_a = Allowed::Fixed(vec![d.a.clone()]);
+        for allowed in [&registered, &only_a] {
+            let scope = Scope::new(allowed, &cfg);
+            for spelled in [
+                format!("{}/sub/..", arg(&d.a)),
+                format!("{}/gone/..", arg(&d.a)),
+                format!("{}/../a", arg(&d.u)),
+                format!("{}/../a", arg(&d.gone)),
+            ] {
+                assert_eq!(root(scope.resolve(Some(&spelled), None)), d.a, "{spelled}");
+            }
+        }
+    }
+
+    /// The fold is lexical: `<base>/l/../a` is `<base>/a` even when `l` is a link elsewhere,
+    /// where the kernel would resolve it through the link's target. And a link to a root is
+    /// that vault (the `by_path` doc comment's one channel).
+    ///
+    /// What fails this: the fold dropped (the kernel reads `l/..` as `a`, so the path is
+    /// `<a>/a`, which is missing);
+    /// links not followed after the fold.
+    #[cfg(unix)]
+    #[test]
+    fn a_dot_dot_is_folded_by_the_letters_and_a_link_to_a_root_is_that_vault() {
+        let d = disk();
+        let base = d.a.parent().expect("a base").to_path_buf();
+        std::os::unix::fs::symlink(d.a.join("sub"), base.join("l")).expect("link into a/sub");
+        std::os::unix::fs::symlink(&d.a, base.join("to-a")).expect("link to a");
+        let cfg = config(vec![entry("Alpha", None, &d.a)]);
+        let only_a = Allowed::Fixed(vec![d.a.clone()]);
+        let scope = Scope::new(&only_a, &cfg);
+        let folded = format!("{}/l/../a", arg(&base));
+        assert_eq!(root(scope.resolve(Some(&folded), None)), d.a, "{folded}");
+        let linked = arg(&base.join("to-a"));
+        assert_eq!(root(scope.resolve(Some(&linked), None)), d.a, "{linked}");
     }
 
     /// What fails this: an unregistered `--vault` given no member; its row left out or
