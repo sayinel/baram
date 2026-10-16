@@ -71,7 +71,7 @@ export const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * 자원의 이름을 실어 나를 수 있는 토큰. 두 곳이 읽는다: `sanitize.ts` 는 `Raw` 안에서 이 중
+ * 자원의 이름을 실어 나를 수 있는 토큰. 두 곳이 읽는다: `css-pipeline.ts` 는 `Raw` 안에서 이 중
  * 하나라도 보이면 그 조각이 검사되지 않은 참조를 숨기고 있을 수 있다고 본다(`Function` 까지
  * 넣는 이유는 `url( "x" )` 처럼 공백이 끼면 url-token 이 아니라 function-token 으로 쪼개지기
  * 때문이다). {@link forEachUrlBearingFunction} 은 URL 을 받는 함수의 인자에 이 중 하나라도
