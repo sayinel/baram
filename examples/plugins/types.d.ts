@@ -332,6 +332,12 @@ export interface PluginConsent {
      */
     channel?: RegistryChannel;
     /**
+     * §394 — the code block languages approved with `codeblocks` (spec 0073 D4), sorted. Present only
+     * when the approved manifest held `codeblocks`; absent on every record written before §394, and
+     * absent means "accept the next manifest's languages", not "none".
+     */
+    codeBlocks?: string[];
+    /**
      * §382 — the login shown as the publisher. Display only; `publisherId` decides. An update
      * that asks nothing still re-records this field's current value (a rename is not a change
      * of identity); for a COMMUNITY listing it never records a different `publisherId` either —

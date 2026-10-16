@@ -82,14 +82,23 @@ impl Build {
 }
 
 /// 사용자가 한 폴더에 대해 승인한 것 — TS `PluginConsent`(`src/plugins/types.ts`)의 `capabilities`·
-/// `trust` 두 필드다. §382 가 그 타입에 더한 `channel`·`publisher`·`publisherId` 는 레지스트리
-/// 목록의 출처라 dev 폴더 동의에는 없다: 이 값을 기록하는 TS 호출부는 `use-dev-plugin-actions.ts`
-/// 의 `admit` 하나이고(`pluginRecordDevConsent` → `plugin_record_dev_consent`, `src/` 비테스트
-/// 코드 기준 2026-09-27), 그것은 `devConsentToAsk` 가 두 필드로만 만든 요청을 넘긴다. 다른 키가
-/// 와도 이 struct 에는 `deny_unknown_fields` 가 없어 serde 가 버린다.
+/// `trust` 두 필드와 §394 의 `codeBlocks`(`code_blocks`)다. §382 가 그 타입에 더한 `channel`·
+/// `publisher`·`publisherId` 는 레지스트리 목록의 출처라 dev 폴더 동의에는 없다: 이 값을 기록하는
+/// TS 호출부는 `use-dev-plugin-actions.ts` 의 `admit` 하나이고(`pluginRecordDevConsent` →
+/// `plugin_record_dev_consent`, `src/` 비테스트 코드 기준 2026-10-16), 그것은 `devConsentToAsk` 가
+/// 그 세 필드로만 만든 요청을 넘긴다(`codeBlocks` 는 매니페스트가 `codeblocks` 를 가질 때만). 다른
+/// 키가 와도 이 struct 에는 `deny_unknown_fields` 가 없어 serde 가 버린다.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DevConsent {
     pub capabilities: Vec<String>,
+    /// §394 The code block languages approved with `codeblocks` (spec 0073 D4) — `None` on a record
+    /// written before §394, and then the next manifest's languages are accepted.
+    #[serde(
+        default,
+        rename = "codeBlocks",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub code_blocks: Option<Vec<String>>,
     pub trust: PluginTrust,
 }
 
@@ -720,6 +729,7 @@ mod tests {
             state.folders[1].consent,
             Some(DevConsent {
                 capabilities: vec!["statusbar".into()],
+                code_blocks: None,
                 trust: PluginTrust::Sandboxed,
             })
         );
@@ -855,6 +865,7 @@ mod tests {
         let mut state = DevModeState::default();
         let consent = DevConsent {
             capabilities: vec!["statusbar".into()],
+            code_blocks: None,
             trust: PluginTrust::Sandboxed,
         };
         state.add_folder("/a");
@@ -875,6 +886,7 @@ mod tests {
         let mut state = DevModeState::default();
         let consent = DevConsent {
             capabilities: vec![],
+            code_blocks: None,
             trust: PluginTrust::Sandboxed,
         };
         assert_eq!(
@@ -892,6 +904,7 @@ mod tests {
         state.add_folder("/a");
         let trusted = DevConsent {
             capabilities: vec![],
+            code_blocks: None,
             trust: PluginTrust::Trusted,
         };
         assert_eq!(
@@ -955,5 +968,34 @@ mod tests {
         assert!(!state.records_id("dev-x"));
         assert_eq!(state.find("/a").unwrap().ids, vec!["dev-y".to_string()]);
         assert_eq!(state.folders.len(), 2, "the folders themselves stay listed");
+    }
+
+    /// §394 The dev consent keeps the code block languages (spec 0073 D4): the TS request carries
+    /// `codeBlocks`, and before this field serde dropped it, so a Reload that added a language
+    /// never asked again. What fails this: removing `code_blocks` or its `rename`. The pair: a
+    /// record without the field reads as `None` and writes no key — the pre-§394 shape.
+    #[test]
+    fn a_dev_consent_keeps_its_code_block_languages() {
+        let with: DevConsent = serde_json::from_value(serde_json::json!({
+            "capabilities": ["codeblocks"],
+            "codeBlocks": ["backlinks"],
+            "trust": "sandboxed"
+        }))
+        .unwrap();
+        assert_eq!(with.code_blocks, Some(vec!["backlinks".to_string()]));
+        assert_eq!(
+            serde_json::to_value(&with).unwrap()["codeBlocks"],
+            serde_json::json!(["backlinks"])
+        );
+        let without: DevConsent = serde_json::from_value(serde_json::json!({
+            "capabilities": [],
+            "trust": "sandboxed"
+        }))
+        .unwrap();
+        assert_eq!(without.code_blocks, None);
+        assert!(serde_json::to_value(&without)
+            .unwrap()
+            .get("codeBlocks")
+            .is_none());
     }
 }

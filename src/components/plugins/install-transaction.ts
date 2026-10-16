@@ -28,7 +28,8 @@ import {
 import { parseBaramFloor } from "../../plugins/engines";
 import { unmetFloorAgainstApp } from "../../plugins/engines-app";
 import { validateManifest } from "../../plugins/manifest";
-import { consentGaps } from "../../plugins/plugin-consent";
+import { declaredCodeBlockLangs } from "../../plugins/manifest-code-blocks";
+import { consentGaps, newCodeBlockLangs } from "../../plugins/plugin-consent";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
@@ -59,6 +60,12 @@ export async function stageValidateAndCommit(
   entry: RegistryEntry,
   consent: PluginConsent,
   t: Translate,
+  /**
+   * §394 — ask about code block languages the download declares beyond `consent.codeBlocks`
+   * (spec 0073 D4 ①). `true` is approval. Called only when there are such languages, once every
+   * other check this function makes before the unload has passed — Rust's commit can still refuse.
+   */
+  confirmCodeBlocks: (langs: string[]) => Promise<boolean>,
 ): Promise<{ checksum: string; committed: RustCommittedPluginInfo }> {
   // Non-null only while a staged copy exists that nothing has committed yet.
   let pendingStage: null | string = null;
@@ -166,6 +173,20 @@ export async function stageValidateAndCommit(
         t("plugin.error.updateUnverifiableFloor", { name: entry.name }),
       );
     }
+    // §394 spec 0073 D4 ① — the languages, after every other check above, so none of those
+    // refuses an archive the user was just asked to approve (the unload and the commit below
+    // can still fail). A registry listing names none, so they cannot be shown before the
+    // download; the user approves them here, against the record's languages the caller
+    // carried (`carryCodeBlocks`). A record without languages compares nothing (D4 ②). The
+    // `consentGaps` request above names no languages, so that rule stayed silent on them.
+    const added = newCodeBlockLangs(consent, {
+      codeBlocks: declaredCodeBlockLangs(manifest),
+    });
+    if (added.length > 0 && !(await confirmCodeBlocks(added))) {
+      throw new Error(
+        t("plugin.error.codeBlocksDeclined", { langs: added.join(", ") }),
+      );
+    }
 
     // Past every check. THESE TWO LINES are the first that touch an installed
     // plugin, and a failure in either leaves the previous version in place — Rust
@@ -181,10 +202,11 @@ export async function stageValidateAndCommit(
     unloaded = usePluginStore.getState().installedPlugins[manifest.id] ?? null;
     await pluginLoader.unloadPlugin(manifest.id);
     // The digest pins the manifest to the one every check above judged. A stage
-    // sits on disk across this whole block — an app-version IPC and the entire
-    // `unloadPlugin` teardown — during which a trusted-tier plugin is still running
-    // in the main realm. Without it, the manifest that gets recorded, granted and
-    // loaded need not be the one that was consented to (#261 security review).
+    // sits on disk across this whole block — an app-version IPC, the language dialog
+    // when one opens (§394), and the entire `unloadPlugin` teardown — during which a
+    // trusted-tier plugin is still running in the main realm. Without it, the manifest
+    // that gets recorded, granted and loaded need not be the one that was consented to
+    // (#261 security review).
     const committed = await pluginInstallCommit(
       pendingStage,
       entry.id,

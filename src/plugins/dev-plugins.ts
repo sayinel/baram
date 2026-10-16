@@ -14,6 +14,7 @@ import { pluginListDev, toInstalledDevPlugin } from "../ipc/plugin-invoke";
 import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
+import { declaredCodeBlockLangs } from "./manifest-code-blocks";
 import { consentRequired } from "./plugin-consent";
 import { pluginLoader } from "./plugin-loader";
 import { pluginTrustOf } from "./plugin-trust";
@@ -55,6 +56,11 @@ export function devConsentToAsk(
     capabilities: [...manifest.capabilities],
     trust,
   };
+  // §394 spec 0073 D4 — a folder's manifest is in hand: its languages are shown and recorded, and a
+  // Reload that adds one asks again (Rust's `DevConsent.code_blocks` keeps them).
+  if (manifest.capabilities.includes("codeblocks")) {
+    request.codeBlocks = declaredCodeBlockLangs(manifest);
+  }
   return consentRequired(consent ?? undefined, request) === null
     ? null
     : request;

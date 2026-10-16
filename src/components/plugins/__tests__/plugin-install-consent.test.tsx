@@ -846,3 +846,121 @@ describe("install consent + registry cross-check (§260 Phase 5)", () => {
     expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1");
   });
 });
+
+describe("code block languages in install and update (§394 spec 0073 D4)", () => {
+  const CB_ENTRY: RegistryEntry = { ...ENTRY, capabilities: ["codeblocks"] };
+  const cbManifest = (langs: string[], version = "1.0.0"): PluginManifest => ({
+    ...MANIFEST,
+    capabilities: ["codeblocks"],
+    contributions: { codeBlocks: langs.map((lang) => ({ lang })) },
+    version,
+  });
+
+  beforeEach(() => {
+    listed = [CB_ENTRY];
+    loadPlugin.mockReset().mockResolvedValue(undefined);
+    unloadPlugin.mockReset().mockResolvedValue(undefined);
+    pluginInstallStage.mockReset();
+    pluginInstallCommit.mockReset();
+    pluginInstallDiscard.mockReset().mockResolvedValue(undefined);
+    usePluginStore.setState({
+      devFolderIssues: [],
+      devMode: { active: false, devBuild: false, enabled: false },
+      devPlugins: {},
+      installedPlugins: {},
+      pluginErrors: {},
+      updateAvailable: {},
+    });
+  });
+
+  async function clickUpdate() {
+    render(<PluginMarketplace />);
+    fireEvent.click(screen.getByRole("button", { name: /^Updates/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /^Update to v/ }),
+    );
+  }
+
+  /** ② ③ — a first install compares nothing and records the downloaded manifest's languages. */
+  it("records the manifest's languages on a first install", async () => {
+    downloadReturns(cbManifest(["backlinks"]));
+    await clickInstall();
+    await confirmConsent();
+    await waitFor(() =>
+      expect(usePluginStore.getState().installedPlugins.demo?.consent).toEqual({
+        capabilities: ["codeblocks"],
+        codeBlocks: ["backlinks"],
+        trust: "sandboxed",
+      }),
+    );
+  });
+
+  /** ① — the claim is covered, so the update starts without a dialog; the download adds a
+   *  language, so the dialog opens AFTER the download, and confirming records the new set. */
+  it("asks again after the download when an update adds a language", async () => {
+    installedAt({
+      capabilities: ["codeblocks"],
+      codeBlocks: ["backlinks"],
+      trust: "sandboxed",
+    });
+    listed = [{ ...CB_ENTRY, version: "2.0.0" }];
+    downloadReturns(cbManifest(["backlinks", "chart"], "2.0.0"));
+    await clickUpdate();
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
+    expect(pluginInstallStage).toHaveBeenCalledTimes(1);
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(
+      within(dialog).getByText("chart").closest("li")?.textContent,
+    ).toMatch(/NEW/);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /^Update and install$/ }),
+    );
+    await waitFor(() =>
+      expect(
+        usePluginStore.getState().installedPlugins.demo?.consent?.codeBlocks,
+      ).toEqual(["backlinks", "chart"]),
+    );
+  });
+
+  /** The pair: declining keeps the old version and its record, and discards the stage. */
+  it("keeps the old version when the new language is declined", async () => {
+    installedAt({
+      capabilities: ["codeblocks"],
+      codeBlocks: ["backlinks"],
+      trust: "sandboxed",
+    });
+    listed = [{ ...CB_ENTRY, version: "2.0.0" }];
+    downloadReturns(cbManifest(["backlinks", "chart"], "2.0.0"));
+    await clickUpdate();
+    fireEvent.click(
+      (await findSurface(".plugin-consent")).getByRole("button", {
+        name: /^Cancel$/,
+      }),
+    );
+    await waitFor(() =>
+      expect(pluginInstallDiscard).toHaveBeenCalledWith("stage-1"),
+    );
+    expect(pluginInstallCommit).not.toHaveBeenCalled();
+    expect(
+      usePluginStore.getState().installedPlugins.demo?.consent?.codeBlocks,
+    ).toEqual(["backlinks"]);
+  });
+
+  /** ③ — an update that drops a language asks nothing and narrows the record. */
+  it("narrows the record when an update drops a language", async () => {
+    installedAt({
+      capabilities: ["codeblocks"],
+      codeBlocks: ["backlinks", "chart"],
+      trust: "sandboxed",
+    });
+    listed = [{ ...CB_ENTRY, version: "2.0.0" }];
+    downloadReturns(cbManifest(["backlinks"], "2.0.0"));
+    await clickUpdate();
+    await waitFor(() =>
+      expect(
+        usePluginStore.getState().installedPlugins.demo?.consent?.codeBlocks,
+      ).toEqual(["backlinks"]),
+    );
+    expect(countAnywhere(".plugin-consent")).toBe(0);
+  });
+});

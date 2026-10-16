@@ -34,7 +34,12 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { pluginUninstall } from "../../ipc/plugin-invoke";
 import { devFolderHoldsId } from "../../plugins/dev-plugins";
-import { claimedConsent, consentRequired } from "../../plugins/plugin-consent";
+import {
+  carryCodeBlocks,
+  claimedConsent,
+  consentRequired,
+  recordedConsent,
+} from "../../plugins/plugin-consent";
 import {
   activateBuiltin,
   deactivateBuiltin,
@@ -153,7 +158,9 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
    * Returns whether the plugin ended up installed, which `handleUpdate` needs and no
    * other caller uses.
    *
-   * `preApproved` is for the update path, which has already asked.
+   * `preApproved` is for the update path, which has already settled the registry claim —
+   * asking when the record did not cover it. Languages the download adds beyond it are asked
+   * about inside the transaction (§394).
    */
   const handleInstall = useCallback(
     async (
@@ -227,6 +234,21 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
               entry,
               consent,
               t,
+              // §394 spec 0073 D4 ① — the same dialog, now listing the languages;
+              // NEW marks what the record lacked. Approving it lets the commit go on.
+              async (langs) =>
+                (await askConsent({
+                  consent: {
+                    ...consent,
+                    codeBlocks: [
+                      ...(consent.codeBlocks ?? []),
+                      ...langs,
+                    ].sort(),
+                  },
+                  intent: preApproved ? "update" : "install",
+                  name: entry.name,
+                  prior: consent,
+                })) !== null,
             ));
           } catch (err) {
             setError(entry.id, String(err));
@@ -240,7 +262,8 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
           // compiler enforces it.
           const plugin: InstalledPlugin = {
             checksum,
-            consent,
+            // §394 spec 0073 D4 ③ — the committed manifest's languages, not the approved ones.
+            consent: recordedConsent(consent, committed.manifest),
             enabled: true,
             installedAt: Date.now(),
             installPath: committed.install_path,
@@ -364,7 +387,13 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
         return;
       }
       const prior = installedPlugins[entry.id]?.consent;
-      const claimed = claimedConsent(entry, entry.trust);
+      // §394 spec 0073 D4 ① — the record's languages ride on the claim, as the base the
+      // post-download check compares the downloaded manifest's with. They are not what gets
+      // recorded: `handleInstall` records the committed manifest's (`recordedConsent`).
+      const claimed = carryCodeBlocks(
+        claimedConsent(entry, entry.trust),
+        prior,
+      );
       const reason = consentRequired(prior, claimed);
       // When the recorded consent already covers this version, record the CLAIMED shape
       // rather than carrying the old one forward — an update that drops a capability
