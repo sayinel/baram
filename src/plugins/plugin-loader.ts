@@ -39,6 +39,7 @@ import { registerEntryContributions } from "./plugin-entry-points";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
+import { releaseCodeBlocks } from "./rendered/code-blocks-api";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import {
@@ -583,14 +584,21 @@ export class PluginLoader {
 
     // 5. Activate with timeout
     if (typeof module.activate === "function") {
-      await withTimeout(
-        Promise.resolve(module.activate(context)),
-        ACTIVATE_TIMEOUT,
-        tr("plugin.error.activationTimeout", {
-          id: manifest.id,
-          ms: String(ACTIVATE_TIMEOUT),
-        }),
-      );
+      try {
+        await withTimeout(
+          Promise.resolve(module.activate(context)),
+          ACTIVATE_TIMEOUT,
+          tr("plugin.error.activationTimeout", {
+            id: manifest.id,
+            ms: String(ACTIVATE_TIMEOUT),
+          }),
+        );
+      } catch (err) {
+        // §394 plan 0125 P10 — a failed activate is not unwound (see `unwindAfterActivate`), but the
+        // languages `createExtensionContext` claimed would keep every other plugin from drawing them.
+        releaseCodeBlocks(manifest.id);
+        throw err;
+      }
     }
 
     // §260 스펙 0050 §4 — activate 가 성공한 뒤에만. 키가 네임스페이스를 어기면
