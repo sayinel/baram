@@ -628,6 +628,7 @@
   "plugin.action.update": "Update",
   "plugin.action.updateFor": "Update {name}",
   "plugin.action.updateTo": "Update to v{version}",
+  "plugin.block.noteRefused": "This link does not open a note in this vault.",
   "plugin.builtin.badge": "Built-in",
   "plugin.builtin.teardownFailed": "{name} could not be shut down cleanly: {detail}",
   "plugin.capability.ai": "Use AI / LLM features",
