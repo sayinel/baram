@@ -78,7 +78,7 @@ describe("forEachUrlBearingFunction", () => {
 
 describe("sanitizeThemeCss refuses an escaped url function in its own stage", () => {
   /** What fails this: removing the `forEachUrlBearingFunction` pass from `assertNoRemoteReferences`
-   *  — all four pass again (Step 5 measures it). The detail names the output scan. */
+   *  — all four pass again (plan 0125 Task 1 Step 5 measures it). The detail names the output scan. */
   it.each(ESCAPED_URL_FUNCTIONS)(
     "%s → absoluteUrl from the output scan",
     (css) => {
@@ -88,6 +88,17 @@ describe("sanitizeThemeCss refuses an escaped url function in its own stage", ()
     },
   );
 
+  /** What fails this: judging a `url` visit by its decoded argument. After `u\72l(a"` css-tree
+   *  reads one string, so `argument` is null and the browser's live rule `b` slips
+   *  through — measured in headless Chrome by the Task 1 review. The rule is on the first token
+   *  after `(`, whatever `argument` holds. */
+  it.each([
+    'a{background:u\\72l(a");}b{background:url(https://evil/x)}c{x:")}',
+    'a{background:image-set(u\\72l(a");}b{background:url(https://evil/x)}c{x:") 1x)}',
+  ])("%s → refused because the browser reads no function token", (css) => {
+    expect(refusal(css)?.code).toBe("absoluteUrl");
+  });
+
   /** The positive half: the shapes a theme legitimately writes still pass, so the refusal above
    *  is the rule and not a blanket refusal of `url`/`image-set` function tokens. */
   it.each([
@@ -95,6 +106,7 @@ describe("sanitizeThemeCss refuses an escaped url function in its own stage", ()
     'a{background:image-set("img/x.png" 1x)}',
     "a{background:image-set(url(img/x.png) 1x)}",
     'a{background:u\\72 l("local.png")}',
+    'a{background:u\\72 l( "local.png" )}',
   ])("%s still passes", (css) => {
     expect(refusal(css)).toBeNull();
   });

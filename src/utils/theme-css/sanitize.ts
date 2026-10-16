@@ -67,8 +67,29 @@ function assertWellFormed(css: string, stage: string): void {
   });
 }
 
-// 마지막 관문 — 우리가 내보낼 바이트를 토큰 수준에서 다시 훑는다. 어디를 훑는지는
-// `forEachResourceName` 이 정하고, 여기서는 그 값에 정책만 건다.
+// `raw`(함수 토큰에서 닫는 괄호까지)의 여는 괄호 뒤 첫 공백이 아닌 토큰이 문자열인가.
+// 브라우저는 이름이 `url` 인 토큰을 이때만 함수 토큰으로 만든다(CSS Syntax, consume an
+// ident-like token). 주석은 공백이 아니므로 건너뛰지 않는다.
+function opensWithString(raw: string): boolean {
+  let opens = false;
+  let seenFunction = false;
+  let decided = false;
+  csstree.tokenize(raw, (type) => {
+    if (decided) return;
+    if (!seenFunction) {
+      seenFunction = true;
+      return;
+    }
+    if (type === csstree.tokenTypes.WhiteSpace) return;
+    decided = true;
+    opens = type === csstree.tokenTypes.String;
+  });
+  return opens;
+}
+
+// 마지막 관문 — 우리가 내보낼 바이트를 토큰 수준에서 다시 훑는다. 스캔이 둘이다:
+// `forEachResourceName` 이 `url` 토큰과 문자열을 정하고, `forEachUrlBearingFunction` 이
+// 함수 토큰을 정한다. 여기서는 그 값에 정책만 건다.
 //
 // 무엇을 막아 주는지 정확히: **AST 노드 모양의 열거 실수**다. 위의 워크는 `Url` 노드와
 // `String` 노드의 바로 위 함수만 보는데, 실제로 `@media (scripting:url("…"))` 에서
@@ -90,13 +111,25 @@ function assertNoRemoteReferences(css: string): void {
     }
   });
   // §394 spec 0073 D9 — the function-token half. A name escaped into `url` (`u\72l(//evil/x)`) is
-  // a url token to the browser and a function token to css-tree, so the scan above sees nothing
-  // there. The argument is judged as a url token's value would be; an argument holding a string,
-  // a url or a function is `null` here because the scan above or this scan's own next visit
-  // judges it (`forEachUrlBearingFunction`). `verifyStoredThemeCss` refused these at install's
-  // last step and at load already; this makes sanitize refuse them under their own code.
-  forEachUrlBearingFunction(css, (_name, argument, raw) => {
-    if (argument !== null && isRemoteUrl(argument)) {
+  // a function token to css-tree and, unless a string follows `(`, a url or bad-url token to the
+  // browser, so the scan above sees nothing there. Two rules, by what css-tree and the browser
+  // agree on:
+  //  - decoded name `url`: refused unless the first non-whitespace token after `(` is a string
+  //    (`u\72 l("local.png")` stays; the string is judged by the scan above). Otherwise the
+  //    browser's view of the argument differs from css-tree's, so no value read from it can be
+  //    trusted — `u\72l(a");}b{background:url(https://evil/x)}c{x:")}` is one string to css-tree
+  //    and a live rule `b` to Chrome.
+  //  - `image-set` and the other names: both parsers make a function token, so the argument is
+  //    judged as a url token's value would be. `argument` is `null` when it holds a string, a url
+  //    or a function, which the scan above or this scan's next visit judges (a bad string or bad
+  //    url was refused by `assertWellFormed`).
+  // `verifyStoredThemeCss` (`hasUrlSpelledAsFunction`) still refuses any `url` function token at
+  // install and load; this makes sanitize refuse these under their own code.
+  forEachUrlBearingFunction(css, (name, argument, raw) => {
+    if (
+      (name === "url" && !opensWithString(raw)) ||
+      (argument !== null && isRemoteUrl(argument))
+    ) {
       throw new ThemeCssError("absoluteUrl", `output ${raw.slice(0, 80)}`);
     }
   });

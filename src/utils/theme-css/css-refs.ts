@@ -75,8 +75,8 @@ export const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
  * 하나라도 보이면 그 조각이 검사되지 않은 참조를 숨기고 있을 수 있다고 본다(`Function` 까지
  * 넣는 이유는 `url( "x" )` 처럼 공백이 끼면 url-token 이 아니라 function-token 으로 쪼개지기
  * 때문이다). {@link forEachUrlBearingFunction} 은 URL 을 받는 함수의 인자에 이 중 하나라도
- * 있으면 그 인자를 url 한 값으로 읽지 않는다 — 문자열과 url 은 {@link forEachResourceName}
- * 이, 중첩 함수는 그 함수 자신의 차례가 판정한다.
+ * 있으면 `argument` 를 `null` 로 준다 — 그 인자의 판정을 이 방문이 하지 않는다는 표시일
+ * 뿐, 안전하다는 말이 아니다(그 방문의 문서가 `url` 이라는 이름의 예외를 적는다).
  */
 export const RESOURCE_NAMING_TOKENS: ReadonlySet<number> = new Set([
   csstree.tokenTypes.BadString,
@@ -216,14 +216,24 @@ export function forEachResourceName(
  *
  * `argument` is the argument read the way a url token's value is (`csstree.url.decode`, so
  * `https\3a //evil/x` reads `https://evil/x`) when the argument holds none of
- * {@link RESOURCE_NAMING_TOKENS} — the shape a browser turns into a url token. Otherwise `null`: a
- * string or url inside is {@link forEachResourceName}'s (handing `"data:…" 1x` whole to a `data:`
- * check reads it as not `data:`, which refused a legitimate theme in the review's probe), and a
- * nested function is visited on its own turn. `raw` is the token's span through its closing
- * parenthesis.
+ * {@link RESOURCE_NAMING_TOKENS}. Otherwise `null`, and `null` means only "this visit does not
+ * judge the argument": a string or url inside is {@link forEachResourceName}'s (handing
+ * `"data:…" 1x` whole to a `data:` check reads it as not `data:`), a nested function is visited
+ * on its own turn, and a `BadString`/`BadUrl` is refused earlier by `assertWellFormed`.
+ * `raw` is the token's span through its closing parenthesis.
  *
- * Policy is the caller's: the theme sanitizer judges `argument` with `isRemoteUrl`, the plugin CSS
- * sanitizer refuses every visit whatever the argument.
+ * ‼️ `null` is a safe hand-off for `image-set`, `-webkit-image-set`, `image` and `src`, where
+ * css-tree and the browser both make a function token. It is NOT for the decoded name `url`: the
+ * browser makes a function token only when the first non-whitespace token after `(` is a string
+ * (CSS Syntax, consume an ident-like token) and otherwise a url or bad-url token, so after
+ * `u\72l(a");}b{background:url(https://evil/x)}c{x:")}` css-tree sees one string where the browser
+ * sees the rule `b` (measured in headless Chrome). A caller must judge a `url` visit from `raw`,
+ * not from `argument`.
+ *
+ * Policy is the caller's: the theme sanitizer judges `argument` with `isRemoteUrl` and refuses a
+ * `url` visit that does not open with a string; the plugin CSS sanitizer refuses every visit
+ * whatever the argument. For themes `verifyStoredThemeCss` (`hasUrlSpelledAsFunction`) stays the
+ * gate on install and load.
  */
 export function forEachUrlBearingFunction(
   css: string,
@@ -239,7 +249,10 @@ export function forEachUrlBearingFunction(
     const close = pair === -1 ? stream.tokenCount : pair;
     let plain = true;
     for (let i = index + 1; i < close; i++) {
-      if (RESOURCE_NAMING_TOKENS.has(stream.getTokenType(i))) plain = false;
+      if (RESOURCE_NAMING_TOKENS.has(stream.getTokenType(i))) {
+        plain = false;
+        break;
+      }
     }
     const argumentEnd = pair === -1 ? css.length : stream.getTokenStart(pair);
     const rawEnd = pair === -1 ? css.length : stream.getTokenEnd(pair);
