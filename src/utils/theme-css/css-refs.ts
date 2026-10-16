@@ -71,6 +71,22 @@ export const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * 자원의 이름을 실어 나를 수 있는 토큰. 두 곳이 읽는다: `sanitize.ts` 는 `Raw` 안에서 이 중
+ * 하나라도 보이면 그 조각이 검사되지 않은 참조를 숨기고 있을 수 있다고 본다(`Function` 까지
+ * 넣는 이유는 `url( "x" )` 처럼 공백이 끼면 url-token 이 아니라 function-token 으로 쪼개지기
+ * 때문이다). {@link forEachUrlBearingFunction} 은 URL 을 받는 함수의 인자에 이 중 하나라도
+ * 있으면 그 인자를 url 한 값으로 읽지 않는다 — 문자열과 url 은 {@link forEachResourceName}
+ * 이, 중첩 함수는 그 함수 자신의 차례가 판정한다.
+ */
+export const RESOURCE_NAMING_TOKENS: ReadonlySet<number> = new Set([
+  csstree.tokenTypes.BadString,
+  csstree.tokenTypes.BadUrl,
+  csstree.tokenTypes.Function,
+  csstree.tokenTypes.String,
+  csstree.tokenTypes.Url,
+]);
+
+/**
  * computed-value 시점에 값이 정해지는 CSS 치환 함수.
  *
  * ‼️ `sanitize.ts` 에서 여기로 옮겼다(0090 최종 리뷰, M4). 이 집합과 위
@@ -184,6 +200,54 @@ export function forEachResourceName(
           : null;
     if (value === null) return;
     visit(value, raw, open.length === 0 ? null : open[open.length - 1].name);
+  });
+}
+
+/**
+ * §394 Every function token whose decoded name is in {@link URL_BEARING_FUNCTIONS}, with what its
+ * argument names (spec 0073 D9).
+ *
+ * ‼️ Why the token itself is a reference: css-tree 3.2.1's tokenizer compares a name's RAW spelling
+ * with `url` before it makes a url token, and the browser compares the DECODED name (CSS Syntax,
+ * consume an ident-like token). So `u\72l(//evil/x)` is a remote url token to the browser and a
+ * function token plus loose tokens to css-tree — {@link forEachResourceName} visits none of it.
+ * Measured: `sanitizeThemeCss` passed `u\72l(//evil/x)`, `u\72l(https\3a //evil/x)`,
+ * `--x:u\72l(//evil/x)` used as `var(--x)` and `image-set(u\72l(//evil/x) 1x)`.
+ *
+ * `argument` is the argument read the way a url token's value is (`csstree.url.decode`, so
+ * `https\3a //evil/x` reads `https://evil/x`) when the argument holds none of
+ * {@link RESOURCE_NAMING_TOKENS} — the shape a browser turns into a url token. Otherwise `null`: a
+ * string or url inside is {@link forEachResourceName}'s (handing `"data:…" 1x` whole to a `data:`
+ * check reads it as not `data:`, which refused a legitimate theme in the review's probe), and a
+ * nested function is visited on its own turn. `raw` is the token's span through its closing
+ * parenthesis.
+ *
+ * Policy is the caller's: the theme sanitizer judges `argument` with `isRemoteUrl`, the plugin CSS
+ * sanitizer refuses every visit whatever the argument.
+ */
+export function forEachUrlBearingFunction(
+  css: string,
+  visit: (name: string, argument: null | string, raw: string) => void,
+): void {
+  const stream = new csstree.TokenStream(css, csstree.tokenize);
+  stream.forEachToken((type, start, end, index) => {
+    if (type !== csstree.tokenTypes.Function) return;
+    const name = cssName(css.slice(start, end - 1));
+    if (!URL_BEARING_FUNCTIONS.has(name)) return;
+    // No pair means the function stays open to EOF.
+    const pair = stream.getBlockTokenPairIndex(index);
+    const close = pair === -1 ? stream.tokenCount : pair;
+    let plain = true;
+    for (let i = index + 1; i < close; i++) {
+      if (RESOURCE_NAMING_TOKENS.has(stream.getTokenType(i))) plain = false;
+    }
+    const argumentEnd = pair === -1 ? css.length : stream.getTokenStart(pair);
+    const rawEnd = pair === -1 ? css.length : stream.getTokenEnd(pair);
+    visit(
+      name,
+      plain ? csstree.url.decode(`url(${css.slice(end, argumentEnd)})`) : null,
+      css.slice(start, rawEnd),
+    );
   });
 }
 

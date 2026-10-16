@@ -24,7 +24,9 @@ import * as csstree from "css-tree";
 import {
   cssName,
   forEachResourceName,
+  forEachUrlBearingFunction,
   isRemoteUrl,
+  RESOURCE_NAMING_TOKENS,
   substitutionInsideResourceName,
   URL_BEARING_FUNCTIONS,
   where,
@@ -37,17 +39,6 @@ import { ThemeCssError } from "./errors";
  * 읽는다. 두 곳에 같은 문자열을 적으면 한쪽만 고친 날 테마 CSS 가 통째로 거부된다.
  */
 export const THEME_LAYER_NAME = "baram-theme";
-
-// 자원의 이름을 실어 나를 수 있는 토큰. `Raw` 안에서 이 중 하나라도 보이면 그 조각은
-// 검사되지 않은 참조를 숨기고 있을 수 있다. `Function` 까지 넣는 이유는 `url( "x" )`
-// 처럼 공백이 끼면 url-token 이 아니라 function-token 으로 쪼개지기 때문이다.
-const RESOURCE_NAMING_TOKENS: ReadonlySet<number> = new Set([
-  csstree.tokenTypes.BadString,
-  csstree.tokenTypes.BadUrl,
-  csstree.tokenTypes.Function,
-  csstree.tokenTypes.String,
-  csstree.tokenTypes.Url,
-]);
 
 // 입력이 끝까지 닫혀 있는지 토크나이저에게 묻는다. 직접 중괄호를 세지 않는 이유는
 // 문자열·주석·`url()` 안의 중괄호를 구분해야 하기 때문이고, 그 구분은 토크나이저가
@@ -95,6 +86,17 @@ function assertWellFormed(css: string, stage: string): void {
 function assertNoRemoteReferences(css: string): void {
   forEachResourceName(css, (value, raw) => {
     if (isRemoteUrl(value)) {
+      throw new ThemeCssError("absoluteUrl", `output ${raw.slice(0, 80)}`);
+    }
+  });
+  // §394 spec 0073 D9 — the function-token half. A name escaped into `url` (`u\72l(//evil/x)`) is
+  // a url token to the browser and a function token to css-tree, so the scan above sees nothing
+  // there. The argument is judged as a url token's value would be; an argument holding a string,
+  // a url or a function is `null` here because the scan above or this scan's own next visit
+  // judges it (`forEachUrlBearingFunction`). `verifyStoredThemeCss` refused these at install's
+  // last step and at load already; this makes sanitize refuse them under their own code.
+  forEachUrlBearingFunction(css, (_name, argument, raw) => {
+    if (argument !== null && isRemoteUrl(argument)) {
       throw new ThemeCssError("absoluteUrl", `output ${raw.slice(0, 80)}`);
     }
   });
