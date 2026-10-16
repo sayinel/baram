@@ -632,6 +632,7 @@
   "plugin.builtin.badge": "Built-in",
   "plugin.builtin.teardownFailed": "{name} could not be shut down cleanly: {detail}",
   "plugin.capability.ai": "Use AI / LLM features",
+  "plugin.capability.codeblocks": "Draw code blocks of the languages it declares",
   "plugin.capability.commands": "Register and run editor commands",
   "plugin.capability.editor": "Read and edit the document",
   "plugin.capability.editor:readonly": "Read the document's content (cannot edit)",

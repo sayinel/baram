@@ -372,6 +372,7 @@ export interface NetworkAPI {
 
 export type PluginCapability =
   | "ai"
+  | "codeblocks"
   | "commands"
   | "editor"
   | "editor:readonly"
@@ -425,6 +426,13 @@ export interface PluginConsent {
  * registers each declared command with `ctx.commands.register` under the same id.
  */
 export interface PluginContributions {
+  /**
+   * §394 Fenced-code languages this plugin draws (spec 0073 D5), at most 10 — each registered with
+   * `ctx.codeBlocks.register`. Needs the `codeblocks` capability, and the capability needs at least
+   * one. `lang` matches `^[a-z0-9][a-z0-9-]{0,31}$` and is neither a language Baram draws itself
+   * (`mermaid`, `query`, `svg`, `journal-…`) nor one its code blocks highlight (`js`, `python`, …).
+   */
+  codeBlocks?: Array<{ lang: string }>;
   /** At most 50 (spec 0070 D11). */
   commands?: Array<{ id: string; palette?: boolean; title: string }>;
   /**
@@ -1235,4 +1243,5 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   network: "네트워크 요청을 보낼 수 있습니다",
   storage: "플러그인 전용 저장소를 사용할 수 있습니다",
   viewer: "파일 형식별 커스텀 뷰어를 등록할 수 있습니다",
+  codeblocks: "선언한 언어의 코드 블록을 그릴 수 있습니다",
 };

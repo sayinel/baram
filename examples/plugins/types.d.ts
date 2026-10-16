@@ -316,7 +316,7 @@ export interface LoadedPlugin {
 export interface NetworkAPI {
     fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 }
-export type PluginCapability = "ai" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
+export type PluginCapability = "ai" | "codeblocks" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
 /**
  * §260 Phase 5 — a snapshot of what the user approved, taken at the moment they
  * approved it. Compared against a later version's request by `plugin-consent.ts`.
@@ -355,6 +355,15 @@ export interface PluginConsent {
  * registers each declared command with `ctx.commands.register` under the same id.
  */
 export interface PluginContributions {
+    /**
+     * §394 Fenced-code languages this plugin draws (spec 0073 D5), at most 10 — each registered with
+     * `ctx.codeBlocks.register`. Needs the `codeblocks` capability, and the capability needs at least
+     * one. `lang` matches `^[a-z0-9][a-z0-9-]{0,31}$` and is neither a language Baram draws itself
+     * (`mermaid`, `query`, `svg`, `journal-…`) nor one its code blocks highlight (`js`, `python`, …).
+     */
+    codeBlocks?: Array<{
+        lang: string;
+    }>;
     /** At most 50 (spec 0070 D11). */
     commands?: Array<{
         id: string;
