@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { devConsentToAsk } from "../dev-plugins";
 import {
   carryCodeBlocks,
+  codeBlockReask,
   consentGaps,
   consentRequired,
   newCodeBlockLangs,
@@ -108,6 +109,21 @@ describe("recordedConsent and carryCodeBlocks", () => {
         .codeBlocks,
     ).toBeUndefined();
     expect(carryCodeBlocks(claim, undefined)).toBe(claim);
+  });
+
+  /** ① — the re-ask lists what the version in hand draws. What fails this: joining the record's
+   *  languages to the download's — `backlinks`, which the new version dropped, would be shown
+   *  under "Code blocks it draws". NEW is against the approved consent, so only `timeline`. */
+  it("re-asks with the download's languages, diffed against the approved consent", () => {
+    const approved: PluginConsent = {
+      capabilities: ["codeblocks"],
+      codeBlocks: ["backlinks", "chart"],
+      trust: "sandboxed",
+    };
+    const { consent, prior } = codeBlockReask(approved, ["chart", "timeline"]);
+    expect(consent).toEqual({ ...approved, codeBlocks: ["chart", "timeline"] });
+    expect(prior).toBe(approved);
+    expect(newCodeBlockLangs(prior, consent)).toEqual(["timeline"]);
   });
 });
 

@@ -1,6 +1,6 @@
-// §394 spec 0073 D4 — when the consent carries languages (a dev folder, an update's claim, or the
-// post-download re-ask), the dialog shows them, and marks the ones the previous record did not
-// hold — by the same rule `consentGaps` uses (`newCodeBlockLangs`).
+// §394 spec 0073 D4 — when the consent carries languages (a dev folder, or the post-download
+// re-ask), the dialog shows them, and marks the ones the previous record did not hold — by the
+// same rule `consentGaps` uses (`newCodeBlockLangs`).
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,8 +10,8 @@ import { PluginConsentDialog } from "../PluginConsentDialog";
 const surface = () => withinSurface(".plugin-consent");
 
 describe("PluginConsentDialog — code block languages", () => {
-  /** What fails this: not rendering `consent.codeBlocks`, or a NEW marker on a language the
-   *  record already held. */
+  /** What fails this: not rendering `consent.codeBlocks` or its lead line, or a NEW marker on a
+   *  language the record already held. The lead line is the positive half of the row below. */
   it("lists the languages and marks only the new ones", () => {
     render(
       <PluginConsentDialog
@@ -31,6 +31,7 @@ describe("PluginConsentDialog — code block languages", () => {
         }}
       />,
     );
+    expect(surface().getByText(/code blocks it draws/i)).toBeTruthy();
     expect(surface().getByText("backlinks")).toBeTruthy();
     const chart = surface().getByText("chart");
     expect(chart.closest("li")?.textContent).toMatch(/NEW/);
@@ -39,7 +40,7 @@ describe("PluginConsentDialog — code block languages", () => {
     ).not.toMatch(/NEW/);
   });
 
-  /** The pair: a consent without languages (an install's claim) shows no language list. */
+  /** The pair: a consent without languages (a registry claim) shows no language list. */
   it("shows no language list for a consent without languages", () => {
     render(
       <PluginConsentDialog

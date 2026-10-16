@@ -61,11 +61,13 @@ export async function stageValidateAndCommit(
   consent: PluginConsent,
   t: Translate,
   /**
-   * §394 — ask about code block languages the download declares beyond `consent.codeBlocks`
-   * (spec 0073 D4 ①). `true` is approval. Called only when there are such languages, once every
-   * other check this function makes before the unload has passed — Rust's commit can still refuse.
+   * §394 — ask about the download's code block languages when it declares some beyond
+   * `consent.codeBlocks` (spec 0073 D4 ①). Handed the download's whole declared set, so the
+   * dialog lists what this version draws; the caller marks the new ones against `consent`.
+   * `true` is approval. Called only when there are new languages, once every other check this
+   * function makes before the unload has passed — Rust's commit can still refuse.
    */
-  confirmCodeBlocks: (langs: string[]) => Promise<boolean>,
+  confirmCodeBlocks: (declared: string[]) => Promise<boolean>,
 ): Promise<{ checksum: string; committed: RustCommittedPluginInfo }> {
   // Non-null only while a staged copy exists that nothing has committed yet.
   let pendingStage: null | string = null;
@@ -177,12 +179,13 @@ export async function stageValidateAndCommit(
     // refuses an archive the user was just asked to approve (the unload and the commit below
     // can still fail). A registry listing names none, so they cannot be shown before the
     // download; the user approves them here, against the record's languages the caller
-    // carried (`carryCodeBlocks`). A record without languages compares nothing (D4 ②). The
-    // `consentGaps` request above names no languages, so that rule stayed silent on them.
-    const added = newCodeBlockLangs(consent, {
-      codeBlocks: declaredCodeBlockLangs(manifest),
-    });
-    if (added.length > 0 && !(await confirmCodeBlocks(added))) {
+    // carried (`carryCodeBlocks`). The ask hands over the whole `declared` set, so the dialog
+    // lists what this version draws; the refusal names only the `added` ones. A record without
+    // languages compares nothing (D4 ②). The `consentGaps` request above names no languages,
+    // so that rule stayed silent on them.
+    const declared = declaredCodeBlockLangs(manifest);
+    const added = newCodeBlockLangs(consent, { codeBlocks: declared });
+    if (added.length > 0 && !(await confirmCodeBlocks(declared))) {
       throw new Error(
         t("plugin.error.codeBlocksDeclined", { langs: added.join(", ") }),
       );

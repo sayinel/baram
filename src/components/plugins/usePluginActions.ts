@@ -229,11 +229,12 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
               entry,
               consent,
               t,
-              // §394 spec 0073 D4 ① — the same dialog, now listing the languages;
-              // NEW marks what the record lacked. Approving it lets the commit go on.
-              async (langs) =>
+              // §394 spec 0073 D4 ① — the same dialog, now listing the languages the
+              // download draws; NEW marks what the record lacked. Approving it lets the
+              // commit go on.
+              async (declared) =>
                 (await askConsent({
-                  ...codeBlockReask(consent, langs),
+                  ...codeBlockReask(consent, declared),
                   intent: preApproved ? "update" : "install",
                   name: entry.name,
                 })) !== null,
@@ -375,18 +376,12 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
         return;
       }
       const prior = installedPlugins[entry.id]?.consent;
-      // §394 spec 0073 D4 ① — the record's languages ride on the claim, as the base the
-      // post-download check compares the downloaded manifest's with. They are not what gets
-      // recorded: `handleInstall` records the committed manifest's (`recordedConsent`).
-      const claimed = carryCodeBlocks(
-        claimedConsent(entry, entry.trust),
-        prior,
-      );
+      const claimed = claimedConsent(entry, entry.trust);
       const reason = consentRequired(prior, claimed);
       // When the recorded consent already covers this version, record the CLAIMED shape
       // rather than carrying the old one forward — an update that drops a capability
       // must narrow the record too, or the grant outlives the version that needed it.
-      const consent =
+      const approved =
         reason === null
           ? claimed
           : await askConsent({
@@ -395,7 +390,13 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
               name: entry.name,
               prior,
             });
-      if (!consent) return;
+      if (!approved) return;
+      // §394 spec 0073 D4 ① — the record's languages ride on the APPROVED claim, as the base
+      // the post-download check compares the downloaded manifest's with. Not before: the
+      // dialog above has no manifest in hand, and listing the record's languages there would
+      // present them as the new version's. Not what gets recorded either: `handleInstall`
+      // records the committed manifest's (`recordedConsent`).
+      const consent = carryCodeBlocks(approved, prior);
 
       // ‼️ #261 — AN UPDATE IS NOW ONE OPERATION.
       //

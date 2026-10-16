@@ -14,8 +14,8 @@ import { capabilityLabel } from "./capability-label";
 interface PluginConsentDialogProps {
   /**
    * What is being asked for now — a registry claim, or a dev folder's manifest. §394: the
-   * post-download re-ask adds the downloaded manifest's code block languages to the claim
-   * (`stageValidateAndCommit`'s `confirmCodeBlocks`) — nothing else of that manifest.
+   * post-download re-ask sets the claim's code block languages to the downloaded manifest's
+   * (`codeBlockReask`) — nothing else of that manifest.
    */
   consent: PluginConsent;
   /**
@@ -198,12 +198,12 @@ export function PluginConsentDialog({
               </ul>
             )}
 
-            {/* §394 spec 0073 D4 — where `codeblocks` reaches. Three consents carry languages:
-                a dev folder's (from its manifest), the post-download re-ask's (the record's
-                plus the download's), and an update claim's (the record's, `carryCodeBlocks` —
-                seen when a gap opens the dialog before the download). A
-                registry listing alone names none. NEW is `newCodeBlockLangs`, the rule
-                `consentGaps` uses. */}
+            {/* §394 spec 0073 D4 — where `codeblocks` reaches. Two consents carry languages,
+                both built from a manifest in hand: a dev folder's request (`devConsentToAsk`)
+                and the post-download re-ask (`codeBlockReask` — the download's set). A
+                registry claim names none, and `handleUpdate` carries the record's onto it
+                only after the dialog, so this lists what the version being approved draws.
+                NEW is `newCodeBlockLangs`, the rule `consentGaps` uses. */}
             {consent.codeBlocks !== undefined &&
               consent.codeBlocks.length > 0 && (
                 <>

@@ -41,11 +41,10 @@ interface CapabilityRequest {
   /** §382 — set on a registry claim; a downloaded manifest names no channel. */
   channel?: RegistryChannel;
   /**
-   * §394 — code block languages (spec 0073 D4). Two non-test callers set them: the dev folder
-   * (`devConsentToAsk`), from the manifest in hand, and `handleUpdate`, whose registry claim
-   * carries the record's own languages (`carryCodeBlocks`) — never a gap against that record. A
-   * registry listing names none (`claimedConsent`), so the post-download check compares the
-   * downloaded manifest's languages itself (`newCodeBlockLangs`), after every other check.
+   * §394 — code block languages (spec 0073 D4), set by the one non-test caller that holds a
+   * manifest: the dev folder (`devConsentToAsk`). A registry listing names none
+   * (`claimedConsent`), so the post-download check compares the downloaded manifest's languages
+   * itself (`newCodeBlockLangs`), after every other check.
    */
   codeBlocks?: readonly string[];
   /** §382 — the listing's publisher id, compared only when `channel` is `community`. */
@@ -56,7 +55,9 @@ interface CapabilityRequest {
 /**
  * §394 A registry claim with the previous record's languages carried onto it (spec 0073 D4 ①): a
  * claim names none, so this is the base the post-download check compares the downloaded manifest
- * with. A record without languages carries none (D4 ② — the manifest's are accepted).
+ * with. A record without languages carries none (D4 ② — the manifest's are accepted). Applied to
+ * the claim the user has APPROVED, never to the one a dialog shows: before the download no
+ * manifest is in hand, and the record's languages are not the new version's.
  */
 export function carryCodeBlocks(
   claim: PluginConsent,
@@ -96,19 +97,19 @@ export function claimedConsent(
 }
 
 /**
- * §394 What the post-download re-ask shows (spec 0073 D4 ①): the approved consent with the
- * `added` languages joined to its own, diffed against the approved consent itself — so the
- * dialog's NEW marks exactly `added`, and no capability (both sides hold the same ones).
+ * §394 What the post-download re-ask shows (spec 0073 D4 ①): the approved consent with its
+ * languages replaced by the `declared` set of the downloaded manifest — what the version in hand
+ * draws, not the record's joined to it — diffed against the approved consent itself, which
+ * carries the record's (`carryCodeBlocks`). So NEW marks exactly what the record lacked, a
+ * language the new version dropped is not listed, and no capability is marked (both sides hold
+ * the same ones).
  */
 export function codeBlockReask(
   approved: PluginConsent,
-  added: readonly string[],
+  declared: readonly string[],
 ): { consent: PluginConsent; prior: PluginConsent } {
   return {
-    consent: {
-      ...approved,
-      codeBlocks: [...(approved.codeBlocks ?? []), ...added].sort(),
-    },
+    consent: { ...approved, codeBlocks: [...declared].sort() },
     prior: approved,
   };
 }

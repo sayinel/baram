@@ -72,6 +72,7 @@ vi.mock("../../../plugins/registry-client", () => ({
 import {
   countAnywhere,
   findSurface,
+  withinSurface,
 } from "../../../__tests__/helpers/security-surface";
 import en from "../../../i18n/en.json";
 import { usePluginStore } from "../../../stores/system/plugin";
@@ -944,6 +945,12 @@ describe("code block languages in install and update (§394 spec 0073 D4)", () =
     expect(
       usePluginStore.getState().installedPlugins.demo?.consent?.codeBlocks,
     ).toEqual(["backlinks"]);
+    // The user reads why nothing changed — the declined language, by name.
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo).toContain(
+        en["plugin.error.codeBlocksDeclined"].replace("{langs}", "chart"),
+      ),
+    );
   });
 
   /** ③ — an update that drops a language asks nothing and narrows the record. */
@@ -960,6 +967,105 @@ describe("code block languages in install and update (§394 spec 0073 D4)", () =
       expect(
         usePluginStore.getState().installedPlugins.demo?.consent?.codeBlocks,
       ).toEqual(["backlinks"]),
+    );
+    expect(countAnywhere(".plugin-consent")).toBe(0);
+  });
+
+  /** ① — the re-ask lists what the NEW version draws: record [backlinks, chart], download
+   *  [chart, timeline]. What fails this: showing the record's languages alongside the
+   *  download's — `backlinks`, which this version no longer draws, under "Code blocks it draws". */
+  it("re-asks with the downloaded languages only, marking the new one", async () => {
+    installedAt({
+      capabilities: ["codeblocks"],
+      codeBlocks: ["backlinks", "chart"],
+      trust: "sandboxed",
+    });
+    listed = [{ ...CB_ENTRY, version: "2.0.0" }];
+    downloadReturns(cbManifest(["chart", "timeline"], "2.0.0"));
+    await clickUpdate();
+    const dialog = (await findSurface(".plugin-consent")).getByRole("dialog");
+    expect(
+      within(dialog).getByText("timeline").closest("li")?.textContent,
+    ).toMatch(/NEW/);
+    expect(
+      within(dialog).getByText("chart").closest("li")?.textContent,
+    ).not.toMatch(/NEW/);
+    expect(within(dialog).queryByText("backlinks")).toBeNull();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /^Update and install$/ }),
+    );
+    await waitFor(() =>
+      expect(
+        usePluginStore.getState().installedPlugins.demo?.consent?.codeBlocks,
+      ).toEqual(["chart", "timeline"]),
+    );
+  });
+
+  /** ① — a listing gap opens the dialog BEFORE the download, when no manifest is in hand: it
+   *  lists no languages, though the record holds some. What fails this: showing the record's
+   *  languages there as the new version's, or not carrying them on after the approval — then the
+   *  download's added `chart` would be compared with nothing and never asked about. */
+  it("asks about a listing gap without languages, then about an added language after the download", async () => {
+    installedAt({
+      capabilities: ["codeblocks"],
+      codeBlocks: ["backlinks"],
+      trust: "sandboxed",
+    });
+    listed = [
+      {
+        ...CB_ENTRY,
+        capabilities: ["codeblocks", "network"],
+        version: "2.0.0",
+      },
+    ];
+    downloadReturns({
+      ...cbManifest(["backlinks", "chart"], "2.0.0"),
+      capabilities: ["codeblocks", "network"],
+    });
+    await clickUpdate();
+    const first = (await findSurface(".plugin-consent")).getByRole("dialog");
+    expect(pluginInstallStage).not.toHaveBeenCalled();
+    expect(first.textContent).toContain("NEW");
+    expect(within(first).queryByText(/code blocks it draws/i)).toBeNull();
+    expect(within(first).queryByText("backlinks")).toBeNull();
+    fireEvent.click(
+      within(first).getByRole("button", { name: /^Update and install$/ }),
+    );
+    await waitFor(() =>
+      expect(
+        withinSurface(".plugin-consent").getByText("chart").closest("li")
+          ?.textContent,
+      ).toMatch(/NEW/),
+    );
+    expect(pluginInstallStage).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      withinSurface(".plugin-consent").getByRole("button", {
+        name: /^Update and install$/,
+      }),
+    );
+    await waitFor(() =>
+      expect(usePluginStore.getState().installedPlugins.demo?.consent).toEqual({
+        capabilities: ["codeblocks", "network"],
+        codeBlocks: ["backlinks", "chart"],
+        trust: "sandboxed",
+      }),
+    );
+  });
+
+  /** ② on the update path — a record with `codeblocks` but no languages (the pre-§394 shape)
+   *  accepts the manifest's: no dialog, and the record takes them. What fails this: reading the
+   *  absent field as "none approved", which would ask about every language. */
+  it("asks nothing on an update from a record without languages, and records the manifest's", async () => {
+    installedAt({ capabilities: ["codeblocks"], trust: "sandboxed" });
+    listed = [{ ...CB_ENTRY, version: "2.0.0" }];
+    downloadReturns(cbManifest(["backlinks", "chart"], "2.0.0"));
+    await clickUpdate();
+    await waitFor(() =>
+      expect(usePluginStore.getState().installedPlugins.demo?.consent).toEqual({
+        capabilities: ["codeblocks"],
+        codeBlocks: ["backlinks", "chart"],
+        trust: "sandboxed",
+      }),
     );
     expect(countAnywhere(".plugin-consent")).toBe(0);
   });
