@@ -96,6 +96,24 @@ export function claimedConsent(
 }
 
 /**
+ * §394 What the post-download re-ask shows (spec 0073 D4 ①): the approved consent with the
+ * `added` languages joined to its own, diffed against the approved consent itself — so the
+ * dialog's NEW marks exactly `added`, and no capability (both sides hold the same ones).
+ */
+export function codeBlockReask(
+  approved: PluginConsent,
+  added: readonly string[],
+): { consent: PluginConsent; prior: PluginConsent } {
+  return {
+    consent: {
+      ...approved,
+      codeBlocks: [...(approved.codeBlocks ?? []), ...added].sort(),
+    },
+    prior: approved,
+  };
+}
+
+/**
  * Does this consent already cover one capability?
  *
  * Exported for the dialog's "NEW" marker, which must agree with `consentGaps` rather

@@ -56,12 +56,12 @@
 //    this section with it, and the host pin does not reach that far.
 //
 //  - PluginRevokedNotice — LOWEST, `variant="inline"`. Hidden, the user loses
-//    INFORMATION, not control: `usePluginActions.ts:183,329` computes the block from
-//    `revocationFor` and refuses the install in code, so a hidden notice cannot turn
-//    into an unwanted install. Portaling it would cost more than it buys — the notice
-//    means "this row's plugin", and moved to `document.body` it loses the row it is
-//    about. Same price as above: an ancestor of the row that a theme can hide takes the
-//    notice with it.
+//    INFORMATION, not control: `usePluginActions.ts` (`handleInstall`, `handleUpdate`)
+//    computes the block from `revocationFor` and refuses the install in code, so a
+//    hidden notice cannot turn into an unwanted install. Portaling it would cost more
+//    than it buys — the notice means "this row's plugin", and moved to `document.body`
+//    it loses the row it is about. Same price as above: an ancestor of the row that a
+//    theme can hide takes the notice with it.
 //
 // The marketplace's revocation BADGE (`PluginCard.tsx`) is deliberately NOT here. It
 // calls none of the scanned effects, the install block behind it is the code path just
