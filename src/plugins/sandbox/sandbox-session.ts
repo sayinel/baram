@@ -24,7 +24,8 @@ import { isEditorRefusalCode } from "./protocol";
  */
 const ACTIVATE_TIMEOUT_MS = import.meta.env.DEV ? 15_000 : 5_000;
 const ACTIVATE_RETRY_MS = 250;
-const CALL_TIMEOUT_MS = 30_000;
+/** §394 Also the trusted tier's bound on a `data-action` handler (`plugin-action.ts`, spec 0073 D11 ③). */
+export const CALL_TIMEOUT_MS = 30_000;
 
 export type HostService = ServiceOf<SandboxHostRequest["kind"]>;
 /** The service a mediated request belongs to, from its `kind` prefix. */
