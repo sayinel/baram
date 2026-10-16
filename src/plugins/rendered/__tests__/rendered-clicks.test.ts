@@ -129,7 +129,7 @@ describe("handleRenderedClicks", () => {
   it("auxclick of the middle button: opens the note and the links, runs no action", () => {
     const { handlers, shadow } = block(THREE_PATHS);
     handleRenderedClicks(shadow, handlers, always);
-    pressAll(shadow, "auxclick");
+    expect(pressAll(shadow, "auxclick")).toBe(true);
     expect(handlers.note.mock.calls).toEqual([["notes/a.md"]]);
     expect(handlers.link.mock.calls).toEqual([
       ["https://e.com/x"],
@@ -138,10 +138,22 @@ describe("handleRenderedClicks", () => {
     expect(handlers.action).not.toHaveBeenCalled();
   });
 
+  /** The action half of the row above on its own: a middle click on a `data-action` element is
+   *  the host's (prevented) and runs nothing. What fails this: an `auxclick` that runs actions, or
+   *  one that lets the browser's default through because nothing was routed. */
+  it("auxclick of the middle button on a data-action element: prevented, runs nothing", () => {
+    const { handlers, shadow } = block('<button data-action="go">g</button>');
+    handleRenderedClicks(shadow, handlers, always);
+    const event = click(shadow.querySelector("button")!, "auxclick", 1);
+    expect(event.defaultPrevented).toBe(true);
+    expect(handlers.action).not.toHaveBeenCalled();
+  });
+
   /** What fails this: routing every `auxclick`. A right-click fires one (button 2) after
-   *  `contextmenu` — measured in Chrome 155 whether or not `contextmenu` was prevented — so it
-   *  would open the link while the editor shows its own menu. A `click` not of the primary
-   *  button routes nothing either. Every default is still prevented. */
+   *  `contextmenu` — measured in Chrome 155 (CDP input) whether or not `contextmenu` was
+   *  prevented; WebKit is not measured — so it would open the link while the editor shows its
+   *  own menu. A `click` not of the primary button routes nothing either. Every default is still
+   *  prevented. */
   it("routes no other button's press, and prevents every one's default", () => {
     const { handlers, shadow } = block(THREE_PATHS);
     handleRenderedClicks(shadow, handlers, always);

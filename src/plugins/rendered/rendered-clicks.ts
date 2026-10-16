@@ -7,9 +7,10 @@
 // Which press routes (plan 0125 Task 5 ruling): a primary-button `click` takes all three paths; a
 // middle-button `auxclick` opens — a note or a link — and runs no action, as a middle click on a
 // button does nothing; any other `auxclick` routes nothing. A right-click fires one (button 2,
-// after `contextmenu` — measured in Chrome 155 whether or not `contextmenu` was prevented), and
-// UI Events fires one for every non-primary button. Every press on a host-owned element has its
-// default prevented, routed or not.
+// after `contextmenu` — measured in Chrome 155 with CDP-dispatched input, whether or not
+// `contextmenu` was prevented; WebKit is not measured), and UI Events fires one for every
+// non-primary button. Every press on a host-owned element has its default prevented, routed or
+// not.
 
 import { isAllowedLinkHref } from "../../utils/link-href";
 import { MAX_ACTION_CHARS } from "./limits";
