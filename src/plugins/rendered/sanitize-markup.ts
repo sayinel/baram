@@ -5,10 +5,14 @@
 //
 //   ① elements: the profile `{ html, svg }` (no `svgFilters`, no `mathMl` — `feImage` and MathML
 //      go with them; `use`, `set`, `animate`, `foreignObject` are in no profile), plus FORBID_TAGS
-//      for scripts and styles, frames and embeds, document-level elements, media and forms, and
-//      `<dialog>`. `<button>` stays — it is `data-action`'s home. DOMPurify keeps a removed
-//      element's children unless the tag is in its FORBID_CONTENTS default (`script`, `style`,
-//      `iframe`, `audio`, `video`, … — 3.4.16), so a `<dialog>`'s text stays in the flow.
+//      for scripts and styles, frames and embeds, document-level elements, media and forms,
+//      `<dialog>`, and four the html profile keeps that have no use in a rendered block: `<area>`
+//      (a hyperlink D11's `a[href]` routing does not route) with its `<map>`, `<slot>` (projects
+//      the shadow host's light-DOM children) and `<template>` (its content is a separate fragment
+//      the node-cap walk does not enter). `<button>` stays — it is `data-action`'s home.
+//      DOMPurify keeps a removed element's children unless the tag is in its FORBID_CONTENTS
+//      default (`script`, `style`, `iframe`, `audio`, `video`, `template`, … — 3.4.16), so the
+//      text of a `<dialog>`, `<map>` or `<slot>` stays in the flow.
 //   ② attributes: `style`, the top-layer entrances (`popover`, `popovertarget`,
 //      `popovertargetaction`, `command`, `commandfor`), candidate lists (`srcset`, `sizes`), the
 //      vim island markers, and `data-tauri-drag-region` (opens nothing today; blocked so a wider
@@ -17,8 +21,9 @@
 //      `src`, `poster`, `background`, `href`, `xlink:href` anywhere else are `data:image/*` or
 //      `#fragment`, or go.
 //   ④ CSS references in ANY attribute: a value that names a resource the CSS way (a url token, a
-//      URL-bearing function token, a string inside one) stays only when it is exactly one
-//      `url(#…)` — an SVG paint server.
+//      URL-bearing function token, a string inside one) or holds a bad-url or bad-string token
+//      (`namesAResource` says why) stays only when it is exactly one `url(#…)` — an SVG paint
+//      server.
 //   ⑤ a node cap; ⑥ a DocumentFragment to `append`, never a string parsed a second time.
 
 import type { Config, DOMPurify as Purifier } from "dompurify";
@@ -45,15 +50,17 @@ export interface SanitizedMarkup {
   /**
    * Elements and attributes DOMPurify removed — logged in a development build only (§6). A LOWER
    * bound: DOMPurify 3.4.16 (no `FORCE_BODY`) parses the input as a document and returns its
-   * `<body>`, so what the HTML parser puts into `<head>` — a leading `<script>`, `<style>`,
-   * `<link>`, `<meta>`, `<base>` or `<title>` — is dropped without being visited and is not counted
-   * (measured: `<script></script><p>x</p>` → 0, `<p>x</p><script></script>` → 1).
+   * `<body>`, so what the HTML parser puts into `<head>` — any element the parser's in-head rules
+   * take at the start of the input, `<script>`, `<style>`, `<link>`, `<meta>`, `<base>`, `<title>`
+   * and `<template>` among them — is dropped without being visited and is not counted (measured:
+   * `<script></script><p>x</p>` → 0, `<p>x</p><script></script>` → 1).
    */
   removed: number;
 }
 
 /** D8 ① */
 const FORBIDDEN_TAGS = [
+  "area",
   "audio",
   "base",
   "datalist",
@@ -65,6 +72,7 @@ const FORBIDDEN_TAGS = [
   "input",
   "label",
   "link",
+  "map",
   "meta",
   "object",
   "option",
@@ -72,8 +80,10 @@ const FORBIDDEN_TAGS = [
   "picture",
   "script",
   "select",
+  "slot",
   "source",
   "style",
+  "template",
   "textarea",
   "track",
   "video",
@@ -115,7 +125,11 @@ let purifier: null | Purifier = null;
 /** `html` as a fragment the host may append into a shadow root; over the node cap, a throw. */
 export function sanitizePluginMarkup(html: string): SanitizedMarkup {
   const instance = getPurifier();
-  const fragment = instance.sanitize(html, CONFIG);
+  // DOMPurify 3.4.16 returns `null` when the parse has no `<body>` — input that opens with
+  // `<frameset>` (measured) — though its typings promise a fragment; the `as` widens to the truth.
+  const fragment =
+    (instance.sanitize(html, CONFIG) as DocumentFragment | null) ??
+    document.createDocumentFragment();
   const removed = instance.removed.length;
   const nodes = countNodes(fragment);
   if (nodes > MAX_RENDERED_NODES) {
@@ -176,8 +190,11 @@ function getPurifier(): Purifier {
 
 /**
  * D8 ③ — `data:image/*` (any case) or a fragment of this document. The scheme is the URL
- * parser's to decide; the media type is the data URL's path up to `;` or `,`, compared without
- * case after the leading whitespace a data URL processor strips.
+ * parser's to decide; the media type is judged on `url.pathname`, compared without case after
+ * its leading whitespace. That is not quite the data URL processor's reading: the pathname stops
+ * at `?`, while the processor reads the query too, so `data:image/png?x,AA` passes here and is
+ * `text/plain` to Fetch. Harmless: a `data:` URL is decoded in place and never reaches the
+ * network, so a mislabelled one shows an image or nothing.
  */
 function isEmbeddable(value: string): boolean {
   if (value.startsWith("#")) return true;
@@ -208,9 +225,29 @@ function isFragmentUrlOnly(value: string): boolean {
   );
 }
 
-/** D8 ④ — the value names a resource the CSS way: the theme pipeline's two scans, unchanged. */
+/**
+ * D8 ④ — the value names a resource the CSS way: the theme pipeline's two scans, unchanged, plus
+ * any bad-url or bad-string token.
+ *
+ * ‼️ The bad tokens count because css-tree and the browser part ways on one: css-tree 3.2.1 reads
+ * `url(https://e.com/x\` — a backslash, then the end of the value — as a bad-url token, which
+ * neither scan visits, while CSS Syntax ("check if two code points are a valid escape": `\` then
+ * EOF is one) and Chrome read a url token and fetch it (measured, Chrome 155). DOMPurify trims the
+ * value before this hook and writes the trimmed value back, so an escaped trailing space
+ * (`…x\ `) ends the same way. The plugin CSS path refuses both tokens in `assertWellFormed`
+ * (`css-pipeline.ts`); this hook does not run that gate, so it counts a malformed token instead of
+ * judging what a browser makes of it.
+ */
 function namesAResource(value: string): boolean {
   let found = false;
+  csstree.tokenize(value, (type) => {
+    if (
+      type === csstree.tokenTypes.BadUrl ||
+      type === csstree.tokenTypes.BadString
+    ) {
+      found = true;
+    }
+  });
   forEachResourceName(value, () => {
     found = true;
   });

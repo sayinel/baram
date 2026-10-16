@@ -21,34 +21,65 @@ function svgElements(root: Element, localName: string): Element[] {
 
 describe("sanitizePluginMarkup — elements (D8 ①)", () => {
   /** What fails this: a FORBID_TAGS list that drops one of these, or a profile that allows them.
+   *  A row asserts EVERY tag its input holds, so each of the 23 FORBID_TAGS entries this table
+   *  covers has its own assertion (the next table covers the other four). Sixteen name elements DOMPurify 3.4.16's `{ html, svg }` profile keeps, so
+   *  FORBID_TAGS alone removes them and dropping the entry turns its row red. `script`, `link`,
+   *  `meta`, `base`, `iframe`, `object` and `embed` are in none of its four profile lists, so
+   *  their rows fail when a profile or `ADD_TAGS` lets them in.
    *  The `<script>`, `<style>`, `<link>`, `<meta>` and `<base>` rows put the element AFTER
    *  content: a leading one is put into `<head>` by the HTML parser and DOMPurify 3.4.16 returns
    *  the `<body>`, so it is gone whatever the lists say — `ADD_TAGS` naming it too (measured) —
-   *  and the row could not fail. DOMPurify's default html list keeps `<style>`, so FORBID_TAGS is
-   *  what removes one in the body; `script`, `link`, `meta` and `base` are in none of its four
-   *  profile lists, so their rows fail when a profile or `ADD_TAGS` lets them in. */
+   *  and the row could not fail. */
   it.each([
-    ["<p>x</p><script>x()</script>", "script"],
-    ["<p>x</p><style>p{}</style>", "style"],
-    ['<iframe src="https://e.com"></iframe>', "iframe"],
-    ["<object></object><embed>", "object"],
-    ['<p>x</p><link rel="stylesheet" href="https://e.com/x.css">', "link"],
-    ['<p>x</p><meta http-equiv="refresh" content="0">', "meta"],
-    ['<p>x</p><base href="https://e.com/">', "base"],
-    ['<video src="https://e.com/v.mp4"></video>', "video"],
-    ['<video poster="https://e.com/p.png"></video>', "video"],
-    ['<audio src="https://e.com/a.mp3"></audio>', "audio"],
-    ['<picture><source srcset="https://e.com/a.png"></picture>', "source"],
-    ['<form action="https://e.com"><input name="q"></form>', "form"],
-    ['<form><input name="q"></form>', "input"],
-    ["<textarea>x</textarea><select><option>a</option></select>", "select"],
+    ["<p>x</p><script>x()</script>", ["script"]],
+    ["<p>x</p><style>p{}</style>", ["style"]],
+    ['<iframe src="https://e.com"></iframe>', ["iframe"]],
+    ["<object></object><embed>", ["object", "embed"]],
+    ['<p>x</p><link rel="stylesheet" href="https://e.com/x.css">', ["link"]],
+    ['<p>x</p><meta http-equiv="refresh" content="0">', ["meta"]],
+    ['<p>x</p><base href="https://e.com/">', ["base"]],
+    ['<video src="https://e.com/v.mp4"></video>', ["video"]],
+    ['<video poster="https://e.com/p.png"></video>', ["video"]],
+    ['<audio src="https://e.com/a.mp3"></audio>', ["audio"]],
+    [
+      '<picture><source srcset="https://e.com/a.png"></picture>',
+      ["picture", "source"],
+    ],
+    ['<p>x</p><track src="https://e.com/t.vtt">', ["track"]],
+    ['<form action="https://e.com"><input name="q"></form>', ["form", "input"]],
+    [
+      "<textarea>x</textarea><select><option>a</option></select>",
+      ["textarea", "select", "option"],
+    ],
     [
       "<label>x</label><datalist></datalist><fieldset></fieldset><output></output>",
-      "label",
+      ["label", "datalist", "fieldset", "output"],
     ],
-    ["<dialog open>x</dialog>", "dialog"],
-  ])("%s loses <%s>", (html, tag) => {
-    expect(clean(html).querySelector(tag)).toBeNull();
+    ["<dialog open>x</dialog>", ["dialog"]],
+  ])("%s loses %j", (html, tags) => {
+    const out = clean(html);
+    for (const tag of tags) expect(out.querySelector(tag), tag).toBeNull();
+  });
+
+  /** The four elements DOMPurify 3.4.16's html list keeps that have no use in a rendered block:
+   *  `<area>` is a hyperlink D11's `a[href]` routing does not route (`<map>` exists to hold it),
+   *  `<slot>` projects the shadow host's light-DOM children, and `<template>` content sits
+   *  outside the node-cap walk. What fails this: dropping one from FORBID_TAGS. The pair is the
+   *  text: DOMPurify keeps a removed element's children, so what a renderer put inside `<map>` or
+   *  `<slot>` stays; `<template>` is in DOMPurify's FORBID_CONTENTS default, so its content goes
+   *  with it (and a leading `<template>` lands in `<head>`, hence the `<p>`). */
+  it.each([
+    [
+      '<map name="m">m<area shape="default" href="#x" alt="a"></map>',
+      ["map", "area"],
+      "m",
+    ],
+    ["<slot>fallback</slot>", ["slot"], "fallback"],
+    ["<p>x</p><template><b>t</b></template>", ["template"], "x"],
+  ])("%s loses %j and keeps the text %j", (html, tags, text) => {
+    const out = clean(html);
+    for (const tag of tags) expect(out.querySelector(tag), tag).toBeNull();
+    expect(out.textContent).toBe(text);
   });
 
   /** The pair: ordinary content elements survive, `<button>` included — `data-action`'s home. */
@@ -67,6 +98,15 @@ describe("sanitizePluginMarkup — elements (D8 ①)", () => {
     expect(sanitizePluginMarkup("<p>x</p>").fragment).toBeInstanceOf(
       DocumentFragment,
     );
+  });
+
+  /** DOMPurify 3.4.16 returns `null`, not a fragment, when the parse has no `<body>` — input that
+   *  opens with `<frameset>` (measured). What fails this: passing that `null` on, where counting
+   *  it throws a `TypeError` that no caller expects. The pair is the row above. */
+  it("treats a parse without <body> as an empty fragment", () => {
+    const result = sanitizePluginMarkup("<frameset>");
+    expect(result.fragment).toBeInstanceOf(DocumentFragment);
+    expect(result.nodes).toBe(0);
   });
 });
 
@@ -146,6 +186,9 @@ describe("sanitizePluginMarkup — URLs by attribute (D8 ③)", () => {
     expect(clean(html).querySelector(tag)?.hasAttribute(attr)).toBe(false);
   });
 
+  /** The pair of the rows above. What fails this: a URL rule that removes too much — a media type
+   *  compared with case (`IMAGE/PNG` would go), or `<a>` judged by the `data:image`/`#` rule
+   *  instead of the link policy (the `https:` link would go). */
   it.each([
     ['<img src="data:image/png;base64,AAAA">', "img", "src"],
     ['<img src="data:IMAGE/PNG;base64,AAAA">', "img", "src"],
@@ -153,6 +196,21 @@ describe("sanitizePluginMarkup — URLs by attribute (D8 ③)", () => {
     ['<a href="#section">x</a>', "a", "href"],
   ])("%s keeps %s[%s]", (html, tag, attr) => {
     expect(clean(html).querySelector(tag)?.hasAttribute(attr)).toBe(true);
+  });
+
+  /** D8 ③ names `<a>` in HTML and SVG alike: the hook tests `localName`, so SVG's `<a>` gets the
+   *  link policy too. What fails this: matching the HTML element only (`nodeName === "A"`), which
+   *  sends an SVG link to the `data:image`/`#` rule and drops its `https:` href. The pair: the
+   *  `javascript:` href on the same element still goes. */
+  it("judges an SVG <a href> by the link policy", () => {
+    const [kept, refused] = svgElements(
+      clean(
+        '<svg><a href="https://e.com/">x</a><a href="javascript:alert(1)">y</a></svg>',
+      ),
+      "a",
+    );
+    expect(kept.getAttribute("href")).toBe("https://e.com/");
+    expect(refused.hasAttribute("href")).toBe(false);
   });
 
   /** SVG: a remote `href` goes on every element but `<a>`; a fragment and `data:image` stay. */
@@ -177,19 +235,30 @@ describe("sanitizePluginMarkup — URLs by attribute (D8 ③)", () => {
 
 describe("sanitizePluginMarkup — CSS references in any attribute (D8 ④)", () => {
   /** What fails this: a string `url(` check (misses `u\72l(`), or keeping `url(#…)` only when
-   *  nothing else is in the value — `fill="url(#g) url(https://…)"` must go. */
+   *  nothing else is in the value — `fill="url(#g) url(https://…)"` must go.
+   *  The two `mask` rows end the url in a backslash: css-tree 3.2.1 reads that as a bad-url
+   *  token, which neither theme scan visits, while CSS Syntax and Chrome read a valid escape and
+   *  fetch the URL (measured, Chrome 155). The second row's escaped trailing space is trimmed by
+   *  DOMPurify before the hook, so it ends in a backslash too. The `stroke` row pins the other
+   *  malformed token, a bad string (a newline inside quotes): no fetch is known behind it, but a
+   *  malformed token is counted, not judged. What fails these three: the hook's bad-token scan
+   *  gone. */
   it.each([
-    '<svg><rect fill="url(https://e.com/x)"/></svg>',
-    '<svg><rect fill="u\\72l(https://e.com/x)"/></svg>',
-    '<svg><rect fill="url(#g) url(https://e.com/x)"/></svg>',
-    '<svg><rect filter="url(data:image/svg+xml,x)"/></svg>',
-  ])("%s loses fill/filter", (html) => {
+    ['<svg><rect fill="url(https://e.com/x)"/></svg>', "fill"],
+    ['<svg><rect fill="u\\72l(https://e.com/x)"/></svg>', "fill"],
+    ['<svg><rect fill="url(#g) url(https://e.com/x)"/></svg>', "fill"],
+    ['<svg><rect filter="url(data:image/svg+xml,x)"/></svg>', "filter"],
+    ['<svg><rect mask="url(https://e.com/x\\"/></svg>', "mask"],
+    ['<svg><rect mask="url(https://e.com/x\\ "/></svg>', "mask"],
+    ['<svg><rect stroke="&quot;a&#10;(b)"/></svg>', "stroke"],
+  ])("%s loses %s", (html, attr) => {
     const rect = svgElements(clean(html), "rect")[0];
-    expect(rect.hasAttribute("fill") || rect.hasAttribute("filter")).toBe(
-      false,
-    );
+    expect(rect.hasAttribute(attr)).toBe(false);
   });
 
+  /** The pair of the rows above. What fails this: the `isFragmentUrlOnly` exception gone, so
+   *  every paint-server reference goes, or a bad-token scan that also matches a well-formed url
+   *  token. */
   it("keeps a lone paint-server reference url(#…)", () => {
     const rect = svgElements(
       clean('<svg><rect fill="url(#g)"/></svg>'),

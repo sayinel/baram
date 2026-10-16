@@ -20,6 +20,9 @@ describe("renderedContentProblem", () => {
     );
   });
 
+  /** What fails this: a CSS check that is missing or reuses the HTML cap, a shape check that lets
+   *  a non-string through, or a surrogate test without the `u` flag — without it every half of a
+   *  pair matches, so the emoji row would be refused. The pairs: the emoji and the last row. */
   it("caps CSS separately and refuses a lone surrogate and a wrong shape", () => {
     expect(
       renderedContentProblem({
@@ -30,6 +33,7 @@ describe("renderedContentProblem", () => {
     expect(renderedContentProblem({ html: "\ud800" })).toBe(
       "rendered output holds a lone surrogate, which Baram's IPC cannot carry",
     );
+    expect(renderedContentProblem({ html: "😀" })).toBeNull();
     expect(renderedContentProblem({ html: 3 })).toBe(
       "a renderer must return { html: string, css?: string }",
     );
