@@ -1282,6 +1282,20 @@
       "description": "trusted 플러그인의 ctx.index — 호스트 창 전용(plugin-sandbox.json 에 없다). sandboxed 브로커 op(index_*)과 같은 Rust 읽기(plugin::index_reads)를 지나 같은 행을 절대 경로로 돌려준다. context 는 이름 → 경로를 받는 읽기면 그 경로를 담는 가장 안쪽 디렉터리 context → 활성 순. 경로는 절대 경로 · 등록 context 안 · .baram 밖 · 고른 context 의 root 아래여야 한다. 오류는 고정 문구(스펙 0072 §5.3 · §7)"
     },
     {
+      "name": "plugin_note_link",
+      "input": {
+        "context": "string",
+        "path": "string"
+      },
+      "output": "string",
+      "module": "plugin",
+      "spec": "§394",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "플러그인이 그린 블록의 data-note 링크 — 호스트 창 전용(plugin-sandbox.json 에 없다). context 루트 기준 / 상대 경로를 check_plugin_file_path(절대 경로 · .. · .baram · 등록 context 밖 거부, canonical)로 지나고, 그 context 의 canonical root 아래 · 노트 확장자(.md · .markdown) · 실재 파일이면 등록 표기의 절대 경로를 돌려준다. 거부는 고정 문구(스펙 0073 D11 ② · §6)"
+    },
+    {
       "name": "plugin_storage_read",
       "input": {
         "pluginId": "string",

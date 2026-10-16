@@ -99,6 +99,7 @@ fn main() {
         "plugin_install_stage",
         "plugin_list_dev",
         "plugin_list_installed",
+        "plugin_note_link",
         "plugin_pick_dev_folder",
         "plugin_prepare_scopes",
         "plugin_read_manifest",

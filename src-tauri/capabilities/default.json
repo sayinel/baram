@@ -95,6 +95,7 @@
     "allow-plugin-install-stage",
     "allow-plugin-list-dev",
     "allow-plugin-list-installed",
+    "allow-plugin-note-link",
     "allow-plugin-pick-dev-folder",
     "allow-plugin-prepare-scopes",
     "allow-plugin-read-manifest",
