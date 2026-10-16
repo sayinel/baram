@@ -33,8 +33,10 @@ describe("plugin-blocks.css", () => {
     expect(declared(".plugin-block-host").contain).toBe("paint");
   });
 
-  /** P16 — source mode lowers the root to layout containment (the host is hidden then), so the
-   *  floating language tab of the "paper" style is not clipped. The pair of the row above. */
+  /** P16 — source mode lowers the root to layout containment (nothing of the plugin's is
+   *  displayed then: plan 0125 Task 10's `applyMode` hides `.plugin-block-body`, which holds the
+   *  shadow host), so the floating language tab of the "paper" style is not clipped. The pair of
+   *  the row above. */
   it("lowers the root to layout containment in source mode only", () => {
     expect(declared('[data-plugin-block][data-mode="source"]')).toMatchObject({
       contain: "layout",
@@ -42,8 +44,10 @@ describe("plugin-blocks.css", () => {
     });
   });
 
-  /** No rule here names the code block wrapper: the tables stylesheet's top-level
-   *  `.code-block-wrapper` rule would otherwise lower a rendered root to layout containment. */
+  /** No rule here styles the code block wrapper. That is all this pins: the hazard D10 names —
+   *  the ROOT carrying `.code-block-wrapper`, which the tables stylesheet's top-level rule lowers
+   *  to layout containment — is a property of the DOM, pinned by plan 0125 Task 10's row "draws a
+   *  bound language through the plugin, in a shadow root outside the code block wrapper". */
   it("never styles a rendered root as a code block wrapper", () => {
     expect(RULES.some((r) => r.selector.includes(".code-block-wrapper"))).toBe(
       false,

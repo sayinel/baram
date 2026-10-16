@@ -34,19 +34,24 @@ function click(
   return event;
 }
 
-/** `hostOwnedTarget`'s answer for a press on `el`, asked from a listener: an event's composed path
- *  is empty once its dispatch has ended (DOM's dispatch clears it), so asking afterwards would
- *  answer `null` for any press. */
-function ownedOnPress(el: Element, shadow: ShadowRoot): Element | null {
-  let owned: Element | null = null;
+/** `hostOwnedTarget`'s answer for a press on `el`, asked from a listener on `on`: an event's
+ *  composed path is empty once its dispatch has ended (DOM's dispatch clears it), so asking
+ *  afterwards would answer `null` for any press. `undefined` when the listener never ran — so a
+ *  `toBeNull()` cannot pass on a press that never reached it. */
+function ownedOnPress(
+  el: Element,
+  shadow: ShadowRoot,
+  on: EventTarget = shadow,
+): Element | null | undefined {
+  let owned: Element | null | undefined;
   const listener = (event: Event) => {
     owned = hostOwnedTarget(event, shadow);
   };
-  shadow.addEventListener("mousedown", listener);
+  on.addEventListener("mousedown", listener);
   el.dispatchEvent(
     new MouseEvent("mousedown", { bubbles: true, composed: true }),
   );
-  shadow.removeEventListener("mousedown", listener);
+  on.removeEventListener("mousedown", listener);
   return owned;
 }
 
@@ -95,6 +100,23 @@ describe("hostOwnedTarget", () => {
     const { shadow } = block("<p>plain</p><a>bare</a>");
     expect(ownedOnPress(shadow.querySelector("p")!, shadow)).toBeNull();
     expect(ownedOnPress(shadow.querySelector("a")!, shadow)).toBeNull();
+  });
+
+  /** What fails this: a walk that goes on past this view's shadow root. A press whose path never
+   *  crosses it — on the root's own box, on the error line — would be judged by the light DOM's
+   *  attributes, and the view's `stopEvent` would keep it from ProseMirror. Asked from the
+   *  ancestor, outside the shadow, as ProseMirror asks `stopEvent` from `view.dom`; the pair is
+   *  the note link inside the shadow, still named from there. */
+  it("names nothing for a press outside the shadow, under an ancestor with data-action", () => {
+    const { host, shadow } = block('<a data-note="n.md">n</a>');
+    const outer = document.createElement("div");
+    outer.setAttribute("data-action", "app");
+    const sibling = document.createElement("span");
+    outer.append(sibling, host);
+    document.body.append(outer);
+    expect(ownedOnPress(sibling, shadow, outer)).toBeNull();
+    const link = shadow.querySelector("a")!;
+    expect(ownedOnPress(link, shadow, outer)).toBe(link);
   });
 });
 
@@ -164,6 +186,31 @@ describe("handleRenderedClicks", () => {
     expect(
       Object.values(handlers).every((h) => h.mock.calls.length === 0),
     ).toBe(true);
+  });
+
+  /** `route`'s precedence on one element: `data-note` and `data-action` beat `href`, an empty
+   *  `data-action` routes nothing, and a middle click on `<a data-action href>` opens nothing.
+   *  What fails this: reading `href` first (the link would open), or dropping the `> 0` check
+   *  (an empty action would run). */
+  it("lets data-note and data-action beat href, and routes no empty action", () => {
+    const { handlers, shadow } = block(
+      '<a data-note="n.md" href="https://e.com/x">n</a>' +
+        '<a data-action="go" href="https://e.com/y">a</a>' +
+        '<button data-action="">e</button>',
+    );
+    handleRenderedClicks(shadow, handlers, always);
+    const pressed = (type: "auxclick" | "click") =>
+      ["[data-note]", "a[data-action]", "button"].every(
+        (selector) =>
+          click(shadow.querySelector(selector)!, type).defaultPrevented,
+      );
+    expect(pressed("click")).toBe(true);
+    expect(handlers.note.mock.calls).toEqual([["n.md"]]);
+    expect(handlers.action.mock.calls).toEqual([["go"]]);
+    expect(pressed("auxclick")).toBe(true);
+    expect(handlers.note.mock.calls).toEqual([["n.md"], ["n.md"]]);
+    expect(handlers.action.mock.calls).toEqual([["go"]]);
+    expect(handlers.link).not.toHaveBeenCalled();
   });
 
   /** D11 ① — a fragment or a relative href resolves against nothing the plugin owns: nothing

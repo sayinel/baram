@@ -13,9 +13,10 @@
   border-radius: var(--radius-md);
 }
 
-/* Source mode (plan 0125 P16): the shadow host is not displayed, so nothing of the plugin's
-   paints, and the wrapped CodeMirror keeps the floating language tab of the "paper" style
-   unclipped. Two attribute selectors outrank the tables stylesheet's top-level-block rule. */
+/* Source mode (plan 0125 P16): the shadow host is not displayed (plan 0125 Task 10's applyMode
+   hides .plugin-block-body, which holds it), so nothing of the plugin's paints, and the wrapped
+   CodeMirror keeps the floating language tab of the "paper" style unclipped. Two attribute
+   selectors outrank the tables stylesheet's top-level-block rule. */
 [data-plugin-block][data-mode="source"] {
   contain: layout;
   overflow: visible;

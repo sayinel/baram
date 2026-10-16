@@ -69,14 +69,17 @@ export function handleRenderedClicks(
  * means the click is ProseMirror's (D17). Exported for the rendered view's `stopEvent` to ask of
  * every pointer event, `mousedown` included, so a press on a link does not move the selection
  * (plan 0125 Task 10, P28). The composed path is empty once a dispatch has ended: ask it from a
- * listener.
+ * listener. Only the part of the path before `shadow` is read — a press whose path does not cross
+ * `shadow` (the root's own box, the error line) is `null` whatever its light-DOM ancestors carry.
  */
 export function hostOwnedTarget(
   event: Event,
   shadow: ShadowRoot,
 ): Element | null {
-  for (const node of event.composedPath()) {
-    if (node === shadow) return null;
+  const path = event.composedPath();
+  const end = path.indexOf(shadow);
+  if (end < 0) return null;
+  for (const node of path.slice(0, end)) {
     if (!(node instanceof Element)) continue;
     if (node.hasAttribute("data-note") || node.hasAttribute("data-action")) {
       return node;
@@ -91,10 +94,12 @@ export function hostOwnedTarget(
   return null;
 }
 
-/** An href that names something on its own — a fragment or a relative reference does not. */
+/** An href that names something on its own: it parses with no base. A fragment or a relative
+ *  reference does not — the URL parser throws on it. */
 function isAbsolute(href: string): boolean {
   try {
-    return new URL(href).protocol !== "";
+    new URL(href);
+    return true;
   } catch {
     return false;
   }
