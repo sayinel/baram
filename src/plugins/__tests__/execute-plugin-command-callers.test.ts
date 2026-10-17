@@ -91,11 +91,13 @@ describe("who may start a plugin command", () => {
     ]);
   });
 
-  it("grants rights only through the primitive in plugin-host-registry.ts", () => {
-    // `beginPluginInvocation` is what actually grants prompt rights; `executePluginCommand`
-    // is the one gesture-gated caller of it today, but this is the invariant that matters —
-    // a new direct call site anywhere else grants rights outside a user gesture.
+  it("grants rights only through the two primitives: plugin-host-registry.ts and plugin-action.ts", () => {
+    // `beginPluginInvocation` is what actually grants prompt rights. Two gesture-gated callers:
+    // `executePluginCommand` (a user command, §385) and `runPluginAction` (a real click on a
+    // plugin-rendered block's `data-action`, §394 spec 0073 D11 ③). A new direct call site
+    // anywhere else grants rights outside a user gesture.
     expect(beginInvocationCallSites()).toEqual([
+      "plugins/plugin-action.ts",
       "plugins/plugin-host-registry.ts",
     ]);
   });

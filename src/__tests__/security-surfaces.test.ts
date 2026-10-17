@@ -89,7 +89,7 @@ function filesUnder(dir: string, out: string[] = []): string[] {
  *    파일 선택 대화상자다. 코퍼스 안 소비자는 `ContextAddMenu.tsx:78` 하나, 코퍼스
  *    밖은 `src/hooks/use-file-operations.ts:218`.
  *  - `revocationFor` — 코퍼스 안 소비자는 PluginMarketplace.tsx(:141
- *    `shownRevocation`) · PluginDetailTab.tsx(:203) · usePluginActions.ts(:183,:329).
+ *    `shownRevocation`) · PluginDetailTab.tsx(:203) · usePluginActions.ts(`handleInstall`·`handleUpdate`).
  *    그중 무엇도 직접 그리지 않는다: PluginMarketplace 는 결과를 불리언으로 줄여
  *    PluginBrowseList 경유 PluginCard 의 회수 배지 prop 으로 넘기고, PluginDetailTab
  *    은 계산한 RevocationEntry 를 PluginDetail 경유 PluginRevokedNotice 의 prop 으로

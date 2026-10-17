@@ -127,6 +127,7 @@
       "status": "implemented",
       "hasNodeView": true,
       "inputRules": ["```"],
+      "_note": "§394 A language a plugin renderer is bound to draws through RenderedCodeBlockView (same node, same markdown; the plugin's sanitized HTML/SVG in a shadow root, the source in the wrapped CodeMirror). The fence input rule types [a-z0-9-].",
       "shortcuts": { "Mod-Alt-c": "toggle code block" },
       "settings": [
         {

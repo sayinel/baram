@@ -166,6 +166,18 @@ export async function pluginIndexRead<T>(
 }
 
 /**
+ * §394 The note a plugin-rendered block's `data-note` link names — `path` relative to context
+ * `context`'s root. Resolves with the absolute path to open; rejects with a fixed sentence when
+ * the link names no existing note under that root (spec 0073 D11 ②). Host windows only.
+ */
+export async function pluginNoteLink(
+  context: string,
+  path: string,
+): Promise<string> {
+  return invoke<string>("plugin_note_link", { context, path });
+}
+
+/**
  * Install a staged plugin, atomically replacing any version already installed.
  *
  * The only destructive half, and the only thing it can destroy is the staged copy: Rust

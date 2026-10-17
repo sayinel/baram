@@ -13,7 +13,9 @@
 // the React-shaped parts — consent, the in-flight guard, and turning a transaction failure
 // into `setError` + `return false`.
 //
-// `handleToggleBuiltin` is the one addition, and it touches none of the above.
+// Enable/disable — `handleToggleEnabled` and `handleToggleBuiltin` — touches none of the
+// above and lives in `use-plugin-toggles.ts`; this hook composes it, so callers see one
+// return value.
 //
 // A `.ts` rather than a `.tsx` on purpose: `handleInstall` carries a template literal, and
 // `plugin-ui-i18n.test.tsx` scans only `.tsx` in this directory. The consent dialog's JSX
@@ -34,16 +36,19 @@ import { useShallow } from "zustand/shallow";
 import { useTranslation } from "../../i18n/useTranslation";
 import { pluginUninstall } from "../../ipc/plugin-invoke";
 import { devFolderHoldsId } from "../../plugins/dev-plugins";
-import { claimedConsent, consentRequired } from "../../plugins/plugin-consent";
 import {
-  activateBuiltin,
-  deactivateBuiltin,
-} from "../../plugins/plugin-lifecycle";
+  carryCodeBlocks,
+  claimedConsent,
+  codeBlockReask,
+  consentRequired,
+  recordedConsent,
+} from "../../plugins/plugin-consent";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import { revocationFor, revocationReason } from "../../plugins/revocation";
 import { usePluginStore } from "../../stores/system/plugin";
 import { floorRefusal, stageValidateAndCommit } from "./install-transaction";
 import { legacyEntryMessage } from "./legacy-entry-message";
+import { usePluginToggles } from "./use-plugin-toggles";
 
 /** What the consent dialog is currently asking about, if anything. */
 export interface PendingConsent {
@@ -76,8 +81,6 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
     addPlugin,
     removePlugin,
     revocations,
-    setBuiltinEnabled,
-    setEnabled,
     setError,
     setInstalling,
     clearUpdateAvailable,
@@ -88,15 +91,12 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
       installedPlugins: s.installedPlugins,
       removePlugin: s.removePlugin,
       revocations: s.revocations,
-      setBuiltinEnabled: s.setBuiltinEnabled,
-      setEnabled: s.setEnabled,
       setError: s.setError,
       setInstalling: s.setInstalling,
     })),
   );
 
-  /** Plugin ids whose enable/disable is in flight — see `handleToggleEnabled`. */
-  const togglingRef = useRef<Set<string>>(new Set());
+  const { handleToggleBuiltin, handleToggleEnabled } = usePluginToggles();
 
   // §260 Phase 5 — the install flow awaits a decision, so the dialog is modelled as a
   // promise the user resolves. The resolver lives in a ref rather than in state because
@@ -153,7 +153,9 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
    * Returns whether the plugin ended up installed, which `handleUpdate` needs and no
    * other caller uses.
    *
-   * `preApproved` is for the update path, which has already asked.
+   * `preApproved` is for the update path, which has already settled the registry claim —
+   * asking when the record did not cover it. Languages the download adds beyond it are asked
+   * about inside the transaction (§394).
    */
   const handleInstall = useCallback(
     async (
@@ -227,6 +229,15 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
               entry,
               consent,
               t,
+              // §394 spec 0073 D4 ① — the same dialog, now listing the languages the
+              // download draws; NEW marks what the record lacked. Approving it lets the
+              // commit go on.
+              async (declared) =>
+                (await askConsent({
+                  ...codeBlockReask(consent, declared),
+                  intent: preApproved ? "update" : "install",
+                  name: entry.name,
+                })) !== null,
             ));
           } catch (err) {
             setError(entry.id, String(err));
@@ -240,7 +251,8 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
           // compiler enforces it.
           const plugin: InstalledPlugin = {
             checksum,
-            consent,
+            // §394 spec 0073 D4 ③ — the committed manifest's languages, not the approved ones.
+            consent: recordedConsent(consent, committed.manifest),
             enabled: true,
             installedAt: Date.now(),
             installPath: committed.install_path,
@@ -369,7 +381,7 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
       // When the recorded consent already covers this version, record the CLAIMED shape
       // rather than carrying the old one forward — an update that drops a capability
       // must narrow the record too, or the grant outlives the version that needed it.
-      const consent =
+      const approved =
         reason === null
           ? claimed
           : await askConsent({
@@ -378,7 +390,13 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
               name: entry.name,
               prior,
             });
-      if (!consent) return;
+      if (!approved) return;
+      // §394 spec 0073 D4 ① — the record's languages ride on the APPROVED claim, as the base
+      // the post-download check compares the downloaded manifest's with. Not before: the
+      // dialog above has no manifest in hand, and listing the record's languages there would
+      // present them as the new version's. Not what gets recorded either: `handleInstall`
+      // records the committed manifest's (`recordedConsent`).
+      const consent = carryCodeBlocks(approved, prior);
 
       // ‼️ #261 — AN UPDATE IS NOW ONE OPERATION.
       //
@@ -406,77 +424,6 @@ export function usePluginActions(registryIndex: null | RegistryIndex) {
       setError,
       t,
     ],
-  );
-
-  const handleToggleEnabled = useCallback(
-    (id: string) => {
-      const plugin = installedPlugins[id];
-      if (!plugin) return;
-      // §260 3c-3 review (M5) — one toggle at a time. The store flips immediately, so
-      // a second click read the ALREADY-flipped value and called `unloadPlugin` while
-      // the load was still in flight; that unload early-returned (nothing in `loaded`
-      // yet), the load then completed, and the session ended with a running, granted
-      // sandbox that the UI showed as disabled and nothing would ever tear down.
-      if (togglingRef.current.has(id)) return;
-      togglingRef.current.add(id);
-      const done = () => togglingRef.current.delete(id);
-
-      const newEnabled = !plugin.enabled;
-      setEnabled(id, newEnabled);
-      if (newEnabled) {
-        pluginLoader
-          .loadPlugin(plugin.installPath, plugin.manifest)
-          .then(
-            // Clear the previous failure once the plugin loads. Same defect as the
-            // dev-plugin card: the error was written on failure and never removed, so
-            // a plugin the user has since fixed kept displaying why it once failed.
-            () => setError(id, null),
-            (err: unknown) => {
-              setError(id, String(err));
-              setEnabled(id, false);
-            },
-          )
-          .finally(done);
-      } else {
-        // `unloadPlugin` swallows a failed teardown by design (`unloadAll` must keep
-        // going) and reports it through `pluginErrors` itself — see the loader. This
-        // catch covers what still propagates: a synchronous throw from `teardown()`
-        // or from the UI sweep. Roll `enabled` back then, so the store never claims
-        // a plugin is off while it is still loaded (M3/L4).
-        pluginLoader
-          .unloadPlugin(id)
-          .catch((err: unknown) => {
-            setError(id, String(err));
-            setEnabled(id, true);
-          })
-          .finally(done);
-      }
-    },
-    [installedPlugins, setEnabled, setError],
-  );
-
-  /**
-   * §69 — 내장 토글. 설치본 토글과 같은 형태(스토어 먼저, 그다음 런타임)이지만
-   * 로더를 거치지 않는다: 내장은 디스크에 없고 `activateBuiltin`/`deactivateBuiltin`이
-   * 그 수명을 소유한다.
-   */
-  const handleToggleBuiltin = useCallback(
-    (id: string, nextEnabled: boolean) => {
-      if (togglingRef.current.has(id)) return;
-      togglingRef.current.add(id);
-      setBuiltinEnabled(id, nextEnabled);
-      const run = nextEnabled ? activateBuiltin(id) : deactivateBuiltin(id);
-      void run
-        .then(
-          () => setError(id, null),
-          (err: unknown) => {
-            setError(id, String(err));
-            setBuiltinEnabled(id, !nextEnabled);
-          },
-        )
-        .finally(() => togglingRef.current.delete(id));
-    },
-    [setBuiltinEnabled, setError],
   );
 
   return {

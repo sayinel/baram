@@ -5,6 +5,10 @@ import type {
   PluginSettingType,
 } from "./types";
 
+import {
+  checkCodeBlockCapability,
+  validateCodeBlocks,
+} from "./manifest-code-blocks";
 import { validateEntryPoints } from "./manifest-entry-points";
 import {
   isSafeSettingColor,
@@ -198,6 +202,15 @@ export function validateManifest(
       );
     }
   }
+
+  // §394 spec 0073 §4 — `codeblocks` and `contributions.codeBlocks` come together.
+  checkCodeBlockCapability(
+    obj.capabilities,
+    obj.contributions,
+    (field, message) => {
+      errors.push({ field, message });
+    },
+  );
 
   // tiptapExtensions (optional)
   if (obj.tiptapExtensions !== undefined) {
@@ -538,6 +551,16 @@ function validateContributions(
   // in the SAME commit") is discharged in `validateEntryPoints`: ids and commands both go
   // through `requireId`, and the command through `requireDeclaredCommand` above.
   validateEntryPoints({
+    entries,
+    rejectDuplicateIds,
+    report: (field, message) => {
+      errors.push({ field, message });
+    },
+    requireDeclaredCommand,
+    requireId,
+  });
+  // §394 spec 0073 D5 — `codeBlocks`, through the same borrowed checks as menu and slash.
+  validateCodeBlocks({
     entries,
     rejectDuplicateIds,
     report: (field, message) => {

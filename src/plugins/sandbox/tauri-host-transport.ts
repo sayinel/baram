@@ -17,6 +17,12 @@ import { pluginSandboxSend } from "../../ipc/plugin-invoke";
 import { logger } from "../../utils/logger";
 import { inputBoxProblem, quickPickProblem } from "../prompt-shape";
 import { MAX_UI_TEXT_CHARS } from "./protocol";
+import {
+  isActionResult,
+  isRenderGetSource,
+  isRenderInvalidate,
+  isRenderResult,
+} from "./render-frames";
 
 type Fields = Record<string, unknown>;
 
@@ -122,6 +128,7 @@ export async function createHostTransport(
 const FRAME_VALIDATORS: {
   [K in SandboxToHost["type"]]: (m: Fields) => boolean;
 } = {
+  actionResult: isActionResult,
   activateError: (m) => typeof m.error === "string",
   callResult: (m) =>
     typeof m.callId === "string" &&
@@ -135,9 +142,13 @@ const FRAME_VALIDATORS: {
       typeof r === "object" &&
       r !== null &&
       Array.isArray(r.commands) &&
-      Array.isArray(r.events)
+      Array.isArray(r.events) &&
+      (r.codeBlocks === undefined ||
+        (Array.isArray(r.codeBlocks) &&
+          r.codeBlocks.every((l) => typeof l === "string")))
     );
   },
+  renderResult: isRenderResult,
 };
 
 /**
@@ -177,6 +188,9 @@ const HOST_REQUEST_VALIDATORS: {
   // the sandbox pre-check exists: the author gets the specific reason there first.
   prompt_input_box: (r) => inputBoxProblem(r.opts) === null,
   prompt_quick_pick: (r) => quickPickProblem(r.items, r.opts) === null,
+  // §394 spec 0073 D13 · plan 0125 P11 — shapes in `render-frames.ts`.
+  render_get_source: isRenderGetSource,
+  render_invalidate: isRenderInvalidate,
   // §260 Phase 4c — carries nothing: WHICH fields exist is the host's answer, from the
   // manifest, so there is no key or field list here for a plugin to widen.
   settings_read: () => true,

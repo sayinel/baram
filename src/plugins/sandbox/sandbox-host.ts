@@ -4,7 +4,11 @@
 // (commands, not events — a plugin-* window holds no event permission, so there
 // is no session token to keep secret any more).
 import type { PluginContributions } from "../types";
-import type { HostToSandbox, SandboxToHost } from "./protocol";
+import type {
+  CodeBlockLangClaim,
+  HostToSandbox,
+  SandboxToHost,
+} from "./protocol";
 import type { HostRequestHandler } from "./sandbox-session";
 import type { SandboxTransport } from "./transport";
 
@@ -66,6 +70,8 @@ export class SandboxHost {
      * lifecycle manager with no knowledge of what a service does.
      */
     hostRequestHandler?: HostRequestHandler,
+    /** §394 — passed to `activate` (plan 0125 P10). */
+    codeBlockLangs?: CodeBlockLangClaim[],
   ): Promise<SandboxSession> {
     const existing = this.live.get(pluginId);
     if (existing) return existing.session;
@@ -85,7 +91,7 @@ export class SandboxHost {
     this.live.set(pluginId, entry);
     this.starting.delete(pluginId);
     try {
-      await session.activate(pluginId, declared);
+      await session.activate(pluginId, declared, codeBlockLangs);
       return session;
     } catch (err) {
       // Identity check (§260 3c-3 security review, M2), the same guard

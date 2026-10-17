@@ -1,7 +1,7 @@
 import type { PluginContributions } from "../../types";
 import type { HostToSandbox } from "../protocol";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { SandboxSession } from "../sandbox-session";
 import { createChannelPair } from "./channel-pair";
@@ -106,5 +106,40 @@ describe("SandboxSession (§260 host router)", () => {
     await Promise.resolve();
     await expect(pending).rejects.toThrow(/disposed/i);
     expect(got.some((m) => m.type === "deactivate")).toBe(true);
+  });
+
+  /** §394 plan 0125 Task 11 — commands and actions share one call table (`SandboxCalls`), so an
+   *  answer settles only an id whose prefix its frame type names. What fails this:
+   *  `SandboxCalls.settle` without the prefix check — the crossed answers would settle both calls.
+   *  The pair: each then settles by its own frame. */
+  it("settles a call only by the frame type its id names", async () => {
+    const { host, sandbox } = createChannelPair();
+    const s = new SandboxSession(host);
+    const command = vi.fn();
+    const action = vi.fn();
+    s.invokeCommand("c1").then(command, command);
+    s.invokeAction({ kind: "panel", panelId: "p" }, "go").then(action, action);
+    sandbox.send({ id: "call-1", ok: true, type: "actionResult" });
+    sandbox.send({
+      callId: "action-2",
+      ok: true,
+      type: "callResult",
+      value: "crossed",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(command).not.toHaveBeenCalled();
+    expect(action).not.toHaveBeenCalled();
+    sandbox.send({
+      callId: "call-1",
+      ok: true,
+      type: "callResult",
+      value: "own",
+    });
+    sandbox.send({ id: "action-2", ok: true, type: "actionResult" });
+    await vi.waitFor(() => {
+      expect(command).toHaveBeenCalledWith("own");
+      expect(action).toHaveBeenCalledWith(undefined);
+    });
+    s.dispose();
   });
 });

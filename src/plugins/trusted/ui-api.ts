@@ -18,6 +18,7 @@ import { useUIStore } from "../../stores/ui/ui";
 import { pluginSourceLabel } from "../plugin-text";
 import { usePluginUIStore } from "../plugin-ui-store";
 import { clearPromptGate } from "../prompt-gate";
+import { releaseCodeBlocks } from "../rendered/code-blocks-api";
 
 let uiItemCounter = 0;
 
@@ -160,11 +161,13 @@ export function createUIAPI(
 
 /**
  * Unregister the per-plugin host state a plugin leaves behind: status-bar items, injected
- * styles, an open prompt and its gate state (§385), and the refs it read (§388 — spec 0067
- * §7.4). Called on every unload path (`plugin-loader.ts`, `plugin-lifecycle.ts`).
+ * styles, an open prompt and its gate state (§385), its code block languages, renderers and
+ * cached renders (§394 — plan 0125 P24), and the refs it read (§388 — spec 0067 §7.4). Called
+ * on every unload path (`plugin-loader.ts`, `plugin-lifecycle.ts`).
  */
 export function unregisterPluginUI(pluginId: string): void {
   clearPromptGate(pluginId);
+  releaseCodeBlocks(pluginId);
   dropAnchors(pluginId);
   usePluginUIStore.getState().unregisterPlugin(pluginId);
   document.head

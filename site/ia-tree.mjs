@@ -123,6 +123,7 @@ export const TITLES = {
   "plugin-dev/context-ui-and-shadow-dom": "Context: UI and Shadow-DOM isolation",
   "plugin-dev/editable-file-viewers": "Editable file viewers",
   "plugin-dev/context-prompts": "Context: prompts",
+  "plugin-dev/code-blocks": "Code block renderers",
   "plugin-dev/context-ai-network-storage-settings": "Context: AI, network, storage, settings",
   "plugin-dev/commands-and-tiptap-extensions": "Command palette and Tiptap extensions",
   "plugin-dev/local-development-and-bundling": "Local development and bundling",
@@ -285,6 +286,8 @@ export const PAGES = [
   // §392 스펙 0071 §11 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
   { slug: "plugin-dev/editable-file-viewers" },
   { slug: "plugin-dev/context-prompts" },
+  // §394 스펙 0073 §9 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
+  { slug: "plugin-dev/code-blocks" },
   { slug: "plugin-dev/context-ai-network-storage-settings", src: PD, items: [
     "context.ai (requires ai)", "context.network (requires network)",
     "context.storage (requires storage)", "context.settings (requires settings)",
