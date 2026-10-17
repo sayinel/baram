@@ -13,6 +13,7 @@
 
 import { flushPendingVisibility } from "../../extensions/nodes/views/lazy-visible";
 import { drawDuePluginBlocks } from "../../plugins/rendered/due-redraws";
+import { flushInvalidationNotices } from "../../plugins/rendered/render-queue";
 import { isAuthoredMarkup } from "./export-authored-markup";
 
 /**
@@ -115,7 +116,15 @@ export async function settleHeavyBlocks(
 ): Promise<PendingBlock[]> {
   const { ceilingMs, pollMs, stallMs, wakeBatch } = { ...DEFAULTS, ...options };
 
-  let pending = pendingHeavyBlocks(root);
+  // §394 D12 — each read of what is pending delivers the pending `invalidate` notices first: a
+  // rendered block hears of an `invalidate` only through a notice coalesced for up to
+  // `INVALIDATE_COALESCE_MS`, and reads `done` until then.
+  const readPending = () => {
+    flushInvalidationNotices();
+    return pendingHeavyBlocks(root);
+  };
+
+  let pending = readPending();
   // Nothing deferred: a short document the reader has scrolled through costs
   // this call nothing at all, not even a tick.
   if (pending.length === 0) return pending;
@@ -135,7 +144,7 @@ export async function settleHeavyBlocks(
       flushPendingVisibility(wakeBatch, root) + drawDuePluginBlocks(root);
 
     await new Promise((resolve) => setTimeout(resolve, pollMs));
-    pending = pendingHeavyBlocks(root);
+    pending = readPending();
 
     const now = Date.now();
     // Read the comparison BEFORE updating the high-water mark — folding the two

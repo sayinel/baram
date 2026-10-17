@@ -107,6 +107,25 @@ describe("captureEditorHTML writes each rendered block's current drawing", () =>
     expect(templateOf(await capture)?.textContent).toBe("v2");
   });
 
+  /** Plan 0125 final review carry 37 — an `invalidate` moves the epoch at once, but a block hears
+   *  of it only through the notice, coalesced for `coalesceMs`, and until then it reads `done`.
+   *  Settle delivers pending notices before it reads (`flushInvalidationNotices`). The window is an
+   *  hour here, so "within the window" is not a timing claim. What fails this: a settle that does
+   *  not deliver them — the block reads `done`, settle returns at once, and `v1` is written. */
+  it("writes the new answer when the export comes before the invalidate notice", async () => {
+    __configureRenderQueue({ coalesceMs: 3_600_000 });
+    let version = 1;
+    bindChart(async () => ({ html: `<p>v${version}</p>` }));
+    const editor = editorWith("Para.\n\n```chart\nX\n```\n\nEnd.\n");
+    showAll();
+    const root = rootOf(editor);
+    await vi.waitFor(() => expect(root.dataset.renderState).toBe("done"));
+    version = 2;
+    invalidateRenders("p");
+    expect(root.dataset.renderState).toBe("done");
+    expect(templateOf(await exported(editor))?.textContent).toBe("v2");
+  });
+
   /** Leaving source editing draws the edited source at once, on screen — and the export taken in
    *  that moment waits for it. The renderer is held open by hand, so "not finished while held" is a
    *  fact of the code, not of timing: settle's stall budget is 15 s. What fails this: a view that

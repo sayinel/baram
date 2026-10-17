@@ -21,9 +21,16 @@ pub async fn plugin_note_link<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<String, String> {
     note_link(&app, &context, &path).await.map_err(|reason| {
-        log::warn!("[plugin note link] refused \"{path}\" in context \"{context}\": {reason}");
+        log::warn!("{}", refusal_line(&path, &context, &reason));
         NOT_A_NOTE.to_string()
     })
+}
+
+/// The log line of a refusal. `path` is a sandboxed plugin's text (`data-note`), and a reason can
+/// repeat it — the gate's reason for a `..` path quotes the path as written — so all three are
+/// written escaped (`{:?}`): a line break in them cannot start a line of its own in the app log.
+fn refusal_line(path: &str, context: &str, reason: &str) -> String {
+    format!("[plugin note link] refused {path:?} in context {context:?}: {reason:?}")
 }
 
 /// The judgement, with the reason kept for the log and the tests. In order: a directory context
@@ -42,10 +49,10 @@ async fn note_link<R: tauri::Runtime>(
         .state::<ContextManager>()
         .registered(context)
         .await
-        .ok_or_else(|| format!("unknown context \"{context}\""))?;
+        .ok_or_else(|| format!("unknown context {context:?}"))?;
     match registered.info.context_type {
         ContextType::Vault | ContextType::Folder => {}
-        ContextType::File => return Err(format!("context \"{context}\" is a single file")),
+        ContextType::File => return Err(format!("context {context:?} is a single file")),
     }
     let canonical = super::plugin_cmd::check_plugin_file_path(app, Some(context), path).await?;
     let relative = canonical
@@ -56,7 +63,7 @@ async fn note_link<R: tauri::Runtime>(
         .and_then(|name| name.to_str())
         .unwrap_or_default();
     if !crate::fs::is_note_name(name) {
-        return Err(format!("\"{name}\" is not a note"));
+        return Err(format!("{name:?} is not a note"));
     }
     let metadata = tokio::fs::metadata(&canonical)
         .await
@@ -170,6 +177,28 @@ mod tests {
             plugin_note_link("ctx".into(), "page.html".into(), handle.clone()).await,
             Err(NOT_A_NOTE.to_string())
         );
+    }
+
+    /// §394 plan 0125 final review M2 — `path` is a sandboxed plugin's text, and a reason can
+    /// repeat it: the gate's reason for a `..` path quotes it as written (the positive half below —
+    /// the reason does hold the line break). What fails this: a log line that writes `path`,
+    /// `context` or the reason with Display (a line break in `data-note` would start a forged line in
+    /// the app log), or a reason of this file's that writes the file name with Display.
+    #[tokio::test]
+    async fn a_refusal_is_logged_on_one_line_whatever_the_link_holds() {
+        let app = app_with_states();
+        let (_dir, _root) = folder_with(&app, "ctx", NOTES).await;
+        let handle = app.handle();
+        let path = "../x\n[forged] line";
+        let reason = note_link(handle, "ctx", path).await.unwrap_err();
+        assert!(reason.contains('\n'), "{reason}");
+        let line = refusal_line(path, "ctx\n[forged]", &reason);
+        assert!(!line.contains('\n'), "{line}");
+        assert!(line.contains(r"\n[forged] line"), "{line}");
+        let reason = note_link(handle, "ctx", "notes/a\n.html")
+            .await
+            .unwrap_err();
+        assert!(!reason.contains('\n'), "{reason}");
     }
 
     /// §394 spec D11 ② "루트 밖을 가리키는 심볼릭 링크" — a link under context A that leads into

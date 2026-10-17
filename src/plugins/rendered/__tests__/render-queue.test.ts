@@ -10,6 +10,7 @@ import { MAX_RENDER_ERROR_CHARS, MAX_RENDERED_HTML_BYTES } from "../limits";
 import {
   __configureRenderQueue,
   __resetRenderQueue,
+  flushInvalidationNotices,
   forgetPluginRenders,
   invalidateRenders,
   onRendersInvalidated,
@@ -294,6 +295,32 @@ describe("epochs — an answer from before an invalidate, an unload or a disable
     invalidateRenders("p");
     await vi.advanceTimersByTimeAsync(250);
     expect(notices[1]).toEqual(["p", null]);
+  });
+
+  /** Plan 0125 final review carry 37 — export's settle delivers a pending notice at once
+   *  (`flushInvalidationNotices`), with what it has gathered, and its timer then delivers nothing
+   *  more. What fails this: a flush that waits for the window, one that leaves the timer to deliver
+   *  the same notice again, or one that drops the languages. The pair: with nothing pending a
+   *  flush delivers nothing. */
+  it("delivers pending notices on a flush, once", async () => {
+    vi.useFakeTimers();
+    __configureRenderQueue({ coalesceMs: 250 });
+    const notices: Array<[string, null | string[]]> = [];
+    onRendersInvalidated((pluginId, langs) =>
+      notices.push([pluginId, langs && [...langs].sort()]),
+    );
+    flushInvalidationNotices();
+    expect(notices).toEqual([]);
+    invalidateRenders("p", "x");
+    invalidateRenders("p", "y");
+    invalidateRenders("q");
+    flushInvalidationNotices();
+    expect(notices).toEqual([
+      ["p", ["x", "y"]],
+      ["q", null],
+    ]);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(notices).toHaveLength(2);
   });
 });
 

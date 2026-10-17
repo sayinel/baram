@@ -43,7 +43,12 @@ describe("sanitizePluginCss — resources", () => {
 });
 
 describe("sanitizePluginCss — at-rules", () => {
-  /** What fails this: an at-rule allowlist that compares the raw name or lists more than four. */
+  /** This `it.each` — the refusals. Each at-rule named here is outside the allowlist of four. What
+   *  fails this: an allowlist that admits any of them (measured: adding each name to it turns its
+   *  own rows red and no other). `@scope` above all (plan 0125 final review M1): in a shadow root's
+   *  `<style>`, `@scope { :scope {…} }` styles the shadow HOST, its `!important` beating the host's
+   *  inline style (Chrome 155, measured) — the reach `:host` is refused for. An at-rule not named
+   *  here is not pinned. */
   it.each([
     "@import url(x.css);",
     "@\\69 mport 'x';",
@@ -52,10 +57,16 @@ describe("sanitizePluginCss — at-rules", () => {
     "@layer x{a{color:red}}",
     "@namespace svg url(x);",
     "@page{margin:0}",
+    "@scope{:scope{color:red}}",
+    "@starting-style{a{opacity:0}}",
+    "@counter-style x{system:cyclic;symbols:a}",
+    "@font-feature-values Font One{font-display:swap}",
   ])("%s → atRuleNotAllowed", (css) => {
     expect(code(css)).toBe("atRuleNotAllowed");
   });
 
+  /** The pair, this `it.each`: the four allowed at-rules pass. Its `@MEDIA` row is the one that
+   *  fails an allowlist compared by the raw name instead of the decoded one (`cssName`). */
   it.each([
     "@media (min-width:1px){a{color:red}}",
     "@MEDIA print{a{color:red}}",

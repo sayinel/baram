@@ -97,6 +97,16 @@ export function __resetRenderQueue(): void {
 }
 
 /**
+ * Deliver every pending `invalidate` notice now rather than when its `coalesceMs` runs out (D12 ·
+ * plan 0125 final review carry 37). Export's settle calls this before it reads which blocks are
+ * done: an `invalidate` moves the epoch at once, but a block hears of it only through the notice,
+ * and until then it still reads `done` — the export would write the drawing from before it.
+ */
+export function flushInvalidationNotices(): void {
+  for (const pluginId of [...notices.keys()]) deliverNotice(pluginId);
+}
+
+/**
  * A renderer bound to `lang`, or unbound (D6 · D7): the language's epoch moves and its cache entries
  * go, with no notice — the registry's own change rebuilds the blocks. The cache key holds no
  * renderer, so without this a renderer registered again would be served the previous one's answers.
@@ -123,7 +133,8 @@ export function forgetPluginRenders(pluginId: string): void {
 
 /**
  * `ctx.codeBlocks.invalidate` (D7): the epoch moves now and the cache entries go now; the views hear
- * one notice per `coalesceMs` per plugin — visible blocks draw again, the rest are marked stale.
+ * one notice per `coalesceMs` per plugin, or sooner when export flushes it
+ * (`flushInvalidationNotices`) — visible blocks draw again, the rest are marked stale.
  * `lang` omitted means every language of the plugin.
  */
 export function invalidateRenders(pluginId: string, lang?: string): void {
@@ -135,16 +146,10 @@ export function invalidateRenders(pluginId: string, lang?: string): void {
     else pending.langs?.add(lang);
     return;
   }
-  const notice = {
+  notices.set(pluginId, {
     langs: lang === undefined ? null : new Set([lang]),
-    timer: setTimeout(() => {
-      notices.delete(pluginId);
-      for (const listener of [...invalidationListeners]) {
-        listener(pluginId, notice.langs);
-      }
-    }, settings.coalesceMs),
-  };
-  notices.set(pluginId, notice);
+    timer: setTimeout(() => deliverNotice(pluginId), settings.coalesceMs),
+  });
 }
 
 /** Hear coalesced `invalidate` notices: `langs` is `null` for "every language". */
@@ -164,7 +169,8 @@ export function onRendersInvalidated(
  * a fixed sentence or the renderer's own message, flattened and capped (§6). The request belongs to
  * the epoch in force when it is MADE (D7): when that epoch moves before the renderer is called — while
  * the source is hashed, or while the request waits for a slot — it calls nothing and comes back
- * `stale`. It never rejects: anything thrown on the way is a `failed` outcome.
+ * `stale`. It never rejects: a throw comes back `failed`, except the renderer's own throw or its
+ * timeout when the epoch moved meanwhile, which comes back `stale` (`render`'s `catch`).
  */
 export async function requestRender(
   binding: RenderTarget,
@@ -201,6 +207,17 @@ async function cacheKey(
     info.path ?? "",
     hash,
   ].join("\u0000");
+}
+
+/** `pluginId`'s pending notice, if any, to every listener — its timer cleared, so it comes once. */
+function deliverNotice(pluginId: string): void {
+  const notice = notices.get(pluginId);
+  if (notice === undefined) return;
+  clearTimeout(notice.timer);
+  notices.delete(pluginId);
+  for (const listener of [...invalidationListeners]) {
+    listener(pluginId, notice.langs);
+  }
 }
 
 function dropCache(match: (entry: CacheEntry) => boolean): void {

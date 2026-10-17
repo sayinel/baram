@@ -48,7 +48,8 @@ export interface SanitizedMarkup {
   /** Element and text nodes in `fragment` — the measure the cap uses. */
   nodes: number;
   /**
-   * Elements and attributes DOMPurify removed — logged in a development build only (§6). A LOWER
+   * Elements and attributes DOMPurify removed — logged while developer mode is on (§6, §379: a dev
+   * build, or the user's switch in a release build — `toDrawable` in `render-queue.ts`). A LOWER
    * bound: DOMPurify 3.4.16 (no `FORCE_BODY`) parses the input as a document and returns its
    * `<body>`, so what the HTML parser puts into `<head>` — any element the parser's in-head rules
    * take at the start of the input, `<script>`, `<style>`, `<link>`, `<meta>`, `<base>`, `<title>`
