@@ -252,12 +252,26 @@ describe("handleRenderedClicks", () => {
     ).toBe(true);
   });
 
-  /** The disposer removes both listeners. */
-  it("stops routing after dispose", () => {
-    const { handlers, shadow } = block('<a data-note="n.md">n</a>');
-    handleRenderedClicks(shadow, handlers, always)();
+  /** The disposer removes the three listeners: the two clicks' and the drag refusal's. The pair of
+   *  the drag half: before it, a `dragstart` on plain content is prevented (plan 0125 final review
+   *  I1 — the output is never a drag source; the rendered view's row shows why). */
+  it("stops routing, and refusing drags, after dispose", () => {
+    const { handlers, shadow } = block('<a data-note="n.md">n</a><p>plain</p>');
+    const dragRefused = () => {
+      const event = new Event("dragstart", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      shadow.querySelector("p")!.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const dispose = handleRenderedClicks(shadow, handlers, always);
+    expect(dragRefused()).toBe(true);
+    dispose();
     click(shadow.querySelector("a")!);
     click(shadow.querySelector("a")!, "auxclick");
     expect(handlers.note).not.toHaveBeenCalled();
+    expect(dragRefused()).toBe(false);
   });
 });

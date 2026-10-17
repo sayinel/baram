@@ -452,7 +452,88 @@ describe("pointer and source editing (D17)", () => {
     toggle.click();
     expect(seen()).toEqual(["rendered", "Show source"]);
   });
+
+  /** Plan 0125 final review I1 — a drag that starts on the output. A code block is not `draggable`, so
+   *  ProseMirror given such a `dragstart` drags the editor's SELECTION — here text in another
+   *  paragraph, as a move — and a drop then moves it (cf0e17ea: `SELECTED` landed after `last
+   *  paragraph`). Two halves, one assertion each: the output is never a drag source
+   *  (`handleRenderedClicks` prevents its `dragstart` — `defaultPrevented`), and `stopEvent`
+   *  answers `true` to a drag event in the shadow tree (`stopped`). Either half alone keeps this
+   *  `dragstart` from ProseMirror, which skips an event whose default is prevented
+   *  (`eventBelongsToView`) — so `view.dragging` and the text go red only with both missing
+   *  (measured: ablating one half turns only its own assertion red). What fails this: either half
+   *  missing. The pair is the click row above: a plain press on the output is still ProseMirror's. */
+  it("starts no drag from the output, and a drop leaves the selected text in place", async () => {
+    bind("chart", async () => ({
+      html: '<img src="data:image/png;base64,AAAA" alt="x">',
+    }));
+    const md = "alpha SELECTED omega\n\n```chart\nA\n```\n\nlast paragraph\n";
+    const editor = editorWith(md);
+    showAll();
+    const root = rootOf(editor);
+    await vi.waitFor(() => expect(root.dataset.renderState).toBe("done"));
+    const from = 1 + "alpha ".length;
+    editor.commands.setTextSelection({ from, to: from + "SELECTED".length });
+    const view = nodeViewOf(root);
+    const img = root
+      .querySelector(".plugin-block-host")!
+      .shadowRoot!.querySelector("img")!;
+    const at = blockPos(editor, "chart");
+    const posAtCoords = vi
+      .spyOn(editor.view, "posAtCoords")
+      .mockReturnValue({ inside: at, pos: at + 1 });
+    let stopped: boolean | undefined;
+    root.addEventListener(
+      "dragstart",
+      (event) => {
+        stopped = view.stopEvent(event);
+      },
+      { once: true },
+    );
+    const press = { bubbles: true, button: 0, cancelable: true };
+    img.dispatchEvent(
+      new MouseEvent("mousedown", { ...press, composed: true }),
+    );
+    const dataTransfer = fakeDataTransfer();
+    const dragstart = dragEvent("dragstart", dataTransfer);
+    img.dispatchEvent(dragstart);
+    expect(dragstart.defaultPrevented).toBe(true);
+    expect(stopped).toBe(true);
+    expect(editor.view.dragging).toBeNull();
+    posAtCoords.mockReturnValue({
+      inside: -1,
+      pos: editor.state.doc.content.size - 1,
+    });
+    editor.view.dom.lastElementChild!.dispatchEvent(
+      dragEvent("drop", dataTransfer),
+    );
+    expect(prosemirrorToMarkdown(editor.state.doc)).toBe(md);
+    // Ends ProseMirror's press away from the editor, so it leaves no listener on `document`.
+    document.dispatchEvent(new MouseEvent("mouseup", press));
+  });
 });
+
+/** jsdom has no `DragEvent`: a bubbling, composed `Event` carrying what ProseMirror's drag
+ *  handlers read — a `DataTransfer` stand-in and the pointer's coordinates. */
+function dragEvent(type: string, dataTransfer: object): Event {
+  return Object.assign(
+    new Event(type, { bubbles: true, cancelable: true, composed: true }),
+    { clientX: 5, clientY: 5, dataTransfer },
+  );
+}
+
+/** The `DataTransfer` members ProseMirror's `dragstart` and `drop` touch. */
+function fakeDataTransfer() {
+  const data = new Map<string, string>();
+  return {
+    clearData: () => data.clear(),
+    effectAllowed: "",
+    files: [],
+    getData: (type: string) => data.get(type) ?? "",
+    setData: (type: string, value: string) => void data.set(type, value),
+    types: [],
+  };
+}
 
 describe("render lifetime (D7)", () => {
   /** What fails this: drawing before the block is near the viewport (a hidden tab would render),

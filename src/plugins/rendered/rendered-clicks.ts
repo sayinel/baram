@@ -11,6 +11,11 @@
 // `contextmenu` was prevented; WebKit is not measured), and UI Events fires one for every
 // non-primary button. Every press on a host-owned element has its default prevented, routed or
 // not.
+//
+// Drags (plan 0125 final review I1): plugin output is never a drag source — its `dragstart` is prevented —
+// and a drag event in the shadow tree is the host's (`hostOwnsPointerEvent`). A code block is not
+// `draggable`, so ProseMirror given such a `dragstart` drags the editor's selection, which may be
+// text elsewhere in the note, and a drop moves it.
 
 import { isAllowedLinkHref } from "../../utils/link-href";
 import { MAX_ACTION_CHARS } from "./limits";
@@ -34,8 +39,9 @@ const PRIMARY_BUTTON = 0;
 const MIDDLE_BUTTON = 1;
 
 /**
- * Wire `shadow`'s clicks to `handlers`. Returns the disposer. `isUserInput` is injectable because
- * a test cannot make a trusted event; production uses `isTrusted`.
+ * Wire `shadow`'s clicks to `handlers`, and refuse every drag that starts in it. Returns the
+ * disposer. `isUserInput` is injectable because a test cannot make a trusted event; production uses
+ * `isTrusted`.
  */
 export function handleRenderedClicks(
   shadow: ShadowRoot,
@@ -55,22 +61,41 @@ export function handleRenderedClicks(
       route(target, handlers, false);
     }
   };
+  const refuseDrag = (event: Event) => event.preventDefault();
   shadow.addEventListener("click", listener);
   shadow.addEventListener("auxclick", listener);
+  shadow.addEventListener("dragstart", refuseDrag);
   return () => {
     shadow.removeEventListener("click", listener);
     shadow.removeEventListener("auxclick", listener);
+    shadow.removeEventListener("dragstart", refuseDrag);
   };
+}
+
+/**
+ * Whether a pointer event (P28) is the host's rather than ProseMirror's — what the rendered view's
+ * `stopEvent` asks. A `drag*` event is the host's when its composed path crosses `shadow` (I1:
+ * the output starts no drag, and ProseMirror must not take one there); any other pointer event,
+ * `mousedown` included, when `hostOwnedTarget` finds an element — so a press on a link does not
+ * move the selection (plan 0125 Task 10). Ask it from a listener, as `hostOwnedTarget`.
+ */
+export function hostOwnsPointerEvent(
+  event: Event,
+  shadow: ShadowRoot,
+): boolean {
+  if (event.type.startsWith("drag")) {
+    return event.composedPath().includes(shadow);
+  }
+  return hostOwnedTarget(event, shadow) !== null;
 }
 
 /**
  * The element of `event`'s composed path, inside `shadow`, that makes the click the host's: the
  * nearest one carrying `data-note` or `data-action`, or an `<a>` (HTML or SVG) with an href. `null`
- * means the click is ProseMirror's (D17). Exported for the rendered view's `stopEvent` to ask of
- * every pointer event, `mousedown` included, so a press on a link does not move the selection
- * (plan 0125 Task 10, P28). The composed path is empty once a dispatch has ended: ask it from a
- * listener. Only the part of the path before `shadow` is read — a press whose path does not cross
- * `shadow` (the root's own box, the error line) is `null` whatever its light-DOM ancestors carry.
+ * means the click is ProseMirror's (D17). The click listener and `hostOwnsPointerEvent` ask it. The
+ * composed path is empty once a dispatch has ended: ask it from a listener. Only the part of the
+ * path before `shadow` is read — a press whose path does not cross `shadow` (the root's own box,
+ * the error line) is `null` whatever its light-DOM ancestors carry.
  */
 export function hostOwnedTarget(
   event: Event,

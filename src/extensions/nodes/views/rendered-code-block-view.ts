@@ -47,7 +47,7 @@ import {
 } from "../../../plugins/rendered/rendered-body";
 import {
   handleRenderedClicks,
-  hostOwnedTarget,
+  hostOwnsPointerEvent,
 } from "../../../plugins/rendered/rendered-clicks";
 import { watchVisibility } from "../../../plugins/rendered/visibility";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -256,9 +256,9 @@ export class RenderedCodeBlockView implements NodeView {
    * D17 · plan 0125 P28 — in source mode the wrapped CodeMirror owns its events, as before (its
    * `stopEvent` answers `true` to every event). In rendered mode the event's kind decides:
    *  - a POINTER event follows the pointer model: a press on the chrome, a link or a `data-action`
-   *    element is the host's (`hostOwnedTarget`, which reads the composed path into the shadow
-   *    tree), and any other press is ProseMirror's — a click then reaches the generation plugin's
-   *    `handleClickOn`, which selects the node and so opens source editing
+   *    element, and a drag in the shadow tree, is the host's (`hostOwnsPointerEvent`, which reads
+   *    the composed path), and any other press is ProseMirror's — a click then reaches the
+   *    generation plugin's `handleClickOn`, which selects the node and so opens source editing
    *    (`code-block-render-generation.ts`);
    *  - EVERY OTHER event — keys, text input, composition, focus, clipboard — is the island's when
    *    its composed path runs through this view's shadow root, chrome or error line: a key on a
@@ -281,7 +281,7 @@ export class RenderedCodeBlockView implements NodeView {
     if (event.target instanceof Node && this.chrome.contains(event.target)) {
       return true;
     }
-    return hostOwnedTarget(event, this.shadow) !== null;
+    return hostOwnsPointerEvent(event, this.shadow);
   }
 
   /**
