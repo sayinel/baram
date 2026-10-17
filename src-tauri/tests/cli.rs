@@ -277,6 +277,31 @@ fn a_config_that_cannot_be_read_is_a_warning_and_the_command_still_runs() {
     );
 }
 
+/// A warning repeats what config.json holds, and a hand-edited value can hold a newline.
+/// What fails this: the text form written unescaped — `error: injected` would be a line
+/// of its own, read as an error the command did not have.
+#[test]
+fn a_config_value_with_a_newline_is_one_warning_line() {
+    let sb = sandbox();
+    write_config(
+        &sb,
+        &[(
+            "baram:context",
+            serde_json::json!({ "version": 1, "state": { "contexts": [
+                { "id": "odd", "contextType": "odd\nerror: injected", "path": sb.vault,
+                  "label": "odd" }
+            ], "activeContextId": null } }),
+        )],
+    );
+    let text = baram(&sb, &sb.home, &["vaults"]);
+    assert_eq!(text.code, 0, "stderr: {}", text.stderr);
+    assert_eq!(
+        text.stderr,
+        "warning: baram:context: contexts[0] has an unknown contextType \
+         `odd\\nerror: injected`\n"
+    );
+}
+
 #[test]
 fn baram_log_sends_diagnostics_to_stderr_and_only_when_asked() {
     let sb = sandbox();
