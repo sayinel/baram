@@ -596,6 +596,38 @@ describe("render lifetime (D7)", () => {
     );
     expect(render).toHaveBeenCalledTimes(2);
   });
+
+  /** D6 — a view in an editor outside the surface registry (the journal capture editor's) is not
+   *  rebuilt when its binding goes, so it must not draw through that binding. The queue cannot
+   *  tell: a request made after the dispose reads the epoch the dispose already moved. What fails
+   *  this: a `draw` without the binding check — the disposed renderer is called again. The
+   *  control: the same notice draws the plugin's other language, still bound, through the same
+   *  queue. The chart view comes first in the notice's listeners, so its request, had it been
+   *  made, starts first on the same path; the row waits 50 ms more after the control's call. */
+  it("does not draw through a binding that is gone, in an editor no registry change reaches", async () => {
+    const gone = vi.fn(async () => ({ html: "<p>gone</p>" }));
+    const kept = vi.fn(async () => ({ html: "<p>kept</p>" }));
+    const registration = bind("chart", gone);
+    bind("graph", kept);
+    const editor = editorWith(
+      "intro\n\n```chart\nA\n```\n\n```graph\nG\n```\n",
+    );
+    showAll();
+    await vi.waitFor(() => {
+      expect(gone).toHaveBeenCalledTimes(1);
+      expect(kept).toHaveBeenCalledTimes(1);
+    });
+    const chart = editor.view.dom.querySelector('[data-lang="chart"]');
+    registration.dispose();
+    // The premise: no surface, so the view was not rebuilt and still holds the disposed binding.
+    expect(editor.view.dom.querySelector('[data-lang="chart"]')).toBe(chart);
+    invalidateRenders("p");
+    await vi.waitFor(() => expect(kept).toHaveBeenCalledTimes(2), {
+      timeout: 2_000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gone).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("the note a block is told (P29)", () => {

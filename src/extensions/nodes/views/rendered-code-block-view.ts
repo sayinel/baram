@@ -331,6 +331,14 @@ export class RenderedCodeBlockView implements NodeView {
    */
   private draw(): void {
     if (this.destroyed) return;
+    // D6 — a binding that is gone is never called. In an editor surface the registry's change has
+    // already rebuilt this view; the journal capture editor is not one, so there this view outlives
+    // its binding, and the queue cannot tell — a request made after the dispose reads the epoch
+    // the dispose moved. The block stays stale until its node changes (`update` rebuilds it).
+    if (codeBlockRendererFor(this.binding.lang) !== this.binding) {
+      this.stale = true;
+      return;
+    }
     const info = this.info();
     if (info === null) {
       this.stale = true;
@@ -361,7 +369,7 @@ export class RenderedCodeBlockView implements NodeView {
           // The plugin's epoch moved under this render: an invalidate notice follows, or the
           // registry's change rebuilds this view — in an editor surface (`editor-surfaces.ts`).
           // The journal capture editor is not one: there this view keeps its binding until the
-          // block's node changes, and draws again only when it is next asked to.
+          // block's node changes, and a later `draw` does not call a binding that is gone.
           return;
       }
       this.dom.dataset.renderState = "done";
