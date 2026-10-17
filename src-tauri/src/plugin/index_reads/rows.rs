@@ -207,7 +207,7 @@ pub(super) fn tasks(
             created: entry.created,
             done: entry.done,
             due: entry.due,
-            line: entry.line + 1,
+            line: entry.line.saturating_add(1),
             links: entry.links,
             path: form.write(root, RowPath::Absolute(&entry.path))?,
             priority: entry.priority,

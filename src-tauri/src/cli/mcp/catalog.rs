@@ -10,6 +10,9 @@ use crate::cli::ops_notes::{TagRow, TaskRow};
 use crate::cli::ops_search::SearchRow;
 use rmcp::handler::server::common::schema_for_output;
 use rmcp::model::{JsonObject, Tool, ToolAnnotations};
+use schemars::transform::{RecursiveTransform, Transform};
+use schemars::Schema;
+use serde_json::Value;
 use std::sync::Arc;
 
 /// What `tools/list` says about a tool.
@@ -250,7 +253,7 @@ impl ToolName {
     }
 
     fn output_schema(self) -> Arc<JsonObject> {
-        match self {
+        portable(match self {
             ToolName::ListVaults => schema_for_output::<VaultList>(),
             ToolName::ListFiles | ToolName::NotesWithTag => schema_for_output::<Page<PathRow>>(),
             ToolName::ReadNote => schema_for_output::<NoteText>(),
@@ -259,7 +262,119 @@ impl ToolName {
             ToolName::ListTasks => schema_for_output::<Page<TaskRow>>(),
             ToolName::Backlinks => schema_for_output::<Page<BacklinkRow>>(),
             ToolName::OutgoingLinks => schema_for_output::<Page<LinkRow>>(),
+        })
+    }
+}
+
+/// Keywords of JSON Schema 2020-12 that a value of another type passes: the validation
+/// keywords for numbers, strings, arrays and objects (§6.2–§6.5 of the validation spec), the
+/// applicators to the items of an array and the properties of an object (§10.3.1–§10.3.2 of
+/// the core spec), and `format`, an annotation under the default vocabulary. Beside a `type` array
+/// that allows null, a null passes each of these, so they mean the same inside the non-null
+/// branch of an `anyOf`. A keyword of that kind left out of the list only leaves a schema
+/// beside it as it is.
+const ONE_TYPE_KEYWORDS: &[&str] = &[
+    "format",
+    "multipleOf",
+    "maximum",
+    "exclusiveMaximum",
+    "minimum",
+    "exclusiveMinimum",
+    "maxLength",
+    "minLength",
+    "pattern",
+    "items",
+    "prefixItems",
+    "contains",
+    "maxItems",
+    "minItems",
+    "uniqueItems",
+    "maxContains",
+    "minContains",
+    "properties",
+    "patternProperties",
+    "additionalProperties",
+    "propertyNames",
+    "maxProperties",
+    "minProperties",
+    "required",
+    "dependentRequired",
+];
+
+/// An output schema as schemars writes it, with the two forms `impl-notes/0094` found
+/// clients read badly written another way: a field that can be null is `anyOf` its type
+/// and null instead of a `type` array (MCP Inspector's `--strict` warns about the array,
+/// which a client translating the schema into a dialect with one `type` per schema can
+/// refuse), and an integer has no `format` (Claude Code warns about `uint`, `uint32` and
+/// `int8`, which it does not know). The `minimum` beside each keeps its lower bound, and
+/// `int8`'s `maximum` its upper; the upper bound `uint32` or `uint` stood for goes with the
+/// format — a bound no validator checked, since `format` is an annotation.
+fn portable(schema: Arc<JsonObject>) -> Arc<JsonObject> {
+    let mut rewritten = Schema::from(schema.as_ref().clone());
+    RecursiveTransform(one_type_per_schema).transform(&mut rewritten);
+    // A schema made from an object stays one: the transform only rewrites its keys.
+    rewritten
+        .as_object()
+        .cloned()
+        .map(Arc::new)
+        .unwrap_or(schema)
+}
+
+/// The keywords that describe a field and constrain no value (2020-12's meta-data
+/// vocabulary, and `$comment`): they stay on the field when its `type` array is split.
+const ANNOTATIONS: &[&str] = &[
+    "title",
+    "description",
+    "default",
+    "deprecated",
+    "readOnly",
+    "writeOnly",
+    "examples",
+    "$comment",
+];
+
+/// `{"type": [T, "null"], …}` becomes `{"anyOf": [{"type": T, …}, {"type": "null"}]}`:
+/// the keywords of `ONE_TYPE_KEYWORDS` move into T's branch and the `ANNOTATIONS` stay on
+/// the field. A `type` array of another shape, or one beside any other keyword (a null
+/// might not pass it), is left as it is — and
+/// `output_schemas_hold_no_type_array_and_no_integer_format` fails on it. An integer
+/// schema loses its `format`.
+fn one_type_per_schema(schema: &mut Schema) {
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+    let other = match object.get("type") {
+        Some(Value::Array(types)) => match types.as_slice() {
+            [other, null] | [null, other] if *null == "null" && *other != "null" => {
+                Some(other.clone())
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    let splits = object.keys().all(|key| {
+        key == "type"
+            || ONE_TYPE_KEYWORDS.contains(&key.as_str())
+            || ANNOTATIONS.contains(&key.as_str())
+    });
+    if let (Some(other), true) = (other, splits) {
+        object.remove("type");
+        let mut branch = JsonObject::new();
+        branch.insert("type".to_string(), other);
+        for key in ONE_TYPE_KEYWORDS {
+            if let Some(value) = object.remove(*key) {
+                branch.insert((*key).to_string(), value);
+            }
         }
+        let mut null = JsonObject::new();
+        null.insert("type".to_string(), Value::from("null"));
+        object.insert(
+            "anyOf".to_string(),
+            Value::Array(vec![Value::Object(branch), Value::Object(null)]),
+        );
+    }
+    if object.get("type").and_then(Value::as_str) == Some("integer") {
+        object.remove("format");
     }
 }
 
@@ -296,6 +411,83 @@ mod tests {
             assert_eq!(shown["inputSchema"]["type"], "object", "{shown}");
             assert_eq!(shown["outputSchema"]["type"], "object", "{shown}");
         }
+    }
+
+    /// Every schema object in `value` with the path to it, `value` itself first.
+    fn schema_objects<'a>(
+        value: &'a serde_json::Value,
+        at: String,
+        found: &mut Vec<(String, &'a serde_json::Map<String, serde_json::Value>)>,
+    ) {
+        match value {
+            serde_json::Value::Object(object) => {
+                found.push((at.clone(), object));
+                for (key, inner) in object {
+                    schema_objects(inner, format!("{at}/{key}"), found);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for (index, inner) in items.iter().enumerate() {
+                    schema_objects(inner, format!("{at}/{index}"), found);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A field that can be null says so with `anyOf`, and no integer carries a `format`
+    /// (`impl-notes/0094`): MCP Inspector's `--strict` warns about a `type` array, which a
+    /// client translating the schema into a dialect with one `type` per schema can refuse,
+    /// and Claude Code warns about `uint`, `uint32` and `int8`, formats it does not know.
+    /// The walk visits every object in each schema, so a field added later is held too.
+    /// What fails this: the output schemas served as schemars writes them.
+    #[test]
+    fn output_schemas_hold_no_type_array_and_no_integer_format() {
+        for tool in definitions() {
+            let shown = serde_json::to_value(&tool).unwrap();
+            let mut objects = Vec::new();
+            schema_objects(&shown["outputSchema"], tool.name.to_string(), &mut objects);
+            for (at, object) in objects {
+                assert!(
+                    !object.get("type").is_some_and(serde_json::Value::is_array),
+                    "{at}: {object:?}"
+                );
+                if object.get("type").and_then(serde_json::Value::as_str) == Some("integer") {
+                    assert!(!object.contains_key("format"), "{at}: {object:?}");
+                }
+            }
+        }
+    }
+
+    /// The pair of the test above, on two fields: the null is still there, and so are the
+    /// bounds the dropped `format` stood beside. What fails this: a transform that drops
+    /// the null, the bounds or the description, or one that keeps the bounds outside the
+    /// non-null branch.
+    #[test]
+    fn a_nullable_integer_is_any_of_the_integer_and_null() {
+        let shown: Vec<serde_json::Value> = definitions()
+            .iter()
+            .map(|tool| serde_json::to_value(tool).unwrap())
+            .collect();
+        let tool = |name: &str| {
+            shown
+                .iter()
+                .find(|tool| tool["name"] == name)
+                .map(|tool| tool["outputSchema"].clone())
+                .unwrap()
+        };
+        assert_eq!(
+            tool("list_files")["properties"]["nextOffset"],
+            serde_json::json!({
+                "description": "The `offset` that asks for the next page; there only when \
+                                `truncated` is.",
+                "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }]
+            })
+        );
+        assert_eq!(
+            tool("list_tasks")["$defs"]["TaskRow"]["properties"]["priority"],
+            serde_json::json!({ "type": "integer", "minimum": -128, "maximum": 127 })
+        );
     }
 
     /// What fails this: a status the CLI renames or drops and this list keeps — `list_tasks`

@@ -281,6 +281,20 @@ async fn execute(
             )
             .await?;
             output::write_envelope(out, &envelope, json).map_err(Failure::Output)?;
+            // Text mode has no `truncated`, so a cut search says so on stderr — after the
+            // rows are flushed, so that a terminal shows it below them.
+            if envelope.truncated && !json {
+                out.flush().map_err(Failure::Output)?;
+                // A warning that cannot be written is dropped; the rows are out.
+                let _ = output::write_warning(
+                    &mut std::io::stderr().lock(),
+                    &format!(
+                        "search stopped after {limit} matches and more were found; raise \
+                         --limit to see them"
+                    ),
+                    json,
+                );
+            }
         }
         Query::Tags => {
             let vault = required(resolved)?;

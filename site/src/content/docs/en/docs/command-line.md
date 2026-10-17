@@ -54,7 +54,7 @@ When the current directory is inside more than one registered vault or folder, a
 | `vaults` | The vaults and folders registered in the app. `*` marks the row of the vault this run would read (`current` in JSON); when a vault and a folder are registered for that same folder, both rows are marked. |
 | `files [--folder <path>]` | The markdown files in the vault — `.md` and `.markdown`. |
 | `read <path>` | One file, exactly as it is on disk. A file that is not UTF-8 text is an `IO` error. |
-| `search <query> [--regex] [--case-sensitive] [--word] [--folder <path>] [--limit N]` | One item per match in `.md` files — a line with two matches appears twice. Upper and lower case match each other unless you pass `--case-sensitive`. Stops after 100 matches unless `--limit` says otherwise. |
+| `search <query> [--regex] [--case-sensitive] [--word] [--folder <path>] [--limit N]` | One item per match in `.md` files — a line with two matches appears twice. Upper and lower case match each other unless you pass `--case-sensitive`. `--word` puts a word boundary (`\b`) at each end of the match — with `--regex`, around the whole expression: `a\|b` finds the word `a` or the word `b`. Stops after 100 matches unless `--limit` says otherwise. |
 | `tags` | Each tag and how many times it occurs. |
 | `tag <name>` | The files that carry a tag. A leading `#` is optional. |
 | `tasks [--status open\|done\|cancelled\|all] [--file <path>]` | Tasks. `open`, the default, is `todo` and `doing`. |
@@ -73,7 +73,7 @@ Line numbers start at 1.
 
 ## Output
 
-Without `--json`, each item is one line and its fields are separated by tabs. A tab, a newline, a carriage return or a backslash inside a field is written as `\t`, `\n`, `\r` or `\\`. A line carries an item's main fields; `--json` carries all of them, such as a task's dates and a link's block id. `read` is the exception: it prints the file itself.
+Without `--json`, each item is one line and its fields are separated by tabs. A tab, a newline, a carriage return or a backslash inside a field is written as `\t`, `\n`, `\r` or `\\`. Any other control character — U+0000 to U+001F and U+007F to U+009F, such as a NUL or the escape that starts a terminal's color code — is written as `\u` and four hex digits, such as `\u001b`. A line carries an item's main fields; `--json` carries all of them, such as a task's dates and a link's block id. `read` is the exception: it prints the file itself.
 
 With `--json`, every command prints one JSON object on one line. Spread out, it looks like this:
 
@@ -85,7 +85,7 @@ With `--json`, every command prints one JSON object on one line. Spread out, it 
 }
 ```
 
-`truncated` is `true` when `search` found more matches than its limit and left the rest out. A field with no value is `null` rather than left out. `vault` is `null` only for `vaults`, when no vault resolves.
+`truncated` is `true` when `search` found more matches than its limit and left the rest out. Without `--json`, a warning on standard error says so instead, after the results. A field with no value is `null` rather than left out. `vault` is `null` only for `vaults`, when no vault resolves.
 
 Items come in a fixed order: `vaults` by name, `tags` by count (highest first) and then by name, `links` by line, and the other commands by path and then line. Within one line, `links` lists wikilinks first, then block embeds, then block references, whatever order they are written in.
 
@@ -116,7 +116,7 @@ Without `--json`, the same error is `error[FILE_NOT_FOUND]: no file at notes/a.m
 
 A command that walks the vault stops with `IO` at a folder it cannot read, and the message names that folder. `search` skips such a folder instead. Messages are in English, except what they quote: the paths and names they repeat, and the operating system's own description of a failure in an `IO` message — on Windows, that description is expected to follow the system's language (not yet checked on Windows).
 
-Not everything on standard error is that error. A command line the argument parser cannot read — an unknown command or flag, a missing argument, a value out of range — is rejected before `--json` is read, so that message is plain text starting with `error:` (exit code `2`). And a warning — for example, app settings that could not be read — comes before anything else and does not change the exit code. It is a line of its own: `warning: …`, or `{"warning":{"message":"…"}}` with `--json`. With `BARAM_LOG` set in the environment, diagnostic lines such as `[DEBUG] cli: 5 registered roots` go there too.
+Not everything on standard error is that error. A command line the argument parser cannot read — an unknown command or flag, a missing argument, a value out of range — is rejected before `--json` is read, so that message is plain text starting with `error:` (exit code `2`). And a warning does not change the exit code. One about app settings that could not be read comes before the results; one that says `search` stopped at its limit with more matches found comes after them, and only without `--json`. A warning is a line of its own: `warning: …`, its message escaped the way a field is, or `{"warning":{"message":"…"}}` with `--json`. With `BARAM_LOG` set in the environment, diagnostic lines such as `[DEBUG] cli: 5 registered roots` go there too.
 
 ## What differs from the app
 

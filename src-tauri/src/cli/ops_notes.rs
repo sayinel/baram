@@ -161,7 +161,7 @@ fn task_rows(vault: &Vault, entries: Vec<TaskEntry>, status: TaskStatus) -> Vec<
         .filter(|entry| status.admits(entry.state))
         .map(|entry| TaskRow {
             path: paths::relative(vault, Path::new(&entry.path)),
-            line: entry.line + 1,
+            line: entry.line.saturating_add(1),
             state: entry.state.wire_name(),
             text: entry.text,
             priority: entry.priority,
@@ -290,6 +290,19 @@ mod tests {
             [("a/y.md", 3), ("a0/x.md", 1), ("b.md", 2), ("b.md", 10)]
         );
         assert_eq!(rows[0].text, "a/y.md:2", "the row is the entry's, moved");
+    }
+
+    /// The last 0-based line a `u32` holds has no 1-based number; the row keeps `u32::MAX`.
+    /// What fails this: `line + 1` unsaturated — it panics in a debug build and wraps to 0
+    /// in a release one, whose profile does not turn `overflow-checks` on.
+    #[test]
+    fn the_highest_line_number_saturates_instead_of_overflowing() {
+        let rows = task_rows(
+            &plain_vault(),
+            vec![entry("a.md", u32::MAX, TaskState::Todo)],
+            TaskStatus::All,
+        );
+        assert_eq!(located(&rows), [("a.md", u32::MAX)]);
     }
 
     #[test]

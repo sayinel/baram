@@ -998,6 +998,18 @@ fn a_path_no_file_system_takes_is_an_invalid_argument() {
             );
         }
     }
+    // The message repeats the path, and the NUL in it is written as `\u0000` — the text a
+    // client logs or shows holds no NUL to cut it at (`output::escape`).
+    for tool in ["read_note", "backlinks"] {
+        id += 1;
+        let result = s.call(id, tool, json!({ "path": "a\u{0}b.md" }));
+        assert_eq!(
+            tool_error(&result),
+            "error[INVALID_ARGUMENT]: a\\u0000b.md is not a valid file path: file name \
+             contained an unexpected NUL byte",
+            "{tool}"
+        );
+    }
     assert_eq!(s.end().code, 0);
 }
 

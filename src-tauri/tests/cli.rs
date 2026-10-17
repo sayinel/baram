@@ -277,6 +277,31 @@ fn a_config_that_cannot_be_read_is_a_warning_and_the_command_still_runs() {
     );
 }
 
+/// A warning repeats what config.json holds, and a hand-edited value can hold a newline.
+/// What fails this: the text form written unescaped — `error: injected` would be a line
+/// of its own, read as an error the command did not have.
+#[test]
+fn a_config_value_with_a_newline_is_one_warning_line() {
+    let sb = sandbox();
+    write_config(
+        &sb,
+        &[(
+            "baram:context",
+            serde_json::json!({ "version": 1, "state": { "contexts": [
+                { "id": "odd", "contextType": "odd\nerror: injected", "path": sb.vault,
+                  "label": "odd" }
+            ], "activeContextId": null } }),
+        )],
+    );
+    let text = baram(&sb, &sb.home, &["vaults"]);
+    assert_eq!(text.code, 0, "stderr: {}", text.stderr);
+    assert_eq!(
+        text.stderr,
+        "warning: baram:context: contexts[0] has an unknown contextType \
+         `odd\\nerror: injected`\n"
+    );
+}
+
 #[test]
 fn baram_log_sends_diagnostics_to_stderr_and_only_when_asked() {
     let sb = sandbox();
@@ -640,6 +665,46 @@ fn search_says_when_it_stopped_early() {
     assert_eq!(exact["items"].as_array().map(Vec::len), Some(3));
 }
 
+/// Text mode has no `truncated`: a search cut at its limit says so in a warning on stderr,
+/// and stdout keeps only the rows. What fails this: no warning, so a hundred rows read the
+/// same whether or not the search stopped there; a warning for a search that was not cut
+/// (exactly as many matches as the limit); or one under --json, whose envelope says it.
+#[test]
+fn a_text_search_cut_at_its_limit_says_so_on_stderr() {
+    let sb = sandbox();
+    search_vault(&sb);
+    let vault = vault_arg(&sb);
+    let cut = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "search", "needle", "--limit", "2"],
+    );
+    assert_eq!(cut.code, 0, "stderr: {}", cut.stderr);
+    assert_eq!(cut.stdout.lines().count(), 2, "stdout: {}", cut.stdout);
+    assert_eq!(
+        cut.stderr,
+        "warning: search stopped after 2 matches and more were found; raise --limit to see them\n"
+    );
+
+    let exact = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault, "search", "needle", "--limit", "3"],
+    );
+    assert_eq!(exact.stdout.lines().count(), 3, "stdout: {}", exact.stdout);
+    assert!(exact.stderr.is_empty(), "stderr: {}", exact.stderr);
+
+    let as_json = baram(
+        &sb,
+        &sb.home,
+        &[
+            "--json", "--vault", &vault, "search", "needle", "--limit", "2",
+        ],
+    );
+    assert_eq!(json(&as_json.stdout)["truncated"], true);
+    assert!(as_json.stderr.is_empty(), "stderr: {}", as_json.stderr);
+}
+
 /// `docs-old/` sorts before `docs/` (`-` is 0x2D, `/` is 0x2F) and holds limit + 1
 /// matches. An implementation that searched the whole vault and filtered afterwards
 /// would fill its (limit + 1) hits from `docs-old/` and print nothing.
@@ -716,16 +781,16 @@ fn a_query_the_search_cannot_build_is_a_usage_error() {
     }
 }
 
-/// `--word` wraps the expression in `\b…\b` as text, and that can make an invalid one
-/// valid: `a\` becomes `\ba\\b` and `*a` becomes `\b*a\b`. A bad expression is judged as
-/// typed, so both are still refused, and the message quotes what was typed — not the
-/// wrapped `\b(\b`.
+/// `--word` wraps the expression in `\b(?:…)\b` as text, and that can make an invalid one
+/// valid: `a)|(b` becomes `\b(?:a)|(b)\b`. A bad expression is judged as typed, so it is
+/// still refused, and the message quotes what was typed — not the wrapped one. `a\`, `*a`
+/// and `(` stay invalid wrapped, and are refused with the same form of message.
 #[test]
 fn word_does_not_turn_a_bad_pattern_into_a_search() {
     let sb = sandbox();
     search_vault(&sb);
     let vault = vault_arg(&sb);
-    for query in [r"a\", "*a", "("] {
+    for query in ["a)|(b", r"a\", "*a", "("] {
         let ran = baram(
             &sb,
             &sb.home,

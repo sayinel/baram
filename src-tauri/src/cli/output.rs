@@ -26,8 +26,11 @@ pub(crate) trait Row {
     fn fields(&self) -> Vec<String>;
 }
 
-/// Escapes what would break "one line per item, fields split by tabs". A backslash is
-/// doubled, so an escape written here can be told from one that was in the source.
+/// Escapes what would break "one line per item, fields split by tabs", and every other
+/// control character (Unicode `Cc`: U+0000–U+001F, U+007F–U+009F) as `\u` and four
+/// lowercase hex digits, JSON's `\uXXXX` notation — a NUL can cut the text where it is
+/// read, and an ESC starts a terminal's control sequence. A backslash is doubled, so an
+/// escape written here can be told from one that was in the source.
 pub(crate) fn escape(field: &str) -> String {
     let mut out = String::with_capacity(field.len());
     for c in field.chars() {
@@ -36,6 +39,9 @@ pub(crate) fn escape(field: &str) -> String {
             '\t' => out.push_str("\\t"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
+            control if control.is_control() => {
+                out.push_str(&format!("\\u{:04x}", u32::from(control)));
+            }
             other => out.push(other),
         }
     }
@@ -95,6 +101,8 @@ pub(crate) fn write_error(out: &mut dyn Write, error: &CliError, json: bool) -> 
 }
 
 /// A warning does not change the exit code: the command goes on with what it could read.
+/// In text mode the message is escaped as an error's is, so one warning is one line: it
+/// can carry a value read from config.json. The JSON form carries the message unchanged.
 pub(crate) fn write_warning(out: &mut dyn Write, message: &str, json: bool) -> io::Result<()> {
     if json {
         return write_json(
@@ -102,7 +110,7 @@ pub(crate) fn write_warning(out: &mut dyn Write, message: &str, json: bool) -> i
             &serde_json::json!({ "warning": { "message": message } }),
         );
     }
-    writeln!(out, "warning: {message}")
+    writeln!(out, "warning: {}", escape(message))
 }
 
 #[cfg(test)]
@@ -139,6 +147,23 @@ mod tests {
         // doubled backslash followed by `t`, which a real tab never does.
         assert_eq!(escape("\\t"), "\\\\t");
         assert_ne!(escape("\\t"), escape("\t"));
+    }
+
+    /// Every other control character (Unicode `Cc`: U+0000–U+001F and U+007F–U+009F) is
+    /// written as `\u` and four lowercase hex digits, JSON's `\uXXXX` notation: a NUL can cut
+    /// the text where it is read, and an ESC starts a terminal's control sequence. What fails
+    /// this: one of the characters sampled below — both ends of each range and some between —
+    /// passed through as itself, or a character past U+009F escaped.
+    #[test]
+    fn every_other_control_character_is_written_as_a_unicode_escape() {
+        assert_eq!(escape("a\u{0}b"), "a\\u0000b");
+        assert_eq!(escape("\u{1b}[31m"), "\\u001b[31m");
+        assert_eq!(escape("\u{8}\u{c}\u{1f}"), "\\u0008\\u000c\\u001f");
+        assert_eq!(
+            escape("\u{7f}\u{80}\u{9b}\u{9f}"),
+            "\\u007f\\u0080\\u009b\\u009f"
+        );
+        assert_eq!(escape("\u{a0}é\u{2028}"), "\u{a0}é\u{2028}");
     }
 
     #[test]
@@ -229,6 +254,26 @@ mod tests {
             )))
             .unwrap(),
             serde_json::json!({ "warning": { "message": "x: y" } })
+        );
+    }
+
+    /// A warning can carry a value read from config.json, which can hold a newline. What
+    /// fails this: the text form written unescaped — its second line would read as an
+    /// error; or the JSON form escaped, which already keeps the message on one line.
+    #[test]
+    fn a_warning_that_spans_lines_is_one_line_in_text_mode_only() {
+        assert_eq!(
+            text(|out| write_warning(out, "odd\nerror: injected", false)),
+            "warning: odd\\nerror: injected\n"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&text(|out| write_warning(
+                out,
+                "odd\nerror: injected",
+                true
+            )))
+            .unwrap()["warning"]["message"],
+            "odd\nerror: injected"
         );
     }
 }
