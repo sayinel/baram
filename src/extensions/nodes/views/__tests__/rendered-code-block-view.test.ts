@@ -313,9 +313,9 @@ describe("pointer and source editing (D17)", () => {
   });
 
   /** D17 · §7 — a plain click on the output selects the block, which opens source editing. The
-   *  click goes through ProseMirror's own mouse handling, which click-selects only atoms
-   *  (`selectClickedLeaf`) — a code block is not one — so the road is the generation plugin's
-   *  `handleClickOn`. What fails this: no such road (the block stays rendered and the selection
+   *  click goes through ProseMirror's own mouse handling, which on a plain click selects a node
+   *  only when it is an atom (`selectClickedLeaf`; a code block is not one) — so the road is the
+   *  generation plugin's `handleClickOn`. What fails this: no such road (the block stays rendered and the selection
    *  stays in the paragraph above), or a `stopEvent` that keeps a plain press from ProseMirror. */
   it("opens source editing on a plain click on the output", async () => {
     bind("chart", async () => ({ html: "<p>plain</p>" }));
@@ -595,6 +595,86 @@ describe("render lifetime (D7)", () => {
       { timeout: 2_000 },
     );
     expect(render).toHaveBeenCalledTimes(2);
+  });
+
+  /** The row above with source editing open, where the late answer is the block's FIRST: the
+   *  debounced redraw finds the block in source mode and only marks it stale, so leaving source
+   *  editing must draw it — though it was never drawn (`renderState` still `pending`). The common
+   *  way here: typing a new fence leaves the caret in the block, and the next keystroke lands
+   *  before a slow renderer answers. What fails this: an `applyMode` that redraws only a block
+   *  already drawn — the block stays pending and blank on screen. */
+  it("draws the edited source on leaving source editing when its first answer was dropped", async () => {
+    let answer: (content: { html: string }) => void = () => {};
+    let calls = 0;
+    const render = vi.fn((source: string) =>
+      ++calls === 1
+        ? new Promise<{ html: string }>((resolve) => (answer = resolve))
+        : Promise.resolve({ html: `<p>${source}</p>` }),
+    );
+    bind("chart", render);
+    const editor = editorWith("intro\n\n```chart\nA\n```\n\nafter\n");
+    const root = rootOf(editor);
+    const shadow = root.querySelector(".plugin-block-host")!.shadowRoot!;
+    editor.commands.setNodeSelection(blockPos(editor, "chart"));
+    expect(root.dataset.mode).toBe("source");
+    showAll();
+    await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(1));
+    editor.view.dispatch(
+      editor.state.tr.insertText("B", blockPos(editor, "chart") + 2),
+    );
+    answer({ html: "<p>A</p>" });
+    await requestRender(codeBlockRendererFor("chart")!, "A", {
+      context: null,
+      lang: "chart",
+      path: null,
+    });
+    expect(root.dataset.renderState).toBe("pending");
+    await new Promise((resolve) =>
+      setTimeout(resolve, SOURCE_DEBOUNCE_MS + 100),
+    );
+    // The debounced redraw ran while source editing was open: it asked for nothing.
+    expect(render).toHaveBeenCalledTimes(1);
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    expect(root.dataset.mode).toBe("rendered");
+    await vi.waitFor(() =>
+      expect(shadow.querySelector("p")?.textContent).toBe("AB"),
+    );
+    expect(root.dataset.renderState).toBe("done");
+    expect(render).toHaveBeenCalledTimes(2);
+  });
+
+  /** The pair of the row above: leaving source editing draws a stale block only when it is on
+   *  screen (`drawWhenShown`); an off-screen one stays stale and draws when it comes into view
+   *  (D7). The status line is the synchronous witness — `draw` sets it before it asks. What fails
+   *  this: leaving source editing that draws at once (`draw` instead of `drawWhenShown`). */
+  it("keeps an off-screen block stale on leaving source editing, and draws it in view", async () => {
+    const render = vi.fn(async (source: string) => ({
+      html: `<p>${source}</p>`,
+    }));
+    bind("chart", render);
+    const editor = editorWith("intro\n\n```chart\nA\n```\n\nafter\n");
+    const root = rootOf(editor);
+    const status = root.querySelector(".plugin-block-status") as HTMLElement;
+    showAll();
+    await vi.waitFor(() => expect(root.dataset.renderState).toBe("done"));
+    const observer = MockIntersectionObserver.instances.find((io) =>
+      io.elements.has(root),
+    )!;
+    observer.triggerIntersect(false);
+    editor.commands.setNodeSelection(blockPos(editor, "chart"));
+    editor.view.dispatch(
+      editor.state.tr.insertText("B", blockPos(editor, "chart") + 2),
+    );
+    await new Promise((resolve) =>
+      setTimeout(resolve, SOURCE_DEBOUNCE_MS + 100),
+    );
+    editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    expect(root.dataset.mode).toBe("rendered");
+    expect(status.textContent).toBe("");
+    expect(render).toHaveBeenCalledTimes(1);
+    observer.triggerIntersect(true);
+    await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(2));
+    expect(render.mock.lastCall?.[0]).toBe("AB");
   });
 
   /** D6 — a view in an editor outside the surface registry (the journal capture editor's) is not

@@ -297,7 +297,11 @@ export class RenderedCodeBlockView implements NodeView {
   }
 
   /**
-   * Show the rendered output or the wrapped source, and redraw on the way back when it is due.
+   * Show the rendered output or the wrapped source, and redraw on the way back when it is due:
+   * when the block is stale (marked while source editing was open — whether or not it was ever
+   * drawn, since a first answer can be dropped as late, `draw`), or when it was drawn and its text
+   * changed since (an edit whose debounce has not run yet). `drawWhenShown` keeps the off-screen
+   * rule.
    *
    * The toggle names what a press would show, read from the mode on screen. It is hidden while the
    * selection is in the block (`editing`): source editing is open then whatever the toggle says,
@@ -317,10 +321,11 @@ export class RenderedCodeBlockView implements NodeView {
     );
     if (
       !source &&
-      this.dom.dataset.renderState === "done" &&
-      (this.stale || this.node.textContent !== this.drawnSource)
+      (this.stale ||
+        (this.dom.dataset.renderState === "done" &&
+          this.node.textContent !== this.drawnSource))
     ) {
-      this.draw();
+      this.drawWhenShown();
     }
   }
 
@@ -353,8 +358,10 @@ export class RenderedCodeBlockView implements NodeView {
       if (this.destroyed || seq !== this.requestSeq) return;
       this.status.textContent = "";
       // D7 — an answer for a source the block no longer holds is late even when no newer draw has
-      // started: an edit waits out `SOURCE_DEBOUNCE_MS` before it asks again (`update`), and that
-      // redraw follows.
+      // started: an edit waits out `SOURCE_DEBOUNCE_MS` before it asks again (`update`). That
+      // timer draws the new source when the block is on screen and rendered; otherwise it marks
+      // the block stale, and the block draws when it is next shown — on leaving source editing
+      // (`applyMode`) or on coming into view (`watchVisibility`).
       if (source !== this.node.textContent) return;
       switch (outcome.kind) {
         case "drawn":

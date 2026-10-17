@@ -17,9 +17,11 @@
 //
 // The plugin also carries D17's click road into a rendered block's source (`handleClickOn`): a
 // plain click on the output selects the block, and the view's `selectNode` opens source editing.
-// ProseMirror click-selects only atoms (`selectClickedLeaf` in prosemirror-view 1.42.3), and a code
-// block is not one; nor does the DOM selection a click leaves in the block reach ProseMirror — the
-// view ignores selection mutations, so that a drag-select of output text does not open the source.
+// On a plain click ProseMirror selects a node only when it is an atom (`selectClickedLeaf` in
+// prosemirror-view 1.42.3; a Cmd-click on macOS, a Ctrl-click elsewhere, selects the clicked
+// selectable node, atom or not — `selectClickedNode`), and a code block is not one. Nor does the
+// DOM selection a click leaves in the block reach ProseMirror: the view ignores selection
+// mutations, so that a drag-select of output text does not open the source.
 
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
