@@ -26,6 +26,7 @@ examples/plugins/
   types.d.ts            # generated sibling the barrel re-exports from (commit this)
   word-count/           # the canonical sandboxed plugin, published by Baram
   link-count/           # the reference reader of ctx.index (§393), sandboxed — NOT published
+  backlinks-block/      # the reference code block renderer (§394), sandboxed — NOT published
   community-template/   # ← START HERE to publish your own plugin (see below)
   bullet-threading/     # full-trust editor-contribution example, published by Baram
   sketch-pad/           # full-trust editable file viewer example (§392), one file — NOT published
@@ -72,6 +73,14 @@ on `.strokes` files, hands its text back to Baram and lets Baram save it. It is 
 `link-count/` is the example for **`ctx.index`** (§393): a sandboxed plugin that shows the open
 note's backlinks and open tasks in the status bar and reads them again on `vault:changed`. It is
 not published — read it for the pattern, and copy `community-template/` to publish your own.
+
+`backlinks-block/` is the example for **`ctx.codeBlocks`** (§394): a sandboxed renderer that draws
+a `backlinks` code block as the backlinks of the note it sits in, read with `ctx.index.backlinks`:
+one row per linking line, the linking note as a `data-note` link and the line's text. On
+`vault:changed` it calls `ctx.codeBlocks.invalidate`, so its blocks draw again (one off screen
+when it comes into view). Its list sits in a box of its own with `overflow-x: auto`, because
+Baram clips a rendered block's output at the block's width. It is not published — read it for the
+pattern, and copy `community-template/` to publish your own.
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
 fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING
