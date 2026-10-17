@@ -1,10 +1,10 @@
-// §5.6 · §5.11 searchPatternSource — the pattern the in-document find and the
-// search panel's Replace build from one term.
+// §5.6 searchPatternSource — the pattern the in-document find (`buildSearchRegex`)
+// builds from a term.
 import { describe, expect, it } from "vitest";
 
 import { searchPatternSource } from "../search-pattern";
 
-describe("§5.11 searchPatternSource", () => {
+describe("§5.6 searchPatternSource", () => {
   // What fails this: the wrap without the group, `\ba|b\b`.
   it("holds every alternative of a regex between the word boundaries", () => {
     expect(searchPatternSource("a|b", true, true)).toBe("\\b(?:a|b)\\b");

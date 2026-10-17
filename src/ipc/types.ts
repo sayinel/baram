@@ -394,6 +394,13 @@ export interface SearchOptions {
   wholeWord?: boolean;
 }
 
+/**
+ * §5.11 Which matches `replaceSearchMatches` replaces: every one, or the one that starts at a
+ * 1-based line and 1-based byte column — where `searchFiles` listed one (`SearchResult`).
+ */
+export type SearchReplaceTarget =
+  { column: number; kind: "one"; line: number } | { kind: "all" };
+
 export interface SearchResult {
   column: number;
   filePath: string;

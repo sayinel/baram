@@ -86,6 +86,8 @@ Type `[^id]` (e.g., `[^1]` or `[^note]`) anywhere in your text to insert a footn
 
 Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows/Linux) to open Global Search. It searches all files in your workspace using full-text search. Supports regex, file/folder filters, and replace across files.
 
+Replace and Replace All find matches the way the search does, one line at a time. With regex on, the replacement refers to the whole match as `$0` and to a group as `$1` or `${name}` — write `${1}` when an ASCII letter, digit or underscore follows, and `$$` for a dollar sign. With regex off, the replacement goes in as typed. The editor's Find & Replace (`Cmd+H` / `Ctrl+H`) always inserts it as typed, regex on or off.
+
 ## How do I fold/collapse a heading section?
 
 Hover over any heading (H1–H6) to reveal a fold arrow in the left gutter. Click the arrow to collapse all content below that heading until the next heading of equal or higher level. Click again (or click the `...` indicator) to expand. You can also use `Cmd+Shift+[` (macOS) / `Ctrl+Shift+[` (Windows/Linux) to toggle fold at the cursor position.

@@ -1,5 +1,6 @@
 // §5.11 Global Search — IPC command handler
 
+use crate::search::replace::ReplaceTarget;
 use crate::search::{self, SearchOptions};
 
 #[derive(serde::Deserialize)]
@@ -36,7 +37,13 @@ pub async fn search_files<R: tauri::Runtime>(
     // `starts_with`로 보므로 컨텍스트 경로 자기 자신도 통과한다.
     crate::commands::fs_cmd::ensure_path_in_vault(&app, &root_path).await?;
 
-    let opts = match options {
+    search::search_files(&root_path, &query, &search_options(options)).await
+}
+
+/// The options the panel sends, as the search takes them. `search_files` and
+/// `replace_search_matches` both read them here, so both read the panel's options the same way.
+fn search_options(options: Option<SearchOptionsInput>) -> SearchOptions {
+    match options {
         Some(input) => SearchOptions {
             case_sensitive: input.case_sensitive,
             whole_word: input.whole_word,
@@ -46,9 +53,32 @@ pub async fn search_files<R: tauri::Runtime>(
             exclude_glob: input.exclude_glob,
         },
         None => SearchOptions::default(),
-    };
+    }
+}
 
-    search::search_files(&root_path, &query, &opts).await
+/// §5.11 The search panel's Replace (`target` `{kind: "one", line, column}`: the match that
+/// starts there) and Replace All (`{kind: "all"}`): `content` with the search's matches
+/// replaced, matched as `search_files` matches them (`search::replace`). It takes no path and
+/// reads and writes no file — the panel hands it the file's current text (the file store's copy
+/// of an open file, or the file on disk) and writes what comes back if it changed. A query the
+/// search refuses is refused with the same `Invalid search pattern: …` text `search_files`
+/// gives.
+#[tauri::command]
+pub async fn replace_search_matches(
+    content: String,
+    query: String,
+    options: Option<SearchOptionsInput>,
+    replacement: String,
+    target: ReplaceTarget,
+) -> Result<String, String> {
+    search::replace::replace_matches(
+        &content,
+        &query,
+        &search_options(options),
+        &replacement,
+        target,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -208,6 +238,90 @@ mod tests {
         assert!(
             err.contains("no vault, folder, or file context is open"),
             "unexpected error: {err}"
+        );
+    }
+
+    /// A payload with the keys and shapes `replaceSearchMatches` (`src/ipc/search.ts`) sends,
+    /// through the IPC dispatcher: the command takes these argument names, Replace All
+    /// (`{kind: "all"}`) and Replace (`{kind: "one", …}`) each answer with the replaced text,
+    /// and a payload without `target` is refused rather than read as Replace All. What fails
+    /// this: a renamed argument here (the TS test `carries the panel's text, query, options,
+    /// replacement and target under those names` pins the wrapper's keys, and
+    /// `replace-search-matches-args.test.ts` compares them with this signature), a target
+    /// that defaults when missing, or the text not replaced as the search matches. Whether
+    /// `lib.rs` registers the command is `tests/acl_lockdown.rs`'s check, not this one's —
+    /// this test registers it itself.
+    #[test]
+    fn replace_search_matches_takes_the_payload_the_panel_sends() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::replace_search_matches])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+        let invoke = |body: serde_json::Value| {
+            tauri::test::get_ipc_response(
+                &webview,
+                tauri::webview::InvokeRequest {
+                    cmd: "replace_search_matches".into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: if cfg!(any(windows, target_os = "android")) {
+                        "http://tauri.localhost"
+                    } else {
+                        "tauri://localhost"
+                    }
+                    .parse()
+                    .unwrap(),
+                    body: tauri::ipc::InvokeBody::Json(body),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.to_string(),
+                },
+            )
+            .map(|response| response.deserialize::<String>().unwrap())
+        };
+        let options =
+            serde_json::json!({ "caseSensitive": false, "wholeWord": true, "regex": false });
+
+        let all = invoke(serde_json::json!({
+            "content": "가 x가y 가",
+            "query": "가",
+            "options": options,
+            "replacement": "X",
+            "target": { "kind": "all" },
+        }));
+        assert_eq!(all, Ok("X x가y X".to_string()));
+
+        let one = invoke(serde_json::json!({
+            "content": "가 x가y 가",
+            "query": "가",
+            "options": options,
+            "replacement": "X",
+            "target": { "kind": "one", "line": 1, "column": 11 },
+        }));
+        assert_eq!(one, Ok("가 x가y X".to_string()));
+
+        let untargeted = invoke(serde_json::json!({
+            "content": "가 x가y 가",
+            "query": "가",
+            "options": options,
+            "replacement": "X",
+        }));
+        assert!(untargeted.is_err(), "{untargeted:?}");
+
+        let refused = invoke(serde_json::json!({
+            "content": "ab",
+            "query": "a)|(b",
+            "options": { "wholeWord": true, "regex": true },
+            "replacement": "X",
+            "target": { "kind": "all" },
+        }));
+        assert!(
+            refused.as_ref().is_err_and(|error| error
+                .as_str()
+                .is_some_and(|text| text.starts_with("Invalid search pattern: "))),
+            "{refused:?}"
         );
     }
 }

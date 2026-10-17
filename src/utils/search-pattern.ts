@@ -1,5 +1,6 @@
-// §5.6 · §5.11 The regex source a search term reads as — the in-document find
-// (`buildSearchRegex`) and the search panel's Replace build their patterns here.
+// §5.6 The regex source a search term reads as, for the in-document find
+// (`buildSearchRegex`). The search panel's Replace does not build a JS pattern: the Rust
+// search's own replacement makes it (`replaceSearchMatches`).
 
 /**
  * The source of the regex a search reads `term` as: escaped as text unless

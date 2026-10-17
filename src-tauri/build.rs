@@ -130,6 +130,7 @@ fn main() {
         "rename_file_with_links",
         "rename_namespace",
         "rename_tag",
+        "replace_search_matches",
         "resolve_cross_vault_link",
         "resolve_settings",
         "restore_snapshot",

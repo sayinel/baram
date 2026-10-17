@@ -121,7 +121,7 @@ app_handle.emit("file:changed", FileChangedPayload {
 |------|--------------|
 | fs | read/write/list/rename/delete/copy, watch_dir, extract_zip, write_binary_file(vault 제약), export_binary_file(제약 없음) |
 | config | get/set/remove_config |
-| search | search_files (regex 전문 검색) |
+| search | search_files (regex 전문 검색) · replace_search_matches (검색 패널 바꾸기 — 글을 받아 같은 패턴 · 줄 단위로 바꾼 글을 돌려준다) |
 | index | 백링크/링크 그래프/인덱스 갱신, rename_file_with_links, unlinked mentions, block id |
 | context | 컨텍스트(Vault) 관리 (§88) |
 | embedding | Knowledge Q&A 임베딩 (§11.4) |

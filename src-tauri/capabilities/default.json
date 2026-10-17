@@ -124,6 +124,7 @@
     "allow-rename-file-with-links",
     "allow-rename-namespace",
     "allow-rename-tag",
+    "allow-replace-search-matches",
     "allow-resolve-cross-vault-link",
     "allow-resolve-settings",
     "allow-restore-snapshot",
