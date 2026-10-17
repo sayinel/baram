@@ -5,10 +5,10 @@
 // here; `binding.render` is the trusted function itself or the sandboxed proxy (Task 11). Counted
 // in its tests, never timed.
 
-import type { CodeBlockInfo } from "../types";
-import type { RendererBinding } from "./code-block-registry";
+import type { CodeBlockInfo, CodeBlockRenderer } from "../types";
 import type { DrawableContent } from "./rendered-body";
 
+import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
 import { withTimeout } from "../../utils/with-timeout";
 import { sanitizePluginText } from "../plugin-text";
@@ -35,6 +35,18 @@ interface CacheEntry {
   content: DrawableContent;
   lang: string;
   pluginId: string;
+}
+
+/**
+ * What the queue reads of a binding — a `RendererBinding` (`code-block-registry.ts`) is one. A type
+ * of its own rather than an import: the registry calls into this module (`forgetLangRenders`), and
+ * `madge --circular` counts a type import as an edge.
+ */
+interface RenderTarget {
+  lang: string;
+  pluginId: string;
+  render: CodeBlockRenderer;
+  version: string;
 }
 
 /** The numbers, from `limits.ts`. */
@@ -85,13 +97,23 @@ export function __resetRenderQueue(): void {
 }
 
 /**
+ * A renderer bound to `lang`, or unbound (D6 · D7): the language's epoch moves and its cache entries
+ * go, with no notice — the registry's own change rebuilds the blocks. The cache key holds no
+ * renderer, so without this a renderer registered again would be served the previous one's answers.
+ */
+export function forgetLangRenders(pluginId: string, lang: string): void {
+  const key = langKey(pluginId, lang);
+  langEpochs.set(key, (langEpochs.get(key) ?? 0) + 1);
+  dropCache((entry) => entry.pluginId === pluginId && entry.lang === lang);
+}
+
+/**
  * Unload, Reload or disable of `pluginId` (D7): its epoch moves — an answer still in flight is
- * dropped and not cached — its cache entries go, and a pending notice is cancelled (the registry's
- * own change rebuilds its blocks).
+ * dropped and not cached, and a request still waiting calls nothing — its cache entries go, and a
+ * pending notice is cancelled (the registry's own change rebuilds its blocks).
  */
 export function forgetPluginRenders(pluginId: string): void {
-  pluginEpochs.set(pluginId, (pluginEpochs.get(pluginId) ?? 0) + 1);
-  dropCache((entry) => entry.pluginId === pluginId);
+  movePluginEpoch(pluginId);
   const notice = notices.get(pluginId);
   if (notice !== undefined) {
     clearTimeout(notice.timer);
@@ -105,17 +127,8 @@ export function forgetPluginRenders(pluginId: string): void {
  * `lang` omitted means every language of the plugin.
  */
 export function invalidateRenders(pluginId: string, lang?: string): void {
-  if (lang === undefined) {
-    pluginEpochs.set(pluginId, (pluginEpochs.get(pluginId) ?? 0) + 1);
-  } else {
-    const key = langKey(pluginId, lang);
-    langEpochs.set(key, (langEpochs.get(key) ?? 0) + 1);
-  }
-  dropCache(
-    (entry) =>
-      entry.pluginId === pluginId &&
-      (lang === undefined || entry.lang === lang),
-  );
+  if (lang === undefined) movePluginEpoch(pluginId);
+  else forgetLangRenders(pluginId, lang);
   const pending = notices.get(pluginId);
   if (pending !== undefined) {
     if (lang === undefined) pending.langs = null;
@@ -148,36 +161,28 @@ export function onRendersInvalidated(
  * Ask `binding` to draw `source` for the block `info` describes: from the cache, from a render of
  * the same key already in flight, or by calling the renderer under the plugin's concurrency limit
  * and the timeout. A result is checked (`renderedContentProblem`), sanitized and cached; a failure is
- * a fixed sentence or the renderer's own message, flattened and capped (§6). A renderer that throws,
- * times out, or answers with something `renderedContentProblem` or a sanitizer refuses gets an
- * outcome — `failed`, or `stale` when its epoch moved meanwhile — not a rejection.
+ * a fixed sentence or the renderer's own message, flattened and capped (§6). The request belongs to
+ * the epoch in force when it is MADE (D7): when that epoch moves before the renderer is called — while
+ * the source is hashed, or while the request waits for a slot — it calls nothing and comes back
+ * `stale`. It never rejects: anything thrown on the way is a `failed` outcome.
  */
 export async function requestRender(
-  binding: RendererBinding,
+  binding: RenderTarget,
   source: string,
   info: CodeBlockInfo,
 ): Promise<RenderOutcome> {
-  const key = await cacheKey(binding, source, info);
-  const hit = cache.get(key);
-  if (hit !== undefined) {
-    cache.delete(key);
-    cache.set(key, hit);
-    return { content: hit.content, kind: "drawn" };
+  try {
+    // Read before the first `await`: the epoch of the moment the request is made.
+    const epoch = epochOf(binding);
+    return await outcomeOf(binding, source, info, epoch);
+  } catch (err) {
+    logger.error(`[PluginBlock] ${binding.pluginId} ${binding.lang}:`, err);
+    return { kind: "failed", message: "the block could not be drawn" };
   }
-  const epoch = epochOf(binding);
-  const runningKey = `${key}\u0000${epoch}`;
-  const running = inflight.get(runningKey);
-  if (running !== undefined) return running;
-  const started = render(binding, source, info, key, epoch);
-  inflight.set(runningKey, started);
-  void started.finally(() => {
-    if (inflight.get(runningKey) === started) inflight.delete(runningKey);
-  });
-  return started;
 }
 
 async function cacheKey(
-  binding: RendererBinding,
+  binding: RenderTarget,
   source: string,
   info: CodeBlockInfo,
 ): Promise<string> {
@@ -206,26 +211,61 @@ function dropCache(match: (entry: CacheEntry) => boolean): void {
   }
 }
 
-function epochOf(binding: RendererBinding): string {
+function epochOf(binding: RenderTarget): string {
   return `${pluginEpochs.get(binding.pluginId) ?? 0}:${langEpochs.get(langKey(binding.pluginId, binding.lang)) ?? 0}`;
 }
 
 /**
- * A thrown value's text for the block's chrome, flattened and capped (D10): the renderer's own
- * message, or the markup sanitizer's node cap; a throw without a string message reads as a fixed
- * sentence.
+ * A thrown value's message for the block's chrome, flattened and capped (D10): the renderer's own,
+ * or the markup sanitizer's node cap; without one (`thrownMessage` gave `null`), a fixed sentence.
  */
-function failureText(err: unknown): string {
-  const raw = err instanceof Error ? err.message : err;
+function failureText(message: null | string): string {
   return (
-    (typeof raw === "string"
-      ? sanitizePluginText(raw, MAX_RENDER_ERROR_CHARS)
-      : "") || "the renderer failed"
+    (message === null
+      ? ""
+      : sanitizePluginText(message, MAX_RENDER_ERROR_CHARS)) ||
+    "the renderer failed"
   );
 }
 
 function langKey(pluginId: string, lang: string): string {
   return `${pluginId}\u0000${lang}`;
+}
+
+function movePluginEpoch(pluginId: string): void {
+  pluginEpochs.set(pluginId, (pluginEpochs.get(pluginId) ?? 0) + 1);
+  dropCache((entry) => entry.pluginId === pluginId);
+}
+
+/**
+ * `requestRender` past its epoch read: the digest, the epoch check after it, the cache, the
+ * in-flight render of the same key and epoch, or a new one. May throw — `requestRender` turns that
+ * into an outcome.
+ */
+async function outcomeOf(
+  binding: RenderTarget,
+  source: string,
+  info: CodeBlockInfo,
+  epoch: string,
+): Promise<RenderOutcome> {
+  const key = await cacheKey(binding, source, info);
+  if (epochOf(binding) !== epoch) return { kind: "stale" };
+  const hit = cache.get(key);
+  if (hit !== undefined) {
+    cache.delete(key);
+    cache.set(key, hit);
+    return { content: hit.content, kind: "drawn" };
+  }
+  const runningKey = `${key}\u0000${epoch}`;
+  const running = inflight.get(runningKey);
+  if (running !== undefined) return running;
+  const started = render(binding, source, info, key, epoch);
+  inflight.set(runningKey, started);
+  const settle = () => {
+    if (inflight.get(runningKey) === started) inflight.delete(runningKey);
+  };
+  void started.then(settle, settle);
+  return started;
 }
 
 /** Keep `entry` under `key`, dropping the least recently used entries past the byte cap. */
@@ -246,7 +286,7 @@ function remember(key: string, entry: CacheEntry): void {
 }
 
 async function render(
-  binding: RendererBinding,
+  binding: RenderTarget,
   source: string,
   info: CodeBlockInfo,
   key: string,
@@ -259,18 +299,26 @@ async function render(
   let raw: unknown;
   try {
     raw = await withSlot(binding.pluginId, () =>
-      // D7 — only the promise races the timer: a synchronous trusted renderer runs to its end
-      // before the timer can fire, and nothing here can interrupt it.
-      withTimeout(
-        Promise.resolve().then(() => binding.render(source, info)),
-        timeoutMs,
-        timedOut,
-      ),
+      // D7 — a request that waited for its slot through an epoch move calls nothing; the check
+      // below the `try` then reads it as stale (epochs only count up — the test-only
+      // `__resetRenderQueue` is the one place that clears them).
+      epochOf(binding) !== epoch
+        ? Promise.resolve(undefined)
+        : // D7 — only the promise races the timer: a synchronous trusted renderer runs to its end
+          // before the timer can fire, and nothing here can interrupt it.
+          withTimeout(
+            Promise.resolve().then(() => binding.render(source, info)),
+            timeoutMs,
+            timedOut,
+          ),
     );
   } catch (err) {
     if (epochOf(binding) !== epoch) return { kind: "stale" };
-    const timeout = err instanceof Error && err.message === timedOut;
-    return { kind: "failed", message: timeout ? timedOut : failureText(err) };
+    const message = thrownMessage(err);
+    return {
+      kind: "failed",
+      message: message === timedOut ? timedOut : failureText(message),
+    };
   }
   if (epochOf(binding) !== epoch) return { kind: "stale" };
   let drawable: ReturnType<typeof toDrawable>;
@@ -282,7 +330,7 @@ async function render(
       message:
         err instanceof PluginCssError
           ? `rendered CSS was refused (${err.code})`
-          : failureText(err),
+          : failureText(thrownMessage(err)),
     };
   }
   if (typeof drawable === "string") {
@@ -298,13 +346,26 @@ async function render(
 }
 
 /**
+ * A thrown value's message, or `null` when it gives no string — read guarded, since a trusted
+ * renderer's `Error` may carry a `message` getter that throws.
+ */
+function thrownMessage(err: unknown): null | string {
+  try {
+    const message = err instanceof Error ? err.message : err;
+    return typeof message === "string" ? message : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A renderer's answer as the host may draw it, with its size for the cache — or the fixed sentence
  * of `renderedContentProblem` (§6). Throws what the sanitizers throw: a `PluginCssError` for refused
  * CSS (plan 0125 P9), an `Error` over the node cap. Each field is read once, so the value checked is
  * the value drawn.
  */
 function toDrawable(
-  binding: RendererBinding,
+  binding: RenderTarget,
   raw: unknown,
 ): string | { bytes: number; content: DrawableContent } {
   const answer: { css?: unknown; html?: unknown } =
@@ -316,9 +377,13 @@ function toDrawable(
   const markupText = html as string;
   const cssText = (css as string | undefined) ?? "";
   const markup = sanitizePluginMarkup(markupText);
-  if (import.meta.env.DEV && markup.removed > 0) {
-    // A lower bound (`SanitizedMarkup.removed`), so the line says "at least".
-    logger.debug(
+  if (markup.removed > 0 && usePluginStore.getState().devMode.active) {
+    // §6 — developer mode (§379: a dev build, or the user's switch), not Vite's
+    // `import.meta.env.DEV`: a `cargo build` debug binary embeds a production `dist/`
+    // (`devLoadsAreUnbounded` in `plugin-loader.ts`). `console`, not `logger`: `logger.debug` and
+    // `logger.info` are quiet outside a Vite dev build. A lower bound (`SanitizedMarkup.removed`), so
+    // the line says "at least".
+    console.info(
       `[PluginBlock] ${binding.pluginId} ${binding.lang}: the sanitizer removed at least ${markup.removed}`,
     );
   }

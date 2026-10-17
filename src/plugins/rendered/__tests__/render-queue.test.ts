@@ -5,6 +5,7 @@ import type { RendererBinding } from "../code-block-registry";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { usePluginStore } from "../../../stores/system/plugin";
 import { MAX_RENDER_ERROR_CHARS, MAX_RENDERED_HTML_BYTES } from "../limits";
 import {
   __configureRenderQueue,
@@ -50,10 +51,31 @@ function deferred() {
   return { calls, render };
 }
 
+/**
+ * Replace the source digest with the source's own bytes, settling in a microtask — after `hold`
+ * for the first call when one is given. A real `crypto.subtle` digest settles on a later task, so
+ * without this a row cannot say where a request stands when the test acts.
+ */
+function stubDigest(hold?: Promise<void>): void {
+  let first = hold !== undefined;
+  vi.spyOn(crypto.subtle, "digest").mockImplementation(
+    async (_algorithm, data) => {
+      if (first) {
+        first = false;
+        await hold;
+      }
+      return (data as Uint8Array).slice().buffer;
+    },
+  );
+}
+
 beforeEach(() => __resetRenderQueue());
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  usePluginStore.setState({
+    devMode: { active: false, devBuild: false, enabled: false },
+  });
 });
 
 describe("requestRender — the cache", () => {
@@ -63,9 +85,7 @@ describe("requestRender — the cache", () => {
    *  is still pending; a real `crypto.subtle` digest settles on a later task, by which time the first
    *  answer is cached and the cache, not the sharing, answers the second (measured). */
   it("calls the renderer once per key", async () => {
-    vi.spyOn(crypto.subtle, "digest").mockImplementation(
-      async (_algorithm, data) => (data as Uint8Array).slice().buffer,
-    );
+    stubDigest();
     const { calls, render } = deferred();
     const b = binding(render);
     const pair = Promise.all([
@@ -197,6 +217,64 @@ describe("epochs — an answer from before an invalidate, an unload or a disable
     expect(await pending).toEqual({ kind: "stale" });
   });
 
+  /** The pair of the next row: a request whose epoch does not move while its digest is pending
+   *  draws. */
+  it("draws when nothing moves while the digest is pending", async () => {
+    let release!: () => void;
+    stubDigest(new Promise((resolve) => (release = resolve)));
+    const render = vi.fn(async () => ({ html: "<p>x</p>" }));
+    const pending = requestRender(binding(render), "s", info());
+    release();
+    expect((await pending).kind).toBe("drawn");
+    expect(render).toHaveBeenCalledTimes(1);
+  });
+
+  /** D7 — a request belongs to the epoch in force when it is made. What fails this: an epoch read
+   *  after the digest — the request would take the epoch of the plugin's next life, call the
+   *  unloaded renderer, and cache its answer where the reloaded plugin (same id, same version)
+   *  reads it. */
+  it("calls nothing and caches nothing when the plugin is forgotten while the digest is pending", async () => {
+    let release!: () => void;
+    stubDigest(new Promise((resolve) => (release = resolve)));
+    const old = vi.fn(async () => ({ html: "<p>old</p>" }));
+    const pending = requestRender(binding(old), "s", info());
+    forgetPluginRenders("p");
+    release();
+    expect(await pending).toEqual({ kind: "stale" });
+    expect(old).not.toHaveBeenCalled();
+    const fresh = vi.fn(async () => ({ html: "<p>new</p>" }));
+    const drawn = await requestRender(binding(fresh), "s", info());
+    expect(drawn.kind === "drawn" && drawn.content.fragment.textContent).toBe(
+      "new",
+    );
+  });
+
+  /** D7 — a request that waited for a slot through a forget calls nothing when the slot comes.
+   *  What fails this: no epoch check between the slot and the renderer — the forgotten plugin's
+   *  renderer would run once per queued request, and a Reload's new renders would wait behind
+   *  them. The digest is stubbed so all three requests are queued before the forget. The pair is
+   *  "holds a third render until one of two finishes": the same three with nothing forgotten all
+   *  draw. */
+  it("calls nothing for a request that waited for a slot through a forget", async () => {
+    stubDigest();
+    __configureRenderQueue({ concurrency: 2 });
+    const { calls, render } = deferred();
+    const b = binding(render);
+    const outcomes = ["1", "2", "3"].map((s) => requestRender(b, s, info()));
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    forgetPluginRenders("p");
+    calls[0].resolve("<p>1</p>");
+    calls[1].resolve("<p>2</p>");
+    // A task boundary: every microtask the slot hand-over queues has run by now.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toHaveLength(2);
+    expect(await Promise.all(outcomes)).toEqual([
+      { kind: "stale" },
+      { kind: "stale" },
+      { kind: "stale" },
+    ]);
+  });
+
   /** D7 — `invalidate` calls within the window become one notice; per-language and whole-plugin
    *  notices say which. The pair: a notice still comes, once. */
   it("coalesces invalidate notices", async () => {
@@ -279,5 +357,54 @@ describe("what a result may be (§6)", () => {
     expect(thrown.kind === "failed" && thrown.message.startsWith("bad x")).toBe(
       true,
     );
+  });
+
+  /** Task 10's view calls `requestRender` without a `catch`. What fails this: reading a thrown
+   *  value unguarded (an `Error` whose `message` getter throws), or a cache key that is not guarded
+   *  — the promise would reject, and the block would wait forever. */
+  it("never rejects: a throw whose message cannot be read, and a digest that fails", async () => {
+    const unreadable = new Error("x");
+    Object.defineProperty(unreadable, "message", {
+      get() {
+        throw new Error("getter");
+      },
+    });
+    expect(
+      await requestRender(
+        binding(() => {
+          throw unreadable;
+        }),
+        "g",
+        info(),
+      ),
+    ).toEqual({ kind: "failed", message: "the renderer failed" });
+    vi.spyOn(crypto.subtle, "digest").mockRejectedValue(new Error("no digest"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(
+      await requestRender(
+        binding(async () => ({ html: "" })),
+        "h",
+        info(),
+      ),
+    ).toEqual({ kind: "failed", message: "the block could not be drawn" });
+  });
+
+  /** §6 — what the sanitizer removed is logged in developer mode (§379: a dev build, or the user's
+   *  switch), whatever the bundle was built as, and not outside it. What fails this: a gate on the
+   *  Vite build (`import.meta.env.DEV`), or a logger that is quiet outside one — a release build in
+   *  developer mode would print nothing. */
+  it("logs what the sanitizer removed in developer mode only", async () => {
+    const printed = vi.spyOn(console, "info").mockImplementation(() => {});
+    const removing = binding(async () => ({
+      html: "<p>ok</p><script>x()</script>",
+    }));
+    await requestRender(removing, "quiet", info());
+    expect(printed).not.toHaveBeenCalled();
+    usePluginStore.setState({
+      devMode: { active: true, devBuild: false, enabled: true },
+    });
+    await requestRender(removing, "loud", info());
+    expect(printed).toHaveBeenCalledTimes(1);
+    expect(String(printed.mock.calls[0][0])).toContain("removed at least 1");
   });
 });

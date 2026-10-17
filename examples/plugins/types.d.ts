@@ -36,9 +36,9 @@ export type CodeBlockRenderer = (source: string, info: CodeBlockInfo) => Promise
  */
 export interface CodeBlocksAPI {
     /**
-     * Drop the cache of `lang` (every declared language when omitted) and draw its visible blocks
-     * again; off-screen blocks draw when they come into view. Throws for an undeclared language; does
-     * nothing for a declared one another plugin draws.
+     * Drop the cache of `lang` (every language this plugin draws when omitted) and draw its visible
+     * blocks again; off-screen blocks draw when they come into view. Throws for an undeclared
+     * language; does nothing for a declared one another plugin draws.
      */
     invalidate(lang?: string): void;
     /**
@@ -169,7 +169,10 @@ export interface EventsAPI {
 }
 export interface ExtensionContext {
     ai: AIAPI;
-    /** §394 Needs `codeblocks` — see {@link CodeBlocksAPI}. `CodeBlockInfo.path` is absolute. */
+    /**
+     * §394 Needs `codeblocks` — see {@link CodeBlocksAPI}. `CodeBlockInfo.path` is absolute, or `null`
+     * for an unsaved note.
+     */
     codeBlocks: CodeBlocksAPI;
     commands: CommandsAPI;
     editor: EditorAPI;

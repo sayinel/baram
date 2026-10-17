@@ -11,6 +11,8 @@ import type {
   RenderedAction,
 } from "../types";
 
+import { forgetLangRenders } from "./render-queue";
+
 /** Who claims a language. `pluginName` is `pluginSourceLabel` — the badge text and the "drawn by" name. */
 export interface CodeBlockOwner {
   pluginId: string;
@@ -57,7 +59,12 @@ export function __resetCodeBlockRegistry(): void {
   bindings.clear();
 }
 
-/** Bind `render` to `lang`, which `pluginId` must hold. The disposer unbinds it if still bound. */
+/**
+ * Bind `render` to `lang`, which `pluginId` must hold. The disposer unbinds it if still bound. Both
+ * move the language's render epoch (`forgetLangRenders`) before they announce: the cache key names no
+ * renderer, so a renderer bound again must not be served the cached answers of the one before it,
+ * nor the answers it was still computing.
+ */
 export function bindCodeBlockRenderer(
   pluginId: string,
   lang: string,
@@ -79,11 +86,13 @@ export function bindCodeBlockRenderer(
     version: claim.owner.version,
   };
   bindings.set(lang, binding);
+  forgetLangRenders(pluginId, lang);
   announce([lang]);
   return {
     dispose: () => {
       if (bindings.get(lang) !== binding) return;
       bindings.delete(lang);
+      forgetLangRenders(pluginId, lang);
       announce([lang]);
     },
   };
@@ -135,7 +144,9 @@ export function onCodeBlockRegistryChange(
 /**
  * Give back everything `pluginId` claimed or bound. Idempotent. Announces only the languages whose
  * binding went: a claimed language that was never bound drew as a CodeMirror block before and does
- * after, so no editor has anything to redraw for it.
+ * after, so no editor has anything to redraw for it. Moves no render epoch of its own, unlike a
+ * binding's dispose: its one caller, `releaseCodeBlocks`, moves the whole plugin's right after
+ * (`forgetPluginRenders`).
  */
 export function releaseCodeBlockClaims(pluginId: string): void {
   const claim = claims.get(pluginId);

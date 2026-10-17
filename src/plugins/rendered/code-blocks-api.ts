@@ -64,12 +64,17 @@ export function createCodeBlocksAPI(
 ): CodeBlocksAPI {
   const declared = new Map(langs.map((l) => [l.lang, l.drawnBy]));
   const handlers = new Set<(action: RenderedAction) => Promise<void> | void>();
+  // D11 ③ — rights last until every handler is done: `allSettled`, so one rejecting does not
+  // settle the dispatch (and end the rights) while another still runs. The first failure is
+  // rethrown afterwards, for `runPluginAction` to log.
   setCodeBlockActions(pluginId, async (action) => {
-    await Promise.all(
+    const settled = await Promise.allSettled(
       [...handlers].map((handler) =>
         Promise.resolve().then(() => handler(action)),
       ),
     );
+    const failed = settled.find((result) => result.status === "rejected");
+    if (failed !== undefined) throw failed.reason;
   });
   return {
     invalidate(lang) {

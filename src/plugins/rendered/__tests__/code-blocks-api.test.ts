@@ -1,6 +1,6 @@
 // §394 spec 0073 §4 · D5 · D11 ③ · D17 · §6 — the trusted tier's ctx.codeBlocks and the claim both
 // tiers make at load.
-import type { PluginManifest } from "../../types";
+import type { PluginManifest, RenderedAction } from "../../types";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +17,11 @@ import {
   createCodeBlocksAPI,
   dispatchRenderedAction,
 } from "../code-blocks-api";
-import { __resetRenderQueue, onRendersInvalidated } from "../render-queue";
+import {
+  __resetRenderQueue,
+  onRendersInvalidated,
+  requestRender,
+} from "../render-queue";
 
 function manifest(
   id: string,
@@ -41,6 +45,7 @@ function manifest(
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   __resetCodeBlockRegistry();
   __resetRenderQueue();
   resetPromptGate();
@@ -163,7 +168,9 @@ describe("invalidate (§4 · D17 · §6)", () => {
 
 describe("onAction — the second entrance of prompt rights (D11 ③)", () => {
   /** What fails this: dispatching outside `runPluginAction` — the handler would run without
-   *  rights; the pair asserts they end with it. */
+   *  rights; the pair asserts they end with it. The action is asserted out here, on what the
+   *  handler captured: `runPluginAction` logs a handler's throw and never rejects, so an `expect`
+   *  inside the handler could not fail this row. */
   it("runs the handler with prompt rights and ends them when it settles", async () => {
     const api = createCodeBlocksAPI(
       "a",
@@ -172,14 +179,10 @@ describe("onAction — the second entrance of prompt rights (D11 ③)", () => {
     );
     api.register("x", html);
     const during: Array<null | string> = [];
+    const received: RenderedAction[] = [];
     api.onAction((action) => {
       during.push(promptRefusal("a"));
-      expect(action).toEqual({
-        action: "go",
-        context: "c",
-        lang: "x",
-        path: "/v/a.md",
-      });
+      received.push(action);
     });
     await dispatchRenderedAction(codeBlockRendererFor("x")!, {
       action: "go",
@@ -187,8 +190,93 @@ describe("onAction — the second entrance of prompt rights (D11 ③)", () => {
       lang: "x",
       path: "/v/a.md",
     });
+    expect(received).toEqual([
+      { action: "go", context: "c", lang: "x", path: "/v/a.md" },
+    ]);
     expect(during).toEqual([null]);
     expect(promptRefusal("a")).toMatch(/commands is running/);
+  });
+
+  /** D11 ③ — rights last until the handler is done; with two handlers, until both are. What fails
+   *  this: `Promise.all` — the first rejection would settle the dispatch and end the rights while
+   *  the second handler still runs. The pair: the rejection still reaches the log. */
+  it("keeps the rights until every handler settles when one rejects", async () => {
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const api = createCodeBlocksAPI(
+      "a",
+      claimCodeBlocks(manifest("a", ["x"]), "trusted"),
+      [],
+    );
+    api.register("x", html);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let refusal: null | string | undefined;
+    api.onAction(async () => {
+      throw new Error("first");
+    });
+    api.onAction(async () => {
+      await gate;
+      refusal = promptRefusal("a");
+    });
+    const dispatched = dispatchRenderedAction(codeBlockRendererFor("x")!, {
+      action: "go",
+      context: null,
+      lang: "x",
+      path: null,
+    });
+    // A task boundary: the first handler has rejected by now.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+    await dispatched;
+    expect(refusal).toBeNull();
+    expect(warned).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("register again (D6 · D7)", () => {
+  const info = { context: "c", lang: "x", path: "/v/a.md" };
+
+  /** What fails this: a bind that leaves the language's epoch and cache where they were — the
+   *  cache key names no renderer, so a renderer registered over another is served the previous
+   *  one's answer. The pair is "calls the renderer once per key" (render-queue.test.ts): a renderer
+   *  that stays bound keeps its cache. */
+  it("drops the previous renderer's cached answers when another is registered over it", async () => {
+    const api = createCodeBlocksAPI(
+      "a",
+      claimCodeBlocks(manifest("a", ["x"]), "trusted"),
+      [],
+    );
+    api.register("x", async () => ({ html: "<p>first</p>" }));
+    await requestRender(codeBlockRendererFor("x")!, "s", info);
+    api.register("x", async () => ({ html: "<p>second</p>" }));
+    const drawn = await requestRender(codeBlockRendererFor("x")!, "s", info);
+    expect(drawn.kind === "drawn" && drawn.content.fragment.textContent).toBe(
+      "second",
+    );
+  });
+
+  /** What fails this: a dispose that leaves the language's epoch where it was — an answer the
+   *  disposed renderer was still computing would land as current, and be cached for whatever is
+   *  registered next. */
+  it("drops an answer a renderer gives after it is disposed", async () => {
+    const api = createCodeBlocksAPI(
+      "a",
+      claimCodeBlocks(manifest("a", ["x"]), "trusted"),
+      [],
+    );
+    let answer: ((html: string) => void) | undefined;
+    const slow = api.register(
+      "x",
+      () =>
+        new Promise((resolve) => {
+          answer = (h) => resolve({ html: h });
+        }),
+    );
+    const late = requestRender(codeBlockRendererFor("x")!, "s", info);
+    await vi.waitFor(() => expect(answer).toBeDefined());
+    slow.dispose();
+    answer!("<p>first</p>");
+    expect(await late).toEqual({ kind: "stale" });
   });
 });
 
