@@ -31,6 +31,7 @@ import { t } from "../../../i18n";
 import { codeBlockInfo } from "../../../plugins/rendered/code-block-info";
 import { codeBlockRendererFor } from "../../../plugins/rendered/code-block-registry";
 import { dispatchRenderedAction } from "../../../plugins/rendered/code-blocks-api";
+import { registerDueRedraw } from "../../../plugins/rendered/due-redraws";
 import {
   RENDERED_BLOCK_MAX_HEIGHT_PX,
   SOURCE_DEBOUNCE_MS,
@@ -70,6 +71,8 @@ const POINTER_EVENT_TYPES: ReadonlySet<string> = new Set([
 
 export class RenderedCodeBlockView implements NodeView {
   dom: HTMLElement;
+  /** `draw` has been called — the lazy queue owns the first draw (`drawIfDue`). */
+  private asked = false;
   private readonly binding: RendererBinding;
   private readonly body: HTMLElement;
   private readonly chrome: HTMLElement;
@@ -85,11 +88,15 @@ export class RenderedCodeBlockView implements NodeView {
   private readonly editor: Editor;
   private readonly errorLine: HTMLElement;
   private readonly getPos: () => number | undefined;
+  /** A draw's answer is awaited. */
+  private inFlight = false;
   private readonly inner: CodeBlockNodeView;
   private node: PMNode;
   private redrawTimer: null | ReturnType<typeof setTimeout> = null;
   /** Each draw's number; an answer for an older one is late and dropped (D7). */
   private requestSeq = 0;
+  /** The source of the last draw whose attempt ENDED — drawn or failed — `null` until one (D12). */
+  private settledSource: null | string = null;
   private readonly shadow: ShadowRoot;
   /** "Show source" is on — per attached view, never saved (D17). */
   private sourceShown = false;
@@ -209,6 +216,7 @@ export class RenderedCodeBlockView implements NodeView {
         if (langs !== null && !langs.has(binding.lang)) return;
         this.drawWhenShown();
       }),
+      registerDueRedraw(root, () => this.drawIfDue()),
     );
   }
 
@@ -288,10 +296,12 @@ export class RenderedCodeBlockView implements NodeView {
     this.node = node;
     if (!this.inner.update(node)) return false;
     if (changed) {
+      this.syncRenderState();
       if (this.redrawTimer !== null) clearTimeout(this.redrawTimer);
       this.redrawTimer = setTimeout(() => {
         this.redrawTimer = null;
-        this.drawWhenShown();
+        // A draw since the edit — export's `drawIfDue` — may already be of this source.
+        if (this.dom.dataset.renderState !== "done") this.drawWhenShown();
       }, SOURCE_DEBOUNCE_MS);
     }
     return true;
@@ -323,7 +333,7 @@ export class RenderedCodeBlockView implements NodeView {
     if (
       !source &&
       (this.stale ||
-        (this.dom.dataset.renderState === "done" &&
+        (this.settledSource !== null &&
           this.node.textContent !== this.drawnSource))
     ) {
       this.drawWhenShown();
@@ -333,37 +343,44 @@ export class RenderedCodeBlockView implements NodeView {
   /**
    * Ask for the current source and draw what comes back, unless a newer draw started or the view is
    * gone. While this view's editor holds no note it can name (`codeBlockInfo` → `null`, P29) the
-   * block stays stale and draws when it is next shown.
+   * block stays stale and draws when it is next shown. Whether a request was made.
    */
-  private draw(): void {
-    if (this.destroyed) return;
+  private draw(): boolean {
+    if (this.destroyed) return false;
+    this.asked = true;
     // D6 — a binding that is gone is never called. In an editor surface the registry's change has
     // already rebuilt this view; the journal capture editor is not one, so there this view outlives
     // its binding, and the queue cannot tell — a request made after the dispose reads the epoch
     // the dispose moved. The block stays stale until its node changes (`update` rebuilds it).
     if (codeBlockRendererFor(this.binding.lang) !== this.binding) {
-      this.stale = true;
-      return;
+      this.markStale();
+      return false;
     }
     const info = this.info();
     if (info === null) {
-      this.stale = true;
-      return;
+      this.markStale();
+      return false;
     }
     this.stale = false;
+    this.inFlight = true;
+    this.syncRenderState();
     this.drawnNote = noteOf(info);
     const seq = ++this.requestSeq;
     const source = this.node.textContent;
     this.status.textContent = tr("plugin.block.loading");
     void requestRender(this.binding, source, info).then((outcome) => {
       if (this.destroyed || seq !== this.requestSeq) return;
+      this.inFlight = false;
       this.status.textContent = "";
       // D7 — an answer for a source the block no longer holds is late even when no newer draw has
       // started: an edit waits out `SOURCE_DEBOUNCE_MS` before it asks again (`update`). That
       // timer draws the new source when the block is on screen and rendered; otherwise it marks
       // the block stale, and the block draws when it is next shown — on leaving source editing
       // (`applyMode`) or on coming into view (`watchVisibility`).
-      if (source !== this.node.textContent) return;
+      if (source !== this.node.textContent) {
+        this.syncRenderState();
+        return;
+      }
       switch (outcome.kind) {
         case "drawn":
           drawRendered(this.shadow, outcome.content);
@@ -378,16 +395,31 @@ export class RenderedCodeBlockView implements NodeView {
           // registry's change rebuilds this view — in an editor surface (`editor-surfaces.ts`).
           // The journal capture editor is not one: there this view keeps its binding until the
           // block's node changes, and a later `draw` does not call a binding that is gone.
+          this.syncRenderState();
           return;
       }
-      this.dom.dataset.renderState = "done";
+      this.settledSource = source;
+      this.syncRenderState();
     });
+    return true;
+  }
+
+  /**
+   * Export's wake (`due-redraws.ts`, D12): draw now, whatever the visibility or mode, when a redraw
+   * is due — the block was asked to draw before (the lazy queue owns the first draw), none is in
+   * flight, and its last ended attempt is not of the current source or was invalidated since
+   * (`stale`). In source mode the drawing goes into the hidden shadow root. Whether a draw started.
+   */
+  private drawIfDue(): boolean {
+    if (!this.asked || this.inFlight) return false;
+    // `syncRenderState` keeps the attribute: `done` is "nothing due".
+    return this.dom.dataset.renderState !== "done" && this.draw();
   }
 
   /** Draw now if the block is on screen and rendered; otherwise draw when it is (D7). */
   private drawWhenShown(): void {
     if (this.visible && this.dom.dataset.mode === "rendered") this.draw();
-    else this.stale = true;
+    else this.markStale();
   }
 
   /** D17 — leave source editing when the selection leaves the block. The toggle stays as it is. */
@@ -411,6 +443,12 @@ export class RenderedCodeBlockView implements NodeView {
     return codeBlockInfo(this.editor, this.binding.lang, this.binding.tier);
   }
 
+  /** A redraw is due (D7): the block draws when it is next shown, and reads `pending` until (D12). */
+  private markStale(): void {
+    this.stale = true;
+    this.syncRenderState();
+  }
+
   /** §6 — the error line; a failure after a success keeps the last result, faded. */
   private showError(message: null | string): void {
     this.errorLine.hidden = message === null;
@@ -420,6 +458,24 @@ export class RenderedCodeBlockView implements NodeView {
       "plugin-block-stale",
       message !== null && this.drawnSource !== null,
     );
+  }
+
+  /**
+   * D12 — `done` once a draw attempt for the CURRENT source has ended (drawn, or failed — over a
+   * faded earlier result too, §6) and no redraw is due since: none in flight, and nothing marked
+   * the block stale. `pending` otherwise; export's settle waits on it (`export-heavy-blocks.ts`)
+   * and wakes it (`drawIfDue`).
+   */
+  private syncRenderState(): void {
+    const state =
+      !this.stale &&
+      !this.inFlight &&
+      this.settledSource === this.node.textContent
+        ? "done"
+        : "pending";
+    if (this.dom.dataset.renderState !== state) {
+      this.dom.dataset.renderState = state;
+    }
   }
 }
 

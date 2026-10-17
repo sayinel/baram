@@ -12,6 +12,7 @@
 // `mermaid.render`), and the clone is only faithful once that work has landed.
 
 import { flushPendingVisibility } from "../../extensions/nodes/views/lazy-visible";
+import { drawDuePluginBlocks } from "../../plugins/rendered/due-redraws";
 import { isAuthoredMarkup } from "./export-authored-markup";
 
 /**
@@ -126,8 +127,12 @@ export async function settleHeavyBlocks(
   while (pending.length > 0) {
     // A block that mounts can itself contain further lazy blocks (a code block
     // inside a collapsed callout, say), so this runs every pass rather than
-    // assuming one reached everything.
-    const woken = flushPendingVisibility(wakeBatch, root);
+    // assuming one reached everything. §394 D12 — a rendered block drawn once
+    // but due again (edited in source mode, invalidated off screen) is not on
+    // the lazy queue; `drawDuePluginBlocks` asks it to draw, and counts only
+    // the draws it started.
+    const woken =
+      flushPendingVisibility(wakeBatch, root) + drawDuePluginBlocks(root);
 
     await new Promise((resolve) => setTimeout(resolve, pollMs));
     pending = pendingHeavyBlocks(root);
@@ -218,9 +223,10 @@ function mermaidSettled(el: Element): boolean {
 }
 
 /**
- * §394 spec 0073 D12 — a rendered block is settled once its first render
- * attempt ENDED (`data-render-state="done"`: drawn, failed, or a redraw that
- * failed over a faded result — the meaning mermaid's `renderAttempted` has). An
+ * §394 spec 0073 D12 — a rendered block is settled once a render attempt for
+ * its CURRENT source ended and no redraw is due since
+ * (`data-render-state="done"`: drawn, failed, or a redraw that failed over a
+ * faded result — `rendered-code-block-view.ts`'s `syncRenderState`). An
  * authored `data-plugin-block` is settled at once: nothing would ever mark it,
  * and waiting would cost the whole stall budget. (The document sanitizers drop
  * the marker an author writes; this is the layer behind them.)
