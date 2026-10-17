@@ -28,8 +28,9 @@ import {
 } from "../../rendered/limits";
 import { __resetRenderQueue, requestRender } from "../../rendered/render-queue";
 import { createHostRequestHandler } from "../host-request-router";
+import { CALL_TIMEOUT_MS } from "../sandbox-calls";
 import { startSandboxClient } from "../sandbox-client";
-import { CALL_TIMEOUT_MS, SandboxSession } from "../sandbox-session";
+import { SandboxSession } from "../sandbox-session";
 import { createChannelPair } from "./channel-pair";
 
 const MANIFEST = {

@@ -108,10 +108,10 @@ describe("SandboxSession (§260 host router)", () => {
     expect(got.some((m) => m.type === "deactivate")).toBe(true);
   });
 
-  /** §394 plan 0125 Task 11 — commands and actions share one `pending` table, so an answer settles
-   *  only an id whose prefix its frame type names. What fails this: `settleCall` without the
-   *  prefix check — the crossed answers would settle both calls. The pair: each then settles by
-   *  its own frame. */
+  /** §394 plan 0125 Task 11 — commands and actions share one call table (`SandboxCalls`), so an
+   *  answer settles only an id whose prefix its frame type names. What fails this:
+   *  `SandboxCalls.settle` without the prefix check — the crossed answers would settle both calls.
+   *  The pair: each then settles by its own frame. */
   it("settles a call only by the frame type its id names", async () => {
     const { host, sandbox } = createChannelPair();
     const s = new SandboxSession(host);

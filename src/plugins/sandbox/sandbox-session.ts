@@ -19,6 +19,7 @@ import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 import { isEditorRefusalCode } from "./protocol";
+import { SandboxCalls } from "./sandbox-calls";
 import { SandboxRenderCalls } from "./sandbox-render-calls";
 
 /**
@@ -31,8 +32,6 @@ import { SandboxRenderCalls } from "./sandbox-render-calls";
  */
 const ACTIVATE_TIMEOUT_MS = import.meta.env.DEV ? 15_000 : 5_000;
 const ACTIVATE_RETRY_MS = 250;
-/** §394 Also the trusted tier's bound on a `data-action` handler (`plugin-action.ts`, spec 0073 D11 ③). */
-export const CALL_TIMEOUT_MS = 30_000;
 
 export type HostService = ServiceOf<SandboxHostRequest["kind"]>;
 /** The service a mediated request belongs to, from its `kind` prefix. */
@@ -105,30 +104,6 @@ export type HostRequestHandler = (
   onToken: (token: string) => void,
 ) => Promise<unknown>;
 
-/** A command's or a `data-action`'s answer — the two frames `settleCall` takes. */
-type CallAnswer = Extract<
-  SandboxToHost,
-  { type: "actionResult" | "callResult" }
->;
-
-/**
- * §394 — each call's id prefix, by the one frame type that may answer it: commands and actions
- * share `pending`, so an `actionResult` must not settle `call-2`, nor a `callResult` `action-3`.
- */
-const CALL_PREFIX: Record<CallAnswer["type"], string> = {
-  actionResult: "action-",
-  callResult: "call-",
-};
-
-interface Pending {
-  /** A command id or `action:<value>`, kept so a timer rearmed after a prompt names it (§385 spec 0061 §6). */
-  commandId: string;
-  reject: (e: Error) => void;
-  resolve: (v: unknown) => void;
-  /** `null` while a prompt holds this session's command timers. */
-  timer: null | ReturnType<typeof setTimeout>;
-}
-
 export class SandboxSession {
   contributions: null | PluginContributions = null;
   registered: null | SandboxRegisteredReport = null;
@@ -137,9 +112,8 @@ export class SandboxSession {
     reject: (e: Error) => void;
     resolve: (c: PluginContributions) => void;
   } = null;
-  private callSeq = 0;
-  /** True while a prompt occupies this session's command timers (§385 spec 0061 §6). */
-  private callTimersHeld = false;
+  /** Commands and `data-action` clicks waiting for their answers (`SandboxCalls`). */
+  private readonly calls: SandboxCalls;
   private declared: null | PluginContributions = null;
   private disposed = false;
   private readonly emitHandlers = new Set<
@@ -173,7 +147,6 @@ export class SandboxSession {
     }
   >();
   private readonly offMessage: () => void;
-  private readonly pending = new Map<string, Pending>();
   private readonly renders: SandboxRenderCalls;
 
   constructor(
@@ -181,6 +154,7 @@ export class SandboxSession {
     /** Absent when this plugin gets no host-mediated services (see `ai`). */
     private readonly hostRequestHandler?: HostRequestHandler,
   ) {
+    this.calls = new SandboxCalls((frame) => this.transport.send(frame));
     this.renders = new SandboxRenderCalls((frame) =>
       this.transport.send(frame),
     );
@@ -252,11 +226,7 @@ export class SandboxSession {
     this.transport.send({ type: "deactivate" });
     this.offMessage();
     this.activateSettle?.reject(new Error("Sandbox session disposed"));
-    for (const p of this.pending.values()) {
-      if (p.timer) clearTimeout(p.timer);
-      p.reject(new Error("Sandbox session disposed"));
-    }
-    this.pending.clear();
+    this.calls.dispose();
     this.renders.dispose();
     // Timers were cleared as each id was answered; anything still answered-but-held
     // only occupied a slot, and the slot dies with the session.
@@ -268,29 +238,29 @@ export class SandboxSession {
     this.transport.close();
   }
 
-  /** §394 spec 0073 D11 ③ · D13 — a `data-action` click, a call like a command (`startCall`). */
+  /** §394 spec 0073 D11 ③ · D13 — a `data-action` click, a call like a command (`SandboxCalls`). */
   invokeAction(target: RenderActionTarget, action: string): Promise<void> {
     if (this.disposed)
       return Promise.reject(new Error("Sandbox session disposed"));
-    const id = `${CALL_PREFIX.actionResult}${++this.callSeq}`;
-    return this.startCall(id, `action:${action}`, {
-      action,
-      id,
-      target,
-      type: "invokeAction",
-    }).then(() => {});
+    return this.calls
+      .start("actionResult", `action:${action}`, (id) => ({
+        action,
+        id,
+        target,
+        type: "invokeAction",
+      }))
+      .then(() => {});
   }
 
   invokeCommand(commandId: string, args: unknown[] = []): Promise<unknown> {
     if (this.disposed)
       return Promise.reject(new Error("Sandbox session disposed"));
-    const callId = `${CALL_PREFIX.callResult}${++this.callSeq}`;
-    return this.startCall(callId, commandId, {
+    return this.calls.start("callResult", commandId, (callId) => ({
       type: "invokeCommand",
       callId,
       commandId,
       args,
-    });
+    }));
   }
 
   onEmit(handler: (event: string, args: unknown[]) => void): () => void {
@@ -334,25 +304,14 @@ export class SandboxSession {
     this.transport.send(msg);
   }
 
-  private armCallTimer(callId: string, pending: Pending): void {
-    pending.timer = setTimeout(() => {
-      this.pending.delete(callId);
-      pending.reject(
-        new Error(`Sandbox command "${pending.commandId}" timed out`),
-      );
-    }, CALL_TIMEOUT_MS);
-  }
-
   private handle(m: SandboxToHost): void {
     switch (m.type) {
       case "actionResult":
-        this.settleCall(m);
+      case "callResult":
+        this.calls.settle(m);
         break;
       case "activateError":
         this.activateSettle?.reject(new Error(m.error));
-        break;
-      case "callResult":
-        this.settleCall(m);
         break;
       case "emitEvent":
         this.emitHandlers.forEach((h) => h(m.event, m.args));
@@ -377,18 +336,6 @@ export class SandboxSession {
     // Not routed through `answerHostRequest`: a refusal has no in-flight entry (that
     // is precisely why it is refused), so it answers directly.
     this.transport.send({ type: "hostResponse", requestId, ok: false, error });
-  }
-
-  /**
-   * §385 — a person choosing is not the plugin running (spec 0061 §6). ALL pending calls stop:
-   * a prompt frame names no call, so the session cannot tell which command asked.
-   */
-  private holdCallTimers(): void {
-    this.callTimersHeld = true;
-    for (const pending of this.pending.values()) {
-      if (pending.timer) clearTimeout(pending.timer);
-      pending.timer = null;
-    }
   }
 
   private onHostRequest(requestId: string, request: SandboxHostRequest): void {
@@ -439,7 +386,8 @@ export class SandboxSession {
       }, HOST_REQUEST_TIMEOUT_MS);
     const entry = { answered: false, service, timer: startTimer() };
     this.inflightHost.set(requestId, entry);
-    if (service === "prompt") this.holdCallTimers();
+    // §385 — a person choosing is not the plugin running (spec 0061 §6): every call's timer stops.
+    if (service === "prompt") this.calls.hold();
 
     const onToken = (token: string) => {
       // Compare the ENTRY, not just the id (3c-2c code review, MEDIUM-5): `requestId`
@@ -468,9 +416,9 @@ export class SandboxSession {
     };
     // A handler that throws SYNCHRONOUSLY (rather than returning a rejected promise) would
     // otherwise skip the `.then`/`.finally` chain below entirely, leaving the slot taken and —
-    // now that a prompt can hold this session's command timers — `callTimersHeld` stuck at
-    // `true` forever. Caught here and turned into the same rejected promise, so every exit still
-    // takes the one road `.finally` is.
+    // now that a prompt can hold this session's call timers — those timers held forever. Caught
+    // here and turned into the same rejected promise, so every exit still takes the one road
+    // `.finally` is.
     let settled: Promise<unknown>;
     try {
       settled = this.hostRequestHandler(request, onToken);
@@ -514,7 +462,7 @@ export class SandboxSession {
       // construction, not per exit path (§385 spec 0061 §6).
       .finally(() => {
         this.releaseHostRequest(requestId);
-        if (service === "prompt") this.resumeCallTimers();
+        if (service === "prompt") this.calls.resume();
       });
   }
 
@@ -524,48 +472,6 @@ export class SandboxSession {
     if (!entry) return;
     if (entry.timer) clearTimeout(entry.timer);
     this.inflightHost.delete(requestId);
-  }
-
-  /** Every pending call gets a fresh 30 s once the prompt settles. */
-  private resumeCallTimers(): void {
-    this.callTimersHeld = false;
-    if (this.disposed) return;
-    for (const [callId, pending] of this.pending) {
-      if (!pending.timer) this.armCallTimer(callId, pending);
-    }
-  }
-
-  /**
-   * `startCall`'s one answer path: only by the frame type `CALL_PREFIX` names, and only once — the
-   * entry leaves `pending` here, or the next prompt to close arms a timer for it (`resumeCallTimers`).
-   */
-  private settleCall(answer: CallAnswer): void {
-    const id = answer.type === "callResult" ? answer.callId : answer.id;
-    if (!id.startsWith(CALL_PREFIX[answer.type])) return;
-    const p = this.pending.get(id);
-    if (!p) return;
-    if (p.timer) clearTimeout(p.timer);
-    this.pending.delete(id);
-    if (!answer.ok) p.reject(new Error(answer.error));
-    else p.resolve(answer.type === "callResult" ? answer.value : undefined);
-  }
-
-  /**
-   * Send a command or a `data-action` and wait for its `settleCall`: one `pending` table, so each
-   * ends at `CALL_TIMEOUT_MS`, stops while a prompt is open (`holdCallTimers`) and dies on `dispose`.
-   */
-  private startCall(
-    id: string,
-    commandId: string,
-    frame: Extract<HostToSandbox, { type: "invokeAction" | "invokeCommand" }>,
-  ): Promise<unknown> {
-    return new Promise<unknown>((resolve, reject) => {
-      const pending: Pending = { commandId, reject, resolve, timer: null };
-      this.pending.set(id, pending);
-      // A call started while a prompt is open waits for the prompt like the others (spec 0061 §6).
-      if (!this.callTimersHeld) this.armCallTimer(id, pending);
-      this.transport.send(frame);
-    });
   }
 
   private validate(

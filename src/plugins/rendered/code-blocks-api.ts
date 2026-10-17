@@ -21,7 +21,7 @@ import type { RendererBinding } from "./code-block-registry";
 import { declaredCodeBlockLangs } from "../manifest-code-blocks";
 import { runPluginAction } from "../plugin-action";
 import { pluginSourceLabel } from "../plugin-text";
-import { CALL_TIMEOUT_MS } from "../sandbox/sandbox-session";
+import { CALL_TIMEOUT_MS } from "../sandbox/sandbox-calls";
 import { drawnByMessage, undeclaredLangMessage } from "./code-block-messages";
 import {
   bindCodeBlockRenderer,

@@ -11,8 +11,8 @@ import type { SandboxTransport } from "../transport";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createPromptRequestHandler } from "../host-prompt-bridge";
+import { CALL_TIMEOUT_MS } from "../sandbox-calls";
 import {
-  CALL_TIMEOUT_MS,
   HOST_REQUEST_TIMEOUT_MS,
   SandboxSession,
   splitForFrame,
@@ -161,8 +161,8 @@ describe("SandboxSession and prompts", () => {
 
   // A handler that throws SYNCHRONOUSLY (as opposed to returning a rejected promise) never
   // reaches the session's `.then`/`.finally` chain unless the session catches the throw; left
-  // uncaught, the slot would stay taken and `callTimersHeld` stuck at `true` forever (a pending
-  // command would then NEVER time out).
+  // uncaught, the slot would stay taken and the call timers held (`SandboxCalls.hold`) forever
+  // (a pending command would then NEVER time out).
   it("answers ok:false and resumes command timers when the handler throws synchronously", async () => {
     vi.useFakeTimers();
     const { receive, sent, transport } = makeTransport();
@@ -193,10 +193,10 @@ describe("SandboxSession's answered calls (§394 plan 0125 Task 11)", () => {
   afterEach(() => vi.useRealTimers());
 
   // The answer path's `pending.delete`. An answered call left in the table has no timer, so
-  // nothing shows until a prompt closes: `resumeCallTimers` then arms a fresh 30 s for it — one
-  // timer per answered call per prompt, each rejecting a settled promise. What fails this:
-  // `settleCall` without the delete — three timers here instead of one. The pair: the call still
-  // waiting does get its timer, and it fires.
+  // nothing shows until a prompt closes: `SandboxCalls.resume` then arms a fresh 30 s for it —
+  // one timer per answered call per prompt, each rejecting a settled promise. What fails this:
+  // `SandboxCalls.settle` without the delete — three timers here instead of one. The pair: the
+  // call still waiting does get its timer, and it fires.
   it("arms no timer for an answered call when a prompt closes", async () => {
     vi.useFakeTimers();
     const { receive, transport } = makeTransport();
