@@ -5,6 +5,11 @@ export type {
   AIAPI,
   AICompleteOptions,
   AIModel,
+  // §394 — `ctx.codeBlocks` for both tiers (spec 0073 §4): the API, a renderer's signature and its
+  // input, and what it returns.
+  CodeBlockInfo,
+  CodeBlockRenderer,
+  CodeBlocksAPI,
   CommandRegisterOptions,
   CommandsAPI,
   Disposable,
@@ -53,6 +58,8 @@ export type {
   PromptsAPI,
   QuickPickItem,
   QuickPickOptions,
+  RenderedAction,
+  RenderedContent,
   // §260 Phase 6 — the SANDBOXED tier's context and surfaces. Published because that tier
   // is the default one: without `SandboxContext` an author writing `activate(ctx)` for a
   // sandboxed plugin has no type to name, which is how the reference port was blocked.
