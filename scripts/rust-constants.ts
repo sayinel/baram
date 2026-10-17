@@ -272,24 +272,25 @@ export function pickApprovedDirParams(rustSource: string): string[] {
     /pub\s+async\s+fn\s+pick_approved_dir\s*<[^>]*>\s*\(([^)]*)\)/gu,
     "pick_approved_dir",
   );
-  const names = signature
-    .split(",")
-    .map((part) => part.split(":")[0].trim())
-    .filter((name) => name.length > 0 && name !== "app");
+  return parameterNames(signature, "pick_approved_dir");
+}
 
-  // ‼️ The split is on every comma, so a future parameter whose TYPE carries one
-  // (`Option<Result<A, B>>`) would be read as two parameters, one of them a fragment like "B>>".
-  // Left unchecked that returns a plausible-looking list and the consumer compares the payload
-  // against nonsense. Every Rust parameter name is a lowercase identifier, so anything else here
-  // means the parse broke.
-  for (const name of names) {
-    if (!/^[a-z_][a-z0-9_]*$/u.test(name)) {
-      throw new Error(
-        `cannot read pick_approved_dir parameters: "${name}" is not a parameter name — the signature parse broke`,
-      );
-    }
-  }
-  return names;
+/**
+ * §5.11 The parameter names `replace_search_matches` declares — the same scrape as
+ * `pickApprovedDirParams` above. `options` is an `Option`: a payload key under another name
+ * leaves it `None`, and the replacement then matches with the default options instead of the
+ * panel's toggles. `target` is required, so a misnamed one makes every Replace fail; this
+ * says which side drifted.
+ *
+ * The consumer is `src/ipc/__tests__/replace-search-matches-args.test.ts`.
+ */
+export function replaceSearchMatchesParams(rustSource: string): string[] {
+  const signature = soleDeclaration(
+    rustSource,
+    /pub\s+async\s+fn\s+replace_search_matches\s*\(([^)]*)\)/gu,
+    "replace_search_matches",
+  );
+  return parameterNames(signature, "replace_search_matches");
 }
 
 /**
@@ -595,6 +596,30 @@ function integerProduct(literal: string, constant: string): number {
     }
     return product * value;
   }, 1);
+}
+
+/**
+ * The parameter names in a command's parameter list, minus the `app` handle Tauri injects.
+ *
+ * ‼️ The split is on every comma, so a future parameter whose TYPE carries one
+ * (`Option<Result<A, B>>`) would be read as two parameters, one of them a fragment like "B>>".
+ * Left unchecked that returns a plausible-looking list and the consumer compares the payload
+ * against nonsense. Every Rust parameter name is a lowercase identifier, so anything else here
+ * means the parse broke.
+ */
+function parameterNames(signature: string, command: string): string[] {
+  const names = signature
+    .split(",")
+    .map((part) => part.split(":")[0].trim())
+    .filter((name) => name.length > 0 && name !== "app");
+  for (const name of names) {
+    if (!/^[a-z_][a-z0-9_]*$/u.test(name)) {
+      throw new Error(
+        `cannot read ${command} parameters: "${name}" is not a parameter name — the signature parse broke`,
+      );
+    }
+  }
+  return names;
 }
 
 /** Exactly one declaration must match, or we are guessing which value ships. */

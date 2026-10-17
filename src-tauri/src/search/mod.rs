@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;
 
+pub(crate) mod replace;
+
 /// A single search match with file path, line/column, and context snippet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +126,20 @@ pub(crate) fn check_query(query: &str, opts: &SearchOptions) -> Result<(), Query
         } else {
             QueryRefusal::Unsearchable(error)
         }
+    })
+}
+
+/// §5.11 The lines of `content` as `str::lines` yields them, each with the ending `lines` strips
+/// — `\r\n` or `\n`, or nothing for a last line without one; a lone `\r` ends no line — so the
+/// text can be put back together byte for byte. `search_files` numbers its lines by this and
+/// `replace::replace_matches` replaces by it, so the two count the same lines.
+pub(crate) fn lines_with_endings(content: &str) -> impl Iterator<Item = (&str, &str)> {
+    content.split_inclusive('\n').map(|chunk| {
+        let line = chunk
+            .strip_suffix('\n')
+            .map(|rest| rest.strip_suffix('\r').unwrap_or(rest))
+            .unwrap_or(chunk);
+        (line, chunk.get(line.len()..).unwrap_or(""))
     })
 }
 
@@ -294,7 +310,7 @@ pub async fn search_files(
             Err(_) => continue,
         };
 
-        for (line_idx, line_text) in content.lines().enumerate() {
+        for (line_idx, (line_text, _)) in lines_with_endings(&content).enumerate() {
             if results.len() >= opts.max_results {
                 break;
             }

@@ -348,6 +348,7 @@ pub fn run() {
             keyring_cmd::keyring_provider_configured,
             keyring_cmd::keyring_delete_provider_key,
             search_cmd::search_files,
+            search_cmd::replace_search_matches,
             git_cmd::git_status,
             git_cmd::git_stage,
             git_cmd::git_unstage,

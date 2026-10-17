@@ -152,6 +152,23 @@
       "description": "전역 텍스트 검색 (regex 기반 파일 워킹)"
     },
     {
+      "name": "replace_search_matches",
+      "input": {
+        "content": "string",
+        "query": "string",
+        "options": "SearchOptions?",
+        "replacement": "string",
+        "target": "SearchReplaceTarget"
+      },
+      "output": "string",
+      "module": "search",
+      "spec": "§5.11",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "검색 패널의 바꾸기 · 모두 바꾸기 — 글을 받아 search_files 와 같은 패턴 · 줄 단위로 바꾼 글을 돌려준다(파일은 읽고 쓰지 않는다)"
+    },
+    {
       "name": "get_backlinks",
       "input": {
         "filePath": "string"
