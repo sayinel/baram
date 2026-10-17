@@ -32,10 +32,9 @@ function anchorFor(prefix: string, id: string): string {
  * version of a working link: it invites a click and silently does nothing,
  * which is the exact complaint §301 answered for local video.
  *
- * `isAuthoredMarkup` is injected rather than imported from export-html.ts: it
- * has to stay co-located there with the two code-block loops it keeps aligned
- * (see that file), and importing it back here would pull this module into a
- * cycle with the orchestrator for no benefit.
+ * `isAuthoredMarkup` is a parameter: the caller passes the one predicate in
+ * export-authored-markup.ts, the same one its code-block loops filter with
+ * (see that file).
  */
 export function linkInternalReferences(
   clone: HTMLElement,

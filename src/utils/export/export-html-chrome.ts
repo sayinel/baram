@@ -207,10 +207,9 @@ export function expandCollapsedContent(clone: HTMLElement): void {
  * and `role="button"` on something nothing can press is a lie told to a screen
  * reader.
  *
- * `isAuthoredMarkup` is injected rather than imported from export-html.ts: it
- * has to stay co-located there with the two code-block loops it keeps aligned
- * (see that file), and importing it back here would pull this module into a
- * cycle with the orchestrator for no benefit.
+ * `isAuthoredMarkup` is a parameter: the caller passes the one predicate in
+ * export-authored-markup.ts, the same one its code-block loops filter with
+ * (see that file).
  */
 export function stripEditingChrome(
   clone: HTMLElement,
@@ -224,6 +223,17 @@ export function stripEditingChrome(
     ".callout-icon-btn, .task-checkbox",
   )) {
     retag(el, "span").removeAttribute("type");
+  }
+
+  // §394 spec 0073 D12 — a rendered block's chrome (source badge, status,
+  // toggle, error line). The plugin-block pass replaces every paired root
+  // first; this is the rule for one it could not pair. The same class an HTML
+  // block's author wrote is content, like their controls below.
+  for (const el of clone.querySelectorAll(
+    ".plugin-block-chrome, .plugin-block-error",
+  )) {
+    if (isAuthoredMarkup(el)) continue;
+    el.remove();
   }
 
   for (const el of clone.querySelectorAll("button, select, textarea")) {

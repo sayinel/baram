@@ -6,6 +6,7 @@ import katexCSS from "katex/dist/katex.min.css?raw";
 
 import { withVirtualizationSuspendedAsync } from "../../extensions/plugins/viewport-virtualize";
 import { useSettingsStore } from "../../stores/settings/store";
+import { isAuthoredMarkup } from "./export-authored-markup";
 import { exportFontVariables } from "./export-font-embed";
 import { settleHeavyBlocks } from "./export-heavy-blocks";
 import { linkInternalReferences } from "./export-html-anchors";
@@ -27,6 +28,10 @@ import {
   resolveVideoSources,
   stripMediaChrome,
 } from "./export-html-media";
+import {
+  embedPluginBlocks,
+  type LivePluginBlock,
+} from "./export-html-plugin-blocks";
 import { buildExportStylesheet } from "./export-html-styles";
 import { inlineKatexFonts } from "./export-katex-fonts";
 
@@ -99,8 +104,8 @@ export async function captureEditorHTML(
   //
   // getComputedStyle() only works on elements in the live DOM, so the code
   // blocks' syntax colours are collected here, before the clone.
-  const { clone, codeBlockInfos } = await withVirtualizationSuspendedAsync(
-    async () => {
+  const { clone, codeBlockInfos, pluginBlocks } =
+    await withVirtualizationSuspendedAsync(async () => {
       const unsettled = await settleHeavyBlocks(dom);
       if (unsettled.length > 0) {
         // Not fatal: each block kind has a fallback below. Worth saying out
@@ -119,8 +124,22 @@ export async function captureEditorHTML(
       // sequences line up because `descendants` and `querySelectorAll` are both
       // document order.
       const codeTexts: string[] = [];
-      editor.state.doc.descendants((node) => {
-        if (node.type.name === "codeBlock") codeTexts.push(node.textContent);
+      // §394 spec 0073 D12 — a rendered block is told by the SAME DOM mark on
+      // both sides: here by its node's DOM (`nodeDOM`), in the queries below by
+      // `[data-plugin-block]`. Judging by the registry would disagree with the
+      // DOM for a block built before its renderer came.
+      const pluginBlocks: LivePluginBlock[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name !== "codeBlock") return;
+        const nodeDom = editor.view.nodeDOM(pos);
+        if (
+          nodeDom instanceof HTMLElement &&
+          nodeDom.hasAttribute("data-plugin-block")
+        ) {
+          pluginBlocks.push({ live: nodeDom, text: node.textContent });
+        } else {
+          codeTexts.push(node.textContent);
+        }
       });
       // ‼️ `isAuthoredMarkup` is what keeps the two sequences aligned, not just
       // a courtesy to the author. An HTML block can contain a literal
@@ -129,9 +148,10 @@ export async function captureEditorHTML(
       // shift every later block onto the wrong text, so each one would print
       // some OTHER block's code. Excluding it also means the export leaves that
       // markup exactly as written, which is the same rule the control strip
-      // follows.
+      // follows. `isOrdinaryCodeBlock` also leaves out a rendered block's
+      // wrapped CodeMirror (§394).
       const wrappers = [...dom.querySelectorAll(".code-block-wrapper")].filter(
-        (el) => !isAuthoredMarkup(el),
+        isOrdinaryCodeBlock,
       );
       if (wrappers.length !== codeTexts.length) {
         console.warn(
@@ -144,9 +164,9 @@ export async function captureEditorHTML(
       return {
         clone: dom.cloneNode(true) as HTMLElement,
         codeBlockInfos: infos,
+        pluginBlocks,
       };
-    },
-  );
+    });
 
   hideAtomBlockEditingUI(clone);
 
@@ -164,12 +184,17 @@ export async function captureEditorHTML(
   // in both — and an authored `.code-block-wrapper` is left untouched.
   const cloneCodeBlocks = [
     ...clone.querySelectorAll(".code-block-wrapper"),
-  ].filter((el) => !isAuthoredMarkup(el));
+  ].filter(isOrdinaryCodeBlock);
   cloneCodeBlocks.forEach((wrapper, i) => {
     const info = codeBlockInfos[i];
     if (!info) return;
     wrapper.replaceWith(buildCodeBlockExport(info));
   });
+
+  // §394 spec 0073 D12 — rendered blocks as declarative shadow DOM (or, never
+  // drawn, as code). Before the chrome strip and the link scrub below: those
+  // walk the light DOM, and this pass scrubs each template's content itself.
+  embedPluginBlocks(clone, pluginBlocks, isAuthoredMarkup);
 
   cleanupBlockEditingArtifacts(clone);
 
@@ -281,29 +306,15 @@ export function generateStandaloneHTML(
 }
 
 /**
- * Is this element part of the DOCUMENT rather than part of the editor?
- *
- * ‼️ An HTML block renders the author's own (sanitized) markup verbatim —
- * html-block-view.tsx sets it with `dangerouslySetInnerHTML` into
- * `.html-block-render`. A `<button>` in there is not chrome the editor added
- * around the content; it IS the content, written by the person exporting. The
- * blanket "remove every control" rule below is right for everything the editor
- * put on the page and wrong for everything the author put in it, and this is
- * where that line falls.
- *
- * The block's own chrome — its `html-block-textarea`, its header — sits OUTSIDE
- * `.html-block-render`, so it is still removed.
- *
- * ‼️ Kept here rather than moved out, together with the two code-block loops
- * above that share it: `wrappers` (collected from the live DOM) and
- * `cloneCodeBlocks` (collected from the clone) rely on filtering with the
- * SAME predicate to stay index-aligned — see the comment on `wrappers` above.
- * `stripEditingChrome` and `linkInternalReferences` also need this test, but
- * take it as a parameter instead of importing it back from here, so this file
- * does not become a dependency of the modules it depends on.
+ * A `.code-block-wrapper` that stands for an ordinary code block node — the
+ * filter BOTH code-block loops in `captureEditorHTML` apply, which is what
+ * keeps them index-aligned (see the note on `wrappers`). Authored markup is not
+ * one, and neither is the CodeMirror a rendered block wraps (§394 spec 0073
+ * D12): that node is collected as a plugin block instead, and
+ * `embedPluginBlocks` replaces the root the wrapper sits in when it can pair it.
  */
-function isAuthoredMarkup(el: Element): boolean {
-  return el.closest(".html-block-render") !== null;
+function isOrdinaryCodeBlock(el: Element): boolean {
+  return !isAuthoredMarkup(el) && el.closest("[data-plugin-block]") === null;
 }
 
 /**

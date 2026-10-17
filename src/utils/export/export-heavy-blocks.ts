@@ -1,7 +1,8 @@
 // §5.12 export — wake every lazily-mounted heavy block and wait for it to land.
 //
-// Code blocks, math (inline and block) and Mermaid diagrams all defer their real
-// content until they near the viewport (extensions/nodes/views/lazy-visible.ts).
+// Code blocks, math (inline and block), Mermaid diagrams and plugin-rendered
+// blocks (§394) all defer their real content until they near the viewport
+// (extensions/nodes/views/lazy-visible.ts).
 // An export reads the WHOLE document from a viewport that never moves, so
 // without this the capture cloned whatever placeholder each unvisited block
 // happened to be showing.
@@ -11,6 +12,7 @@
 // `mermaid.render`), and the clone is only faithful once that work has landed.
 
 import { flushPendingVisibility } from "../../extensions/nodes/views/lazy-visible";
+import { isAuthoredMarkup } from "./export-authored-markup";
 
 /**
  * Timings, injectable so the loop can be tested without wall-clock waits.
@@ -81,10 +83,17 @@ export function pendingHeavyBlocks(root: ParentNode): PendingBlock[] {
       if (!ok(el)) pending.push({ el, kind });
     }
   };
-  check(".code-block-wrapper", "code", codeBlockSettled);
+  // §394 — the wrapped CodeMirror of a rendered block is not exported, so it is
+  // never waited for.
+  check(
+    ".code-block-wrapper",
+    "code",
+    (el) => el.closest("[data-plugin-block]") !== null || codeBlockSettled(el),
+  );
   check(".math-block", "math-block", mathBlockSettled);
   check(".math-inline", "math-inline", mathInlineSettled);
   check(".mermaid-block", "mermaid", mermaidSettled);
+  check("[data-plugin-block]", "plugin", pluginBlockSettled);
   return pending;
 }
 
@@ -206,4 +215,18 @@ function mathInlineSettled(el: Element): boolean {
  */
 function mermaidSettled(el: Element): boolean {
   return el.getAttribute("data-render-state") === "done";
+}
+
+/**
+ * §394 spec 0073 D12 — a rendered block is settled once its first render
+ * attempt ENDED (`data-render-state="done"`: drawn, failed, or a redraw that
+ * failed over a faded result — the meaning mermaid's `renderAttempted` has). An
+ * authored `data-plugin-block` (an HTML block keeps `data-*`) is settled at
+ * once: nothing would ever mark it, and waiting would cost the whole stall
+ * budget.
+ */
+function pluginBlockSettled(el: Element): boolean {
+  return (
+    isAuthoredMarkup(el) || el.getAttribute("data-render-state") === "done"
+  );
 }
