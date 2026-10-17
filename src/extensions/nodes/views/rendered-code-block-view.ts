@@ -52,6 +52,7 @@ import { watchVisibility } from "../../../plugins/rendered/visibility";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { subscribeContentLoaded } from "../../../utils/editor/programmatic-update";
 import { logger } from "../../../utils/logger";
+import { PLUGIN_BLOCK_MARKER } from "../../../utils/plugin-block-marker";
 import { CodeBlockNodeView } from "./code-block-node-view";
 import { onFirstVisible } from "./lazy-visible";
 
@@ -113,7 +114,7 @@ export class RenderedCodeBlockView implements NodeView {
     this.binding = binding;
 
     const root = document.createElement("div");
-    root.setAttribute("data-plugin-block", "");
+    root.setAttribute(PLUGIN_BLOCK_MARKER, "");
     // P17 — the common container of the chrome's button, the shadow host and the wrapped island.
     root.setAttribute("data-vim-suspend", "");
     root.dataset.lang = binding.lang;

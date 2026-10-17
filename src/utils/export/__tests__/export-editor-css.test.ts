@@ -76,7 +76,7 @@ describe("rescopeEditorCSS", () => {
     expect(out).toContain("article.baram-export p");
   });
 
-  it("leaves no dropped declaration anywhere in the shipped stylesheet", () => {
+  it("leaves no dropped declaration in the shipped stylesheet but the export's own containment", () => {
     // ‼️ This is the assertion that caught the real bug, and the per-fixture
     // checks above are not a substitute for it: the single `/g` pass handled
     // every fixture correctly and still shipped `content-visibility: auto`,

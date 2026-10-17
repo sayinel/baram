@@ -221,9 +221,9 @@ function mermaidSettled(el: Element): boolean {
  * §394 spec 0073 D12 — a rendered block is settled once its first render
  * attempt ENDED (`data-render-state="done"`: drawn, failed, or a redraw that
  * failed over a faded result — the meaning mermaid's `renderAttempted` has). An
- * authored `data-plugin-block` (an HTML block keeps `data-*`) is settled at
- * once: nothing would ever mark it, and waiting would cost the whole stall
- * budget.
+ * authored `data-plugin-block` is settled at once: nothing would ever mark it,
+ * and waiting would cost the whole stall budget. (The document sanitizers drop
+ * the marker an author writes; this is the layer behind them.)
  */
 function pluginBlockSettled(el: Element): boolean {
   return (

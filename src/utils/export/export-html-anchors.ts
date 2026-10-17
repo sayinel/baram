@@ -33,8 +33,8 @@ function anchorFor(prefix: string, id: string): string {
  * which is the exact complaint §301 answered for local video.
  *
  * `isAuthoredMarkup` is a parameter: the caller passes the one predicate in
- * export-authored-markup.ts, the same one its code-block loops filter with
- * (see that file).
+ * export-authored-markup.ts, the one its code-block loops build their filter
+ * on (`isOrdinaryCodeBlock`, see that file).
  */
 export function linkInternalReferences(
   clone: HTMLElement,

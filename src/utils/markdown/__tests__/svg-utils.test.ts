@@ -67,6 +67,21 @@ describe("sanitizeSvg", () => {
   it("returns empty string for non-SVG / empty input", () => {
     expect(sanitizeSvg("")).toBe("");
   });
+
+  /** §394 spec 0073 D12 — `data-plugin-block` marks a plugin-rendered code block's root, which the
+   *  export pairs with a live block and settle waits on; an SVG block sits outside the HTML block's
+   *  `.html-block-render`, so nothing else would tell its forged mark apart. What fails this: a
+   *  FORBID_ATTR without the marker. The pair: another `data-*` stays. */
+  it("drops the rendered-block marker and keeps the element", () => {
+    const host = document.createElement("div");
+    host.innerHTML = sanitizeSvg(
+      '<svg xmlns="http://www.w3.org/2000/svg"><g data-plugin-block="" data-other="1"><text>t</text></g></svg>',
+    );
+    const g = host.querySelector("g");
+    expect(g?.hasAttribute("data-plugin-block")).toBe(false);
+    expect(g?.getAttribute("data-other")).toBe("1");
+    expect(g?.textContent).toBe("t");
+  });
 });
 
 // MathML inside <foreignObject>: Mermaid renders a `$$…$$` label as KaTeX

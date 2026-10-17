@@ -2,7 +2,8 @@
 // read from the LIVE host (a clone carries no shadow root), links scrubbed inside the template, no
 // `<style>` that would close itself, containment restated in the export stylesheet, settle waiting
 // for it, the code-block pairing unshaken by it, and none of its chrome.
-import { Editor } from "@tiptap/core";
+import type { Editor } from "@tiptap/core";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -10,85 +11,56 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(async () => undefined),
 }));
 
-import { createBaramExtensions } from "../../../extensions";
-import {
-  _resetForTest,
-  flushPendingVisibility,
-} from "../../../extensions/nodes/views/lazy-visible";
-import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
-import {
-  __resetCodeBlockRegistry,
-  bindCodeBlockRenderer,
-  claimCodeBlockLangs,
-} from "../../../plugins/rendered/code-block-registry";
-import { __resetRenderQueue } from "../../../plugins/rendered/render-queue";
-import { __resetVisibility } from "../../../plugins/rendered/visibility";
+import { useSettingsStore } from "../../../stores/settings/store";
+import { logger } from "../../logger";
 import { isAuthoredMarkup } from "../export-authored-markup";
 import { pendingHeavyBlocks } from "../export-heavy-blocks";
-import { captureEditorHTML } from "../export-html";
 import { stripEditingChrome } from "../export-html-chrome";
 import { embedPluginBlocks } from "../export-html-plugin-blocks";
 import { buildExportStylesheet } from "../export-html-styles";
+import {
+  bindChart,
+  cleanUp,
+  editorWith,
+  exported,
+  rootOf,
+  shadowOf,
+  showAll,
+  templateOf,
+} from "./helpers/plugin-block-editor";
 
-declare const MockIntersectionObserver: {
-  instances: Array<{ triggerIntersect: (v?: boolean) => void }>;
+const codeSettings = {
+  codeBlockLineNumbers: useSettingsStore.getState().codeBlockLineNumbers,
+  codeBlockStyle: useSettingsStore.getState().codeBlockStyle,
 };
 
-const editors: Editor[] = [];
-
 afterEach(() => {
-  for (const editor of editors.splice(0)) editor.destroy();
-  __resetCodeBlockRegistry();
-  __resetRenderQueue();
-  __resetVisibility();
-  _resetForTest();
+  cleanUp();
+  useSettingsStore.setState(codeSettings);
+  vi.restoreAllMocks();
 });
 
-function bindChart(): void {
-  claimCodeBlockLangs(
-    { pluginId: "p", pluginName: "Plug", tier: "trusted", version: "1" },
-    ["chart"],
-  );
-  bindCodeBlockRenderer("p", "chart", async (source) => {
+/** A `chart` renderer that draws its source and refuses `never`. */
+function bindChartDrawing(): void {
+  bindChart(async (source) => {
     if (source === "never") throw new Error("cannot");
     return { css: "p{color:red}", html: `<p>${source}</p>` };
   });
 }
 
-/** The LIVE shadow root of the editor's first rendered block, once its first render ended. */
-async function drawnShadow(editor: Editor): Promise<ShadowRoot> {
-  showAll();
-  const root = editor.view.dom.querySelector(
-    "[data-plugin-block]",
-  ) as HTMLElement;
-  await vi.waitFor(() => expect(root.dataset.renderState).toBe("done"));
-  return root.querySelector(".plugin-block-host")!.shadowRoot!;
-}
-
-function editorWith(md: string): Editor {
-  const editor = new Editor({
-    element: document.body.appendChild(document.createElement("div")),
-    extensions: createBaramExtensions(),
-    content: "",
-  });
-  editor.commands.setContent(markdownToProsemirror(md, editor.schema).toJSON());
-  editors.push(editor);
-  return editor;
-}
-
-async function exported(editor: Editor): Promise<Document> {
-  const html = await captureEditorHTML(editor);
-  return new DOMParser().parseFromString(
-    `<article>${html}</article>`,
-    "text/html",
+/** Every `.code-block-export`'s text, in document order. */
+function codesOf(doc: Document): string[] {
+  return [...doc.querySelectorAll(".code-block-export")].map(
+    (el) => el.textContent ?? "",
   );
 }
 
-/** Every observed element intersects; the lazy queue then runs at once. */
-function showAll(): void {
-  for (const io of MockIntersectionObserver.instances)
-    io.triggerIntersect(true);
-  flushPendingVisibility();
+/** The LIVE shadow root of the editor's first rendered block, once its first render ended. */
+async function drawnShadow(editor: Editor): Promise<ShadowRoot> {
+  showAll();
+  const root = rootOf(editor);
+  await vi.waitFor(() => expect(root.dataset.renderState).toBe("done"));
+  return shadowOf(root);
 }
 
 describe("captureEditorHTML with plugin blocks", () => {
@@ -98,7 +70,7 @@ describe("captureEditorHTML with plugin blocks", () => {
    *  an ordinary code block. (A settle without the plugin branch passes HERE — the code blocks
    *  keep the loop polling until the render lands; the next test is the one it fails.) */
   it("writes each drawn block as declarative shadow DOM and a never-drawn one as a code block", async () => {
-    bindChart();
+    bindChartDrawing();
     const editor = editorWith(
       "```js\nA\n```\n\n```chart\nC\n```\n\n```js\nB\n```\n\n```chart\nnever\n```\n",
     );
@@ -110,9 +82,7 @@ describe("captureEditorHTML with plugin blocks", () => {
     const content = (templates[0] as HTMLTemplateElement).content;
     expect(content.querySelector("style")?.textContent).toBe("p{color:red}");
     expect(content.querySelector("p")?.textContent).toBe("C");
-    const codes = [...doc.querySelectorAll(".code-block-export")].map(
-      (el) => el.textContent ?? "",
-    );
+    const codes = codesOf(doc);
     expect(codes).toHaveLength(3);
     expect(codes[0]).toContain("A");
     expect(codes[1]).toContain("B");
@@ -130,25 +100,40 @@ describe("captureEditorHTML with plugin blocks", () => {
    *  branch — it finds nothing pending, returns without waking anything, and the block exports as
    *  its source. */
   it("waits for a rendered block that was never on screen", async () => {
-    bindChart();
+    bindChartDrawing();
     const editor = editorWith("```chart\nC\n```\n");
-    expect(
-      (editor.view.dom.querySelector("[data-plugin-block]") as HTMLElement)
-        .dataset.renderState,
-    ).toBe("pending");
+    expect(rootOf(editor).dataset.renderState).toBe("pending");
     const doc = await exported(editor);
-    const template = doc.querySelector(
-      'template[shadowrootmode="open"]',
-    ) as HTMLTemplateElement | null;
-    expect(template?.content.querySelector("p")?.textContent).toBe("C");
+    expect(templateOf(doc)?.querySelector("p")?.textContent).toBe("C");
     expect(doc.querySelector(".code-block-export")).toBeNull();
+  });
+
+  /** D12 · plan 0125 Task 12 fix M2 — a block that never drew is exported as the user's code block,
+   *  the way an ordinary one is: their block style and line-number setting, and the trailing blank
+   *  line CodeMirror adds left out (`collectCodeBlockInfo`). What fails this: a fallback with fixed
+   *  values — `data-style="default"`, no gutter — or one that splits the text itself (a gutter of
+   *  two lines). */
+  it("writes a never-drawn block as the user's code block", async () => {
+    useSettingsStore.setState({
+      codeBlockLineNumbers: true,
+      codeBlockStyle: "contrast",
+    });
+    bindChart(async () => {
+      throw new Error("cannot");
+    });
+    const editor = editorWith("```chart\nnever\n\n```\n");
+    const doc = await exported(editor);
+    const block = doc.querySelector(".code-block-export") as HTMLElement;
+    expect(block.dataset.style).toBe("contrast");
+    expect(block.querySelector(".code-block-gutter")?.textContent).toBe("1");
+    expect(block.querySelector(".code-block-code")?.textContent).toBe("never");
   });
 
   /** D12 — the trailing link scrub cannot see into a `<template>`; the pass scrubs each one. A
    *  refused href is put into the LIVE shadow root by hand here, past the sanitizer, so only the
    *  export's own pass can remove it. The pair: an allowed href stays. */
   it("scrubs a refused href inside the template and keeps an allowed one", async () => {
-    bindChart();
+    bindChartDrawing();
     const editor = editorWith("```chart\nC\n```\n");
     const shadow = await drawnShadow(editor);
     // A `ShadowRoot` has no `insertAdjacentHTML`; the markup is parsed by a template instead.
@@ -157,9 +142,7 @@ describe("captureEditorHTML with plugin blocks", () => {
       '<a href="javascript:alert(1)">bad</a><a href="https://e.com/x">ok</a>';
     shadow.append(markup.content);
     const doc = await exported(editor);
-    const content = (doc.querySelector("template") as HTMLTemplateElement)
-      .content;
-    const [bad, ok] = [...content.querySelectorAll("a")];
+    const [bad, ok] = [...(templateOf(doc)?.querySelectorAll("a") ?? [])];
     expect(bad.textContent).toBe("bad");
     expect(bad.hasAttribute("href")).toBe(false);
     expect(ok.getAttribute("href")).toBe("https://e.com/x");
@@ -167,39 +150,45 @@ describe("captureEditorHTML with plugin blocks", () => {
 
   /** D12 · plan 0125 P27 ② — a `<style>` is written as raw text, so one whose text holds `</` would
    *  close itself in the exported file and let what follows parse as markup. A `<style>` carrying
-   *  `</style><img src=…>` is put into the LIVE shadow root by hand, past `sanitizePluginCss`, so
-   *  only the export's own check can stop it — one at the top of the root and one inside an
-   *  element. What fails this: `exportOf` copying every shadow child, or checking only the top
-   *  level — the reparsed template then holds an `<img>`. The pair: the renderer's own `<style>`
-   *  in the same root is kept, and so is the element that held the nested one. */
+   *  `</style><img src=…>` (inside a CSS comment, so the live document parses it) is put into the
+   *  LIVE shadow root by hand, past `sanitizePluginCss`, so only the export's own check can stop
+   *  it — one at the top of the root and one inside an element — and each is reported with its
+   *  block's language. What fails this: `exportOf` copying every shadow child, or checking only
+   *  the top level — the reparsed template then holds an `<img>`. The pair: the renderer's own
+   *  `<style>` in the same root is kept, and so is the element that held the nested one. */
   it("leaves out a style whose text would close it, and keeps the block's own style", async () => {
-    bindChart();
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    bindChartDrawing();
     const editor = editorWith("```chart\nC\n```\n");
     const shadow = await drawnShadow(editor);
     const breakout = document.createElement("style");
-    breakout.textContent = "</style><img src=https://e.com/top>";
+    breakout.textContent = "p{}/*</style><img src=https://e.com/top>*/";
     const holder = document.createElement("div");
     holder.className = "holder";
     const nested = document.createElement("style");
-    nested.textContent = "</style><img src=https://e.com/nested>";
+    nested.textContent = "p{}/*</style><img src=https://e.com/nested>*/";
     holder.append(nested);
     shadow.append(breakout, holder);
     const doc = await exported(editor);
-    const content = (doc.querySelector("template") as HTMLTemplateElement)
-      .content;
+    const content = templateOf(doc)!;
     expect(content.querySelector("img")).toBeNull();
     expect(
       [...content.querySelectorAll("style")].map((s) => s.textContent),
     ).toEqual(["p{color:red}"]);
     expect(content.querySelector("p")?.textContent).toBe("C");
     expect(content.querySelector(".holder")).not.toBeNull();
+    expect(
+      warn.mock.calls.filter(([message]) =>
+        String(message).includes("```chart block's style would close itself"),
+      ),
+    ).toHaveLength(2);
   });
 
   /** D12 — a block in source mode (its CodeMirror wrapper inside the rendered root) does not shift
    *  the code block pairing: every ordinary block still prints its own text. What fails this: a
    *  pairing that counts the wrapped CodeMirror — B then prints the wrong text. */
   it("keeps the code block pairing when a rendered block is in source mode", async () => {
-    bindChart();
+    bindChartDrawing();
     const editor = editorWith(
       "```js\nA\n```\n\n```chart\nC\n```\n\n```js\nB\n```\n",
     );
@@ -209,17 +198,29 @@ describe("captureEditorHTML with plugin blocks", () => {
       return pos === -1;
     });
     editor.commands.setNodeSelection(pos);
-    expect(
-      (editor.view.dom.querySelector("[data-plugin-block]") as HTMLElement)
-        .dataset.mode,
-    ).toBe("source");
-    const doc = await exported(editor);
-    const codes = [...doc.querySelectorAll(".code-block-export")].map(
-      (el) => el.textContent ?? "",
-    );
+    expect(rootOf(editor).dataset.mode).toBe("source");
+    const codes = codesOf(await exported(editor));
     expect(codes).toHaveLength(2);
     expect(codes[0]).toContain("A");
     expect(codes[1]).toContain("B");
+  });
+
+  /** Plan 0125 Task 12 fix M6 (it predates §394) — a `journal-*` fence is a codeBlock node drawn by
+   *  `JournalBlockNodeView`, with no `.code-block-wrapper`, so the pairing counts only nodes drawn
+   *  as one. The line counts differ on purpose: `collectCodeBlockInfo` keeps CodeMirror's lines
+   *  only when their count matches the text it is given, so a shifted pairing prints the shifted
+   *  TEXT. What fails this: counting every codeBlock node — A prints the journal block's three
+   *  lines, and B prints A. */
+  it("pairs ordinary code blocks past a journal block", async () => {
+    const editor = editorWith(
+      "```journal-list\nlimit: 3\nsort: desc\nshow: all\n```\n\n```js\nA\n```\n\n```js\nB1\nB2\n```\n",
+    );
+    const codes = codesOf(await exported(editor));
+    expect(codes).toHaveLength(2);
+    expect(codes[0]).toContain("A");
+    expect(codes[0]).not.toContain("limit");
+    expect(codes[1]).toContain("B1");
+    expect(codes[1]).toContain("B2");
   });
 });
 
@@ -239,10 +240,10 @@ describe("the export's building blocks", () => {
     expect(pendingHeavyBlocks(root)).toEqual([]);
   });
 
-  /** D12 — an authored `data-plugin-block` (an HTML block keeps `data-*`) is left exactly as
-   *  written and takes no live block: the one live block goes to the real root after it. What
-   *  fails this: pairing without the authored filter — the live block then replaces the authored
-   *  root and the real one is left in place. */
+  /** D12 — an authored `data-plugin-block` (built here past the sanitizer, which drops it; this
+   *  filter is the layer behind it) is left exactly as written and takes no live block: the one
+   *  live block goes to the real root after it. What fails this: pairing without the authored
+   *  filter — the live block then replaces the authored root and the real one is left in place. */
   it("leaves an authored data-plugin-block alone and gives the live block to the real root", () => {
     const clone = document.createElement("div");
     clone.innerHTML =
@@ -251,7 +252,13 @@ describe("the export's building blocks", () => {
     const live = document.createElement("div");
     live.setAttribute("data-plugin-block", "");
     live.dataset.lang = "chart";
-    embedPluginBlocks(clone, [{ live, text: "source" }], isAuthoredMarkup);
+    const fallback = {
+      highlightedLines: ["source"],
+      lang: "chart",
+      lineNumbers: null,
+      style: "default",
+    };
+    embedPluginBlocks(clone, [{ fallback, live }], isAuthoredMarkup);
     const authored = clone.querySelector(".html-block-render")!;
     expect(authored.innerHTML).toBe('<div data-plugin-block="">mine</div>');
     expect(clone.querySelectorAll("[data-plugin-block]")).toHaveLength(1);

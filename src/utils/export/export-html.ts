@@ -122,22 +122,35 @@ export async function captureEditorHTML(
       // block therefore has a fraction of its lines in the DOM (38 of 500,
       // measured). Walking the doc gives every block's full text; the two
       // sequences line up because `descendants` and `querySelectorAll` are both
-      // document order.
+      // document order — and because a node counts only when its DOM is a
+      // `.code-block-wrapper`. A `journal-*` fence is a codeBlock node drawn by
+      // JournalBlockNodeView, with no wrapper; counting it shifted every later
+      // block onto the text before it.
       const codeTexts: string[] = [];
       // §394 spec 0073 D12 — a rendered block is told by the SAME DOM mark on
       // both sides: here by its node's DOM (`nodeDOM`), in the queries below by
       // `[data-plugin-block]`. Judging by the registry would disagree with the
-      // DOM for a block built before its renderer came.
+      // DOM for a block built before its renderer came. Its fallback — the
+      // code block it exports as if it never drew — is read here, from the
+      // LIVE wrapper it holds, the way an ordinary block's is.
       const pluginBlocks: LivePluginBlock[] = [];
       editor.state.doc.descendants((node, pos) => {
         if (node.type.name !== "codeBlock") return;
         const nodeDom = editor.view.nodeDOM(pos);
-        if (
-          nodeDom instanceof HTMLElement &&
-          nodeDom.hasAttribute("data-plugin-block")
-        ) {
-          pluginBlocks.push({ live: nodeDom, text: node.textContent });
-        } else {
+        if (!(nodeDom instanceof HTMLElement)) return;
+        if (nodeDom.hasAttribute("data-plugin-block")) {
+          // Every root holds the wrapper it wraps; the root itself would only
+          // lose the block style.
+          const wrapper = nodeDom.querySelector(".code-block-wrapper");
+          pluginBlocks.push({
+            fallback: collectCodeBlockInfo(
+              wrapper ?? nodeDom,
+              node.textContent,
+              lineNumbers,
+            ),
+            live: nodeDom,
+          });
+        } else if (nodeDom.classList.contains("code-block-wrapper")) {
           codeTexts.push(node.textContent);
         }
       });

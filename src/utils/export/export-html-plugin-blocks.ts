@@ -14,20 +14,25 @@
 // P27 ①); this pass does not trust that and leaves out any `<style>` in the template whose content
 // holds one (P27 ②) — the markup still exports, unstyled.
 
+import type { CodeBlockInfo } from "./export-html-code-block";
+
 import { logger } from "../logger";
-import { buildCodeBlockExport, escapeCodeHTML } from "./export-html-code-block";
+import { buildCodeBlockExport } from "./export-html-code-block";
 import { stripDisallowedLinkHrefs } from "./export-html-links";
 
-/** A rendered block as the editor holds it, with its node's source. */
+/** A rendered block as the editor holds it. */
 export interface LivePluginBlock {
+  /** The code block it exports as when it never drew — collected from its LIVE wrapper by
+   *  `collectCodeBlockInfo`, so it follows the user's code block settings as an ordinary one does. */
+  fallback: CodeBlockInfo;
   live: HTMLElement;
-  text: string;
 }
 
 /**
- * Replace every rendered root of `clone` (authored markup excepted — an HTML block may carry a
- * `data-plugin-block` of its own) with its export: declarative shadow DOM when its live block drew,
- * an ordinary code block otherwise. `blocks` is in document order, from the same nodes.
+ * Replace every rendered root of `clone` (authored markup excepted — the layer behind the document
+ * sanitizers, which drop a `data-plugin-block` an author wrote) with its export: declarative shadow
+ * DOM when its live block drew, an ordinary code block otherwise. `blocks` is in document order,
+ * from the same nodes.
  */
 export function embedPluginBlocks(
   clone: HTMLElement,
@@ -38,7 +43,7 @@ export function embedPluginBlocks(
     (el) => !isAuthored(el),
   );
   if (roots.length !== blocks.length) {
-    console.warn(
+    logger.warn(
       `[export] ${roots.length} rendered block element(s) but ${blocks.length} in the document`,
     );
   }
@@ -52,12 +57,7 @@ function exportOf(block: LivePluginBlock): HTMLElement {
   const shadow =
     block.live.querySelector(".plugin-block-host")?.shadowRoot ?? null;
   if (shadow === null || shadow.childNodes.length === 0) {
-    return buildCodeBlockExport({
-      highlightedLines: block.text.split("\n").map(escapeCodeHTML),
-      lang: block.live.dataset.lang ?? "",
-      lineNumbers: null,
-      style: "default",
-    });
+    return buildCodeBlockExport(block.fallback);
   }
   const template = document.createElement("template");
   template.setAttribute("shadowrootmode", "open");
