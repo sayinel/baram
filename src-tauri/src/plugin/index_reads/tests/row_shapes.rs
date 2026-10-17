@@ -295,6 +295,37 @@ async fn task_rows_count_lines_from_one_and_leave_out_excluded_folders() {
     assert_eq!(excluded_file, json!([]));
 }
 
+/// The last 0-based line a `u32` holds has no 1-based number; the row keeps `u32::MAX`. What
+/// fails this: `line + 1` unsaturated — it panics in a debug build and wraps to 0 in a release
+/// one, whose profile does not turn `overflow-checks` on.
+#[test]
+fn the_highest_task_line_saturates_instead_of_overflowing() {
+    let entry = crate::task::TaskEntry {
+        path: "/r/a.md".to_string(),
+        line: u32::MAX,
+        indent: 0,
+        state: crate::task::TaskState::Todo,
+        text: "t".to_string(),
+        raw: String::new(),
+        created: None,
+        start: None,
+        scheduled: None,
+        due: None,
+        done: None,
+        cancelled: None,
+        priority: 0,
+        recurrence: None,
+        timer: None,
+        links: Vec::new(),
+        tags: Vec::new(),
+    };
+    let rows = rows::tasks(PathForm::Relative, "/r", vec![entry], TaskStatus::All).unwrap();
+    assert_eq!(
+        serde_json::to_value(&rows).unwrap()[0]["line"],
+        json!(u32::MAX)
+    );
+}
+
 const SEARCHED: &[(&str, &str)] = &[
     ("docs/n.md", "needle and needle\n"),
     ("docs-old/n.md", "needle\n"),
