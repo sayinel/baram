@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createPromptRequestHandler } from "../host-prompt-bridge";
 import {
+  CALL_TIMEOUT_MS,
   HOST_REQUEST_TIMEOUT_MS,
   SandboxSession,
   splitForFrame,
@@ -184,6 +185,43 @@ describe("SandboxSession and prompts", () => {
     await vi.advanceTimersByTimeAsync(30_001);
     expect(outcome).toHaveBeenCalledWith(
       new Error('Sandbox command "pick" timed out'),
+    );
+  });
+});
+
+describe("SandboxSession's answered calls (§394 plan 0125 Task 11)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  // The answer path's `pending.delete`. An answered call left in the table has no timer, so
+  // nothing shows until a prompt closes: `resumeCallTimers` then arms a fresh 30 s for it — one
+  // timer per answered call per prompt, each rejecting a settled promise. What fails this:
+  // `settleCall` without the delete — three timers here instead of one. The pair: the call still
+  // waiting does get its timer, and it fires.
+  it("arms no timer for an answered call when a prompt closes", async () => {
+    vi.useFakeTimers();
+    const { receive, transport } = makeTransport();
+    let settle!: (value: unknown) => void;
+    const session = new SandboxSession(transport, (request) =>
+      request.kind === "prompt_quick_pick"
+        ? new Promise((resolve) => {
+            settle = resolve;
+          })
+        : Promise.resolve(undefined),
+    );
+    const command = session.invokeCommand("done");
+    const action = session.invokeAction({ kind: "panel", panelId: "p" }, "go");
+    const waiting = watch(session.invokeCommand("waits"));
+    receive({ callId: "call-1", ok: true, type: "callResult", value: 1 });
+    receive({ id: "action-2", ok: true, type: "actionResult" });
+    await expect(command).resolves.toBe(1);
+    await expect(action).resolves.toBeUndefined();
+    receive({ request: PICK, requestId: "h1", type: "hostRequest" });
+    settle("a");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(CALL_TIMEOUT_MS);
+    expect(waiting).toHaveBeenCalledWith(
+      new Error('Sandbox command "waits" timed out'),
     );
   });
 });

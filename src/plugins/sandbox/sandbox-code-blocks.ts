@@ -3,8 +3,11 @@
 // this realm, in the `activate` frame, which declared languages it holds; `register` binds a
 // renderer locally and the `ready` report names what was bound, `invalidate` crosses as
 // `render_invalidate`, and the host's `renderCodeBlock` / `invokeAction` frames come here. A result
-// is checked before it is sent (`renderedContentProblem`): Rust drops an over-cap frame unanswered,
-// and the host would see only a timeout.
+// is checked before it is sent (`renderedContentProblem`), so an over-cap one meets the fixed
+// sentence however far over it is. Unchecked, the host's `isRenderResult` would drop a frame whose
+// UTF-16 length already passes a cap and Rust a report over its 8 MiB cap — both unanswered, so
+// the block would show a timeout — and only one over by its UTF-8 bytes alone would reach the
+// queue's check and its sentence.
 
 import type {
   CodeBlockRenderer,
@@ -12,6 +15,7 @@ import type {
   RenderedAction,
 } from "../types";
 import type {
+  CodeBlockLangClaim,
   HostToSandbox,
   SandboxHostRequest,
   SandboxToHost,
@@ -40,10 +44,8 @@ export interface SandboxCodeBlocks {
     frame: Extract<HostToSandbox, { type: "renderCodeBlock" }>,
   ): Promise<void>;
   /** A fresh activate: the host's table, and nothing bound yet. */
-  reset(langs: ClaimedLangs | undefined): void;
+  reset(langs: CodeBlockLangClaim[] | undefined): void;
 }
-
-type ClaimedLangs = Array<{ drawnBy: null | string; lang: string }>;
 
 export function createSandboxCodeBlocks(deps: {
   hostRequest: (request: SandboxHostRequest) => Promise<unknown>;

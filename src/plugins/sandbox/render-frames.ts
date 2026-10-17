@@ -2,6 +2,7 @@
 // `FRAME_VALIDATORS` / `HOST_REQUEST_VALIDATORS` and the sandbox's `invokeAction` handling. A file of
 // its own so `tauri-host-transport.ts` grows by its record entries only.
 import {
+  MAX_CODE_BLOCK_LANG_CHARS,
   MAX_FRAME_ID_CHARS,
   MAX_RENDER_ERROR_CHARS,
   MAX_RENDERED_CSS_BYTES,
@@ -10,11 +11,19 @@ import {
 
 type Fields = Record<string, unknown>;
 
-/** An `actionResult` frame. */
+/**
+ * An `actionResult` frame. `error` gets 4 × `MAX_RENDER_ERROR_CHARS` for the reason
+ * `isRenderResult`'s does: the client slices to the cap before sending, so the bound only refuses
+ * a frame our client never sends — and a refused frame is dropped, which leaves the action to end
+ * at `CALL_TIMEOUT_MS` instead of logging its error.
+ */
 export function isActionResult(m: Fields): boolean {
   return (
-    typeof m.id === "string" &&
-    (m.ok === true || (m.ok === false && typeof m.error === "string"))
+    isFrameId(m.id) &&
+    (m.ok === true ||
+      (m.ok === false &&
+        typeof m.error === "string" &&
+        m.error.length <= MAX_RENDER_ERROR_CHARS * 4))
   );
 }
 
@@ -33,17 +42,14 @@ export function isActionTarget(value: unknown): boolean {
 
 /** `render_get_source`: an id the host minted (`render-<n>`), bounded. */
 export function isRenderGetSource(r: Fields): boolean {
-  return typeof r.id === "string" && r.id.length <= MAX_FRAME_ID_CHARS;
+  return isFrameId(r.id);
 }
 
-/**
- * `render_invalidate`: no language, or one as long as a declared language can be — 32 characters,
- * what `CODE_BLOCK_LANG` (`manifest-code-blocks.ts`) admits. Not imported: that module reaches the
- * editor's language list, and this one is in the sandbox realm.
- */
+/** `render_invalidate`: no language, or one as long as a declared language can be. */
 export function isRenderInvalidate(r: Fields): boolean {
   return (
-    r.lang === undefined || (typeof r.lang === "string" && r.lang.length <= 32)
+    r.lang === undefined ||
+    (typeof r.lang === "string" && r.lang.length <= MAX_CODE_BLOCK_LANG_CHARS)
   );
 }
 
@@ -59,7 +65,7 @@ export function isRenderInvalidate(r: Fields): boolean {
  * one of the three and read the other two.
  */
 export function isRenderResult(m: Fields): boolean {
-  if (typeof m.id !== "string") return false;
+  if (!isFrameId(m.id)) return false;
   if (m.ok === false) {
     return (
       typeof m.error === "string" &&
@@ -73,4 +79,9 @@ export function isRenderResult(m: Fields): boolean {
     (m.css === undefined ||
       (typeof m.css === "string" && m.css.length <= MAX_RENDERED_CSS_BYTES))
   );
+}
+
+/** An id the host minted, as a sandbox echoes it: a string of at most `MAX_FRAME_ID_CHARS`. */
+function isFrameId(value: unknown): boolean {
+  return typeof value === "string" && value.length <= MAX_FRAME_ID_CHARS;
 }

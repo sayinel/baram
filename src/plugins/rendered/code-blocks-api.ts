@@ -3,7 +3,10 @@
 // renderers and actions (`wireSandboxCodeBlocks`, plan 0125 P10), the action dispatch both tiers'
 // blocks use, and the release every unload path runs (`unregisterPluginUI`, plan 0125 P24).
 
-import type { RenderActionTarget } from "../sandbox/protocol";
+import type {
+  CodeBlockLangClaim,
+  RenderActionTarget,
+} from "../sandbox/protocol";
 import type {
   CodeBlockInfo,
   CodeBlocksAPI,
@@ -28,11 +31,8 @@ import {
 } from "./code-block-registry";
 import { forgetPluginRenders, invalidateRenders } from "./render-queue";
 
-/** One declared language as a load sees it: `drawnBy` names the plugin that holds it, `null` when this one does. */
-export interface ClaimedLang {
-  drawnBy: null | string;
-  lang: string;
-}
+/** One declared language as a load sees it — `CodeBlockLangClaim`, the `activate` frame's row. */
+export type ClaimedLang = CodeBlockLangClaim;
 
 /**
  * Claim `manifest`'s declared languages for its plugin, before its code runs (plan 0125 P10). A

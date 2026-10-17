@@ -18,6 +18,16 @@ import type {
 
 import { EDITOR_REFUSAL_CODES } from "../types";
 
+/**
+ * §394 plan 0125 P10 — one declared code block language as a load sees it: `drawnBy` names the
+ * plugin that holds it, `null` when this one does. The `activate` frame's table, and the host's
+ * `ClaimedLang` (`rendered/code-blocks-api.ts`); here so the sandbox realm can name it.
+ */
+export interface CodeBlockLangClaim {
+  drawnBy: null | string;
+  lang: string;
+}
+
 /** Main app → sandbox realm. */
 export type HostToSandbox =
   | {
@@ -25,7 +35,7 @@ export type HostToSandbox =
       // `drawnBy` names the plugin that claimed it first, `null` when this plugin holds it. Absent
       // without `codeblocks`, and then `ctx.codeBlocks` refuses every call. The host claims before
       // it sends this, so `register` can refuse a lost language synchronously.
-      codeBlockLangs?: Array<{ drawnBy: null | string; lang: string }>;
+      codeBlockLangs?: CodeBlockLangClaim[];
       // §260 3c-2b — no URL here: the sandbox pulls its own bundle through the
       // broker (`source_read`, resolved in Rust from the caller's window label) and
       // imports it from a blob URL, so the realm needs no `asset:` and holds no

@@ -44,7 +44,9 @@ export const INVALIDATE_COALESCE_MS = 250;
  * at most this many UTF-8 bytes; above it the sandbox pulls the source (`render_get_source`). A
  * margin under tauri's 8,192-byte direct-delivery threshold (`MAX_JSON_DIRECT_EXECUTE_THRESHOLD`
  * in tauri 2.12.1 `ipc/channel.rs`), because the host counts `JSON.stringify` + UTF-8 and Rust
- * counts its own serde_json output (Task 11 measures the two).
+ * counts its own serde_json output. Plan 0125 Task 11 measured the two on five frames — ASCII,
+ * Hangul, emoji, control-character escapes, and U+2028 · U+2029 · DEL — and got the same count
+ * on each, so the 1 KiB margin is left for fields a frame may gain, not for a counting difference.
  */
 export const INLINE_SOURCE_MAX_FRAME_BYTES = 7 * 1024;
 
@@ -52,10 +54,18 @@ export const INLINE_SOURCE_MAX_FRAME_BYTES = 7 * 1024;
 export const MAX_ACTION_CHARS = 64;
 
 /**
- * D13 — a render id in a frame or request the sandbox sends back (`render_get_source`), in UTF-16
- * units. The host mints the ids (`render-<n>`), so this only bounds what a sandbox may echo.
+ * D13 — an id the sandbox sends back, in UTF-16 units: a render's (`renderResult`,
+ * `render_get_source`) or an action's (`actionResult`). The host mints the ids (`render-<n>`,
+ * `action-<n>`), so this only bounds what a sandbox may echo.
  */
 export const MAX_FRAME_ID_CHARS = 64;
+
+/**
+ * D5 — the longest fenced language a manifest may declare: what `CODE_BLOCK_LANG`
+ * (`manifest-code-blocks.ts`) admits, a pair `tauri-host-transport.test.ts` holds together. Here
+ * so the sandbox realm's frame checks can read it — that module reaches the editor's language list.
+ */
+export const MAX_CODE_BLOCK_LANG_CHARS = 32;
 
 /** D10 — the renderer's own error text in a block's chrome (`sanitizePluginText` cap). */
 export const MAX_RENDER_ERROR_CHARS = 200;

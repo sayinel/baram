@@ -16,6 +16,7 @@ import type {
 } from "../types";
 import type { PluginOp } from "./plugin-op";
 import type {
+  CodeBlockLangClaim,
   HostToSandbox,
   PromptHostRequest,
   SandboxHostRequest,
@@ -348,7 +349,7 @@ export function startSandboxClient(
   };
 
   async function onActivate(
-    codeBlockLangs: Array<{ drawnBy: null | string; lang: string }> | undefined,
+    codeBlockLangs: CodeBlockLangClaim[] | undefined,
   ): Promise<void> {
     if (activateState !== "idle") return; // M4: ignore repeated activate
     activateState = "activating";

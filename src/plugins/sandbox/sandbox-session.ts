@@ -8,6 +8,7 @@ import type {
   RenderedContent,
 } from "../types";
 import type {
+  CodeBlockLangClaim,
   HostToSandbox,
   RenderActionTarget,
   SandboxHostRequest,
@@ -104,8 +105,23 @@ export type HostRequestHandler = (
   onToken: (token: string) => void,
 ) => Promise<unknown>;
 
+/** A command's or a `data-action`'s answer — the two frames `settleCall` takes. */
+type CallAnswer = Extract<
+  SandboxToHost,
+  { type: "actionResult" | "callResult" }
+>;
+
+/**
+ * §394 — each call's id prefix, by the one frame type that may answer it: commands and actions
+ * share `pending`, so an `actionResult` must not settle `call-2`, nor a `callResult` `action-3`.
+ */
+const CALL_PREFIX: Record<CallAnswer["type"], string> = {
+  actionResult: "action-",
+  callResult: "call-",
+};
+
 interface Pending {
-  /** Kept so a timer rearmed after a prompt reports the same command (§385 spec 0061 §6). */
+  /** A command id or `action:<value>`, kept so a timer rearmed after a prompt names it (§385 spec 0061 §6). */
   commandId: string;
   reject: (e: Error) => void;
   resolve: (v: unknown) => void;
@@ -175,7 +191,7 @@ export class SandboxSession {
     pluginId: string,
     declared: PluginContributions,
     /** §394 — the claimed code block languages (`claimCodeBlocks`); absent without `codeblocks`. */
-    codeBlockLangs?: Array<{ drawnBy: null | string; lang: string }>,
+    codeBlockLangs?: CodeBlockLangClaim[],
   ): Promise<PluginContributions> {
     this.declared = declared;
     return new Promise<PluginContributions>((resolve, reject) => {
@@ -252,38 +268,28 @@ export class SandboxSession {
     this.transport.close();
   }
 
-  /**
-   * §394 spec 0073 D11 ③ · D13 — a `data-action` click, paired with its `actionResult` like a
-   * command with its `callResult`: the same `pending` table, so it ends at `CALL_TIMEOUT_MS`, its
-   * timer stops while a prompt is open (`holdCallTimers`), and `dispose` rejects it.
-   */
+  /** §394 spec 0073 D11 ③ · D13 — a `data-action` click, a call like a command (`startCall`). */
   invokeAction(target: RenderActionTarget, action: string): Promise<void> {
     if (this.disposed)
       return Promise.reject(new Error("Sandbox session disposed"));
-    const id = `action-${++this.callSeq}`;
-    return new Promise<void>((resolve, reject) => {
-      const pending: Pending = {
-        commandId: `action:${action}`,
-        reject,
-        resolve: () => resolve(),
-        timer: null,
-      };
-      this.pending.set(id, pending);
-      if (!this.callTimersHeld) this.armCallTimer(id, pending);
-      this.transport.send({ action, id, target, type: "invokeAction" });
-    });
+    const id = `${CALL_PREFIX.actionResult}${++this.callSeq}`;
+    return this.startCall(id, `action:${action}`, {
+      action,
+      id,
+      target,
+      type: "invokeAction",
+    }).then(() => {});
   }
 
   invokeCommand(commandId: string, args: unknown[] = []): Promise<unknown> {
     if (this.disposed)
       return Promise.reject(new Error("Sandbox session disposed"));
-    const callId = `call-${++this.callSeq}`;
-    return new Promise<unknown>((resolve, reject) => {
-      const pending: Pending = { commandId, reject, resolve, timer: null };
-      this.pending.set(callId, pending);
-      // A call started while a prompt is open waits for the prompt like the others (spec 0061 §6).
-      if (!this.callTimersHeld) this.armCallTimer(callId, pending);
-      this.transport.send({ type: "invokeCommand", callId, commandId, args });
+    const callId = `${CALL_PREFIX.callResult}${++this.callSeq}`;
+    return this.startCall(callId, commandId, {
+      type: "invokeCommand",
+      callId,
+      commandId,
+      args,
     });
   }
 
@@ -339,27 +345,15 @@ export class SandboxSession {
 
   private handle(m: SandboxToHost): void {
     switch (m.type) {
-      case "actionResult": {
-        const p = this.pending.get(m.id);
-        if (!p) break;
-        if (p.timer) clearTimeout(p.timer);
-        this.pending.delete(m.id);
-        if (m.ok) p.resolve(undefined);
-        else p.reject(new Error(m.error));
+      case "actionResult":
+        this.settleCall(m);
         break;
-      }
       case "activateError":
         this.activateSettle?.reject(new Error(m.error));
         break;
-      case "callResult": {
-        const p = this.pending.get(m.callId);
-        if (!p) break;
-        if (p.timer) clearTimeout(p.timer);
-        this.pending.delete(m.callId);
-        if (m.ok) p.resolve(m.value);
-        else p.reject(new Error(m.error));
+      case "callResult":
+        this.settleCall(m);
         break;
-      }
       case "emitEvent":
         this.emitHandlers.forEach((h) => h(m.event, m.args));
         break;
@@ -539,6 +533,39 @@ export class SandboxSession {
     for (const [callId, pending] of this.pending) {
       if (!pending.timer) this.armCallTimer(callId, pending);
     }
+  }
+
+  /**
+   * `startCall`'s one answer path: only by the frame type `CALL_PREFIX` names, and only once — the
+   * entry leaves `pending` here, or the next prompt to close arms a timer for it (`resumeCallTimers`).
+   */
+  private settleCall(answer: CallAnswer): void {
+    const id = answer.type === "callResult" ? answer.callId : answer.id;
+    if (!id.startsWith(CALL_PREFIX[answer.type])) return;
+    const p = this.pending.get(id);
+    if (!p) return;
+    if (p.timer) clearTimeout(p.timer);
+    this.pending.delete(id);
+    if (!answer.ok) p.reject(new Error(answer.error));
+    else p.resolve(answer.type === "callResult" ? answer.value : undefined);
+  }
+
+  /**
+   * Send a command or a `data-action` and wait for its `settleCall`: one `pending` table, so each
+   * ends at `CALL_TIMEOUT_MS`, stops while a prompt is open (`holdCallTimers`) and dies on `dispose`.
+   */
+  private startCall(
+    id: string,
+    commandId: string,
+    frame: Extract<HostToSandbox, { type: "invokeAction" | "invokeCommand" }>,
+  ): Promise<unknown> {
+    return new Promise<unknown>((resolve, reject) => {
+      const pending: Pending = { commandId, reject, resolve, timer: null };
+      this.pending.set(id, pending);
+      // A call started while a prompt is open waits for the prompt like the others (spec 0061 §6).
+      if (!this.callTimersHeld) this.armCallTimer(id, pending);
+      this.transport.send(frame);
+    });
   }
 
   private validate(

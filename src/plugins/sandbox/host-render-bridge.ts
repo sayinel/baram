@@ -1,6 +1,7 @@
 // §394 spec 0073 D13 · plan 0125 P11 — the host side of a sandboxed plugin's `render_*` requests:
 // stage a waiting render's source for the sandbox to pull, and apply `invalidate`. Gated on
-// `codeblocks` like every bridge on its service's grant.
+// `codeblocks`, as the ai, editor, settings and ui bridges are on their own grants (the prompt
+// bridge is gated on invocation rights instead).
 
 import type { PluginCapability } from "../types";
 import type { SandboxHostRequest } from "./protocol";

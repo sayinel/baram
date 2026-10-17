@@ -1,9 +1,10 @@
-import type { ClaimedLang } from "../../rendered/code-blocks-api";
 // §394 spec 0073 D3 · D13 · §7 — the sandboxed tier's `ctx.codeBlocks`, run through the real client
 // and session over the in-memory channel pair: a small source rides the frame, a large one is
 // pulled through staging (measured in UTF-8 bytes), a result over a cap never leaves the sandbox,
 // late and unknown answers are dropped, an action's target is checked, and the two tiers draw the
 // same output for the same renderer.
+
+import type { ClaimedLang } from "../../rendered/code-blocks-api";
 import type { CodeBlockRenderer, SandboxContext } from "../../types";
 import type { PluginOp } from "../plugin-op";
 
@@ -23,17 +24,20 @@ import {
   INLINE_SOURCE_MAX_FRAME_BYTES,
   MAX_RENDER_ERROR_CHARS,
   MAX_RENDERED_HTML_BYTES,
+  RENDER_TIMEOUT_MS,
 } from "../../rendered/limits";
 import { __resetRenderQueue, requestRender } from "../../rendered/render-queue";
 import { createHostRequestHandler } from "../host-request-router";
 import { startSandboxClient } from "../sandbox-client";
-import { SandboxSession } from "../sandbox-session";
+import { CALL_TIMEOUT_MS, SandboxSession } from "../sandbox-session";
 import { createChannelPair } from "./channel-pair";
 
 const MANIFEST = {
   author: "a",
   capabilities: ["codeblocks"] as const,
-  contributions: { codeBlocks: [{ lang: "chart" }, { lang: "taken" }] },
+  contributions: {
+    codeBlocks: [{ lang: "chart" }, { lang: "idle" }, { lang: "taken" }],
+  },
   description: "d",
   engines: { baram: ">=0.7.7" },
   id: "sb",
@@ -107,8 +111,9 @@ afterEach(() => {
 });
 
 describe("register and invalidate in the sandbox (§4 · §6 · D17)", () => {
-  /** What fails this: a sandbox that registers what the host refused to claim, or a host that
-   *  binds a language the sandbox never registered. The messages are the trusted tier's. */
+  /** What fails this: a sandbox that registers what the host refused to claim (the error list), or
+   *  a host that binds a language it holds but the sandbox never registered (`idle`). `chart` is
+   *  the pair: held and registered, so bound. The messages are the trusted tier's. */
   it("binds what activate registered, and refuses an undeclared or lost language by the same sentences", async () => {
     const errors: string[] = [];
     // `taken` was claimed by another plugin before this one loaded.
@@ -137,7 +142,8 @@ describe("register and invalidate in the sandbox (§4 · §6 · D17)", () => {
       'codeBlocks.register: "nope" is not declared in contributions.codeBlocks',
     ]);
     expect(codeBlockRendererFor("chart")?.pluginId).toBe("sb");
-    expect(codeBlockRendererFor("taken")?.pluginId).not.toBe("sb");
+    expect(codeBlockRendererFor("idle")).toBeNull();
+    expect(codeBlockRendererFor("taken")).toBeNull();
   });
 
   /** P11 — `invalidate` crosses as `render_invalidate`; a lost language never leaves the sandbox. */
@@ -165,18 +171,32 @@ describe("register and invalidate in the sandbox (§4 · §6 · D17)", () => {
     );
   });
 
-  /** §4 — without `codeblocks` the sandbox's `codeBlocks` refuses like the trusted denied proxy. */
+  /** §4 — without `codeblocks` the sandbox's `codeBlocks` refuses like the trusted denied proxy:
+   *  all three methods, `invalidate` with and without a language, each naming its own method. */
   it("refuses every call without the capability", async () => {
-    let failure = "";
+    const failures: string[] = [];
     await start((ctx) => {
-      try {
-        ctx.codeBlocks.register("chart", () => ({ html: "" }));
-      } catch (e) {
-        failure = (e as Error).message;
+      const calls = [
+        () => ctx.codeBlocks.register("chart", () => ({ html: "" })),
+        () => ctx.codeBlocks.invalidate("chart"),
+        () => ctx.codeBlocks.invalidate(),
+        () => ctx.codeBlocks.onAction(() => {}),
+      ];
+      for (const call of calls) {
+        try {
+          call();
+          failures.push("(no throw)");
+        } catch (e) {
+          failures.push((e as Error).message);
+        }
       }
     }, null);
-    expect(failure).toMatch(
-      /requires "codeblocks" capability to access codeBlocks\.register/,
+    expect(failures).toEqual(
+      ["register", "invalidate", "invalidate", "onAction"].map((method) =>
+        expect.stringContaining(
+          `requires "codeblocks" capability to access codeBlocks.${method}.`,
+        ),
+      ),
     );
   });
 });
@@ -195,7 +215,8 @@ describe("the source (D13)", () => {
     await session.renderCodeBlock("chart", "small", INFO);
     expect(staged).toEqual([]);
     const korean = "한".repeat(2_500);
-    expect(korean.length).toBeLessThan(4_096);
+    // Under the threshold by `.length`, over it by UTF-8 bytes: a `.length` check would inline it.
+    expect(korean.length).toBeLessThan(INLINE_SOURCE_MAX_FRAME_BYTES);
     expect(new TextEncoder().encode(korean).length).toBeGreaterThan(
       INLINE_SOURCE_MAX_FRAME_BYTES,
     );
@@ -206,8 +227,10 @@ describe("the source (D13)", () => {
 });
 
 describe("results and answers (D13 · §6)", () => {
-  /** What fails this: no pre-send check — an over-cap frame would be dropped by Rust and the host
-   *  would see only a timeout. The sandbox sends the fixed failure instead. */
+  /** What fails this: no pre-send check — the result would resolve here. Past the in-memory pair,
+   *  the host's `isRenderResult` drops a result whose UTF-16 length is over the cap (the block shows
+   *  a timeout) and the queue refuses one under it by bytes; the sandbox sends the fixed failure
+   *  instead, so the plugin meets the sentence either way. */
   it("fails an over-cap result in the sandbox with the fixed sentence", async () => {
     const { session } = await start((ctx) => {
       ctx.codeBlocks.register("chart", () => ({
@@ -283,7 +306,40 @@ describe("results and answers (D13 · §6)", () => {
     ).resolves.toEqual(failed);
   });
 
-  /** Unknown and late ids are dropped; the real answer still settles its own render. */
+  /** §7 — a late answer is dropped. What fails this: a session timer that keeps the render (its
+   *  source stays stageable), no timer at all (the render never settles), or a `settle` that does
+   *  not match ids — the late answer for `render-1` crosses while `render-2` waits, and would hand
+   *  it `slow`. */
+  it("forgets a render at RENDER_TIMEOUT_MS, drops its late answer, and settles the next", async () => {
+    let release!: () => void;
+    const late = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { session } = await start((ctx) => {
+      ctx.codeBlocks.register("chart", async (source) => {
+        if (source === "slow") await late;
+        return { html: `<p>${source}</p>` };
+      });
+    });
+    vi.useFakeTimers();
+    const slow = session.renderCodeBlock("chart", "slow", INFO).then(
+      () => "(drawn)",
+      (err: Error) => err.message,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.renderSource("render-1")).toBe("slow");
+    await vi.advanceTimersByTimeAsync(RENDER_TIMEOUT_MS);
+    await expect(slow).resolves.toBe(
+      `the renderer did not answer in ${RENDER_TIMEOUT_MS / 1000} s`,
+    );
+    expect(session.renderSource("render-1")).toBeUndefined();
+    release();
+    await expect(
+      session.renderCodeBlock("chart", "fast", INFO),
+    ).resolves.toEqual({ html: "<p>fast</p>" });
+  });
+
+  /** An id that never existed is dropped; the real answer still settles its own render. */
   it("ignores a renderResult or actionResult for an id it does not wait for", async () => {
     const { sandbox, session } = await start((ctx) => {
       ctx.codeBlocks.register("chart", () => ({ html: "<p>real</p>" }));
@@ -300,7 +356,9 @@ describe("results and answers (D13 · §6)", () => {
     });
   });
 
-  /** D3 — one string API for both tiers: the same renderer draws the same sanitized markup. */
+  /** D3 — one string API for both tiers: the same renderer draws the same sanitized markup. What
+   *  fails this: a sandboxed result that differs, or one that fails — `kind` and the kept text are
+   *  the pair that keeps two equal failures from passing. */
   it("draws the same output as the trusted tier for the same renderer", async () => {
     const renderer: CodeBlockRenderer = (source) => ({
       css: "p{color:red}",
@@ -325,7 +383,9 @@ describe("results and answers (D13 · §6)", () => {
       div.append(o.content.fragment.cloneNode(true));
       return `${o.content.css}|${div.innerHTML}`;
     };
+    expect(sandboxed.kind).toBe("drawn");
     expect(html(sandboxed)).toBe(html(trusted));
+    expect(html(trusted)).toContain("src</p>");
     expect(html(trusted)).not.toMatch(/script|https:/);
   });
 });
@@ -406,7 +466,7 @@ describe("actions (D11 ③ · D13 · §6)", () => {
     });
     await vi.waitFor(() => expect(started).toBe(true));
     expect(promptRefusal("sb")).toBeNull();
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(CALL_TIMEOUT_MS);
     await running;
     expect(promptRefusal("sb")).toMatch(/commands is running/);
   });
