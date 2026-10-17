@@ -44,7 +44,7 @@ title: "The plugin manifest"
 
 | Field              | Type      | Description                                                                                           |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
-| `contributions`    | object    | What the app draws for the plugin — commands, status-bar items, settings, right-click and slash items — see [Contributions](#contributions) |
+| `contributions`    | object    | What the app draws for the plugin (commands, status-bar items, settings, right-click and slash items) and the code block languages the plugin draws — see [Contributions](#contributions) |
 | `dependencies`     | string\[] | Other plugin IDs this plugin depends on                                                               |
 | `tiptapExtensions` | object\[] | Tiptap extensions exported by this plugin — see [Tiptap Extension plugins](/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins) |
 | `repository`       | string    | Source code URL                                                                                       |
@@ -64,6 +64,11 @@ runs to put an item on screen.
 | `settings`  | a settings field                        | 16      |
 | `menu`      | `{ id, command, title?, when? }`        | 5       |
 | `slash`     | `{ id, command, title?, description? }` | 10      |
+| `codeBlocks` | `{ lang }`                             | 10      |
+
+`codeBlocks` is the exception: it names the fenced languages your plugin draws itself, with
+`ctx.codeBlocks`, and needs the `codeblocks` capability — see
+[Code block renderers](/en/docs/plugin-dev/code-blocks/).
 
 `menu` adds items to the editor's right-click menu, and `slash` adds items to the slash menu.
 Each names one of your `commands` by its `id` and shows that command's `title`, unless it has a

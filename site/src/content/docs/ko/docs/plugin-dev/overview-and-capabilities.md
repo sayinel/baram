@@ -1,6 +1,6 @@
 ---
 title: "개요와 권한"
-sourceHash: "5b945991acd2"
+sourceHash: "75cc8bba66d9"
 ---
 
 ## 개요
@@ -52,6 +52,7 @@ Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandbox
 | `network`         | 네트워크 요청                            | **민감**      |
 | `storage`         | 플러그인 전용 키/값 저장소 사용          | 민감          |
 | `viewer`          | 파일 형식별 커스텀 뷰어 등록             |               |
+| `codeblocks`      | 선언한 언어의 코드 블록 그리기 — [코드 블록 렌더러](/ko/docs/plugin-dev/code-blocks/) 참조 | |
 
 `ai`와 `network`가 가장 민감한 권한입니다 — 정확히 무엇을 허용하는지는
 [신뢰 모델과 보안](/ko/docs/plugin-dev/trust-model-and-errors/#신뢰-모델과-보안)을 보십시오.
