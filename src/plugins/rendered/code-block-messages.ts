@@ -14,3 +14,11 @@ export function undeclaredLangMessage(
 export function drawnByMessage(lang: string, owner: string): string {
   return `codeBlocks.register: \`\`\`${lang} is drawn by ${owner}`;
 }
+
+/** A sandbox without `codeblocks` — the trusted tier's denied-proxy sentence, for the same call. */
+export function codeBlocksDeniedMessage(method: string): string {
+  return (
+    `Plugin requires "codeblocks" capability to access codeBlocks.${method}. ` +
+    `Add "codeblocks" to the capabilities array in baram-plugin.json.`
+  );
+}

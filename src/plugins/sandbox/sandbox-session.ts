@@ -2,9 +2,14 @@
 // `activate` resolves with the DECLARED contributions; the sandbox's `ready`
 // report is validated against it (warn on drift). Resends `activate` to survive
 // the sandbox's async-listen race; per-call timeouts prevent hung invocations.
-import type { PluginContributions } from "../types";
+import type {
+  CodeBlockInfo,
+  PluginContributions,
+  RenderedContent,
+} from "../types";
 import type {
   HostToSandbox,
+  RenderActionTarget,
   SandboxHostRequest,
   SandboxRegisteredReport,
   SandboxToHost,
@@ -13,6 +18,7 @@ import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 import { isEditorRefusalCode } from "./protocol";
+import { SandboxRenderCalls } from "./sandbox-render-calls";
 
 /**
  * §260 3c-3 — the live smoke hit "Sandbox activate timed out" on the FIRST load of a
@@ -54,6 +60,8 @@ export const INFLIGHT_BUDGET: Record<HostService, number> = {
   // §385 — one: a prompt occupies the user, and the app shows one at a time (spec 0061 D5). A
   // plugin's second request is refused here, before it reaches the gate.
   prompt: 1,
+  // §394 — render_get_source and render_invalidate: main-realm work like editor's.
+  render: 4,
   // §260 Phase 4c — the `Record` did its job: adding `settings_read` would not compile
   // without a budget here. Same 4 as `editor` for the same reason (main-realm work, no
   // external cost), though a settings read is far cheaper: it resolves at most
@@ -150,22 +158,33 @@ export class SandboxSession {
   >();
   private readonly offMessage: () => void;
   private readonly pending = new Map<string, Pending>();
+  private readonly renders: SandboxRenderCalls;
 
   constructor(
     private readonly transport: SandboxTransport<SandboxToHost, HostToSandbox>,
     /** Absent when this plugin gets no host-mediated services (see `ai`). */
     private readonly hostRequestHandler?: HostRequestHandler,
   ) {
+    this.renders = new SandboxRenderCalls((frame) =>
+      this.transport.send(frame),
+    );
     this.offMessage = transport.onMessage((m) => this.handle(m));
   }
 
   activate(
     pluginId: string,
     declared: PluginContributions,
+    /** §394 — the claimed code block languages (`claimCodeBlocks`); absent without `codeblocks`. */
+    codeBlockLangs?: Array<{ drawnBy: null | string; lang: string }>,
   ): Promise<PluginContributions> {
     this.declared = declared;
     return new Promise<PluginContributions>((resolve, reject) => {
-      const send = () => this.transport.send({ type: "activate", pluginId });
+      const send = () =>
+        this.transport.send(
+          codeBlockLangs === undefined
+            ? { type: "activate", pluginId }
+            : { codeBlockLangs, pluginId, type: "activate" },
+        );
       const retry = setInterval(send, ACTIVATE_RETRY_MS);
       const timeout = setTimeout(() => {
         finish();
@@ -222,6 +241,7 @@ export class SandboxSession {
       p.reject(new Error("Sandbox session disposed"));
     }
     this.pending.clear();
+    this.renders.dispose();
     // Timers were cleared as each id was answered; anything still answered-but-held
     // only occupied a slot, and the slot dies with the session.
     for (const entry of this.inflightHost.values()) {
@@ -230,6 +250,28 @@ export class SandboxSession {
     this.inflightHost.clear();
     this.emitHandlers.clear();
     this.transport.close();
+  }
+
+  /**
+   * §394 spec 0073 D11 ③ · D13 — a `data-action` click, paired with its `actionResult` like a
+   * command with its `callResult`: the same `pending` table, so it ends at `CALL_TIMEOUT_MS`, its
+   * timer stops while a prompt is open (`holdCallTimers`), and `dispose` rejects it.
+   */
+  invokeAction(target: RenderActionTarget, action: string): Promise<void> {
+    if (this.disposed)
+      return Promise.reject(new Error("Sandbox session disposed"));
+    const id = `action-${++this.callSeq}`;
+    return new Promise<void>((resolve, reject) => {
+      const pending: Pending = {
+        commandId: `action:${action}`,
+        reject,
+        resolve: () => resolve(),
+        timer: null,
+      };
+      this.pending.set(id, pending);
+      if (!this.callTimersHeld) this.armCallTimer(id, pending);
+      this.transport.send({ action, id, target, type: "invokeAction" });
+    });
   }
 
   invokeCommand(commandId: string, args: unknown[] = []): Promise<unknown> {
@@ -248,6 +290,22 @@ export class SandboxSession {
   onEmit(handler: (event: string, args: unknown[]) => void): () => void {
     this.emitHandlers.add(handler);
     return () => this.emitHandlers.delete(handler);
+  }
+
+  /** §394 spec 0073 D13 — ask the sandbox to draw one block; see `SandboxRenderCalls.start`. */
+  renderCodeBlock(
+    lang: string,
+    source: string,
+    info: CodeBlockInfo,
+  ): Promise<RenderedContent> {
+    if (this.disposed)
+      return Promise.reject(new Error("Sandbox session disposed"));
+    return this.renders.start(lang, source, info);
+  }
+
+  /** §394 — the source of a render waiting for its answer, for `render_get_source`. */
+  renderSource(id: string): string | undefined {
+    return this.renders.source(id);
   }
 
   /**
@@ -281,6 +339,15 @@ export class SandboxSession {
 
   private handle(m: SandboxToHost): void {
     switch (m.type) {
+      case "actionResult": {
+        const p = this.pending.get(m.id);
+        if (!p) break;
+        if (p.timer) clearTimeout(p.timer);
+        this.pending.delete(m.id);
+        if (m.ok) p.resolve(undefined);
+        else p.reject(new Error(m.error));
+        break;
+      }
       case "activateError":
         this.activateSettle?.reject(new Error(m.error));
         break;
@@ -305,6 +372,9 @@ export class SandboxSession {
         this.validate(m.registered, this.declared);
         this.contributions = this.declared;
         this.activateSettle.resolve(this.declared);
+        break;
+      case "renderResult":
+        this.renders.settle(m);
         break;
     }
   }

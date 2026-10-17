@@ -16,6 +16,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: (...args: unknown[]) => listen(...args),
 }));
 
+import {
+  MAX_FRAME_ID_CHARS,
+  MAX_RENDER_ERROR_CHARS,
+  MAX_RENDERED_HTML_BYTES,
+} from "../../rendered/limits";
 import { SandboxSession } from "../sandbox-session";
 import { createHostTransport } from "../tauri-host-transport";
 
@@ -263,6 +268,70 @@ describe("createHostTransport (§260 host end)", () => {
       });
     }
     expect(seen).toHaveLength(3);
+  });
+
+  // §394 spec 0073 D13 — the F1 lesson above, for the render frames: `sandbox-code-blocks.test.ts`
+  // drives the in-memory pair, which has no validator, so only this row sees a well-formed render
+  // frame or request that the record drops, or a broken one it lets through.
+  it("§394 delivers well-formed render frames and requests and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    const asked = (request: unknown) => ({
+      request,
+      requestId: "r",
+      type: "hostRequest",
+    });
+    for (const msg of [
+      { id: "render-1", ok: true, type: "renderResult" }, // no html
+      {
+        html: "x".repeat(MAX_RENDERED_HTML_BYTES + 1),
+        id: "render-1",
+        ok: true,
+        type: "renderResult",
+      },
+      { css: 1, html: "", id: "render-1", ok: true, type: "renderResult" },
+      { id: "render-1", ok: false, type: "renderResult" }, // no error
+      {
+        error: "e".repeat(MAX_RENDER_ERROR_CHARS * 4 + 1),
+        id: "render-1",
+        ok: false,
+        type: "renderResult",
+      },
+      { ok: true, type: "actionResult" }, // no id
+      { id: "action-1", ok: false, type: "actionResult" }, // no error
+      {
+        registered: { codeBlocks: [1], commands: [], events: [] },
+        type: "ready",
+      },
+      asked({ kind: "render_get_source" }),
+      asked({
+        id: "r".repeat(MAX_FRAME_ID_CHARS + 1),
+        kind: "render_get_source",
+      }),
+      asked({ kind: "render_invalidate", lang: 3 }),
+      asked({ kind: "render_invalidate", lang: "x".repeat(33) }),
+    ]) {
+      deliver({ msg, pluginId: "alpha" });
+    }
+    expect(seen).toEqual([]);
+    for (const msg of [
+      { html: "", id: "render-1", ok: true, type: "renderResult" },
+      { css: "", html: "", id: "render-1", ok: true, type: "renderResult" },
+      { error: "e", id: "render-1", ok: false, type: "renderResult" },
+      { id: "action-1", ok: true, type: "actionResult" },
+      { error: "e", id: "action-1", ok: false, type: "actionResult" },
+      {
+        registered: { codeBlocks: ["chart"], commands: [], events: [] },
+        type: "ready",
+      },
+      asked({ id: "render-1", kind: "render_get_source" }),
+      asked({ kind: "render_invalidate" }),
+      asked({ kind: "render_invalidate", lang: "x".repeat(32) }),
+    ]) {
+      deliver({ msg, pluginId: "alpha" });
+    }
+    expect(seen).toHaveLength(9);
   });
 
   it("caps the document a plugin may install, at the frame", async () => {

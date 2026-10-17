@@ -26,6 +26,7 @@ import type { SandboxTransport } from "./transport";
 import { logger } from "../../utils/logger";
 import { promptFrameProblem } from "../prompt-shape";
 import { isEditorRefusalCode } from "./protocol";
+import { createSandboxCodeBlocks } from "./sandbox-code-blocks";
 import { createSandboxEditorAPI } from "./sandbox-editor-client";
 import { createSandboxIndexAPI } from "./sandbox-index";
 
@@ -305,8 +306,16 @@ export function startSandboxClient(
   // six index ops on `files` or `files:readonly`, and nothing here decides.
   const index = createSandboxIndexAPI(brokerJson);
 
+  // §394 — `ctx.codeBlocks`; what the host told `activate` decides what it may register.
+  const codeBlocks = createSandboxCodeBlocks({
+    hostRequest,
+    readStaged,
+    send: (frame) => transport.send(frame),
+  });
+
   const ctx: SandboxContext = {
     ai,
+    codeBlocks: codeBlocks.api,
     commands: { register: (id, handler) => void commands.set(id, handler) },
     events: {
       emit(event, ...args) {
@@ -338,11 +347,14 @@ export function startSandboxClient(
     ui,
   };
 
-  async function onActivate(): Promise<void> {
+  async function onActivate(
+    codeBlockLangs: Array<{ drawnBy: null | string; lang: string }> | undefined,
+  ): Promise<void> {
     if (activateState !== "idle") return; // M4: ignore repeated activate
     activateState = "activating";
     commands.clear(); // each attempt starts clean — no stale regs from a failed retry
     eventHandlers.clear();
+    codeBlocks.reset(codeBlockLangs);
     // …including host requests the previous attempt left outstanding (3c-2c code
     // review, LOW-4). Their promises belong to plugin code that is about to be
     // replaced, and each still holds a stall timer; rejecting them is both the honest
@@ -385,6 +397,7 @@ export function startSandboxClient(
       transport.send({
         type: "ready",
         registered: {
+          codeBlocks: codeBlocks.registered(),
           commands: [...commands.keys()],
           events: [...eventHandlers.keys()],
         },
@@ -430,7 +443,7 @@ export function startSandboxClient(
   transport.onMessage((m) => {
     switch (m.type) {
       case "activate":
-        void onActivate();
+        void onActivate(m.codeBlockLangs);
         break;
       case "deactivate":
         transport.close();
@@ -456,8 +469,14 @@ export function startSandboxClient(
         p.onToken?.(m.token);
         break;
       }
+      case "invokeAction":
+        void codeBlocks.act(m);
+        break;
       case "invokeCommand":
         void onInvoke(m.callId, m.commandId, m.args);
+        break;
+      case "renderCodeBlock":
+        void codeBlocks.render(m);
         break;
     }
   });

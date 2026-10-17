@@ -873,6 +873,12 @@ export interface SandboxContext {
      * `plugin-*` window holds no `llm_*` ACL grant.
      */
     ai: AIAPI;
+    /**
+     * §394 — the same API as the trusted tier's (spec 0073 D3), with `CodeBlockInfo.path` relative to
+     * the context root (see its doc for `null` and `""`). Without `codeblocks` every call throws.
+     * Register in `activate`: the app draws only the languages registered before it finishes.
+     */
+    codeBlocks: CodeBlocksAPI;
     commands: {
         register(id: string, handler: (...args: unknown[]) => unknown): void;
     };

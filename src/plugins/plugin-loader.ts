@@ -39,7 +39,13 @@ import { registerEntryContributions } from "./plugin-entry-points";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
-import { releaseCodeBlocks } from "./rendered/code-blocks-api";
+import {
+  claimCodeBlocks,
+  type ClaimedLang,
+  invalidateDeclared,
+  releaseCodeBlocks,
+  wireSandboxCodeBlocks,
+} from "./rendered/code-blocks-api";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import {
@@ -319,6 +325,15 @@ export class PluginLoader {
       // fails. Registering here makes the documented behaviour the real one, and the
       // rollback below removes them if the load does not complete.
       this.registerDeclaredStatusBar(manifest, disposables);
+      // §394 plan 0125 P10 — the declared code block languages are claimed before the sandbox
+      // starts, so its `register` refuses a language a plugin loaded earlier draws. A throw below
+      // is rolled back by `rollbackSandboxLoad`, whose `unregisterPluginUI` releases them.
+      const codeBlockLangs = manifest.capabilities.includes("codeblocks")
+        ? claimCodeBlocks(manifest, "sandboxed")
+        : undefined;
+      // The render bridge needs the session to read a waiting render's source; the session is made
+      // by `start`, after the handler — so the handler reads it through this.
+      let started: null | SandboxSession = null;
       // installPath goes to RUST, never to the sandbox: it binds which directory
       // `source_read` may read, so the executed bundle matches this manifest.
       await pluginSandboxRegister(
@@ -348,11 +363,22 @@ export class PluginLoader {
           // through `declaredSettingsFor`, which is also what the form uses, so a field the
           // plugin can read and a field the user can edit are the same set.
           declaredSettings: declaredSettingsFor(manifest),
+          // §394 — `render_invalidate` and `render_get_source` (spec 0073 D13, plan 0125 P11).
+          invalidate: (lang) =>
+            invalidateDeclared(manifest.id, codeBlockLangs ?? [], lang),
           pluginId: manifest.id,
           pluginName: manifest.name,
+          renderSource: (id) => started?.renderSource(id),
         }),
+        codeBlockLangs,
       );
-      this.wireSandboxContributions(manifest, session, disposables);
+      started = session;
+      this.wireSandboxContributions(
+        manifest,
+        session,
+        disposables,
+        codeBlockLangs,
+      );
       // §391 spec 0070 §5 — after `start` resolved (activation succeeded) and the handlers
       // above exist. A throw from here on is rolled back by `rollbackSandboxLoad`, whose
       // `unregisterPluginUI` takes the entry down again.
@@ -774,6 +800,7 @@ export class PluginLoader {
     manifest: PluginManifest,
     session: SandboxSession,
     disposables: Disposable[],
+    codeBlockLangs: ClaimedLang[] | undefined,
   ): void {
     for (const cmd of session.contributions?.commands ?? []) {
       const fullId = `${manifest.id}.${cmd.id}`;
@@ -834,6 +861,10 @@ export class PluginLoader {
         pluginId: manifest.id,
       }),
     });
+    // §394 — renderers for what the sandbox registered during activate, and its action dispatch.
+    if (codeBlockLangs !== undefined) {
+      wireSandboxCodeBlocks(manifest.id, codeBlockLangs, session, disposables);
+    }
     // …and tell it what is already open, so its first useful moment does not depend on
     // the user switching tabs (the normal case at startup).
     replayCurrentState(subscriber, activeFilePath());

@@ -1,13 +1,17 @@
 // §394 spec 0073 §4 · D5 · D11 ③ — the trusted tier's `ctx.codeBlocks`, the claim both tiers make
-// when a plugin loads, the action dispatch both tiers' blocks use, and the release every unload path
-// runs (`unregisterPluginUI`, plan 0125 P24).
+// when a plugin loads, the `invalidate` rule both tiers apply, the host side of a sandboxed plugin's
+// renderers and actions (`wireSandboxCodeBlocks`, plan 0125 P10), the action dispatch both tiers'
+// blocks use, and the release every unload path runs (`unregisterPluginUI`, plan 0125 P24).
 
+import type { RenderActionTarget } from "../sandbox/protocol";
 import type {
+  CodeBlockInfo,
   CodeBlocksAPI,
   Disposable,
   PluginManifest,
   PluginTrust,
   RenderedAction,
+  RenderedContent,
 } from "../types";
 import type { RendererBinding } from "./code-block-registry";
 
@@ -78,12 +82,7 @@ export function createCodeBlocksAPI(
   });
   return {
     invalidate(lang) {
-      if (lang !== undefined && !declared.has(lang)) {
-        throw new Error(undeclaredLangMessage("invalidate", lang));
-      }
-      // D17 — a declared language another plugin draws is not this plugin's to redraw.
-      if (lang !== undefined && declared.get(lang) !== null) return;
-      invalidateRenders(pluginId, lang);
+      invalidateDeclared(pluginId, langs, lang);
     },
     onAction(handler) {
       handlers.add(handler);
@@ -113,7 +112,7 @@ export function createCodeBlocksAPI(
 /**
  * A real click on `data-action` (D11 ③): the plugin's action under prompt rights — at most
  * `CALL_TIMEOUT_MS` for a trusted handler; a sandboxed one ends at the session's own call timer,
- * which stops while a prompt is open (Task 11).
+ * which stops while a prompt is open (`SandboxSession.invokeAction`).
  */
 export function dispatchRenderedAction(
   binding: RendererBinding,
@@ -126,8 +125,73 @@ export function dispatchRenderedAction(
   );
 }
 
+/**
+ * `invalidate` as both tiers judge it (§4 · D17): an undeclared language throws, one another
+ * plugin draws does nothing, the rest drop their cache and redraw.
+ */
+export function invalidateDeclared(
+  pluginId: string,
+  langs: readonly ClaimedLang[],
+  lang?: string,
+): void {
+  if (lang === undefined) {
+    invalidateRenders(pluginId);
+    return;
+  }
+  const entry = langs.find((l) => l.lang === lang);
+  if (entry === undefined) {
+    throw new Error(undeclaredLangMessage("invalidate", lang));
+  }
+  if (entry.drawnBy === null) invalidateRenders(pluginId, lang);
+}
+
 /** Everything `pluginId` claimed, bound or cached goes, and its in-flight answers become stale. */
 export function releaseCodeBlocks(pluginId: string): void {
   releaseCodeBlockClaims(pluginId);
   forgetPluginRenders(pluginId);
+}
+
+/** What `wireSandboxCodeBlocks` needs of a sandbox session. */
+export interface SandboxRendering {
+  invokeAction(target: RenderActionTarget, action: string): Promise<void>;
+  registered: null | { codeBlocks?: string[] };
+  renderCodeBlock(
+    lang: string,
+    source: string,
+    info: CodeBlockInfo,
+  ): Promise<RenderedContent>;
+}
+
+/**
+ * §394 plan 0125 P10 — after a sandbox's `activate`: a proxy renderer for each language it
+ * registered AND this plugin holds, and the action dispatch as `invokeAction` frames.
+ */
+export function wireSandboxCodeBlocks(
+  pluginId: string,
+  langs: readonly ClaimedLang[],
+  session: SandboxRendering,
+  disposables: Disposable[],
+): void {
+  const held = new Set(
+    langs.filter((l) => l.drawnBy === null).map((l) => l.lang),
+  );
+  for (const lang of session.registered?.codeBlocks ?? []) {
+    if (!held.has(lang)) continue;
+    disposables.push(
+      bindCodeBlockRenderer(pluginId, lang, (source, info) =>
+        session.renderCodeBlock(lang, source, info),
+      ),
+    );
+  }
+  setCodeBlockActions(pluginId, (action) =>
+    session.invokeAction(
+      {
+        context: action.context,
+        kind: "codeBlock",
+        lang: action.lang,
+        path: action.path,
+      },
+      action.action,
+    ),
+  );
 }
