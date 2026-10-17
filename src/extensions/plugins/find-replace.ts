@@ -9,6 +9,7 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { searchPatternSource } from "../../utils/search-pattern";
 import { withVimExternalEdit } from "./vim/vim-keys";
 
 // ── Plugin key ────────────────────────────────────────────────────────
@@ -46,26 +47,10 @@ export function buildSearchRegex(
   wholeWord: boolean,
 ): null | RegExp {
   if (!term) return null;
-
-  let pattern: string;
-  if (useRegex) {
-    // Reject overly long patterns to prevent ReDoS (catastrophic backtracking)
-    if (term.length > MAX_REGEX_PATTERN_LENGTH) return null;
-    try {
-      // Validate the regex by trying to compile it
-      new RegExp(term);
-      pattern = term;
-    } catch {
-      return null; // Invalid regex
-    }
-  } else {
-    // Escape special regex characters for literal search
-    pattern = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-
-  if (wholeWord) {
-    pattern = `\\b${pattern}\\b`;
-  }
+  // Reject overly long patterns to prevent ReDoS (catastrophic backtracking)
+  if (useRegex && term.length > MAX_REGEX_PATTERN_LENGTH) return null;
+  const pattern = searchPatternSource(term, useRegex, wholeWord);
+  if (pattern === null) return null; // Invalid regex
 
   const flags = caseSensitive ? "g" : "gi";
   try {

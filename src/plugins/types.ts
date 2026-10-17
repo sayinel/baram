@@ -262,7 +262,7 @@ export interface IndexSearchOptions extends IndexOptions {
   /** From 1 to 1000, default 200 — the number of matches, not of lines or files. */
   limit?: number;
   regex?: boolean;
-  /** Whole words only (`\b…\b`). */
+  /** A word boundary (`\b`) at each end of the match, around the whole query (`\b(?:…)\b`): with `regex`, `a|b` finds the word `a` or the word `b`. */
   word?: boolean;
 }
 

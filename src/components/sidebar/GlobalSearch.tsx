@@ -21,6 +21,7 @@ import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { requestScroll } from "../../utils/editor/pending-scroll";
 import { logger } from "../../utils/logger";
+import { searchPatternSource } from "../../utils/search-pattern";
 import { extractFileNameFromPath } from "./backlink-utils";
 
 interface FileGroup {
@@ -221,12 +222,11 @@ export function GlobalSearch() {
         const lineIdx = line - 1;
         if (lineIdx >= 0 && lineIdx < lines.length) {
           const originalLine = lines[lineIdx];
-          let searchText = query;
-          if (!useRegex)
-            searchText = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          if (wholeWord) searchText = `\\b${searchText}\\b`;
           const flags = caseSensitive ? "" : "i"; // replace first occurrence only
-          const re = new RegExp(searchText, flags);
+          const re = new RegExp(
+            replacePattern(query, useRegex, wholeWord),
+            flags,
+          );
           const newLine = originalLine.replace(re, replaceText);
           if (newLine !== originalLine) {
             lines[lineIdx] = newLine;
@@ -255,11 +255,8 @@ export function GlobalSearch() {
     if (!query.trim()) return;
     setReplacing(true);
     try {
-      let searchText = query;
-      if (!useRegex) searchText = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (wholeWord) searchText = `\\b${searchText}\\b`;
       const flags = caseSensitive ? "g" : "gi";
-      const re = new RegExp(searchText, flags);
+      const re = new RegExp(replacePattern(query, useRegex, wholeWord), flags);
 
       const groups = groupByFile(results);
       const { openFiles, setFileContent } = useFileStore.getState();
@@ -516,4 +513,22 @@ function groupByFile(results: SearchResult[]): FileGroup[] {
     fileName: extractFileNameFromPath(filePath),
     matches,
   }));
+}
+
+/**
+ * The pattern Replace and Replace All rewrite, wrapped as the Rust search wraps the
+ * one it listed the matches with (`searchPatternSource`) — the whole-word group
+ * included. The dialects still differ: JS `\b` knows ASCII word characters only, so
+ * on Korean or accented text a whole-word Replace can rewrite what the list did not
+ * show. A regex that is no expression as typed throws, and the handlers catch and
+ * log it.
+ */
+function replacePattern(
+  query: string,
+  useRegex: boolean,
+  wholeWord: boolean,
+): string {
+  const source = searchPatternSource(query, useRegex, wholeWord);
+  if (source === null) throw new Error(`invalid regular expression: ${query}`);
+  return source;
 }

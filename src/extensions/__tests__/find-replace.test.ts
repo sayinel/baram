@@ -90,6 +90,17 @@ describe("§5.6 Find/Replace — buildSearchRegex", () => {
     expect("there".match(regex!)).toBeNull();
   });
 
+  // What fails this: the expression wrapped without a group, `\ba|b\b`, which reads as
+  // `\ba` or `b\b` and finds the `a` of `ab` and the `b` of `xb`.
+  test("whole word holds every alternative of a regex between its boundaries", () => {
+    const regex = buildSearchRegex("a|b", false, true, true);
+    expect(regex).not.toBeNull();
+    expect("x a y".match(regex!)).toEqual(["a"]);
+    expect("x b y".match(regex!)).toEqual(["b"]);
+    expect("ab".match(regex!)).toBeNull();
+    expect("xb".match(regex!)).toBeNull();
+  });
+
   test("escapes special characters in literal mode", () => {
     const regex = buildSearchRegex("a.b", false, false, false);
     expect(regex).not.toBeNull();

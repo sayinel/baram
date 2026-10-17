@@ -716,16 +716,16 @@ fn a_query_the_search_cannot_build_is_a_usage_error() {
     }
 }
 
-/// `--word` wraps the expression in `\b…\b` as text, and that can make an invalid one
-/// valid: `a\` becomes `\ba\\b` and `*a` becomes `\b*a\b`. A bad expression is judged as
-/// typed, so both are still refused, and the message quotes what was typed — not the
-/// wrapped `\b(\b`.
+/// `--word` wraps the expression in `\b(?:…)\b` as text, and that can make an invalid one
+/// valid: `a)|(b` becomes `\b(?:a)|(b)\b`. A bad expression is judged as typed, so it is
+/// still refused, and the message quotes what was typed — not the wrapped one. `a\`, `*a`
+/// and `(` stay invalid wrapped, and are refused with the same form of message.
 #[test]
 fn word_does_not_turn_a_bad_pattern_into_a_search() {
     let sb = sandbox();
     search_vault(&sb);
     let vault = vault_arg(&sb);
-    for query in [r"a\", "*a", "("] {
+    for query in ["a)|(b", r"a\", "*a", "("] {
         let ran = baram(
             &sb,
             &sb.home,

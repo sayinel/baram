@@ -54,25 +54,42 @@ impl Default for SearchOptions {
 /// Directories to skip during recursive file collection.
 use crate::fs::SKIP_DIRS;
 
-/// Build a regex pattern from the query and options.
+/// Build a regex pattern from the query and options, for every search `search_files` runs:
+/// the app's through `commands::search_cmd` with no check before it (the search panel, the
+/// journal's search and the PDF highlight reference count call that command), and
+/// `baram search`, the MCP `search` tool and a plugin's search after `check_query`.
 ///
-/// `check_query` builds it too, before a caller searches.
+/// `whole_word` puts the pattern in a group between the boundaries, `\b(?:…)\b`, so the
+/// boundaries hold every alternative: `a|b` finds the word `a` or the word `b`, where the
+/// wrap without the group, `\ba|b\b`, reads as `\ba` or `b\b`. A flag the expression sets,
+/// such as `(?-u)`, ends with the group, so both boundaries keep the search's own flags.
+///
+/// The wrap is text, and it can turn an invalid expression into a valid one — `a)|(b`
+/// becomes `\b(?:a)|(b)\b`, whose parentheses the wrap closed and opened. So a `regex` query
+/// is built as typed first, and its error quotes it as typed. A verbose-mode (`(?x)`)
+/// comment that runs to the end of a query valid as typed comments out the wrap's `)\b` as
+/// well: that pattern does not build, and the query is refused rather than searched without
+/// its closing boundary — with the regex crate's error, which quotes the wrapped pattern.
 pub(crate) fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, regex::Error> {
-    let pattern = if opts.regex {
-        query.to_string()
-    } else {
-        regex::escape(query)
+    let build = |pattern: &str| {
+        RegexBuilder::new(pattern)
+            .case_insensitive(!opts.case_sensitive)
+            .build()
     };
-
-    let pattern = if opts.whole_word {
-        format!(r"\b{}\b", pattern)
+    if !opts.regex {
+        let pattern = regex::escape(query);
+        return if opts.whole_word {
+            build(&format!(r"\b(?:{pattern})\b"))
+        } else {
+            build(&pattern)
+        };
+    }
+    let typed = build(query)?;
+    if opts.whole_word {
+        build(&format!(r"\b(?:{query})\b"))
     } else {
-        pattern
-    };
-
-    RegexBuilder::new(&pattern)
-        .case_insensitive(!opts.case_sensitive)
-        .build()
+        Ok(typed)
+    }
 }
 
 /// Why `check_query` refuses a query. Each of its two callers words it in its own contract:
@@ -93,18 +110,13 @@ pub(crate) enum QueryRefusal {
 /// the search, because `search_files` reports a pattern it cannot build and a root it cannot
 /// search both as a String, told apart only by its wording.
 ///
-/// First, a `regex` query as typed. `whole_word` wraps it as text, `\b…\b`, and the wrap can
-/// turn an invalid expression into a valid one — `a\` becomes `\ba\\b`, a valid pattern that
-/// matches `a\b` after a word boundary — so only the query itself says whether it is one.
-/// Then the pattern, built as the search builds it (`build_pattern`), from the same options —
-/// those change what is built: case-insensitively, `k{50000}` as a regex and fifty thousand
-/// `k`s as text both fail, and case-sensitively both build.
+/// The pattern is built as the search builds it (`build_pattern`, which judges a `regex`
+/// query as typed before the whole-word wrap), from the same options — those change what is
+/// built: case-insensitively, `k{50000}` as a regex and fifty thousand `k`s as text both
+/// fail, and case-sensitively both build.
 pub(crate) fn check_query(query: &str, opts: &SearchOptions) -> Result<(), QueryRefusal> {
     if query.is_empty() {
         return Err(QueryRefusal::Empty);
-    }
-    if opts.regex {
-        Regex::new(query).map_err(QueryRefusal::InvalidRegex)?;
     }
     build_pattern(query, opts).map(drop).map_err(|error| {
         if opts.regex {
@@ -341,6 +353,35 @@ mod tests {
         assert!(!re.is_match("testing case"));
     }
 
+    /// `word` holds the whole expression between its boundaries: `a|b` finds the word `a`
+    /// or the word `b`. What fails this: the expression wrapped without a group, `\ba|b\b`,
+    /// which reads as `\ba` or `b\b` and finds the `a` of `ab` and the `b` of `xb`.
+    #[test]
+    fn word_holds_every_alternative_of_a_regex_between_its_boundaries() {
+        let re = build_pattern("a|b", &options(true, true, false)).unwrap();
+        assert!(re.is_match("x a y"));
+        assert!(re.is_match("x b y"));
+        assert!(!re.is_match("ab"), "a word starting with a");
+        assert!(!re.is_match("xb"), "a word ending with b");
+    }
+
+    /// A verbose-mode comment runs to the end of the line, and the wrap is on that line. What
+    /// fails this: a wrap that a trailing comment reduces to `\ba` without the group — the
+    /// search would find `a` at the start of `ab`, with no boundary after it.
+    #[test]
+    fn a_trailing_verbose_comment_with_word_is_refused_not_searched_half_bounded() {
+        let opts = options(true, true, false);
+        assert!(Regex::new("(?x)a #c").is_ok(), "valid as typed");
+        assert!(matches!(
+            check_query("(?x)a #c", &opts),
+            Err(QueryRefusal::InvalidRegex(_))
+        ));
+        assert!(
+            build_pattern("(?x) a | b ", &opts).is_ok(),
+            "verbose mode without a comment"
+        );
+    }
+
     #[test]
     fn test_build_pattern_regex() {
         let opts = SearchOptions {
@@ -380,29 +421,55 @@ mod tests {
         }
     }
 
-    /// §393 `word` wraps the expression as text, and `a\` becomes `\ba\\b` — a pattern that
-    /// builds (the pair below). What fails this: judging only the built pattern, which lets
-    /// `a\` through, or a message quoting the wrapped pattern instead of the typed one.
+    /// §393 `word` wraps the expression as text, and `a)|(b` becomes `\b(?:a)|(b)\b` — a
+    /// pattern that builds (the first assertion). So `build_pattern` judges the expression
+    /// as typed first, and `check_query` refuses it through `build_pattern`. What fails
+    /// this: judging only the wrapped pattern, which lets `a)|(b` through, or a message
+    /// quoting the wrapped pattern instead of the typed one.
     #[test]
-    fn check_query_judges_a_regex_as_typed_before_the_word_wrap() {
+    fn a_regex_is_judged_as_typed_before_the_word_wrap() {
         let opts = options(true, true, false);
-        assert!(build_pattern(r"a\", &opts).is_ok(), "the wrap hides it");
+        assert!(
+            Regex::new(r"\b(?:a)|(b)\b").is_ok(),
+            "the wrap alone hides it"
+        );
 
-        let Err(QueryRefusal::InvalidRegex(error)) = check_query(r"a\", &opts) else {
-            panic!("a\\ is not a valid expression");
+        let Err(error) = build_pattern("a)|(b", &opts) else {
+            panic!("a)|(b is not a valid expression");
         };
         let message = error.to_string();
         assert!(
-            message.contains(r"a\") && !message.contains(r"\b"),
+            message.contains("a)|(b") && !message.contains(r"\b"),
             "{message}"
         );
+        assert!(matches!(
+            check_query("a)|(b", &opts),
+            Err(QueryRefusal::InvalidRegex(_))
+        ));
+    }
+
+    /// The app's search panel (`commands::search_cmd`) calls `search_files` without
+    /// `check_query`. What fails this: the as-typed check kept in `check_query` alone — the
+    /// panel would search `a)|(b` as `\b(?:a)|(b)\b` and list the `a` of `ab`.
+    #[tokio::test]
+    async fn search_files_refuses_a_regex_only_the_word_wrap_makes_valid() {
+        let tmp = TempDir::new().unwrap();
+        std_fs::write(tmp.path().join("a.md"), "ab\n").unwrap();
+        let error = search_files(
+            tmp.path().to_str().unwrap(),
+            "a)|(b",
+            &options(true, true, false),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.starts_with("Invalid search pattern: "), "{error}");
     }
 
     /// §393 Case-insensitively, `k{50000}` as a regex and fifty thousand `k`s as text both
     /// exceed the size limit when built; each is refused under its own kind. What fails this:
-    /// the build check dropped (`k{50000}` compiles as typed, case-sensitively, and a literal
-    /// is not compiled as typed at all), or the two kinds swapped. The pair: case-sensitively
-    /// both build and pass.
+    /// the build dropped from `check_query`, a build that ignores `case_sensitive` (both
+    /// build case-sensitively), or the two kinds swapped. The pair: case-sensitively both
+    /// build and pass.
     #[test]
     fn check_query_refuses_a_pattern_the_search_cannot_build() {
         let ks = "k".repeat(50000);
