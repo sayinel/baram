@@ -41,17 +41,21 @@ the other is a manifest error:
 - Refused: languages Baram draws itself (`mermaid`, `query`, `svg`, `journal-…`) and every
   language its code blocks highlight, aliases included (`js`, `ts`, `python`, `py`, `md`, `yml` …).
   Taking `js` would turn every JavaScript block in the user's notes into your output.
-- The consent dialog names the capability. A registry listing names no languages, so an install
-  from the registry shows none; a developer folder's dialog lists them. An update that adds a
-  language asks again once it is downloaded, listing the languages with the new ones marked, and
-  so does **Reload** of a developer folder whose build added one.
+- The consent dialog names the capability. A registry listing names no languages, so a registry
+  install asks about `codeblocks` with no languages, and Baram records the languages of the version
+  it downloads. A developer folder's dialog lists the languages.
+- Once an approval holds languages, an update that adds one asks again after it is downloaded,
+  listing the languages with the new ones marked, and so does **Reload** of a developer folder
+  whose build added one. An update that first adds `codeblocks` is asked about as an install is:
+  the capability, before the download, with no languages.
 - When two plugins declare one language, the one loaded first draws it, and the other's `register`
   throws, naming the language and the plugin that draws it.
 
 Call `register` in `activate`. It throws for a language you did not declare. The tiers differ in
 what `dispose()` and a later `register` do:
 
-- **Trusted.** `dispose()` unbinds the renderer: the language's blocks become ordinary code blocks.
+- **Trusted.** `register` binds at once, in `activate` or later. `dispose()` unbinds the renderer:
+  the language's blocks become ordinary code blocks.
 - **Sandboxed.** Baram binds the languages registered by the time `activate` finishes and keeps
   them bound until the plugin unloads. A language first registered later is not drawn.
   `dispose()` only stops your renderer answering: a block drawn after it shows an error, and a
@@ -96,8 +100,9 @@ CSS goes into your block's shadow root and applies there only. Refused: any `url
 relative ones included, and functions that take a URL (`image-set()` …); at-rules other than
 `@media`, `@supports`, `@keyframes` and `@container`; `:host`, `:host-context()`, `::slotted()`
 and `::part()`; CSS Baram cannot parse, selectors included; and the text `</` — in a string too,
-escaped or not — because an export writes your CSS into a `<style>` element it would close. A
-comment is dropped before that check, except a top-level `/*! … */` one. `!important` is removed.
+escaped or not — because an export writes your CSS into a `<style>` element it would close.
+`</` in a comment can be refused too: Baram drops most comments first, but keeps some, a top-level
+`/*! … */` one among them. `!important` is removed.
 At most 64 KiB of UTF-8. The app's CSS variables reach your block, so
 `var(--color-text-primary)` follows the theme.
 

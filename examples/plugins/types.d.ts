@@ -839,8 +839,10 @@ export interface RenderedContent {
     /**
      * Goes into this block's shadow root only. `url()` (also `data:`), URL-taking functions
      * (`image-set()` …), at-rules other than `@media` · `@supports` · `@keyframes` · `@container`,
-     * `:host`-family selectors, and the text `</` outside a comment (an export writes this CSS into a
-     * `<style>`, which it would close) are refused; `!important` is removed. At most 64 KiB.
+     * `:host`-family selectors, and the text `</` (an export writes this CSS into a `<style>`, which
+     * it would close) are refused. `</` in a comment can be refused too: most comments are dropped
+     * first, but some are kept, a top-level `/*!` one among them. `!important` is removed. At most
+     * 64 KiB.
      */
     css?: string;
     /**
