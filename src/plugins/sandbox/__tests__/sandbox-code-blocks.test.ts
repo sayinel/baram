@@ -18,6 +18,7 @@ import {
 import {
   claimCodeBlocks,
   dispatchRenderedAction,
+  invalidateDeclared,
   wireSandboxCodeBlocks,
 } from "../../rendered/code-blocks-api";
 import {
@@ -83,7 +84,11 @@ async function start(
       capabilities: ["codeblocks"],
       declaredSettings: [],
       declaredStatusBarIds: [],
-      invalidate: (lang) => void invalidated.push(lang),
+      // Recorded, then applied by the loader's rule (`plugin-loader.ts` passes `invalidateDeclared`).
+      invalidate: (lang) => {
+        invalidated.push(lang);
+        invalidateDeclared(MANIFEST.id, langs ?? [], lang);
+      },
       pluginId: MANIFEST.id,
       pluginName: MANIFEST.name,
       renderSource: (id) => session.renderSource(id),
@@ -170,6 +175,30 @@ describe("register and invalidate in the sandbox (§4 · §6 · D17)", () => {
     expect(() => api.invalidate("nope")).toThrow(
       'codeBlocks.invalidate: "nope" is not declared',
     );
+  });
+
+  /** D6 · D7 — the trusted tier's `register` over a bound language goes through
+   *  `bindCodeBlockRenderer`, which drops that language's cached answers. What fails this: a
+   *  sandboxed replacement that only swaps the function — nothing crosses, and the host keeps
+   *  serving the old function's cached result. The pair: the first draw is the old function's. */
+  it("drops the cached answers when register replaces a bound language's renderer", async () => {
+    let api!: SandboxContext["codeBlocks"];
+    const { invalidated } = await start((ctx) => {
+      api = ctx.codeBlocks;
+      api.register("chart", () => ({ html: "<p>old</p>" }));
+    });
+    const binding = codeBlockRendererFor("chart")!;
+    const drawn = async () => {
+      const outcome = await requestRender(binding, "s", INFO);
+      if (outcome.kind !== "drawn") return `(${outcome.kind})`;
+      const div = document.createElement("div");
+      div.append(outcome.content.fragment.cloneNode(true));
+      return div.innerHTML;
+    };
+    expect(await drawn()).toBe("<p>old</p>");
+    api.register("chart", () => ({ html: "<p>new</p>" }));
+    await vi.waitFor(() => expect(invalidated).toEqual(["chart"]));
+    expect(await drawn()).toBe("<p>new</p>");
   });
 
   /** §4 — without `codeblocks` the sandbox's `codeBlocks` refuses like the trusted denied proxy:

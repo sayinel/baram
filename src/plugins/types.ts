@@ -69,9 +69,11 @@ export interface CodeBlocksAPI {
    * another plugin, loaded first, draws it. Register in `activate`.
    *
    * In the sandboxed tier the app binds a language when `activate` finishes and keeps it bound
-   * until the plugin unloads: a `register` after `activate` draws nothing, and `dispose()` only
-   * stops your renderer answering — a block drawn after it shows an error (a cached result still
-   * shows), where in the trusted tier the language falls back to plain code blocks.
+   * until the plugin unloads. A language first registered after `activate` is not drawn;
+   * registering a language that is already bound replaces its renderer, and its cached results
+   * are dropped as in the trusted tier. `dispose()` only stops your renderer answering — a block
+   * drawn after it shows an error (a cached result still shows), where in the trusted tier the
+   * language falls back to plain code blocks.
    */
   register(lang: string, render: CodeBlockRenderer): Disposable;
 }

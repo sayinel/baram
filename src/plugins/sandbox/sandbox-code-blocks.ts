@@ -54,6 +54,8 @@ export function createSandboxCodeBlocks(deps: {
 }): SandboxCodeBlocks {
   let declared: Map<string, null | string> | null = null;
   const renderers = new Map<string, CodeBlockRenderer>();
+  /** Languages `register` has taken in this activation — what the host may have bound. */
+  const registeredOnce = new Set<string>();
   const handlers = new Set<(action: RenderedAction) => Promise<void> | void>();
 
   const allowed = (method: "invalidate" | "register", lang: string) => {
@@ -64,6 +66,9 @@ export function createSandboxCodeBlocks(deps: {
     return declared.get(lang) ?? null;
   };
 
+  const requestInvalidate = (lang: string | undefined) =>
+    void deps.hostRequest({ kind: "render_invalidate", lang }).catch(() => {});
+
   const api: CodeBlocksAPI = {
     invalidate(lang) {
       if (declared === null) {
@@ -71,9 +76,7 @@ export function createSandboxCodeBlocks(deps: {
       }
       // D17 — a declared language another plugin draws: nothing, and nothing crosses.
       if (lang !== undefined && allowed("invalidate", lang) !== null) return;
-      void deps
-        .hostRequest({ kind: "render_invalidate", lang })
-        .catch(() => {});
+      requestInvalidate(lang);
     },
     onAction(handler) {
       if (declared === null) {
@@ -86,6 +89,13 @@ export function createSandboxCodeBlocks(deps: {
       const owner = allowed("register", lang);
       if (owner !== null) throw new Error(drawnByMessage(lang, owner));
       renderers.set(lang, render);
+      // D6 · D7 — a language registered before in this activation may be bound on the host, which
+      // keeps that binding and would serve the old function's cached answers. The trusted tier's
+      // `bindCodeBlockRenderer` drops them on a replacement; here the same `render_invalidate` as
+      // `invalidate(lang)` does. A language first registered after `activate` is not bound, and
+      // its first `register` sends nothing.
+      if (registeredOnce.has(lang)) requestInvalidate(lang);
+      registeredOnce.add(lang);
       return {
         dispose: () => {
           if (renderers.get(lang) === render) renderers.delete(lang);
@@ -184,6 +194,7 @@ export function createSandboxCodeBlocks(deps: {
           ? null
           : new Map(langs.map((l) => [l.lang, l.drawnBy]));
       renderers.clear();
+      registeredOnce.clear();
       handlers.clear();
     },
   };
