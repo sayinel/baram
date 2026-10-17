@@ -71,6 +71,31 @@ function blockPos(editor: Editor, lang: string): number {
 }
 
 /**
+ * A click as ProseMirror takes it: `mousedown` reaches `view.dom`'s listener and `mouseup` the
+ * document's, which ends ProseMirror's click (`handleClickOn` · `handleClick` · `selectClickedLeaf`
+ * run on `mouseup`). jsdom does no layout, so `posAtCoords` is stubbed to the block at `at`. Clicks
+ * in one row take different `x`, or ProseMirror would read the second as a double click.
+ */
+function clickThrough(
+  editor: Editor,
+  target: Element,
+  at: number,
+  x: number,
+): void {
+  vi.spyOn(editor.view, "posAtCoords").mockReturnValue({ inside: at, pos: at });
+  const init = {
+    bubbles: true,
+    button: 0,
+    cancelable: true,
+    clientX: x,
+    clientY: 5,
+    composed: true,
+  };
+  target.dispatchEvent(new MouseEvent("mousedown", init));
+  target.dispatchEvent(new MouseEvent("mouseup", init));
+}
+
+/**
  * An editor holding `md`. `attached = false` mounts it on a `div` that is never put into `body`:
  * an editor mounted outside the document stands for an off-screen surface — a hidden keep-alive
  * editor is mounted and has NodeViews. (An editor given no element is not mounted at all — Tiptap
@@ -254,7 +279,8 @@ describe("the document does not change (§7 왕복)", () => {
 describe("pointer and source editing (D17)", () => {
   /** What fails this: a `stopEvent` that lets ProseMirror take a press on a link (the selection
    *  would move and source editing open instead of the link), or one that keeps a plain press
-   *  (the user could never select the block to edit it). */
+   *  (ProseMirror would never see it, so the click road below could not open source editing).
+   *  This row asks `stopEvent` only; the two rows after it click through ProseMirror. */
   it("keeps a press on a link or an action for the host and gives the rest to ProseMirror", async () => {
     bind("chart", async () => ({
       html: '<a data-note="n.md">n</a><button data-action="go">g</button><p>plain</p>',
@@ -284,6 +310,50 @@ describe("pointer and source editing (D17)", () => {
     expect(stops(shadow.querySelector("button")!)).toBe(true);
     expect(editor.state.selection.toJSON()).toEqual(before);
     expect(stops(shadow.querySelector("p")!)).toBe(false);
+  });
+
+  /** D17 · §7 — a plain click on the output selects the block, which opens source editing. The
+   *  click goes through ProseMirror's own mouse handling, which click-selects only atoms
+   *  (`selectClickedLeaf`) — a code block is not one — so the road is the generation plugin's
+   *  `handleClickOn`. What fails this: no such road (the block stays rendered and the selection
+   *  stays in the paragraph above), or a `stopEvent` that keeps a plain press from ProseMirror. */
+  it("opens source editing on a plain click on the output", async () => {
+    bind("chart", async () => ({ html: "<p>plain</p>" }));
+    const editor = editorWith("intro\n\n```chart\nA\n```\n");
+    showAll();
+    const root = rootOf(editor);
+    await vi.waitFor(() => expect(root.dataset.renderState).toBe("done"));
+    editor.commands.setTextSelection(1);
+    const at = blockPos(editor, "chart");
+    const shadow = root.querySelector(".plugin-block-host")!.shadowRoot!;
+    clickThrough(editor, shadow.querySelector("p")!, at, 5);
+    expect(editor.state.selection.toJSON()).toEqual({
+      anchor: at,
+      type: "node",
+    });
+    expect(root.dataset.mode).toBe("source");
+  });
+
+  /** The pair of the row above: a click on a link or an action is the host's — `stopEvent` keeps
+   *  its `mousedown` from ProseMirror, so ProseMirror starts no click and `handleClickOn` never
+   *  runs. What fails this: a `stopEvent` that gives such a press to ProseMirror (the click would
+   *  select the block and open source editing instead of the link). */
+  it("keeps a click on a link or an action from selecting the block", async () => {
+    bind("chart", async () => ({
+      html: '<a data-note="n.md">n</a><button data-action="go">g</button>',
+    }));
+    const editor = editorWith("intro\n\n```chart\nA\n```\n");
+    showAll();
+    const root = rootOf(editor);
+    await vi.waitFor(() => expect(root.dataset.renderState).toBe("done"));
+    editor.commands.setTextSelection(1);
+    const at = blockPos(editor, "chart");
+    const shadow = root.querySelector(".plugin-block-host")!.shadowRoot!;
+    const before = editor.state.selection.toJSON();
+    clickThrough(editor, shadow.querySelector("a")!, at, 5);
+    clickThrough(editor, shadow.querySelector("button")!, at, 50);
+    expect(editor.state.selection.toJSON()).toEqual(before);
+    expect(root.dataset.mode).toBe("rendered");
   });
 
   /** D17 · plan 0125 P28 — the keyboard is the island's; clicks follow the pointer model. What fails
@@ -343,6 +413,44 @@ describe("pointer and source editing (D17)", () => {
     expect(root.dataset.mode).toBe("rendered");
     (root.querySelector(".plugin-block-toggle") as HTMLButtonElement).click();
     expect(root.dataset.mode).toBe("source");
+  });
+
+  /** D17 — the toggle is shown only while pressing it changes what is shown, and it names what it
+   *  would show. While the selection is in the block source editing is open whatever the toggle
+   *  says, so the toggle is hidden; "Show source" keeps the source open after the selection leaves,
+   *  until "Show rendered" is pressed. What fails this: a toggle shown while the block is selected —
+   *  named from the "Show source" state alone it read "Show source" over the source and a press
+   *  changed nothing on screen; named from the mode it would offer "Show rendered" and a press
+   *  could not keep the block rendered (`applyMode`). Whenever the toggle is shown the two namings
+   *  agree, so the row cannot tell them apart and does not try to. */
+  it("offers the toggle only when it changes the view, named after what it would show", () => {
+    bind("chart", async () => ({ html: "<p>c</p>" }));
+    const editor = editorWith("intro\n\n```chart\nA\n```\n\nafter\n");
+    const root = rootOf(editor);
+    const toggle = root.querySelector(
+      ".plugin-block-toggle",
+    ) as HTMLButtonElement;
+    const select = () =>
+      editor.commands.setNodeSelection(blockPos(editor, "chart"));
+    const leave = () =>
+      editor.commands.setTextSelection(editor.state.doc.content.size - 1);
+    const seen = () => [
+      root.dataset.mode,
+      toggle.hidden ? null : toggle.textContent,
+    ];
+    expect(seen()).toEqual(["rendered", "Show source"]);
+    select();
+    expect(seen()).toEqual(["source", null]);
+    leave();
+    expect(seen()).toEqual(["rendered", "Show source"]);
+    toggle.click();
+    expect(seen()).toEqual(["source", "Show rendered"]);
+    select();
+    expect(seen()).toEqual(["source", null]);
+    leave();
+    expect(seen()).toEqual(["source", "Show rendered"]);
+    toggle.click();
+    expect(seen()).toEqual(["rendered", "Show source"]);
   });
 });
 
@@ -450,6 +558,43 @@ describe("render lifetime (D7)", () => {
     expect(render).toHaveBeenCalledTimes(1);
     expect(shadow.childNodes).toHaveLength(0);
     expect(root.dataset.renderState).toBe("pending");
+  });
+
+  /** D7 "늦게 온 답(… 원문이 바뀐 뒤)은 버린다" — an answer for a source the block no longer holds is
+   *  not drawn, even before a newer draw has started: an edit waits out `SOURCE_DEBOUNCE_MS` before
+   *  it asks again. What fails this: an answer handler that checks only the draw's number — the
+   *  older source's result would be drawn, and recorded as drawn, until the debounced redraw.
+   *  Counted, not timed, as in the row above. */
+  it("does not draw an answer for a source edited while it was being drawn", async () => {
+    let answer: (content: { html: string }) => void = () => {};
+    let calls = 0;
+    const render = vi.fn((source: string) =>
+      ++calls === 1
+        ? new Promise<{ html: string }>((resolve) => (answer = resolve))
+        : Promise.resolve({ html: `<p>${source}</p>` }),
+    );
+    bind("chart", render);
+    const editor = editorWith("intro\n\n```chart\nA\n```\n");
+    const root = rootOf(editor);
+    const shadow = root.querySelector(".plugin-block-host")!.shadowRoot!;
+    showAll();
+    await vi.waitFor(() => expect(render).toHaveBeenCalledTimes(1));
+    editor.view.dispatch(
+      editor.state.tr.insertText("B", blockPos(editor, "chart") + 2),
+    );
+    answer({ html: "<p>A</p>" });
+    await requestRender(codeBlockRendererFor("chart")!, "A", {
+      context: null,
+      lang: "chart",
+      path: null,
+    });
+    expect(shadow.querySelector("p")).toBeNull();
+    expect(root.dataset.renderState).toBe("pending");
+    await vi.waitFor(
+      () => expect(shadow.querySelector("p")?.textContent).toBe("AB"),
+      { timeout: 2_000 },
+    );
+    expect(render).toHaveBeenCalledTimes(2);
   });
 });
 

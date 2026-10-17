@@ -44,9 +44,9 @@ export function codeBlockInfo(
 /**
  * The `filePath` of the tab whose document `editor` holds — `""` for an unsaved note, and for an
  * editor that is no tab's surface (the quick-capture dialog's, a test's — or any editor before
- * `useTabSwitching` publishes the map); `undefined` for the shared editor while the installed tab
- * lives in a keep-alive editor, while the active tab is loading into it, or once the installed tab
- * is closed.
+ * `useTabSwitching` publishes the map); `undefined` for the shared editor before any tab is
+ * installed in it (`loadedTabId` is `null`), while the installed tab lives in a keep-alive editor,
+ * while the active tab is loading into it, or once the installed tab is closed.
  */
 function heldFilePath(editor: Editor): string | undefined {
   const {

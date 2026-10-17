@@ -135,6 +135,9 @@ export class RenderedCodeBlockView implements NodeView {
     this.toggle = document.createElement("button");
     this.toggle.type = "button";
     this.toggle.className = "btn-unstyled plugin-block-toggle";
+    // D17 — "Show source" keeps the source open after the selection leaves; "Show rendered" ends
+    // that. While the selection is in the block the toggle is hidden (`applyMode`), so a press
+    // always changes what is shown.
     this.toggle.addEventListener("click", () => {
       this.sourceShown = !this.sourceShown;
       this.applyMode();
@@ -245,7 +248,9 @@ export class RenderedCodeBlockView implements NodeView {
    * `stopEvent` answers `true` to every event). In rendered mode the event's kind decides:
    *  - a POINTER event follows the pointer model: a press on the chrome, a link or a `data-action`
    *    element is the host's (`hostOwnedTarget`, which reads the composed path into the shadow
-   *    tree), and any other press is ProseMirror's, so a click selects the node;
+   *    tree), and any other press is ProseMirror's — a click then reaches the generation plugin's
+   *    `handleClickOn`, which selects the node and so opens source editing
+   *    (`code-block-render-generation.ts`);
    *  - EVERY OTHER event — keys, text input, composition, focus, clipboard — is the island's when
    *    its composed path runs through this view's shadow root, chrome or error line: a key on a
    *    focusable element of the output (a `<button>` without `data-action`, a `tabindex` element)
@@ -291,16 +296,24 @@ export class RenderedCodeBlockView implements NodeView {
     return true;
   }
 
-  /** Show the rendered output or the wrapped source, and redraw on the way back when it is due. */
+  /**
+   * Show the rendered output or the wrapped source, and redraw on the way back when it is due.
+   *
+   * The toggle names what a press would show, read from the mode on screen. It is hidden while the
+   * selection is in the block (`editing`): source editing is open then whatever the toggle says,
+   * and a press could not keep the block rendered — ProseMirror calls `setSelection` again on later
+   * updates while the selection stays in the block (`selectionToDOM`), and hiding the wrapped
+   * CodeMirror would hide the element that holds the keyboard focus. Leaving source editing is
+   * moving the selection out of the block (D17).
+   */
   private applyMode(): void {
     const source = this.sourceShown || this.editing;
     this.dom.dataset.mode = source ? "source" : "rendered";
     this.body.hidden = source;
     this.inner.dom.hidden = !source;
+    this.toggle.hidden = this.editing;
     this.toggle.textContent = tr(
-      this.sourceShown
-        ? "plugin.block.showRendered"
-        : "plugin.block.showSource",
+      source ? "plugin.block.showRendered" : "plugin.block.showSource",
     );
     if (
       !source &&
@@ -331,6 +344,10 @@ export class RenderedCodeBlockView implements NodeView {
     void requestRender(this.binding, source, info).then((outcome) => {
       if (this.destroyed || seq !== this.requestSeq) return;
       this.status.textContent = "";
+      // D7 — an answer for a source the block no longer holds is late even when no newer draw has
+      // started: an edit waits out `SOURCE_DEBOUNCE_MS` before it asks again (`update`), and that
+      // redraw follows.
+      if (source !== this.node.textContent) return;
       switch (outcome.kind) {
         case "drawn":
           drawRendered(this.shadow, outcome.content);
@@ -341,8 +358,10 @@ export class RenderedCodeBlockView implements NodeView {
           this.showError(outcome.message);
           break;
         case "stale":
-          // The plugin's epoch moved under this render: an invalidate notice follows (or the
-          // registry's change rebuilds this view).
+          // The plugin's epoch moved under this render: an invalidate notice follows, or the
+          // registry's change rebuilds this view — in an editor surface (`editor-surfaces.ts`).
+          // The journal capture editor is not one: there this view keeps its binding until the
+          // block's node changes, and draws again only when it is next asked to.
           return;
       }
       this.dom.dataset.renderState = "done";

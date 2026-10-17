@@ -14,11 +14,17 @@
 // to every editor surface (`editor-surfaces.ts`) — a state field alone would never recompute in an
 // editor no transaction reaches (a hidden keep-alive one). Between changes the set is mapped, not
 // rebuilt: one keystroke costs a `DecorationSet.map`.
+//
+// The plugin also carries D17's click road into a rendered block's source (`handleClickOn`): a
+// plain click on the output selects the block, and the view's `selectNode` opens source editing.
+// ProseMirror click-selects only atoms (`selectClickedLeaf` in prosemirror-view 1.42.3), and a code
+// block is not one; nor does the DOM selection a click leaves in the block reach ProseMirror — the
+// view ignores selection mutations, so that a drag-select of output text does not open the source.
 
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { logger } from "../../../utils/logger";
@@ -43,6 +49,32 @@ export function codeBlockRenderGenerationPlugin(): Plugin<GenerationState> {
     props: {
       decorations: (state) =>
         codeBlockRenderGenerationKey.getState(state)?.decorations,
+      /**
+       * D17 — select a rendered block on a click on the block itself (`direct`). ProseMirror ends
+       * a click on `mouseup`, and not after a drag of more than 4 px or a shift-click
+       * (`LeftMouseDown.up`), so a drag-select stays a selection of output text. A press on a
+       * link, an action or the chrome never starts a click: the view's `stopEvent` keeps its
+       * `mousedown` from ProseMirror. In source mode the view takes every event, and a block
+       * CodeMirror draws does too (`CodeBlockNodeView.stopEvent`); the mode check below is for a
+       * click that reaches here anyway.
+       */
+      handleClickOn(view, _pos, node, nodePos, _event, direct) {
+        if (!direct || node.type.name !== "codeBlock") return false;
+        const dom = view.nodeDOM(nodePos);
+        if (
+          !(dom instanceof HTMLElement) ||
+          !dom.hasAttribute("data-plugin-block") ||
+          dom.dataset.mode !== "rendered"
+        ) {
+          return false;
+        }
+        view.dispatch(
+          view.state.tr.setSelection(
+            NodeSelection.create(view.state.doc, nodePos),
+          ),
+        );
+        return true;
+      },
     },
     state: {
       apply(tr, value, _oldState, newState) {
