@@ -88,7 +88,10 @@ function text(
   const value = node.value;
   const written = writtenPositions(value, state, info);
   if (written.length === 0) {
-    return dropLineEndSpaces(state.safe(value, info), info);
+    return keepBackslashBeforeRun(
+      dropLineEndSpaces(state.safe(value, info), info),
+      info,
+    );
   }
 
   const pieces: string[] = [];
@@ -111,7 +114,38 @@ function text(
   if (start < value.length) {
     pieces.push(state.safe(value.slice(start), { ...info, before }));
   }
-  return dropLineEndSpaces(pieces.join(""), info);
+  return keepBackslashBeforeRun(dropLineEndSpaces(pieces.join(""), info), info);
+}
+
+/**
+ * §7.1 A text that a bold or italic run follows (or that ends such a run):
+ * when its last character comes right after a backslash that escapes nothing,
+ * that backslash is written `\\`.
+ *
+ * Beside such a run remark may write that last character as a character
+ * reference so the run opens or closes (`encodeInfo` in
+ * mdast-util-to-markdown), and it does not look at what comes before the
+ * character: `use \n` before `**(old)**` was written `use \&#x6E;**(old)**`,
+ * the backslash now escaping the reference's `&`, and read back as the text
+ * `use &#x6E;` — which the next save kept. `\\` reads back as one backslash
+ * whether the character after it is encoded or not. ASCII punctuation is
+ * never encoded and is left alone.
+ *
+ * Beside a run whose character is not encoded after all, the file gains the
+ * backslash and reads back the same. Before anything else the text keeps its
+ * bytes.
+ */
+function keepBackslashBeforeRun(output: string, { after }: Info): string {
+  if (!/^[*_]/.test(after)) return output;
+  const lastStart = output.length - (/[\uDC00-\uDFFF]$/.test(output) ? 2 : 1);
+  if (lastStart < 1 || /^[!-/:-@[-`{-~]$/.test(output.slice(lastStart))) {
+    return output;
+  }
+  let backslashes = 0;
+  while (output[lastStart - 1 - backslashes] === "\\") backslashes++;
+  return backslashes % 2 === 1
+    ? `${output.slice(0, lastStart)}\\${output.slice(lastStart)}`
+    : output;
 }
 
 const ENCODED_SPACE = "&#x20;";
