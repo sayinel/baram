@@ -14,6 +14,7 @@ pub mod llm_cmd;
 pub mod plugin_cmd;
 pub mod plugin_dev_cmd;
 pub mod plugin_index_cmd;
+pub mod plugin_note_link_cmd;
 pub mod search_cmd;
 pub mod snapshot_cmd;
 pub mod tag_cmd;

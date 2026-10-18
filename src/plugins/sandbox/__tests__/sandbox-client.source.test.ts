@@ -43,7 +43,11 @@ describe("sandbox source loading (§260 3c-2b)", () => {
     // The op carries no path — Rust resolves the caller's own directory.
     expect(ops).toEqual([{ kind: "source_read" }]);
     expect(imported).toEqual([SOURCE]);
-    expect(session.registered).toEqual({ commands: ["ping"], events: [] });
+    expect(session.registered).toEqual({
+      codeBlocks: [],
+      commands: ["ping"],
+      events: [],
+    });
     await expect(session.invokeCommand("ping")).resolves.toBe("pong");
   });
 

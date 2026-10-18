@@ -3,13 +3,11 @@ import type {
   ExtensionContext,
   InstalledPlugin,
   PluginEventName,
-  PluginFileEvent,
   PluginModule,
 } from "./types";
 
 import { type Locale, t } from "../i18n";
 import { pluginPrepareScopes } from "../ipc/plugin-invoke";
-import { contextRootOf, useContextStore } from "../stores/context/context";
 import { flushViewerEdits } from "../stores/editor/editor";
 import { useSettingsStore } from "../stores/settings/store";
 import { usePluginStore } from "../stores/system/plugin";
@@ -21,6 +19,7 @@ import {
   emitPluginEvent,
   unregisterPluginUI,
 } from "./extension-context";
+import { locateInContext } from "./locate-in-context";
 import { registerEntryContributions } from "./plugin-entry-points";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
@@ -152,34 +151,6 @@ export async function initializePlugins(): Promise<void> {
   } catch (err) {
     logger.error("[PluginLifecycle] dev plugin init failed:", err);
   }
-}
-
-/**
- * §260 Phase 4a — an absolute path as the sandboxed tier is allowed to see it: the
- * containing context's id plus a path relative to its root, POSIX-separated.
- *
- * Exported for its own test: this is the single translation that keeps absolute paths
- * out of the tier, and testing it through `initializePlugins` would mean mocking the
- * whole load path to assert one string.
- *
- * `getContextForPath` is the app's own longest-prefix rule (§81), reused rather than
- * re-derived: a second implementation could disagree about which vault a file belongs
- * to, and this one decides what a plugin is then permitted to read. A file in no
- * registered context returns `null`, and the caller drops the event.
- */
-export function locateInContext(absolutePath: string): null | PluginFileEvent {
-  const context = useContextStore.getState().getContextForPath(absolutePath);
-  if (!context) return null;
-  // A `file` context IS the file (§89), so it has no interior path; Rust accepts `""`
-  // for exactly this case and refuses anything else against such a context.
-  if (context.contextType === "file") return { context: context.id, path: "" };
-  // Sliced at the SAME boundary `getContextForPath` matched on, through the shared
-  // `contextRootOf` rather than a second copy of the rule (security re-review LOW-4).
-  const relative = absolutePath
-    .slice(contextRootOf(context.path).length)
-    .replace(/^[/\\]+/, "")
-    .replace(/\\/g, "/");
-  return { context: context.id, path: relative };
 }
 
 /** Called when the editor is ready */

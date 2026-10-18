@@ -1,6 +1,7 @@
 // §69 Plugin Extension Context — Capability-gated API surface
 import type {
   AIAPI,
+  CodeBlocksAPI,
   CommandRegisterOptions,
   CommandsAPI,
   Disposable,
@@ -39,6 +40,10 @@ import {
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { createPromptsAPI } from "./prompts-api";
+import {
+  claimCodeBlocks,
+  createCodeBlocksAPI,
+} from "./rendered/code-blocks-api";
 import {
   SETTINGS_CHANGED_EVENT,
   watchPluginSettings,
@@ -320,6 +325,16 @@ export function createExtensionContext(
     ? createAIAPI(manifest.id)
     : (createDeniedProxy("ai", "ai") as AIAPI);
 
+  // §394 — `codeblocks` opens it, and the declared languages are claimed NOW, before `activate`, so
+  // "the plugin loaded first draws" means what it says (plan 0125 P10).
+  const codeBlocks: CodeBlocksAPI = hasCapability("codeblocks")
+    ? createCodeBlocksAPI(
+        manifest.id,
+        claimCodeBlocks(manifest, "trusted"),
+        disposables,
+      )
+    : (createDeniedProxy("codeBlocks", "codeblocks") as CodeBlocksAPI);
+
   const commands: CommandsAPI = hasCapability("commands")
     ? createCommandsAPI(manifest.id, disposables)
     : (createDeniedProxy("commands", "commands") as CommandsAPI);
@@ -416,6 +431,7 @@ export function createExtensionContext(
 
   return {
     ai,
+    codeBlocks,
     pluginId: manifest.id,
     pluginPath,
     // §385 no capability (spec 0061 D2): what bounds a prompt is WHEN it may open — the gate.

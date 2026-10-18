@@ -1,7 +1,8 @@
 // §5.12 export — wake every lazily-mounted heavy block and wait for it to land.
 //
-// Code blocks, math (inline and block) and Mermaid diagrams all defer their real
-// content until they near the viewport (extensions/nodes/views/lazy-visible.ts).
+// Code blocks, math (inline and block), Mermaid diagrams and plugin-rendered
+// blocks (§394) all defer their real content until they near the viewport
+// (extensions/nodes/views/lazy-visible.ts).
 // An export reads the WHOLE document from a viewport that never moves, so
 // without this the capture cloned whatever placeholder each unvisited block
 // happened to be showing.
@@ -11,6 +12,9 @@
 // `mermaid.render`), and the clone is only faithful once that work has landed.
 
 import { flushPendingVisibility } from "../../extensions/nodes/views/lazy-visible";
+import { drawDuePluginBlocks } from "../../plugins/rendered/due-redraws";
+import { flushInvalidationNotices } from "../../plugins/rendered/render-queue";
+import { isAuthoredMarkup } from "./export-authored-markup";
 
 /**
  * Timings, injectable so the loop can be tested without wall-clock waits.
@@ -81,10 +85,17 @@ export function pendingHeavyBlocks(root: ParentNode): PendingBlock[] {
       if (!ok(el)) pending.push({ el, kind });
     }
   };
-  check(".code-block-wrapper", "code", codeBlockSettled);
+  // §394 — the wrapped CodeMirror of a rendered block is not exported, so it is
+  // never waited for.
+  check(
+    ".code-block-wrapper",
+    "code",
+    (el) => el.closest("[data-plugin-block]") !== null || codeBlockSettled(el),
+  );
   check(".math-block", "math-block", mathBlockSettled);
   check(".math-inline", "math-inline", mathInlineSettled);
   check(".mermaid-block", "mermaid", mermaidSettled);
+  check("[data-plugin-block]", "plugin", pluginBlockSettled);
   return pending;
 }
 
@@ -105,7 +116,15 @@ export async function settleHeavyBlocks(
 ): Promise<PendingBlock[]> {
   const { ceilingMs, pollMs, stallMs, wakeBatch } = { ...DEFAULTS, ...options };
 
-  let pending = pendingHeavyBlocks(root);
+  // §394 D12 — each read of what is pending delivers the pending `invalidate` notices first: a
+  // rendered block hears of an `invalidate` only through a notice coalesced for up to
+  // `INVALIDATE_COALESCE_MS`, and reads `done` until then.
+  const readPending = () => {
+    flushInvalidationNotices();
+    return pendingHeavyBlocks(root);
+  };
+
+  let pending = readPending();
   // Nothing deferred: a short document the reader has scrolled through costs
   // this call nothing at all, not even a tick.
   if (pending.length === 0) return pending;
@@ -117,11 +136,15 @@ export async function settleHeavyBlocks(
   while (pending.length > 0) {
     // A block that mounts can itself contain further lazy blocks (a code block
     // inside a collapsed callout, say), so this runs every pass rather than
-    // assuming one reached everything.
-    const woken = flushPendingVisibility(wakeBatch, root);
+    // assuming one reached everything. §394 D12 — a rendered block drawn once
+    // but due again (edited in source mode, invalidated off screen) is not on
+    // the lazy queue; `drawDuePluginBlocks` asks it to draw, and counts only
+    // the draws it started.
+    const woken =
+      flushPendingVisibility(wakeBatch, root) + drawDuePluginBlocks(root);
 
     await new Promise((resolve) => setTimeout(resolve, pollMs));
-    pending = pendingHeavyBlocks(root);
+    pending = readPending();
 
     const now = Date.now();
     // Read the comparison BEFORE updating the high-water mark — folding the two
@@ -206,4 +229,19 @@ function mathInlineSettled(el: Element): boolean {
  */
 function mermaidSettled(el: Element): boolean {
   return el.getAttribute("data-render-state") === "done";
+}
+
+/**
+ * §394 spec 0073 D12 — a rendered block is settled once a render attempt for
+ * its CURRENT source ended and no redraw is due since
+ * (`data-render-state="done"`: drawn, failed, or a redraw that failed over a
+ * faded result — `rendered-code-block-view.ts`'s `syncRenderState`). An
+ * authored `data-plugin-block` is settled at once: nothing would ever mark it,
+ * and waiting would cost the whole stall budget. (The document sanitizers drop
+ * the marker an author writes; this is the layer behind them.)
+ */
+function pluginBlockSettled(el: Element): boolean {
+  return (
+    isAuthoredMarkup(el) || el.getAttribute("data-render-state") === "done"
+  );
 }

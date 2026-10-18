@@ -56,6 +56,7 @@ Accessing an API whose capability was not declared throws a clear error
 | `network`         | Make network requests                   | **sensitive** |
 | `storage`         | Use a plugin-private key/value store    | sensitive     |
 | `viewer`          | Register custom file-type viewers       |               |
+| `codeblocks`      | Draw code blocks of the languages it declares — see [Code block renderers](/en/docs/plugin-dev/code-blocks/) | |
 
 `ai` and `network` are the highest-sensitivity capabilities — see
 [Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for exactly what they allow.

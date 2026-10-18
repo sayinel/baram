@@ -12,17 +12,26 @@
 // apart.
 //
 // The publisher rule this file adds (§382) is registry-claim-only by design (plan 0104
-// P18): the second and third callers both build their `next` as `{capabilities, trust}`
-// explicitly (`install-transaction.ts`'s call and `devConsentToAsk`'s `request`), so
+// P18): the second and third callers both build their `next` explicitly without a `channel`
+// (`install-transaction.ts`'s `{capabilities, trust}`, and `devConsentToAsk`'s `request` —
+// those two fields, plus §394's `codeBlocks` when the manifest holds `codeblocks`), so
 // `next.channel` is undefined for them and the rule never fires — see `claimedConsent`
 // below for the matching write side.
+//
+// §394's code block languages are the one gap the post-download check does not leave to
+// `consentGaps`' refusal: a registry listing names none, so they cannot be shown before the
+// download, and `stageValidateAndCommit` asks about them instead. It finds them with
+// `newCodeBlockLangs`, the rule `consentGaps` itself calls, so the two cannot drift apart.
 import type {
   PluginCapability,
   PluginConsent,
+  PluginManifest,
   PluginTrust,
   RegistryChannel,
   RegistryEntry,
 } from "./types";
+
+import { declaredCodeBlockLangs } from "./manifest-code-blocks";
 
 export type ConsentReason = "escalation" | "first-install";
 
@@ -31,9 +40,32 @@ interface CapabilityRequest {
   capabilities: readonly PluginCapability[];
   /** §382 — set on a registry claim; a downloaded manifest names no channel. */
   channel?: RegistryChannel;
+  /**
+   * §394 — code block languages (spec 0073 D4), set by the one non-test caller that holds a
+   * manifest: the dev folder (`devConsentToAsk`). A registry listing names none
+   * (`claimedConsent`), so the post-download check compares the downloaded manifest's languages
+   * itself (`newCodeBlockLangs`), after every other check.
+   */
+  codeBlocks?: readonly string[];
   /** §382 — the listing's publisher id, compared only when `channel` is `community`. */
   publisherId?: number;
   trust: PluginTrust;
+}
+
+/**
+ * §394 A registry claim with the previous record's languages carried onto it (spec 0073 D4 ①): a
+ * claim names none, so this is the base the post-download check compares the downloaded manifest
+ * with. A record without languages carries none (D4 ② — the manifest's are accepted). Applied to
+ * the claim the user has APPROVED, never to the one a dialog shows: before the download no
+ * manifest is in hand, and the record's languages are not the new version's.
+ */
+export function carryCodeBlocks(
+  claim: PluginConsent,
+  prior: PluginConsent | undefined,
+): PluginConsent {
+  return prior?.codeBlocks === undefined
+    ? claim
+    : { ...claim, codeBlocks: [...prior.codeBlocks] };
 }
 
 /**
@@ -62,6 +94,24 @@ export function claimedConsent(
       consent.publisherId = entry.publisherId;
   }
   return consent;
+}
+
+/**
+ * §394 What the post-download re-ask shows (spec 0073 D4 ①): the approved consent with its
+ * languages replaced by the `declared` set of the downloaded manifest — what the version in hand
+ * draws, not the record's joined to it — diffed against the approved consent itself, which
+ * carries the record's (`carryCodeBlocks`). So NEW marks exactly what the record lacked, a
+ * language the new version dropped is not listed, and no capability is marked (both sides hold
+ * the same ones).
+ */
+export function codeBlockReask(
+  approved: PluginConsent,
+  declared: readonly string[],
+): { consent: PluginConsent; prior: PluginConsent } {
+  return {
+    consent: { ...approved, codeBlocks: [...declared].sort() },
+    prior: approved,
+  };
 }
 
 /**
@@ -103,6 +153,16 @@ export function consentGaps(
   if (extra.length > 0) {
     gaps.push(
       `it requests capabilities that were not approved: ${extra.join(", ")}`,
+    );
+  }
+  // §394 spec 0073 D4 — a language the record does not hold is a new reach of the same
+  // capability: an update must not quietly start drawing every ```chart block in the user's
+  // notes. Judged only when both sides name languages — a registry listing names none, and a
+  // record without them accepts the manifest's (D4 ②).
+  const langs = newCodeBlockLangs(consented, next);
+  if (langs.length > 0) {
+    gaps.push(
+      `it draws code blocks that were not approved: ${langs.join(", ")}`,
     );
   }
   // §382 — a community plugin whose publisher ACCOUNT changed is a different party asking,
@@ -173,6 +233,39 @@ export function grantableCapabilities(
   if (!consented) return [...manifest.capabilities];
   const held = new Set(consented.capabilities);
   return manifest.capabilities.filter((cap) => isCovered(cap, held));
+}
+
+/**
+ * §394 The languages `next` declares that `consented` does not hold — `[]` when either names none
+ * (spec 0073 D4 ②). One rule for `consentGaps`, the post-download re-ask and the dialog's "NEW"
+ * marker, so the three cannot disagree.
+ */
+export function newCodeBlockLangs(
+  consented: { codeBlocks?: readonly string[] },
+  next: { codeBlocks?: readonly string[] },
+): string[] {
+  if (consented.codeBlocks === undefined || next.codeBlocks === undefined) {
+    return [];
+  }
+  const held = new Set(consented.codeBlocks);
+  return [...new Set(next.codeBlocks.filter((lang) => !held.has(lang)))].sort();
+}
+
+/**
+ * §394 The consent to RECORD for a committed manifest (spec 0073 D4 ③): the approved consent with
+ * its languages rewritten to the manifest's — an update that drops a language narrows the record,
+ * as one that drops a capability does — and no language field when the manifest lacks `codeblocks`.
+ */
+export function recordedConsent(
+  consent: PluginConsent,
+  manifest: Pick<PluginManifest, "capabilities" | "contributions">,
+): PluginConsent {
+  const recorded: PluginConsent = { ...consent };
+  delete recorded.codeBlocks;
+  if (manifest.capabilities.includes("codeblocks")) {
+    recorded.codeBlocks = declaredCodeBlockLangs(manifest);
+  }
+  return recorded;
 }
 
 /**

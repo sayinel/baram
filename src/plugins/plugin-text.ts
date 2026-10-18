@@ -70,8 +70,23 @@ export function sanitizePluginText(raw: string, max: number): string {
     )
     .trim();
   return flattened.length > max
-    ? `${flattened.slice(0, max - 1)}\u2026`
+    ? `${sliceWholeChars(flattened, max - 1)}\u2026`
     : flattened;
+}
+
+/**
+ * The first `max` UTF-16 units of `text` — one fewer when the cut would end on the first half of a
+ * surrogate pair (§394 plan 0125 P30). `slice` counts code units, so a cut through an emoji or a
+ * rarer CJK ideograph leaves a lone surrogate, and a frame holding one vanishes in Rust's
+ * `serde_json::Value` (`wellFormedText`). Text within the cap comes back as it is — a lone half
+ * the caller already had is `wellFormedText`'s to replace. `plugin-settings.ts`'s private
+ * `clampChars` cuts by this rule at its own cap.
+ */
+export function sliceWholeChars(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
 }
 
 /**

@@ -5,6 +5,7 @@ import type { DOMPurify as Purifier } from "dompurify";
 import DOMPurify from "dompurify";
 
 import { SANITIZER_ALLOWED_URI_REGEXP } from "../link-href";
+import { PLUGIN_BLOCK_MARKER } from "../plugin-block-marker";
 import { VIM_ISLAND_MARKERS } from "../vim-island-markers";
 
 const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
@@ -65,8 +66,9 @@ export function sanitizeSvg(svg: string): string {
     // HTML_INTEGRATION_POINTS replaces (not merges) the default, so re-list the
     // built-in `annotation-xml` alongside `foreignobject`.
     HTML_INTEGRATION_POINTS: { "annotation-xml": true, foreignobject: true },
-    // vim island markers are an app capability — never document-grantable.
-    FORBID_ATTR: [...VIM_ISLAND_MARKERS],
+    // vim island markers and the rendered-block marker (§394) are app
+    // capabilities — never document-grantable.
+    FORBID_ATTR: [...VIM_ISLAND_MARKERS, PLUGIN_BLOCK_MARKER],
   });
 }
 

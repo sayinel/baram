@@ -11,6 +11,56 @@ export interface AIModel {
     id: string;
     name: string;
 }
+/** §394 The block a code block renderer draws (spec 0073 §4). */
+export interface CodeBlockInfo {
+    /** The registered context holding the note; `null` for an unsaved note or one in no context. */
+    context: null | string;
+    lang: string;
+    /**
+     * The note's path — sandboxed: `/`-relative to the context root (`null` without a context), and
+     * `""` when the context is a single file (§89) — the note itself, as the path gate of the file and
+     * index calls spells it (Rust `plugin_target_path` takes only `""` or `"."` against such a
+     * context); trusted: absolute (spec 0072 D6). `null` for an unsaved note.
+     */
+    path: null | string;
+}
+/**
+ * §394 Draws one block: the fenced source in, HTML · SVG and CSS out — strings, never DOM, in both
+ * tiers (spec 0073 D3). A trusted renderer runs on the app's thread: only an asynchronous one can be
+ * timed out.
+ */
+export type CodeBlockRenderer = (source: string, info: CodeBlockInfo) => Promise<RenderedContent> | RenderedContent;
+/**
+ * §394 `ctx.codeBlocks` — the `codeblocks` capability opens it; the same in both tiers (spec 0073 §4).
+ * Without the capability it is a proxy that throws.
+ */
+export interface CodeBlocksAPI {
+    /**
+     * Drop the cache of `lang` (every language this plugin draws when omitted) and draw its visible
+     * blocks again; off-screen blocks draw when they come into view. Throws for an undeclared
+     * language; does nothing for a declared one another plugin draws.
+     */
+    invalidate(lang?: string): void;
+    /**
+     * A click on an element with `data-action` inside your rendered output. While the handler's
+     * promise is pending, `ctx.prompts` may open — for at most 30 s; in the sandboxed tier that clock,
+     * the one a command runs on, stops while a prompt is open and starts again from 30 s when it
+     * closes.
+     */
+    onAction(handler: (action: RenderedAction) => Promise<void> | void): Disposable;
+    /**
+     * Draw ```` ```lang ```` blocks. Only a language declared in `contributions.codeBlocks`; throws when
+     * another plugin, loaded first, draws it. Register in `activate`.
+     *
+     * In the sandboxed tier the app binds a language when `activate` finishes and keeps it bound
+     * until the plugin unloads. A language first registered after `activate` is not drawn;
+     * registering a language that is already bound replaces its renderer, and its cached results
+     * are dropped as in the trusted tier. `dispose()` only stops your renderer answering — a block
+     * drawn after it shows an error (a cached result still shows), where in the trusted tier the
+     * language falls back to plain code blocks.
+     */
+    register(lang: string, render: CodeBlockRenderer): Disposable;
+}
 export interface CommandRegisterOptions {
     paletteVisible?: boolean;
     title?: string;
@@ -126,6 +176,11 @@ export interface EventsAPI {
 }
 export interface ExtensionContext {
     ai: AIAPI;
+    /**
+     * §394 Needs `codeblocks` — see {@link CodeBlocksAPI}. `CodeBlockInfo.path` is absolute, or `null`
+     * for an unsaved note.
+     */
+    codeBlocks: CodeBlocksAPI;
     commands: CommandsAPI;
     editor: EditorAPI;
     events: EventsAPI;
@@ -316,7 +371,7 @@ export interface LoadedPlugin {
 export interface NetworkAPI {
     fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 }
-export type PluginCapability = "ai" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
+export type PluginCapability = "ai" | "codeblocks" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
 /**
  * §260 Phase 5 — a snapshot of what the user approved, taken at the moment they
  * approved it. Compared against a later version's request by `plugin-consent.ts`.
@@ -331,6 +386,12 @@ export interface PluginConsent {
      * registry (spec 0058 §9.2).
      */
     channel?: RegistryChannel;
+    /**
+     * §394 — the code block languages approved with `codeblocks` (spec 0073 D4), sorted. Present only
+     * when the approved manifest held `codeblocks`; absent on every record written before §394, and
+     * absent means "accept the next manifest's languages", not "none".
+     */
+    codeBlocks?: string[];
     /**
      * §382 — the login shown as the publisher. Display only; `publisherId` decides. An update
      * that asks nothing still re-records this field's current value (a rename is not a change
@@ -355,6 +416,15 @@ export interface PluginConsent {
  * registers each declared command with `ctx.commands.register` under the same id.
  */
 export interface PluginContributions {
+    /**
+     * §394 Fenced-code languages this plugin draws (spec 0073 D5), at most 10 — each registered with
+     * `ctx.codeBlocks.register`. Needs the `codeblocks` capability, and the capability needs at least
+     * one. `lang` matches `^[a-z0-9][a-z0-9-]{0,31}$` and is neither a language Baram draws itself
+     * (`mermaid`, `query`, `svg`, `journal-…`) nor one its code blocks highlight (`js`, `python`, …).
+     */
+    codeBlocks?: Array<{
+        lang: string;
+    }>;
     /** At most 50 (spec 0070 D11). */
     commands?: Array<{
         id: string;
@@ -757,6 +827,30 @@ export interface RegistryIndex {
     plugins: RegistryEntry[];
     updatedAt?: string;
 }
+/** §394 A click on a `data-action` element of a rendered block (spec 0073 §4). */
+export interface RenderedAction extends CodeBlockInfo {
+    /** The clicked element's `data-action` value. */
+    action: string;
+}
+/**
+ * §394 What a renderer returns; the host sanitizes it before drawing (spec 0073 D8 · D9).
+ */
+export interface RenderedContent {
+    /**
+     * Goes into this block's shadow root only. `url()` (also `data:`), URL-taking functions
+     * (`image-set()` …), at-rules other than `@media` · `@supports` · `@keyframes` · `@container`,
+     * `:host`-family selectors, and the text `</` (an export writes this CSS into a `<style>`, which
+     * it would close) are refused. `</` in a comment can be refused too: most comments are dropped
+     * first, but some are kept, a top-level `/*!` one among them. `!important` is removed. At most
+     * 64 KiB.
+     */
+    css?: string;
+    /**
+     * HTML · SVG. Scripts, handlers, `style`, form inputs, media elements and remote URLs are removed;
+     * images are `data:image/*`. At most 1 MiB.
+     */
+    html: string;
+}
 /**
  * What a sandboxed plugin's `activate` receives — the sandboxed tier's counterpart to
  * `ExtensionContext`.
@@ -788,6 +882,12 @@ export interface SandboxContext {
      * `plugin-*` window holds no `llm_*` ACL grant.
      */
     ai: AIAPI;
+    /**
+     * §394 — the same API as the trusted tier's (spec 0073 D3), with `CodeBlockInfo.path` relative to
+     * the context root (see its doc for `null` and `""`). Without `codeblocks` every call throws.
+     * Register in `activate`: the app draws only the languages registered before it finishes.
+     */
+    codeBlocks: CodeBlocksAPI;
     commands: {
         register(id: string, handler: (...args: unknown[]) => unknown): void;
     };

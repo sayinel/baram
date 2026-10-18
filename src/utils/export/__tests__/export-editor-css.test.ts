@@ -76,7 +76,7 @@ describe("rescopeEditorCSS", () => {
     expect(out).toContain("article.baram-export p");
   });
 
-  it("leaves no dropped declaration anywhere in the shipped stylesheet", () => {
+  it("leaves no dropped declaration in the shipped stylesheet but the export's own containment", () => {
     // ‼️ This is the assertion that caught the real bug, and the per-fixture
     // checks above are not a substitute for it: the single `/g` pass handled
     // every fixture correctly and still shipped `content-visibility: auto`,
@@ -86,7 +86,14 @@ describe("rescopeEditorCSS", () => {
     // synthetic fixture above ("drops the longer contain-* properties, not
     // just the prefix"), but only a sweep of the WHOLE output can see this
     // class of bug in general.
-    const css = buildExportStylesheet();
+    // §394 spec 0073 D12 — the two `.plugin-block-export` rules in
+    // EXPORT_BASE_CSS restate a plugin-rendered block's containment on purpose
+    // (export-html-styles.ts). They are cut out by their selectors, and counted,
+    // so a dropped declaration anywhere else in the sheet still fails this.
+    const shipped = buildExportStylesheet();
+    const ownContainment = /^\.plugin-block-export(?:-host)? \{[^}]*\}$/gm;
+    expect(shipped.match(ownContainment)).toHaveLength(2);
+    const css = shipped.replace(ownContainment, "");
     // Iterating the list itself, so a property added to it later cannot be
     // dropped in production and left unswept here.
     expect(DROPPED_PROPERTIES.length).toBeGreaterThan(0);

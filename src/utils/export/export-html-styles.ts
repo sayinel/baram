@@ -156,6 +156,15 @@ article.baram-export .tag-node { color: var(--color-accent-default); font-weight
   font: inherit; line-height: inherit; color: inherit;
 }
 
+/* §394 spec 0073 D10 · D12 — a plugin-rendered block: its declarative shadow
+   root holds the plugin's sanitized markup and CSS. The containment is restated
+   here: the editor's own rule (plugin-blocks.css) is not among the sheets
+   export-editor-css.ts copies, and that file drops every contain declaration
+   from the ones it does copy (DROPPED_PROPERTIES). Without it a fixed-position
+   result would cover the exported page. */
+.plugin-block-export { position: relative; margin: 1em 0; overflow: hidden; contain: layout paint; }
+.plugin-block-export-host { display: block; overflow: hidden; contain: paint; }
+
 /* An internal reference is retagged from <span>/<sup> to <a> so the PDF gets a
    link annotation (export-html.ts linkInternalReferences). It must still read
    as a chip or a superscript, not as a blue underlined link — and only the
@@ -218,13 +227,13 @@ export function printCSS(hasThemeBlock: boolean): string {
   article.baram-export { max-width: none; padding: 0; margin: 0; }
   h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
   pre, blockquote, table, img, .math-block, .mermaid-block, .code-block-export,
-  .callout { page-break-inside: avoid; }
+  .plugin-block-export, .callout { page-break-inside: avoid; }
   /* Belt and braces for the hover chrome captureEditorHTML already removes.
      ‼️ Named classes only, deliberately NOT a blanket button/select selector:
      an HTML block prints the author's own markup, and a button they wrote is
-     content (see isAuthoredMarkup in export-html.ts). A rule here cannot tell
-     the two apart, so it stays out of that judgement and leaves it to the one
-     place that can. */
+     content (see isAuthoredMarkup in export-authored-markup.ts). A rule here
+     cannot tell the two apart, so it stays out of that judgement and leaves it
+     to the one place that can. */
   .media-toolbar, .media-resize-handle, .media-resize-label,
   .mermaid-context-menu, .svg-context-menu { display: none !important; }
   /* Scale tall diagrams down so a single mermaid never spans pages.
