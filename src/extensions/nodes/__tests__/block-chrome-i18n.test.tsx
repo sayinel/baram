@@ -107,6 +107,7 @@ const ALLOWED = new Set([
   ".qb-builder select, .qb-builder input", // CSS selector
   "[data-vim-suspend]", // attribute selector
   "[lazy-visible] deferred mount failed", // logger, not UI
+  "]: xnn", // footnote stub html-block-read-back.ts reads, newlines stripped
   "_at", // attr-name suffix that marks a date field
   "Alt:", // ‼️ the PROMPT the model reads, not UI — see image-view.tsx
   "AND", // <option> text identical to its own value

@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 
-import { NodeSelection } from "@tiptap/pm/state";
+import { Selection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
 import { useTranslation } from "../../i18n/useTranslation";
@@ -15,8 +15,10 @@ import { activeFileDir } from "../../utils/active-file-dir";
 import { focusEditorView } from "../../utils/editor/focus-editor-view";
 import { sanitizeHtmlBlock } from "../../utils/markdown/html-sanitize";
 import { isWysiwygVimModal, vimPluginKey } from "../plugins/vim/vim-keys";
+import { htmlBlockContext, readHtmlBlock } from "./views/html-block-read-back";
 import { resolveMediaSrcsIn } from "./views/resolve-html-media-srcs";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useRefusedCommitToast } from "./views/use-refused-commit-toast";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 export function HtmlBlockView({
@@ -58,13 +60,68 @@ export function HtmlBlockView({
   // bare attrs-vs-local comparison writes a stale baseline back over attrs
   // updated while unselected (S5/S6 review R2).
   const editDirtyRef = useRef(false);
-  // The text the block held when the edit session opened. The session's own
-  // commits end it, so while it is open the text changes only from outside —
-  // ProseMirror can keep this view on the block while its text is replaced,
-  // by a new document set over it (a file window reloading an external
-  // change) or by the patch the app applies after its own write — and the
-  // typing does not belong to the new text.
+  // The text the block held when the edit session opened, or that it changed
+  // to from outside during the session. The session's own commits end it, so
+  // while it is open the text changes only from outside — ProseMirror can
+  // keep this view on the block while its text is replaced, by a new document
+  // set over it (a file window reloading an external change) or by the patch
+  // the app applies after its own write — and the typing does not belong to
+  // the new text.
   const sessionBaselineRef = useRef(content);
+  const refusedCommit = useRefusedCommitToast();
+
+  // Commit `next` as this block's text, as the file will read it back when
+  // opened again (html-block-read-back.ts): the blocks it reads as, in place
+  // of this one, when the schema accepts them and they save as markdown that
+  // reads the same; otherwise the attribute as typed, with a notice when the
+  // file will read it differently. Nothing is committed once the block's text
+  // changed under the session. Returns the size of what stands in this
+  // block's place when other blocks replaced it (ProseMirror may add what the
+  // parent requires), or nothing when the block keeps its text. Consumes the
+  // session's dirty flag, so the deselect that follows a keyboard exit does
+  // not commit again.
+  const commitContent = useCallback(
+    (next: string): number | undefined => {
+      editDirtyRef.current = false;
+      if (contentRef.current !== sessionBaselineRef.current) return undefined;
+      const pos = getPos();
+      if (typeof pos !== "number") return undefined;
+      const { state, view } = editorRef.current;
+      const block = state.doc.nodeAt(pos);
+      if (block?.type.name !== "htmlBlock") return undefined;
+      const reading = readHtmlBlock(
+        next,
+        state.schema,
+        htmlBlockContext(state.doc, pos),
+      );
+      if (reading.kind !== "blocks") {
+        updateAttributesRef.current({ content: next });
+        if (reading.kind === "itself") {
+          refusedCommit.settle();
+        } else {
+          refusedCommit.announce(
+            t(
+              reading.merges
+                ? "htmlBlock.keptMerges"
+                : "htmlBlock.keptOtherwise",
+            ),
+          );
+        }
+        return undefined;
+      }
+      refusedCommit.settle();
+      const tr = state.tr.replaceWith(
+        pos,
+        pos + block.nodeSize,
+        reading.blocks,
+      );
+      view.dispatch(tr);
+      return tr.mapping.map(pos + block.nodeSize) - pos;
+    },
+    [getPos, refusedCommit, t],
+  );
+  const commitContentRef = useRef(commitContent);
+  commitContentRef.current = commitContent;
 
   useEffect(() => {
     if (!selected) {
@@ -73,12 +130,12 @@ export function HtmlBlockView({
       // not survive into the next one (S5/S6 review R3).
       const wasDirty = editDirtyRef.current;
       editDirtyRef.current = false;
-      if (
-        wasDirty &&
-        localContentRef.current !== contentRef.current &&
-        contentRef.current === sessionBaselineRef.current
-      ) {
-        updateAttributesRef.current({ content: localContentRef.current });
+      // A replacement made here that holds a node a React view draws (such
+      // as an HTML block, a math block or an image) creates that view inside
+      // this effect; tiptap's ReactRenderer renders it with flushSync, which
+      // React reports in development and defers to its next pass.
+      if (wasDirty && localContentRef.current !== contentRef.current) {
+        commitContentRef.current(localContentRef.current);
       }
       enterByClickRef.current = false;
       isEditingRef.current = false;
@@ -109,7 +166,7 @@ export function HtmlBlockView({
   // The block's text changed under an open session: the session goes on from
   // the new text, and the textarea shows it instead of typing that no longer
   // belongs to the block. Declared after the deselect effect, which runs
-  // first when both fire and refuses the typing itself.
+  // first when both fire and leaves `commitContent` to refuse the typing.
   useEffect(() => {
     if (!isEditingRef.current || content === sessionBaselineRef.current) {
       return;
@@ -133,11 +190,11 @@ export function HtmlBlockView({
   useTextareaAutoResize(textareaRef, localContent, editing);
 
   // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
-  const onSaveBeforeExit = useCallback((): void => {
-    if (localContent !== content) {
-      updateAttributes({ content: localContent });
-    }
-  }, [localContent, content, updateAttributes]);
+  const onSaveBeforeExit = useCallback(
+    (): number | undefined =>
+      localContent !== content ? commitContent(localContent) : undefined,
+    [localContent, content, commitContent],
+  );
 
   const isEmpty = useCallback(() => !localContent, [localContent]);
   const { handleKeyDown } = useAtomBlockBehavior({
@@ -164,7 +221,10 @@ export function HtmlBlockView({
   // §298 Esc stair — while vim owns the surface, Esc lands normal mode and
   // the block's NodeSelection in ONE transaction, then hands focus back (see
   // math-block-view for the surface-insert entry that makes atomicity
-  // necessary). Without vim, exitBlock("down") stays as it was.
+  // necessary). Without vim, exitBlock("down") stays as it was. When the save
+  // put other blocks where this one was, the landing is the first of them:
+  // `Selection.near` selects it whole when it is an atom, as the block was,
+  // and otherwise takes the first place inside it that holds a selection.
   const handleTextareaKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
       if (
@@ -173,16 +233,18 @@ export function HtmlBlockView({
       ) {
         e.preventDefault();
         e.stopPropagation();
+        // Read before saving: a commit that replaces the block leaves this view
+        // on another HTML block among those it put there, or on none.
+        const pos = getPos();
         onSaveBeforeExit();
         enterByClickRef.current = false;
         editDirtyRef.current = false;
         isEditingRef.current = false;
         setIsEditing(false);
         const editorNow = editorRef.current;
-        const pos = getPos();
         const tr = editorNow.state.tr;
         if (typeof pos === "number") {
-          tr.setSelection(NodeSelection.create(tr.doc, pos));
+          tr.setSelection(Selection.near(tr.doc.resolve(pos)));
         }
         tr.setMeta(vimPluginKey, { mode: "normal", type: "setMode" });
         editorNow.view.dispatch(tr);

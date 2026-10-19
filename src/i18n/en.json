@@ -240,6 +240,8 @@
   "home.shortcut.openFolder": "Open folder",
   "home.tagline": "A lightweight, beautiful, and connected Markdown editor",
   "htmlBlock.empty": "Empty HTML block",
+  "htmlBlock.keptMerges": "Kept as you typed it, but when the file is opened again this text may merge with the blocks next to it.",
+  "htmlBlock.keptOtherwise": "Kept as you typed it, but when the file is opened again this text will read differently.",
   "htmlPreview.showPreview": "Preview",
   "htmlPreview.showSource": "Source",
   "htmlPreview.toggleTitle": "Toggle HTML preview / source",
