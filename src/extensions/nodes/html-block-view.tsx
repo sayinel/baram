@@ -58,6 +58,13 @@ export function HtmlBlockView({
   // bare attrs-vs-local comparison writes a stale baseline back over attrs
   // updated while unselected (S5/S6 review R2).
   const editDirtyRef = useRef(false);
+  // The text the block held when the edit session opened. The session's own
+  // commits end it, so while it is open the text changes only from outside —
+  // ProseMirror can keep this view on the block while its text is replaced,
+  // by a new document set over it (a file window reloading an external
+  // change) or by the patch the app applies after its own write — and the
+  // typing does not belong to the new text.
+  const sessionBaselineRef = useRef(content);
 
   useEffect(() => {
     if (!selected) {
@@ -66,7 +73,11 @@ export function HtmlBlockView({
       // not survive into the next one (S5/S6 review R3).
       const wasDirty = editDirtyRef.current;
       editDirtyRef.current = false;
-      if (wasDirty && localContentRef.current !== contentRef.current) {
+      if (
+        wasDirty &&
+        localContentRef.current !== contentRef.current &&
+        contentRef.current === sessionBaselineRef.current
+      ) {
         updateAttributesRef.current({ content: localContentRef.current });
       }
       enterByClickRef.current = false;
@@ -84,6 +95,7 @@ export function HtmlBlockView({
       editDirtyRef.current = false;
       isEditingRef.current = true;
       setIsEditing(true);
+      sessionBaselineRef.current = contentRef.current;
       setLocalContent(contentRef.current);
       setTimeout(() => {
         const ta = textareaRef.current;
@@ -93,6 +105,19 @@ export function HtmlBlockView({
       }, 0);
     }
   }, [selected]);
+
+  // The block's text changed under an open session: the session goes on from
+  // the new text, and the textarea shows it instead of typing that no longer
+  // belongs to the block. Declared after the deselect effect, which runs
+  // first when both fire and refuses the typing itself.
+  useEffect(() => {
+    if (!isEditingRef.current || content === sessionBaselineRef.current) {
+      return;
+    }
+    sessionBaselineRef.current = content;
+    editDirtyRef.current = false;
+    setLocalContent(content);
+  }, [content]);
 
   // §12-⑩ — one render path, editing UI keyed on ENTRY, not selection.
   // Computed BEFORE the hooks that key on it.
@@ -131,6 +156,7 @@ export function HtmlBlockView({
     if (isEditingRef.current) return;
     isEditingRef.current = true;
     editDirtyRef.current = false;
+    sessionBaselineRef.current = contentRef.current;
     setLocalContent(contentRef.current);
     setIsEditing(true);
   }, []);
