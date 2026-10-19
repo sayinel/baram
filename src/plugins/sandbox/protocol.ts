@@ -203,6 +203,15 @@ export type SandboxHostRequest =
       id: string;
       kind: "render_get_source";
     }
+  | {
+      // §394 spec 0073 D14 — a declared panel's content, as `ui.setPanel` was given it. The host checks
+      // the id against the manifest and the limits again and keeps the content as sent, unsanitized
+      // (plan 0126 P4).
+      css?: string;
+      html: string;
+      id: string;
+      kind: "ui_set_panel";
+    }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }
   | { kind: "ai_stream"; opts?: AICompleteOptions; prompt: string };

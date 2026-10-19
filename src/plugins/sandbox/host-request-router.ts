@@ -67,6 +67,7 @@ export function createHostRequestHandler(
       case "settings_read":
         return settings(request);
       case "ui_notify":
+      case "ui_set_panel":
       case "ui_status_bar":
         return ui(request);
       default: {

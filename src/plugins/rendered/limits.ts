@@ -1,6 +1,8 @@
 // §394 spec 0073 §11 — the numbers the plugin-rendered areas run on, in one place (plan 0125 P3).
 // Each is a starting value; the task that owns it measures it and ledger 0095 records the run —
-// change a value here and the committed tests follow it, because they import it.
+// change a value here and the committed tests follow it, because they import it. Two are not in
+// ledger 0095: `PANEL_UPDATE_BURST` is a ruling (plan 0126 P34), and `PANEL_UPDATE_INTERVAL_MS` is
+// measured by plan 0126's ledger 0096.
 //
 // ‼️ A leaf with no imports: the sandbox realm imports this (`sandbox/sandbox-code-blocks.ts`,
 // added by plan 0125 Task 11) to check a result before sending it, and that realm must not reach a
@@ -38,6 +40,19 @@ export const SOURCE_DEBOUNCE_MS = 300;
 
 /** D7 — `invalidate` calls of one plugin within this window become one redraw. */
 export const INVALIDATE_COALESCE_MS = 250;
+
+/**
+ * D14 — "four a second": a sandboxed panel's update interval. The host's acceptance bucket for a
+ * panel earns one token per interval (`host-ui-bridge.ts`, plan 0126 P34).
+ */
+export const PANEL_UPDATE_INTERVAL_MS = 250;
+
+/**
+ * D14 · plan 0126 P34 — the tokens a panel's acceptance bucket holds: the `ui_set_panel` requests the
+ * host takes at once before `PANEL_UPDATE_INTERVAL_MS` paces them. Room for delivery jitter around a
+ * client that sends one per interval.
+ */
+export const PANEL_UPDATE_BURST = 8;
 
 /**
  * D13 — a `renderCodeBlock` frame carries the source inline while the whole serialized frame is

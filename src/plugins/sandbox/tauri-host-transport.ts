@@ -22,6 +22,7 @@ import {
   isRenderGetSource,
   isRenderInvalidate,
   isRenderResult,
+  isSetPanel,
 } from "./render-frames";
 
 type Fields = Record<string, unknown>;
@@ -200,6 +201,9 @@ const HOST_REQUEST_VALIDATORS: {
       r.type === "error" ||
       r.type === "info" ||
       r.type === "warning"),
+  // §394 plan 0126 P8 — not `isRenderableText`: a panel's content is up to 1 MiB of HTML, and the
+  // floor of its byte caps is `isSetPanel`'s.
+  ui_set_panel: isSetPanel,
   ui_status_bar: (r) => typeof r.id === "string" && isRenderableText(r.text),
 };
 
