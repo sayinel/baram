@@ -4,6 +4,7 @@ import type {
   Literal as MdastLiteral,
   Node as MdastNode,
   Parent as MdastParent,
+  PhrasingContent,
 } from "mdast";
 
 // ---------------------------------------------------------------------------
@@ -17,8 +18,12 @@ export interface BlockReferenceNode extends MdastLiteral {
   type: "blockReference";
 }
 
-/** Highlight inline mark node — `==text==` (value-based, pre-serialized) */
-export interface HighlightNode extends MdastLiteral {
+/** Highlight inline mark node — `==text==`, or `<mark>text</mark>` where a
+ *  character written next to it would change how the shorthand reads or the
+ *  shorthand would not read back as its text (`serializer.ts`). Made only for
+ *  a run of plain text (`pm-to-md.ts`). */
+export interface HighlightNode extends MdastParent {
+  children: PhrasingContent[];
   type: "highlight";
 }
 
@@ -27,13 +32,17 @@ export interface MentionNode extends MdastLiteral {
   type: "mention";
 }
 
-/** Subscript inline mark node — `~text~` (value-based, pre-serialized) */
-export interface SubscriptNode extends MdastLiteral {
+/** Subscript inline mark node — `~text~`, or `<sub>text</sub>` (as
+ *  {@link HighlightNode}) */
+export interface SubscriptNode extends MdastParent {
+  children: PhrasingContent[];
   type: "subscript";
 }
 
-/** Superscript inline mark node — `^text^` (value-based, pre-serialized) */
-export interface SuperscriptNode extends MdastLiteral {
+/** Superscript inline mark node — `^text^`, or `<sup>text</sup>` (as
+ *  {@link HighlightNode}) */
+export interface SuperscriptNode extends MdastParent {
+  children: PhrasingContent[];
   type: "superscript";
 }
 
