@@ -155,7 +155,7 @@ export function createSandboxCodeBlocks(deps: {
           frame.source ??
           (await deps.readStaged({ id: frame.id, kind: "render_get_source" }))
             .payload;
-        // Read as the host's `toDrawable` reads it: a non-object answer meets the same fixed
+        // Read as the host's `prepareDrawable` reads it: a non-object answer meets the same fixed
         // sentence, and each field is read once, so the value checked is the value sent.
         const raw: unknown = await renderer(source, frame.info);
         const { css, html }: { css?: unknown; html?: unknown } =

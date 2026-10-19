@@ -42,8 +42,8 @@ export class PluginCssError extends Error {
   constructor(
     readonly code: PluginCssErrorCode,
     /**
-     * Where it was refused. Nothing shows or logs it: the block's error line carries `code` only
-     * (`render` in `render-queue.ts`). It stays on the error for a debugger to read.
+     * Where it was refused. Nothing shows or logs it: the error line carries `code` only
+     * (`refusedCssMessage` in `drawable.ts`). It stays on the error for a debugger to read.
      */
     readonly detail?: string,
   ) {

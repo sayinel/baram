@@ -8,21 +8,18 @@
 import type { CodeBlockInfo, CodeBlockRenderer } from "../types";
 import type { DrawableContent } from "./rendered-body";
 
-import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
 import { withTimeout } from "../../utils/with-timeout";
 import { sanitizePluginText } from "../plugin-text";
+import { prepareDrawable, refusedCssMessage } from "./drawable";
 import {
   INVALIDATE_COALESCE_MS,
   MAX_RENDER_ERROR_CHARS,
   RENDER_CACHE_BYTES,
   RENDER_CONCURRENCY,
   RENDER_TIMEOUT_MS,
-  renderedContentProblem,
-  utf8Bytes,
 } from "./limits";
-import { PluginCssError, sanitizePluginCss } from "./sanitize-css";
-import { sanitizePluginMarkup } from "./sanitize-markup";
+import { PluginCssError } from "./sanitize-css";
 
 /** What one request comes to. `stale`: the plugin's epoch moved while it ran — draw nothing. */
 export type RenderOutcome =
@@ -165,7 +162,7 @@ export function onRendersInvalidated(
 /**
  * Ask `binding` to draw `source` for the block `info` describes: from the cache, from a render of
  * the same key already in flight, or by calling the renderer under the plugin's concurrency limit
- * and the timeout. A result is checked (`renderedContentProblem`), sanitized and cached; a failure is
+ * and the timeout. A result is checked and sanitized (`prepareDrawable`, `drawable.ts`) and cached; a failure is
  * a fixed sentence or the renderer's own message, flattened and capped (§6). The request belongs to
  * the epoch in force when it is MADE (D7): when that epoch moves before the renderer is called — while
  * the source is hashed, or while the request waits for a slot — it calls nothing and comes back
@@ -338,15 +335,18 @@ async function render(
     };
   }
   if (epochOf(binding) !== epoch) return { kind: "stale" };
-  let drawable: ReturnType<typeof toDrawable>;
+  let drawable: ReturnType<typeof prepareDrawable>;
   try {
-    drawable = toDrawable(binding, raw);
+    drawable = prepareDrawable(
+      `[PluginBlock] ${binding.pluginId} ${binding.lang}`,
+      raw,
+    );
   } catch (err) {
     return {
       kind: "failed",
       message:
         err instanceof PluginCssError
-          ? `rendered CSS was refused (${err.code})`
+          ? refusedCssMessage(err)
           : failureText(thrownMessage(err)),
     };
   }
@@ -373,44 +373,6 @@ function thrownMessage(err: unknown): null | string {
   } catch {
     return null;
   }
-}
-
-/**
- * A renderer's answer as the host may draw it, with its size for the cache — or the fixed sentence
- * of `renderedContentProblem` (§6). Throws what the sanitizers throw: a `PluginCssError` for refused
- * CSS (plan 0125 P9), an `Error` over the node cap. Each field is read once, so the value checked is
- * the value drawn.
- */
-function toDrawable(
-  binding: RenderTarget,
-  raw: unknown,
-): string | { bytes: number; content: DrawableContent } {
-  const answer: { css?: unknown; html?: unknown } =
-    typeof raw === "object" && raw !== null ? raw : {};
-  const { css, html } = answer;
-  const problem = renderedContentProblem({ css, html });
-  if (problem !== null) return problem;
-  // `renderedContentProblem` passed: `html` is a string, `css` a string or absent.
-  const markupText = html as string;
-  const cssText = (css as string | undefined) ?? "";
-  const markup = sanitizePluginMarkup(markupText);
-  if (markup.removed > 0 && usePluginStore.getState().devMode.active) {
-    // §6 — developer mode (§379: a dev build, or the user's switch), not Vite's
-    // `import.meta.env.DEV`: a `cargo build` debug binary embeds a production `dist/`
-    // (`devLoadsAreUnbounded` in `plugin-loader.ts`). `console`, not `logger`: `logger.debug` and
-    // `logger.info` are quiet outside a Vite dev build. A lower bound (`SanitizedMarkup.removed`), so
-    // the line says "at least".
-    console.info(
-      `[PluginBlock] ${binding.pluginId} ${binding.lang}: the sanitizer removed at least ${markup.removed}`,
-    );
-  }
-  return {
-    bytes: utf8Bytes(markupText) + utf8Bytes(cssText),
-    content: {
-      css: cssText === "" ? "" : sanitizePluginCss(cssText),
-      fragment: markup.fragment,
-    },
-  };
 }
 
 /**

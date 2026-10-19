@@ -1,0 +1,59 @@
+// §394 spec 0073 D8 · D9 · §7 "계획 B" — a plugin's result made drawable: the one sanitizing step that a
+// code block's render (`render-queue.ts`) goes through. Moved out of `render-queue.ts` (`toDrawable`)
+// by plan 0126 P3 with its behaviour, its refusals and its console line unchanged.
+
+import type { DrawableContent } from "./rendered-body";
+import type { PluginCssError } from "./sanitize-css";
+
+import { usePluginStore } from "../../stores/system/plugin";
+import { renderedContentProblem, utf8Bytes } from "./limits";
+import { sanitizePluginCss } from "./sanitize-css";
+import { sanitizePluginMarkup } from "./sanitize-markup";
+
+/** A result as the host may draw it, with the UTF-8 size of what was sent — the render cache's measure. */
+export interface PreparedDrawable {
+  bytes: number;
+  content: DrawableContent;
+}
+
+/**
+ * `raw` — a renderer's answer — as the host may draw it, or the fixed sentence of
+ * `renderedContentProblem` (§6). Throws what the sanitizers throw: a `PluginCssError` for refused
+ * CSS (plan 0125 P9), an `Error` over the node cap. Each field is read once, so the value checked is
+ * the value drawn. `owner` begins the developer-mode console line — `[PluginBlock] <plugin> <lang>`
+ * for a code block (`render-queue.ts`).
+ */
+export function prepareDrawable(
+  owner: string,
+  raw: unknown,
+): PreparedDrawable | string {
+  const answer: { css?: unknown; html?: unknown } =
+    typeof raw === "object" && raw !== null ? raw : {};
+  const { css, html } = answer;
+  const problem = renderedContentProblem({ css, html });
+  if (problem !== null) return problem;
+  // `renderedContentProblem` passed: `html` is a string, `css` a string or absent.
+  const markupText = html as string;
+  const cssText = (css as string | undefined) ?? "";
+  const markup = sanitizePluginMarkup(markupText);
+  if (markup.removed > 0 && usePluginStore.getState().devMode.active) {
+    // §6 — developer mode (§379: a dev build, or the user's switch), not Vite's
+    // `import.meta.env.DEV`: a `cargo build` debug binary embeds a production `dist/`
+    // (`devLoadsAreUnbounded` in `plugin-loader.ts`). `console`, not `logger`: `logger.debug` and
+    // `logger.info` are quiet outside a Vite dev build. A lower bound (`SanitizedMarkup.removed`), so
+    // the line says "at least".
+    console.info(`${owner}: the sanitizer removed at least ${markup.removed}`);
+  }
+  return {
+    bytes: utf8Bytes(markupText) + utf8Bytes(cssText),
+    content: {
+      css: cssText === "" ? "" : sanitizePluginCss(cssText),
+      fragment: markup.fragment,
+    },
+  };
+}
+
+/** The error line's sentence for refused CSS (plan 0125 P9). */
+export function refusedCssMessage(err: PluginCssError): string {
+  return `rendered CSS was refused (${err.code})`;
+}
