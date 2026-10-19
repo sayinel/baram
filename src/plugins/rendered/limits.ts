@@ -42,8 +42,10 @@ export const SOURCE_DEBOUNCE_MS = 300;
 export const INVALIDATE_COALESCE_MS = 250;
 
 /**
- * D14 — "four a second": a sandboxed panel's update interval. The host's acceptance bucket for a
- * panel earns one token per interval (`host-ui-bridge.ts`, plan 0126 P34).
+ * D14 — "four a second": a sandboxed panel's update interval — the least time between two draws of
+ * one panel while its view stays mounted (`panel-painter.ts`), and the refill of the host's acceptance bucket, one token per
+ * interval (`host-ui-bridge.ts`, plan 0126 P34). Plan 0126 Task 4 measured a 1,000-row panel's draw
+ * against it (ledger 0096).
  */
 export const PANEL_UPDATE_INTERVAL_MS = 250;
 

@@ -747,6 +747,7 @@
   "plugin.marketplace.themesElsewhere": "Looking for themes? Settings › Appearance → Browse Themes",
   "plugin.marketplace.title": "Plugins",
   "plugin.marketplace.viewDetails": "View details for {name}",
+  "plugin.panel.empty": "This panel has nothing to show yet.",
   "plugin.panel.none": "No plugin panel selected.",
   "plugin.prompt.empty": "No matching items",
   "plugin.prompt.list": "Choices",

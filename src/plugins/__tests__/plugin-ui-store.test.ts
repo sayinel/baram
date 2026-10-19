@@ -35,6 +35,7 @@ describe("plugin-ui-store status bar items", () => {
 });
 
 const panel = (id: string, pluginId = "p1") => ({
+  kind: "dom" as const,
   onMount: () => {},
   panelId: `${pluginId}:${id}`,
   pluginId,

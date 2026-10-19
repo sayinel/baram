@@ -74,6 +74,7 @@ export function createUIAPI(
       const panelId = `${pluginId}:${opts.id}`;
       usePluginUIStore.getState().registerSidebarPanel({
         icon: opts.icon,
+        kind: "dom",
         onMount: opts.onMount,
         onUnmount: opts.onUnmount,
         panelId,

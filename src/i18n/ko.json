@@ -747,6 +747,7 @@
   "plugin.marketplace.themesElsewhere": "테마를 찾으시나요? 설정 › 외관 → 테마 찾아보기",
   "plugin.marketplace.title": "플러그인",
   "plugin.marketplace.viewDetails": "{name} 상세 보기",
+  "plugin.panel.empty": "이 패널에는 아직 보일 것이 없습니다.",
   "plugin.panel.none": "선택된 플러그인 패널이 없습니다.",
   "plugin.prompt.empty": "일치하는 항목이 없습니다",
   "plugin.prompt.list": "선택 항목",
