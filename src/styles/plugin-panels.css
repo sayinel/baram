@@ -1,9 +1,12 @@
-/* §394 spec 0073 D14 · D10 — a sandboxed plugin's sidebar panel (RenderedPanelView). The root
-   (data-plugin-panel) sits OUTSIDE the panel's shadow root, where the plugin's CSS cannot select it.
-   Paint containment there makes the root the containing block of fixed and absolutely positioned
-   descendants and clips what they paint to its box (CSS Containment Level 1); the top layer is the
-   exception, and its entrances are removed by the sanitizer. The shadow host inside is the code
-   block's .plugin-block-host, contained again by its rule in editor/plugin-blocks.css. */
+/* §394 spec 0073 D14 · D10 — a sandboxed plugin's sidebar panel (RenderedPanelView). Two elements
+   OUTSIDE the panel's shadow root, where the plugin's CSS cannot select them, contain paint. The
+   first is the shadow host, the code block's .plugin-block-host (its rule is in
+   editor/plugin-blocks.css): the first element above the plugin's output in the flat tree, so its
+   paint containment clips everything that output paints to its box, fixed and absolutely positioned
+   elements included (CSS Containment Level 1). The second is the root (data-plugin-panel) below: it
+   holds the host-drawn header and error line, and would hold the plugin's output only if the host's
+   rule were lost. The top layer is the exception to both, and its entrances are removed by the
+   sanitizer. */
 [data-plugin-panel] {
   display: flex;
   flex-direction: column;

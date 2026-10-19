@@ -124,11 +124,19 @@ describe("paintPanel", () => {
     expect(shadow.innerHTML).toBe("<p>ok</p>");
   });
 
-  /** The stop function: nothing is drawn after it — a timer pending at the stop included. */
+  /** The stop function ends both ways a draw can start: the subscription and the timer. What fails
+   *  this: a stop that keeps the subscription (the first half — stopped with no timer pending, the
+   *  painter would draw the next content at once), or one that keeps the timer (the second half —
+   *  stopped within an interval, the timer would draw what came meanwhile). The second half's first
+   *  count is the pair: a painter that is not stopped draws. */
   it("draws nothing once stopped", () => {
     vi.useFakeTimers();
-    const { stop } = painted();
+    painted().stop();
     setPanelContent(KEY, { html: "<p>1</p>" });
+    expect(draws()).toBe(0);
+
+    const { stop } = painted();
+    expect(draws()).toBe(1);
     setPanelContent(KEY, { html: "<p>2</p>" });
     stop();
     vi.advanceTimersByTime(PANEL_UPDATE_INTERVAL_MS);
