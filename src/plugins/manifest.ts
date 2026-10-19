@@ -1,4 +1,5 @@
 // §69 Plugin Manifest validation
+import type { ContributionChecks } from "./manifest-entry-points";
 import type {
   PluginCapability,
   PluginManifest,
@@ -10,6 +11,7 @@ import {
   validateCodeBlocks,
 } from "./manifest-code-blocks";
 import { validateEntryPoints } from "./manifest-entry-points";
+import { checkPanelDeclarations, validatePanels } from "./manifest-panels";
 import {
   isSafeSettingColor,
   MAX_SETTING_FIELDS,
@@ -205,6 +207,16 @@ export function validateManifest(
 
   // §394 spec 0073 §4 — `codeblocks` and `contributions.codeBlocks` come together.
   checkCodeBlockCapability(
+    obj.capabilities,
+    obj.contributions,
+    (field, message) => {
+      errors.push({ field, message });
+    },
+  );
+
+  // §394 spec 0073 D14 — `contributions.panels`: a sandboxed plugin's, and with `sidebar`.
+  checkPanelDeclarations(
+    obj.trust,
     obj.capabilities,
     obj.contributions,
     (field, message) => {
@@ -546,29 +558,25 @@ function validateContributions(
     }
   });
 
+  const checks: ContributionChecks = {
+    entries,
+    rejectDuplicateIds,
+    report: (field, message) => {
+      errors.push({ field, message });
+    },
+    requireDeclaredCommand,
+    requireId,
+  };
   // §391 spec 0070 §4 — `menu` and `slash`, read by the editor's right-click menu and the slash
   // list. The 4a → 4c CARRY-OVER ("whoever first reads `menu[].command` adds `requireId` for it
   // in the SAME commit") is discharged in `validateEntryPoints`: ids and commands both go
   // through `requireId`, and the command through `requireDeclaredCommand` above.
-  validateEntryPoints({
-    entries,
-    rejectDuplicateIds,
-    report: (field, message) => {
-      errors.push({ field, message });
-    },
-    requireDeclaredCommand,
-    requireId,
-  });
+  validateEntryPoints(checks);
   // §394 spec 0073 D5 — `codeBlocks`, through the same borrowed checks as menu and slash.
-  validateCodeBlocks({
-    entries,
-    rejectDuplicateIds,
-    report: (field, message) => {
-      errors.push({ field, message });
-    },
-    requireDeclaredCommand,
-    requireId,
-  });
+  validateCodeBlocks(checks);
+  // §394 spec 0073 D14 — `panels`, through them too; the tier and `sidebar` rules are
+  // `checkPanelDeclarations` in `validateManifest`, which sees the whole manifest.
+  validatePanels(checks);
   return errors;
 }
 

@@ -441,6 +441,17 @@ export interface PluginContributions {
         title?: string;
         when?: "selection";
     }>;
+    /**
+     * §394 A sandboxed plugin's sidebar panels (spec 0073 D14), at most 3 — each shows what
+     * `ctx.ui.setPanel` sends it. Needs the `sidebar` capability; a trusted manifest declares none (that
+     * tier mounts its own DOM with `ui.addSidebarPanel`). `id` follows the contribution id rule; `icon`,
+     * when given, is one character (an emoji or a letter) of at most 16 UTF-16 units.
+     */
+    panels?: Array<{
+        icon?: string;
+        id: string;
+        title: string;
+    }>;
     settings?: PluginSettingField[];
     /** Items at the end of the slash menu, at most 10. */
     slash?: Array<{
