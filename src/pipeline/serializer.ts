@@ -11,8 +11,13 @@
 // - 1 blank line between block elements
 // - Single newline at file end
 
-import type { Parents, Root, Text } from "mdast";
-import type { ConstructName, Info, State } from "mdast-util-to-markdown";
+import type { Delete, Parents, Root, Text } from "mdast";
+import type {
+  Attention,
+  ConstructName,
+  Info,
+  State,
+} from "mdast-util-to-markdown";
 
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -52,10 +57,44 @@ function remarkWikiLink(this: any) {
       ...Object.fromEntries(
         verbatimTypes.map((name) => [name, verbatimHandler]),
       ),
+      delete: strikethrough,
       text,
     },
   });
 }
+
+/**
+ * §7.1 Strikethrough, written the way mdast-util-to-markdown writes emphasis
+ * and strong: as attention, which `containerPhrasing` checks the way micromark
+ * reads it, encoding a character beside the run where the run would not open
+ * or close otherwise.
+ *
+ * remark-gfm's own handler (mdast-util-gfm-strikethrough 2.0.0) writes `~~`
+ * around the text without looking at its neighbours, so a strikethrough whose
+ * text starts or ends with a space (`a ~~e ~~f`) did not close and was lost on
+ * reload. Only `~~`: Baram reads a single `~` as subscript
+ * (`singleTilde: false`).
+ */
+function strikethrough(
+  node: Delete,
+  _parent: Parents | undefined,
+  state: State,
+  info: Info,
+): string {
+  const exit = state.enter("phrasing");
+  const value = state.containerPhrasing(
+    { children: [node], type: "paragraph" },
+    info,
+  );
+  exit();
+  return value;
+}
+strikethrough.attention = (() => ({
+  construct: "strikethrough",
+  markers: ["~"],
+  sizes: [2],
+})) satisfies Attention;
+strikethrough.peek = (): string => "~";
 
 /**
  * §7.1 Body text — remark's own escaping, except for the characters
@@ -118,11 +157,12 @@ function text(
 }
 
 /**
- * §7.1 A text that a bold or italic run follows (or that ends such a run):
- * when its last character comes right after a backslash that escapes nothing,
- * that backslash is written `\\`.
+ * §7.1 A text that `*`, `_` or `~` follows: when its last character comes
+ * right after a backslash that escapes nothing, that backslash is written
+ * `\\`.
  *
- * Beside such a run remark may write that last character as a character
+ * Beside a bold, italic or strikethrough run — after the text, or closing a
+ * run the text ends — remark may write that last character as a character
  * reference so the run opens or closes (`encodeInfo` in
  * mdast-util-to-markdown), and it does not look at what comes before the
  * character: `use \n` before `**(old)**` was written `use \&#x6E;**(old)**`,
@@ -131,12 +171,13 @@ function text(
  * whether the character after it is encoded or not. ASCII punctuation is
  * never encoded and is left alone.
  *
- * Beside a run whose character is not encoded after all, the file gains the
- * backslash and reads back the same. Before anything else the text keeps its
- * bytes.
+ * The `~` cannot tell a strikethrough from a subscript, so a text before a
+ * subscript gains the backslash too (`use \n~b~` → `use \\n~b~`), as does
+ * one beside a run whose character is not encoded after all; each reads back
+ * the same. Before anything else the text keeps its bytes.
  */
 function keepBackslashBeforeRun(output: string, { after }: Info): string {
-  if (!/^[*_]/.test(after)) return output;
+  if (!/^[*_~]/.test(after)) return output;
   const lastStart = output.length - (/[\uDC00-\uDFFF]$/.test(output) ? 2 : 1);
   if (lastStart < 1 || /^[!-/:-@[-`{-~]$/.test(output.slice(lastStart))) {
     return output;

@@ -1,9 +1,9 @@
 // §7.1 — a backslash in text right before a character remark writes as a
 // character reference.
 //
-// Beside a bold or italic run remark may write a character that is not
-// punctuation (a letter, a digit, a space) as a character reference so the
-// run opens or closes (`**e&#x20;**&#x66;`, mdast-util-to-markdown's
+// Beside a bold, italic or strikethrough run remark may write a character that
+// is not punctuation (a letter, a digit, a space) as a character reference so
+// the run opens or closes (`**e&#x20;**&#x66;`, mdast-util-to-markdown's
 // `encodeInfo`). It does not look at what comes before that character: text
 // `use \n` before a bold run was written `use \&#x6E;**…**`, where the
 // backslash now escapes the `&` — the text read back as `use &#x6E;`, and the
@@ -49,6 +49,14 @@ describe("a backslash before a character written as a reference", () => {
     [
       "before italic",
       paragraph(["use \\n", []], ["(old)", ["italic"]], [" now", []]),
+    ],
+    [
+      "before strikethrough",
+      paragraph(["use \\n", []], ["(old)", ["strike"]], [" now", []]),
+    ],
+    [
+      "at the end of strikethrough",
+      paragraph(["C:\\ ", ["strike"]], ["a", []], [" x", ["strike"]]),
     ],
   ])("%s reads back as written", (_label, doc) => {
     const saved = prosemirrorToMarkdown(doc);

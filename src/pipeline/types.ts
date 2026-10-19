@@ -85,6 +85,17 @@ declare module "mdast" {
   }
 }
 
+// The construct remark-gfm's strikethrough handler enters. `serializer.ts`'s
+// strikethrough handler names it as its `attention` construct, which
+// `containerPhrasing` enters. mdast-util-gfm-strikethrough declares it the same
+// way, but nothing here imports that package, so its declaration is not
+// compiled.
+declare module "mdast-util-to-markdown" {
+  interface ConstructNameMap {
+    strikethrough: "strikethrough";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Transformer types
 // ---------------------------------------------------------------------------
