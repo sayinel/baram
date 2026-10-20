@@ -210,23 +210,42 @@ describe("what the exported page actually looks like", () => {
     }
   });
 
+  // jsdom 30.1.3부터 var()가 든 단축 속성 선언은 cascade에서 이겨도 longhand 값이
+  // `unset`이 된다(computed-style.js `handleProperty`의 TODO — 변수를 치환하기 전에는
+  // 계산하지 못한다). 타입 규칙도, 그것을 덮던 일반 다크 규칙도 `background: …var()…`
+  // 라서 둘 다 투명으로 읽혀 구별되지 않는다. 그래서 tip 토큰 참조만 리터럴로 바꿔
+  // 끼운다 — 셀렉터는 건드리지 않으므로 누가 이기는지는 여전히 jsdom의 cascade가 정한다.
+  function tipBackground(theme?: "dark", extraCSS = ""): string {
+    const shipped = style.textContent;
+    style.textContent =
+      shipped.replaceAll("var(--color-callout-tip)", "#123456") + extraCSS;
+    if (theme) document.documentElement.dataset.theme = theme;
+    try {
+      const tip = mount(`<div class="callout callout-tip"></div>`)
+        .firstElementChild as HTMLElement;
+      return getComputedStyle(tip).backgroundColor;
+    } finally {
+      delete document.documentElement.dataset.theme;
+      style.textContent = shipped;
+    }
+  }
+
   it("keeps dark mode from repainting typed callout backgrounds", () => {
     // 회귀 핀 (적대 리뷰 2회): `[data-theme="dark"] … .callout { background }`
     // 류의 일반 다크 규칙은 (0,3,0)이라 타입 규칙 (0,2,0)을 전부 이긴다 —
     // 명시적 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개지는 결함이 실제로
     // 있었다. 정규식 핀은 표기(인용부호·:where()·selector list)에 속았으므로,
-    // 다크 root 아래 타입 callout을 실제로 마운트해 계산된 background가 여전히
-    // 자기 타입 토큰을 참조하는지를 본다 — 어떤 표기로 재유입돼도 cascade
-    // 결과로 잡힌다. (jsdom은 var()를 실값으로 풀지 않으므로 토큰 참조
-    // 문자열이 그대로 남는 것이 정상 기대값이다.)
-    document.documentElement.dataset.theme = "dark";
-    try {
-      const tip = mount(`<div class="callout callout-tip"></div>`)
-        .firstElementChild as HTMLElement;
-      expect(getComputedStyle(tip).background).toContain("--color-callout-tip");
-    } finally {
-      delete document.documentElement.dataset.theme;
-    }
+    // 다크 root 아래 타입 callout을 실제로 마운트해 계산된 배경이 라이트와
+    // 같은 규칙에서 오는지를 본다 — 어떤 표기로 재유입돼도 cascade 결과로 잡힌다.
+    const light = tipBackground();
+    // 짝: 리터럴이 계산값까지 닿았다. 아니면 아래 비교는 투명 = 투명이다.
+    expect(light).not.toBe("rgba(0, 0, 0, 0)");
+    expect(tipBackground("dark")).toBe(light);
+  });
+
+  it("CONTROL: a generic dark `.callout` background rule would repaint it", () => {
+    const generic = `[data-theme="dark"] article.baram-export .callout { background: var(--color-bg-subtle); }`;
+    expect(tipBackground("dark", generic)).not.toBe(tipBackground());
   });
 
   // §308 — the chip and the raw text it renders BOTH reach the export, and the
