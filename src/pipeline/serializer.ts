@@ -11,14 +11,22 @@
 // - 1 blank line between block elements
 // - Single newline at file end
 
-import type { Parents, Root, Text } from "mdast";
-import type { ConstructName, Info, State } from "mdast-util-to-markdown";
+import type { HighlightNode, SubscriptNode, SuperscriptNode } from "./types";
+import type { Delete, Parents, Root, Text } from "mdast";
+import type {
+  Attention,
+  ConstructName,
+  Info,
+  State,
+} from "mdast-util-to-markdown";
 
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
+
+import { markdownParser } from "./markdown-parser";
 
 /** §28 Remark plugin: serialize wikiLink + §30b blockReference + custom inline marks */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -27,7 +35,7 @@ function remarkWikiLink(this: any) {
   const key = "toMarkdownExtensions";
   const list: unknown[] = data[key] || (data[key] = []);
 
-  // All custom inline nodes return their pre-serialized value verbatim
+  // These custom inline nodes return their pre-serialized value verbatim
 
   const verbatimHandler = (
     node: { value: string },
@@ -38,10 +46,7 @@ function remarkWikiLink(this: any) {
 
   const verbatimTypes = [
     "blockReference",
-    "highlight",
     "mention",
-    "subscript",
-    "superscript",
     "tagNode",
     "taskCheckbox",
     "wikiLink",
@@ -52,16 +57,182 @@ function remarkWikiLink(this: any) {
       ...Object.fromEntries(
         verbatimTypes.map((name) => [name, verbatimHandler]),
       ),
+      delete: strikethrough,
+      highlight: customMark,
+      subscript: customMark,
+      superscript: customMark,
       text,
     },
   });
 }
 
 /**
+ * §5.1 Each custom inline mark's shorthand delimiter and tag, and the sides on
+ * which the delimiter's own character written next to the shorthand changes
+ * how the loader reads it (`CUSTOM_MARK_PATTERNS` in
+ * `convert-inline-custom-marks.ts`):
+ * - `==` before only — its text may start with one `=` (`=[^=]`), so `a=`
+ *   then `==b==` (`a===b==`) opens a character early; after it, `==b===`
+ *   still reads `==b==` first.
+ * - `~` on both sides — the pattern refuses a `~` on either side, and
+ *   `~~a~~` then `~b~` puts three tildes in one run, which closes no
+ *   strikethrough.
+ * - `^` on neither — its text can neither start nor end with `^`, so `a^^b^`
+ *   and `^b^^` both read `^b^`.
+ */
+const CUSTOM_MARKS = {
+  highlight: { after: false, before: true, delimiter: "==", tag: "mark" },
+  subscript: { after: true, before: true, delimiter: "~", tag: "sub" },
+  superscript: { after: false, before: false, delimiter: "^", tag: "sup" },
+} as const;
+
+/**
+ * §7.1 A highlight, subscript or superscript over plain text — `pm-to-md.ts`
+ * makes these nodes only where the text itself allows the shorthand.
+ *
+ * The text goes through {@link text} like any other, so it is escaped as body
+ * text is. The shorthand is written unless the character written just outside
+ * it is the delimiter's own on a side {@link CUSTOM_MARKS} names, or it would
+ * not read back as its text ({@link readsBackAsText}) — then the tags are
+ * written, which is what `pm-to-md.ts` writes for the runs it does not
+ * collapse. A following text that starts with `~` is written `\~` and shows
+ * only its backslash here; `pm-to-md.ts` judges that one before the text is
+ * escaped.
+ *
+ * Tags are not a neutral fallback: the text after `<mark>` is read as
+ * markdown again, so one that starts with a tag's spelling (`#todo`) reads
+ * back as a tag. They are written only where the shorthand would not read
+ * back either: beside a neighbour {@link CUSTOM_MARKS} names, or where it
+ * fails judged on its own between two letters.
+ */
+function customMark(
+  node: HighlightNode | SubscriptNode | SuperscriptNode,
+  _parent: Parents | undefined,
+  state: State,
+  info: Info,
+): string {
+  const { after, before, delimiter, tag } = CUSTOM_MARKS[node.type];
+  const write = (open: string, close: string): string => {
+    const tracker = state.createTracker(info);
+    let value = tracker.move(open);
+    value += tracker.move(
+      state.containerPhrasing(node, {
+        ...tracker.current(),
+        after: close,
+        before: open,
+      }),
+    );
+    return value + tracker.move(close);
+  };
+  if (
+    !(before && info.before.slice(-1) === delimiter[0]) &&
+    !(after && info.after.charAt(0) === delimiter[0])
+  ) {
+    const shorthand = write(delimiter, delimiter);
+    const text = node.children.map((child) => (child as Text).value).join("");
+    if (readsBackAsText(shorthand, `${delimiter}${text}${delimiter}`)) {
+      return shorthand;
+    }
+  }
+  return write(`<${tag}>`, `</${tag}>`);
+}
+// `containerPhrasing` asks the next sibling's handler for its first character;
+// without a peek it ran this whole handler a second time. The shorthand starts
+// with its delimiter's character; where the tags are written instead, the
+// text before is told that character rather than `<`, which differs in two
+// places, each reading back the same: the backslash `keepBackslashBeforeRun`
+// adds before a subscript's `~`, and a `[` left raw because the `]` that
+// closes it at the end of the text is followed by the delimiter rather than
+// `<`, a label follower (`see [x]<mark>…`). Only time is at stake (the parse
+// is remembered either way), so no test counts it.
+customMark.peek = (
+  node: HighlightNode | SubscriptNode | SuperscriptNode,
+): string => CUSTOM_MARKS[node.type].delimiter[0];
+/** {@link readsBackAsText} answers, by the string parsed. A file holds the
+ *  same shorthands save after save, and each parse costs tens of
+ *  microseconds. The map is emptied when it reaches this many entries. */
+const READ_BACK_LIMIT = 4096;
+const readBackAnswers = new Map<string, boolean>();
+
+/**
+ * §7.1 Whether `written` reads back as the plain `text` and nothing else,
+ * parsed by the stack the app reads files with (`markdown-parser.ts`) between
+ * two letters, so its first line starts no block (later lines keep the
+ * line-start escapes remark wrote).
+ *
+ * What this is for is a web address at the end of the text. A GFM autolink
+ * takes the closing delimiter into the link: `==https://example.com==` read
+ * back as a link to `https://example.com==` and lost the highlight. micromark
+ * starts no link in the shorthand's text — the `.` of `www.` and the `:` of
+ * `http(s)://` are written escaped ({@link startsWebAddress}) — but
+ * mdast-util-gfm-autolink-literal's text transform, which reads the text after
+ * escapes are taken out, still does, by its own rules (the character before
+ * the address, `isCorrectDomain`, trailing punctuation). Asking the parser
+ * follows them without copying them. The check also turns down a text in
+ * which a link forms elsewhere (`see https://example.com now`), though that
+ * shorthand reads back with its mark; the tags it is written as reload the
+ * same. The transform starts a web link only at `http://`, `https://` or
+ * `www.` (any case), so a text spelling none of them is not parsed.
+ */
+function readsBackAsText(written: string, text: string): boolean {
+  if (!/https?:\/\/|www\./i.test(text)) return true;
+  const key = `${written}\u0000${text}`;
+  const known = readBackAnswers.get(key);
+  if (known !== undefined) return known;
+  const [paragraph, ...others] = markdownParser.parse(`x${written}x`).children;
+  const [only, ...rest] =
+    others.length === 0 && paragraph?.type === "paragraph"
+      ? paragraph.children
+      : [];
+  const answer =
+    only !== undefined &&
+    rest.length === 0 &&
+    only.type === "text" &&
+    only.value === `x${text}x`;
+  if (readBackAnswers.size >= READ_BACK_LIMIT) readBackAnswers.clear();
+  readBackAnswers.set(key, answer);
+  return answer;
+}
+
+/**
+ * §7.1 Strikethrough, written the way mdast-util-to-markdown writes emphasis
+ * and strong: as attention, which `containerPhrasing` checks the way micromark
+ * reads it, encoding a character beside the run where the run would not open
+ * or close otherwise.
+ *
+ * remark-gfm's own handler (mdast-util-gfm-strikethrough 2.0.0) writes `~~`
+ * around the text without looking at its neighbours, so a strikethrough whose
+ * text starts or ends with a space (`a ~~e ~~f`) did not close and was lost on
+ * reload. Only `~~`: Baram reads a single `~` as subscript
+ * (`singleTilde: false`).
+ */
+function strikethrough(
+  node: Delete,
+  _parent: Parents | undefined,
+  state: State,
+  info: Info,
+): string {
+  const exit = state.enter("phrasing");
+  const value = state.containerPhrasing(
+    { children: [node], type: "paragraph" },
+    info,
+  );
+  exit();
+  return value;
+}
+strikethrough.attention = (() => ({
+  construct: "strikethrough",
+  markers: ["~"],
+  sizes: [2],
+})) satisfies Attention;
+strikethrough.peek = (): string => "~";
+
+/**
  * §7.1 Body text — remark's own escaping, except for the characters
  * {@link writtenPositions} decides itself — the `[`, `!` and `#` that start
- * nothing are written as typed, and every `$` is written `\$` — and a space
- * remark encoded before a line ending is dropped ({@link dropLineEndSpaces}).
+ * nothing are written as typed, and every `$` and the characters where a web
+ * address starts are written escaped — and a space remark encoded before a
+ * line ending is dropped ({@link dropLineEndSpaces}).
  *
  * remark escapes every `[` in phrasing (`unsafe.js` in mdast-util-to-markdown,
  * and once more in mdast-util-gfm-footnote) because `[x]` would be a shortcut
@@ -88,7 +259,10 @@ function text(
   const value = node.value;
   const written = writtenPositions(value, state, info);
   if (written.length === 0) {
-    return dropLineEndSpaces(state.safe(value, info), info);
+    return keepBackslashBeforeRun(
+      dropLineEndSpaces(state.safe(value, info), info),
+      info,
+    );
   }
 
   const pieces: string[] = [];
@@ -111,7 +285,41 @@ function text(
   if (start < value.length) {
     pieces.push(state.safe(value.slice(start), { ...info, before }));
   }
-  return dropLineEndSpaces(pieces.join(""), info);
+  return keepBackslashBeforeRun(dropLineEndSpaces(pieces.join(""), info), info);
+}
+
+/**
+ * §7.1 A text that `*`, `_` or `~` follows: when its last character comes
+ * right after a backslash that escapes nothing, that backslash is written
+ * `\\`.
+ *
+ * Beside a bold, italic or strikethrough run — after the text, or closing a
+ * run the text ends — remark may write that last character as a character
+ * reference so the run opens or closes (`encodeInfo` in
+ * mdast-util-to-markdown), and it does not look at what comes before the
+ * character: `use \n` before `**(old)**` was written `use \&#x6E;**(old)**`,
+ * the backslash now escaping the reference's `&`, and read back as the text
+ * `use &#x6E;` — which the next save kept. `\\` reads back as one backslash
+ * whether the character after it is encoded or not. ASCII punctuation is
+ * never encoded and is left alone.
+ *
+ * The `~` cannot tell a strikethrough from a subscript, so a text before a
+ * subscript, or a subscript's own text, gains the backslash too
+ * (`use \n~b~` → `use \\n~b~`), as does one beside a run whose character is
+ * not encoded after all; each reads back the same. Before anything else the
+ * text keeps its bytes.
+ */
+function keepBackslashBeforeRun(output: string, { after }: Info): string {
+  if (!/^[*_~]/.test(after)) return output;
+  const lastStart = output.length - (/[\uDC00-\uDFFF]$/.test(output) ? 2 : 1);
+  if (lastStart < 1 || /^[!-/:-@[-`{-~]$/.test(output.slice(lastStart))) {
+    return output;
+  }
+  let backslashes = 0;
+  while (output[lastStart - 1 - backslashes] === "\\") backslashes++;
+  return backslashes % 2 === 1
+    ? `${output.slice(0, lastStart)}\\${output.slice(lastStart)}`
+    : output;
 }
 
 const ENCODED_SPACE = "&#x20;";
@@ -174,6 +382,15 @@ const FULL_PHRASING_SPANS: ReadonlySet<ConstructName> = new Set([
   "titleQuote",
 ]);
 
+/** Where mdast-util-gfm-autolink-literal does not ask for its escapes (its
+ *  `notInConstruct`): no autolink forms inside these. */
+const NO_AUTOLINK_CONSTRUCTS: ReadonlySet<ConstructName> = new Set([
+  "autolink",
+  "image",
+  "label",
+  "link",
+]);
+
 /** Inside these every `[` stays escaped, as remark escapes it — the spans
  *  above and link text (`label`). */
 const LITERAL_CONSTRUCTS: ReadonlySet<ConstructName> = new Set([
@@ -210,6 +427,17 @@ const TAG_CHARACTER = /[\w가-힣]/;
  * `$\_GET … $\_POST` and read back as inline math, and math opened that way
  * could hide the `]` a raw `[` was paired with below.
  *
+ * The `.` of `www.` and the `:` of `http(s)://` ({@link startsWebAddress})
+ * are written `\.` and `\:` outside {@link NO_AUTOLINK_CONSTRUCTS}. micromark
+ * starts a link there and keeps the backslash of any escape inside it:
+ * `see www._1.` was written `see www.\_1.` and read back as a link to
+ * `www.\_1`. remark means to escape both (mdast-util-gfm-autolink-literal's
+ * `unsafe`), but only the `.` before a `-`, `.` or word character, skipped
+ * when that character is escaped anyway (the skip `$` had), and the `:` only
+ * after a lowercase `p` or `s`. With both escaped, micromark starts no link,
+ * and the autolink text transform — which reads the text after escapes are
+ * taken out — decides whether one forms.
+ *
  * Where a `[` stops being literal: the parser stack is `markdown-parser.ts`. The
  * micromark constructs it starts on `[` (code 91 in micromark's `constructs.js`
  * and in the GFM extensions) are a link label, a link reference definition, a
@@ -241,8 +469,9 @@ const TAG_CHARACTER = /[\w가-힣]/;
  *   so every `[` still waiting goes with it;
  * - the text ends in `]` and a `(` follows: that is a block reference, written
  *   verbatim, so remark's `(` escape does not reach it, and a `[` left open by
- *   another verbatim node (the highlight shorthand writes its text unescaped)
- *   would close there into a link. The whole text keeps its escapes.
+ *   another verbatim node (a wikilink's display text can hold one) would close
+ *   there into a link. The whole text keeps its escapes, so a `]` of its own
+ *   before the last closes that `[` first.
  *
  * A `!` right before a raw `[` is raw too: the image it would start has the same
  * label. A `#` before a {@link TAG_CHARACTER} is raw (§56l).
@@ -257,6 +486,7 @@ function writtenPositions(
     index + 1 < value.length ? value[index + 1] : info.after.charAt(0);
   const written: [number, string][] = [];
   const inSpan = state.stack.some((name) => FULL_PHRASING_SPANS.has(name));
+  const inLink = state.stack.some((name) => NO_AUTOLINK_CONSTRUCTS.has(name));
 
   const bracketsMayBeRaw =
     !state.stack.some((name) => LITERAL_CONSTRUCTS.has(name)) &&
@@ -267,6 +497,10 @@ function writtenPositions(
     const character = value[index];
     if (character === "$") {
       if (!inSpan) written.push([index, "\\$"]);
+    } else if (character === "." || character === ":") {
+      if (!inLink && startsWebAddress(value, index, info.before, following)) {
+        written.push([index, `\\${character}`]);
+      }
     } else if (character === "#") {
       if (TAG_CHARACTER.test(following(index))) written.push([index, "#"]);
     } else if (character === "[" && bracketsMayBeRaw) {
@@ -298,6 +532,26 @@ function writtenPositions(
     }
   }
   return written.sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * Whether the `.` or `:` at `index` is where micromark's GFM autolink literal
+ * starts a web address: the `.` of `www.` (any case) before a character that
+ * is not whitespace — micromark starts a link at `www.` whatever follows,
+ * and before whitespace the link it can make is `www` alone, which no escape
+ * can join — or the `:` of `http` or `https` (any case) before a `/`.
+ * `before` is the text written just ahead of `value`.
+ */
+function startsWebAddress(
+  value: string,
+  index: number,
+  before: string,
+  following: (index: number) => string,
+): boolean {
+  const ahead = (before + value.slice(0, index)).slice(-5).toLowerCase();
+  return value[index] === "."
+    ? ahead.endsWith("www") && /\S/.test(following(index))
+    : /https?$/.test(ahead) && following(index) === "/";
 }
 
 /** remark's `atBreak`: only spaces or tabs between `index` and a line ending,
