@@ -46,6 +46,9 @@ method has its own per-method gate:
 For a quick pick or an input box that answers back, see
 [Context: prompts](/en/docs/plugin-dev/context-prompts/) — it needs no `ui` capability.
 
+A sandboxed plugin has no `addSidebarPanel`: it declares its panels in the manifest and sends their
+content — see [Sidebar panels](/en/docs/plugin-dev/sidebar-panels/).
+
 Notes:
 
 - `showStatusBarItem` returns a `StatusBarItem` object — call `.setText(...)`

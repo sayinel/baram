@@ -1,6 +1,6 @@
 ---
 title: "플러그인 매니페스트"
-sourceHash: "088bff7df617"
+sourceHash: "a6c879efaff2"
 ---
 
 
@@ -45,7 +45,7 @@ sourceHash: "088bff7df617"
 
 | 필드               | 타입      | 설명                                                                                                  |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
-| `contributions`    | object    | 앱이 플러그인 대신 그리는 것(명령, 상태바 항목, 설정, 우클릭 · 슬래시 항목)과 플러그인이 그리는 코드 블록 언어 — [기여](#기여) 참조 |
+| `contributions`    | object    | 앱이 플러그인 대신 그리는 것(명령, 상태바 항목, 설정, 우클릭 · 슬래시 항목, sandboxed 플러그인의 사이드바 패널)과 플러그인이 그리는 코드 블록 언어 — [기여](#기여) 참조 |
 | `dependencies`     | string\[] | 이 플러그인이 의존하는 다른 플러그인 ID                                                               |
 | `tiptapExtensions` | object\[] | 이 플러그인이 내보내는 Tiptap 확장 — [Tiptap 확장 플러그인](/ko/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-확장-플러그인) 참조 |
 | `repository`       | string    | 소스 코드 URL                                                                                         |
@@ -66,9 +66,13 @@ sourceHash: "088bff7df617"
 | `menu`      | `{ id, command, title?, when? }`        | 5    |
 | `slash`     | `{ id, command, title?, description? }` | 10   |
 | `codeBlocks` | `{ lang }`                             | 10   |
+| `panels`     | `{ id, title, icon? }`                 | 3    |
 
 `codeBlocks`는 예외입니다. 플러그인이 `ctx.codeBlocks`로 직접 그리는 fenced 언어를 적고, `codeblocks` 권한이
 필요합니다 — [코드 블록 렌더러](/ko/docs/plugin-dev/code-blocks/)를 보십시오.
+
+`panels`는 sandboxed 플러그인의 사이드바 패널이고 `sidebar` 권한이 필요합니다. 패널의 버튼과 머리는 Baram이 매니페스트로
+그리고 내용은 플러그인이 보냅니다 — [사이드바 패널](/ko/docs/plugin-dev/sidebar-panels/)을 보십시오.
 
 `menu`는 에디터의 우클릭 메뉴에, `slash`는 슬래시 메뉴에 항목을 더합니다. 둘 다 `commands`의 명령
 하나를 `id`로 가리키고, 자기 `title`(1–64자)이 없으면 그 명령의 `title`을 보여 줍니다. 슬래시 항목의
