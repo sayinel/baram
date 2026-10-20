@@ -13,10 +13,14 @@ import { logger } from "../../utils/logger";
 import { openFileByPath } from "../../utils/open-file";
 
 /**
- * `true` when the note is on screen. `context` is the block's `CodeBlockInfo.context` (spec 0073
- * §4): without one there is no root to read `path` against, and Rust is not asked — the command
- * takes a context id (a `null` fails Tauri's argument deserialization), and the one id at hand,
- * the ACTIVE context's, need not be the block's. `source` is the block's `Plugin · {name}`.
+ * `true` when the note is on screen. `context` is the context `path` is relative to: a block's
+ * `CodeBlockInfo.context` (spec 0073 §4), or, for a sandboxed panel — which belongs to no note — the
+ * context active at the click (plan 0126 P7). `null` — a block in no context, or no active context —
+ * is refused without asking Rust, showing the toast and logging nothing: the command takes a context
+ * id (a `null` fails Tauri's argument deserialization), and for a block the one id at hand, the
+ * ACTIVE context's, need not be the block's. `source` is the area's `Plugin · {name}`. A refusal from
+ * the IPC (`plugin_note_link`) is logged under `[PluginBlock]`, for a panel too — the log prefix is
+ * this module's, not the area's.
  */
 export async function openPluginNoteLink(
   context: null | string,

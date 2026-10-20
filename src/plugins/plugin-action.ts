@@ -1,10 +1,13 @@
 // §394 spec 0073 D11 ③ — the second entrance of §385 prompt rights. A `data-action` click inside a
-// plugin-rendered block is the user pressing that plugin's control, the same weight as running
-// one of its commands (spec 0061 §13 foresaw this entrance). Rights begin here, before the
-// handler runs, and end in `finally`. Its one caller is the rendered block's click path, after
-// `isTrusted` (`rendered/rendered-clicks.ts`); `execute-plugin-command-callers.test.ts` pins this
-// file as the second site that calls `beginPluginInvocation`. A rendered document grants nothing
-// by being drawn.
+// plugin-rendered area — a code block, or a sandboxed panel (plan 0126) — is the user pressing that
+// plugin's control, the same weight as running one of its commands (spec 0061 §13 foresaw this
+// entrance). Rights begin here, before the handler runs, and end in `finally`. Its callers are the
+// click dispatch of the two areas, which run inside the `action` handler their view hands to
+// `handleRenderedClicks` after `isTrusted` (`rendered/rendered-clicks.ts`): a code block's
+// (`dispatchRenderedAction`, `rendered/code-blocks-api.ts`) and a panel's (`dispatchPanelAction`,
+// `rendered/panels-host.ts`). `execute-plugin-command-callers.test.ts` pins both files, and this one
+// as the second site that calls `beginPluginInvocation`. A rendered area grants nothing by being
+// drawn.
 
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";

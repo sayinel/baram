@@ -8,9 +8,16 @@
 // (`rollbackSandboxLoad`); the unload path stops the session first, and a disposed session hands no
 // request on (`SandboxSession.dispose`).
 //
+// Also here: each plugin's action delivery — how a panel's `data-action` click reaches the plugin
+// (`panels-host.ts`). It is set once the plugin's session is up and taken away by the release, so a
+// click before the session or after the unload has nowhere to go.
+//
 // Not a Zustand store: a panel's content is up to 1 MiB, and a listener hears one panel alone.
 
 import type { RenderedContent } from "../types";
+
+/** Delivers a `data-action` click on the declared panel `id`; settles when the plugin's handlers have. */
+export type PanelActionDelivery = (id: string, action: string) => Promise<void>;
 
 interface OpenPanel {
   content: null | RenderedContent;
@@ -19,10 +26,12 @@ interface OpenPanel {
 }
 
 const panels = new Map<string, OpenPanel>();
+const deliveries = new Map<string, PanelActionDelivery>();
 
 /** Test-only: forget every panel. */
 export function __resetPanelContents(): void {
   panels.clear();
+  deliveries.clear();
 }
 
 /** Stop taking content for panel `key` and drop what it holds; its listeners go with it. */
@@ -47,20 +56,38 @@ export function panelContent(
     : { content: panel.content, seq: panel.seq };
 }
 
+/** `pluginId`'s action delivery: `undefined` before its session is up and after its release. */
+export function panelActionDelivery(
+  pluginId: string,
+): PanelActionDelivery | undefined {
+  return deliveries.get(pluginId);
+}
+
 /** The key of a declared panel — `${pluginId}:${id}`. */
 export function panelKey(pluginId: string, id: string): string {
   return `${pluginId}:${id}`;
 }
 
 /**
- * Close every panel of `pluginId` — by the `${pluginId}:` prefix, which no other plugin's key starts
- * with (a plugin id holds no `:` — the id rule of `validateManifest`). `unregisterPluginUI` runs this.
+ * Close every panel of `pluginId`, and drop its action delivery — the panels by the `${pluginId}:`
+ * prefix, which no other plugin's key starts with (a plugin id holds no `:` — the id rule of
+ * `validateManifest`). `unregisterPluginUI` runs this.
  */
 export function releasePanels(pluginId: string): void {
   const prefix = `${pluginId}:`;
   for (const key of [...panels.keys()]) {
     if (key.startsWith(prefix)) panels.delete(key);
   }
+  deliveries.delete(pluginId);
+}
+
+/** Set `pluginId`'s action delivery, or drop it with `null`. */
+export function setPanelActions(
+  pluginId: string,
+  deliver: null | PanelActionDelivery,
+): void {
+  if (deliver === null) deliveries.delete(pluginId);
+  else deliveries.set(pluginId, deliver);
 }
 
 /** Keep `content` as panel `key`'s last and tell its listeners; `false`, keeping nothing, when it is not open. */

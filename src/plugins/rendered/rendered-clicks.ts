@@ -1,5 +1,6 @@
-// §394 spec 0073 D11 — the host receives and judges clicks inside a rendered block. `click` and
-// `auxclick` alike (a middle click must not open a window either), from real user input only.
+// §394 spec 0073 D11 — the host receives and judges clicks inside a plugin-rendered area — a code
+// block, or a sandboxed panel (plan 0126). `click` and `auxclick` alike (a middle click must not
+// open a window either), from real user input only.
 // Three paths: `data-note` (open a note, ②), `data-action` (the plugin's handler, ③ — the second
 // entrance of prompt rights, `src/plugins/plugin-action.ts` from plan 0125 Task 6), `<a href>`
 // (①). There are no form inputs to judge — the sanitizer removed them.
@@ -20,7 +21,10 @@
 import { isAllowedLinkHref } from "../../utils/link-href";
 import { MAX_ACTION_CHARS } from "./limits";
 
-/** Where a judged click goes. The NodeView supplies these (Task 10). */
+/**
+ * Where a judged click goes — a code block's view supplies these (plan 0125 Task 10), and a panel's
+ * (`panelClickHandlers`, plan 0126).
+ */
 export interface RenderedClickHandlers {
   /** A `data-action` value, at most `MAX_ACTION_CHARS` long. */
   action(name: string): void;

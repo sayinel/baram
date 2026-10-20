@@ -22,6 +22,29 @@ import {
 } from "../../../plugins/rendered/panel-contents";
 import { PluginPanelHost } from "../PluginPanelHost";
 
+// Review I4 — the click judge and the panel's destinations, replaced for this whole file: a trusted
+// click cannot be made in jsdom, so the wiring is pinned by counting what the view hands over.
+const wiring = vi.hoisted(() => {
+  const stop = vi.fn();
+  const handlers = { action: vi.fn(), link: vi.fn(), note: vi.fn() };
+  return {
+    handleRenderedClicks: vi.fn(
+      (_shadow: ShadowRoot, _handlers: unknown) => stop,
+    ),
+    handlers,
+    panelClickHandlers: vi.fn(
+      (_panel: unknown, _source: () => string) => handlers,
+    ),
+    stop,
+  };
+});
+vi.mock("../../../plugins/rendered/rendered-clicks", () => ({
+  handleRenderedClicks: wiring.handleRenderedClicks,
+}));
+vi.mock("../../../plugins/rendered/panels-host", () => ({
+  panelClickHandlers: wiring.panelClickHandlers,
+}));
+
 const PANEL: RenderedSidebarPanel = {
   kind: "rendered",
   panelId: "sb:live",
@@ -43,6 +66,9 @@ const shadowIn = (root: ParentNode) =>
   root.querySelector(".plugin-block-host")!.shadowRoot!;
 
 beforeEach(() => {
+  wiring.handleRenderedClicks.mockClear();
+  wiring.panelClickHandlers.mockClear();
+  wiring.stop.mockClear();
   __resetPanelContents();
   openPanel(PANEL.panelId);
 });
@@ -128,5 +154,28 @@ describe("RenderedPanelView", () => {
     expect(fireEvent.contextMenu(link)).toBe(false);
     vi.stubEnv("DEV", true);
     expect(fireEvent.contextMenu(link)).toBe(true);
+  });
+
+  /** P13 · review I4 — the view hands ITS shadow root to the click judge, with the destinations of
+   *  ITS panel and a badge read at the click, and stops the judge when it unmounts. What fails this: a
+   *  view that never wires the judge (0 calls), wires another root, builds the destinations for
+   *  another panel, or leaves the judge on after unmount (`stop` not called). The root and the
+   *  handlers are compared by identity (`toBe`): `toHaveBeenCalledWith` compares DOM nodes with
+   *  `isEqualNode`, and two empty shadow roots are equal nodes (re-review N1). */
+  it("wires its shadow root to the click judge, and stops it on unmount", () => {
+    const { container, unmount } = show();
+    expect(wiring.handleRenderedClicks).toHaveBeenCalledTimes(1);
+    const [root, given] = wiring.handleRenderedClicks.mock.calls[0];
+    expect(root).toBe(shadowIn(container));
+    expect(given).toBe(wiring.handlers);
+    expect(wiring.panelClickHandlers).toHaveBeenCalledWith(
+      { panelId: "sb:live", pluginId: "sb" },
+      expect.any(Function),
+    );
+    const source = wiring.panelClickHandlers.mock.calls[0][1];
+    expect(source()).toBe("Plugin · SB");
+    expect(wiring.stop).not.toHaveBeenCalled();
+    unmount();
+    expect(wiring.stop).toHaveBeenCalledTimes(1);
   });
 });
