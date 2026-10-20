@@ -12,14 +12,20 @@
 // (`SandboxSession.dispose`).
 //
 // Also here: each plugin's action delivery — how a panel's `data-action` click reaches the plugin
-// (`panels-host.ts`). It is set once the plugin's session is up and taken away by the release, so a
-// click before the session or after the unload has nowhere to go.
+// (`panels-host.ts`). The loader sets it once the plugin's session is up (`wireSandboxPanels`, after
+// `activate` resolved); the unload's disposables drop it, and the release (`releasePanels`) does too.
+// So a click before the session or after the unload has nowhere to go.
 //
 // Not a Zustand store: a panel's content is up to 1 MiB, and a listener hears one panel alone.
 
 import type { RenderedContent } from "../types";
 
-/** Delivers a `data-action` click on the declared panel `id`; settles when the plugin's handlers have. */
+/**
+ * Delivers a `data-action` click on the declared panel `id`; settles when the plugin's handlers have.
+ * It must settle in bounded time: the host holds the plugin's prompt rights until it does
+ * (`dispatchPanelAction` passes `runPluginAction` no timeout of its own). The session's `invokeAction`
+ * (`wireSandboxPanels`) is bounded by `CALL_TIMEOUT_MS`, a clock that stops while a prompt is open.
+ */
 export type PanelActionDelivery = (id: string, action: string) => Promise<void>;
 
 interface OpenPanel {

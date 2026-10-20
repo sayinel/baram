@@ -1,9 +1,10 @@
 // §394 spec 0073 §6 · D14 — the refusals that belong to a sandboxed plugin's panels — an undeclared id,
 // a closed panel, an update past the acceptance bucket — in one home, so a plugin meets the same
-// sentence whichever side refuses. (A panel request meets two refusals that are not panel-specific and
-// live with their rules: the capability gate's, `capability-gate.ts`, and the size caps',
-// `renderedContentProblem`.) The host refuses with them (`host-ui-bridge.ts`). It imports only
-// `limits.ts`, itself a leaf, so the sandbox realm can import it too.
+// sentence for an undeclared id whichever side refuses it. (A panel request meets two refusals that are
+// not panel-specific and live with their rules: the capability gate's, `capability-gate.ts`, and the
+// size caps', `renderedContentProblem`.) The sandbox client refuses an undeclared id with them at once
+// (`sandbox-ui.ts`) and the host again (`host-ui-bridge.ts`); the closed-panel and the rate refusals
+// are the host's alone. It imports only `limits.ts`, itself a leaf: the sandbox realm imports it.
 
 import { PANEL_UPDATE_BURST, PANEL_UPDATE_INTERVAL_MS } from "./limits";
 

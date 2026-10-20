@@ -72,6 +72,8 @@ export class SandboxHost {
     hostRequestHandler?: HostRequestHandler,
     /** §394 — passed to `activate` (plan 0125 P10). */
     codeBlockLangs?: CodeBlockLangClaim[],
+    /** §394 — passed to `activate` (plan 0126 P11). */
+    panelIds?: string[],
   ): Promise<SandboxSession> {
     const existing = this.live.get(pluginId);
     if (existing) return existing.session;
@@ -91,7 +93,7 @@ export class SandboxHost {
     this.live.set(pluginId, entry);
     this.starting.delete(pluginId);
     try {
-      await session.activate(pluginId, declared, codeBlockLangs);
+      await session.activate(pluginId, declared, codeBlockLangs, panelIds);
       return session;
     } catch (err) {
       // Identity check (§260 3c-3 security review, M2), the same guard

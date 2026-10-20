@@ -47,7 +47,10 @@ import {
   releaseCodeBlocks,
   wireSandboxCodeBlocks,
 } from "./rendered/code-blocks-api";
-import { registerDeclaredPanels } from "./rendered/panels-host";
+import {
+  registerDeclaredPanels,
+  wireSandboxPanels,
+} from "./rendered/panels-host";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import {
@@ -379,6 +382,8 @@ export class PluginLoader {
           renderSource: (id) => started?.renderSource(id),
         }),
         codeBlockLangs,
+        // §394 plan 0126 P11 — the declared panel ids, for `activate`; absent without panels.
+        panelIds.length > 0 ? panelIds : undefined,
       );
       started = session;
       this.wireSandboxContributions(
@@ -873,6 +878,10 @@ export class PluginLoader {
     // §394 — renderers for what the sandbox registered during activate, and its action dispatch.
     if (codeBlockLangs !== undefined) {
       wireSandboxCodeBlocks(manifest.id, codeBlockLangs, session, disposables);
+    }
+    // §394 plan 0126 P13 — from here a panel's `data-action` click crosses as `invokeAction`.
+    if (declaredPanels(manifest).length > 0) {
+      wireSandboxPanels(manifest.id, session, disposables);
     }
     // …and tell it what is already open, so its first useful moment does not depend on
     // the user switching tabs (the normal case at startup).

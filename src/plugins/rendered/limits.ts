@@ -5,8 +5,8 @@
 // measured by plan 0126's ledger 0096.
 //
 // ‼️ A leaf with no imports: the sandbox realm imports this (`sandbox/sandbox-code-blocks.ts`,
-// added by plan 0125 Task 11) to check a result before sending it, and that realm must not reach a
-// store.
+// added by plan 0125 Task 11, and `sandbox/sandbox-ui.ts`, plan 0126 Task 7) to check a result or a
+// panel's content before sending it, and that realm must not reach a store.
 
 /** D13 — HTML of one result, in UTF-8 bytes. */
 export const MAX_RENDERED_HTML_BYTES = 1024 * 1024;
@@ -43,9 +43,10 @@ export const INVALIDATE_COALESCE_MS = 250;
 
 /**
  * D14 — "four a second": a sandboxed panel's update interval — the least time between two draws of
- * one panel while its view stays mounted (`panel-painter.ts`), and the refill of the host's acceptance bucket, one token per
- * interval (`host-ui-bridge.ts`, plan 0126 P34). Plan 0126 Task 4 measured a 1,000-row panel's draw
- * against it (ledger 0096).
+ * one panel while its view stays mounted (`panel-painter.ts`) and between the starts of two
+ * `ui_set_panel` requests a sandbox sends for it (`sandbox-ui.ts`), and the refill of the host's
+ * acceptance bucket, one token per interval (`host-ui-bridge.ts`, plan 0126 P34). Plan 0126 Task 4
+ * measured a 1,000-row panel's draw against it (ledger 0096).
  */
 export const PANEL_UPDATE_INTERVAL_MS = 250;
 
@@ -126,4 +127,25 @@ export function renderedContentProblem(content: {
     return "rendered output holds a lone surrogate, which Baram's IPC cannot carry";
   }
   return null;
+}
+
+/**
+ * `raw` — a renderer's answer, or the content a plugin hands `setPanel` — as the content it names, or
+ * the fixed sentence of `renderedContentProblem` when it cannot be drawn; anything but an object meets
+ * the wrong-shape sentence. Each field is read once, so the value checked is the value used: a getter
+ * cannot pass the check with one string and be sent or drawn with another. `css` is absent when
+ * `raw`'s is. The host reads a result with it before sanitizing (`prepareDrawable`) and the sandbox
+ * before sending one, so the two sides judge one reading alike.
+ */
+export function readRenderedContent(
+  raw: unknown,
+): string | { css?: string; html: string } {
+  const { css, html }: { css?: unknown; html?: unknown } =
+    typeof raw === "object" && raw !== null ? raw : {};
+  const problem = renderedContentProblem({ css, html });
+  if (problem !== null) return problem;
+  // `renderedContentProblem` passed: `html` is a string, `css` a string or absent.
+  return css === undefined
+    ? { html: html as string }
+    : { css: css as string, html: html as string };
 }

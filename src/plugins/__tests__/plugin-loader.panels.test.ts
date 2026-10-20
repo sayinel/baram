@@ -31,7 +31,10 @@ import {
   panelContent,
   setPanelContent,
 } from "../rendered/panel-contents";
-import { registerDeclaredPanels } from "../rendered/panels-host";
+import {
+  dispatchPanelAction,
+  registerDeclaredPanels,
+} from "../rendered/panels-host";
 import { resetSandboxEventBridge } from "../sandbox/sandbox-event-bridge";
 import { SandboxHost } from "../sandbox/sandbox-host";
 
@@ -319,5 +322,39 @@ describe("a sandboxed load's declared panels", () => {
     const after = container.querySelector(".plugin-block-host");
     expect(after).not.toBe(before);
     expect(drawnIn(after)).toBe("new");
+  });
+
+  /** P11 · P32 — the declared ids ride to `activate`. What fails this: the loader not passing them —
+   *  the sandbox would refuse every `setPanel` as undeclared. */
+  it("are named to the sandbox when it starts", async () => {
+    const f = fakeHost();
+    await new PluginLoader(undefined, f.host).loadPlugin("/p/demo", manifest());
+    expect(f.start).toHaveBeenCalledWith(
+      "demo",
+      manifest().contributions,
+      expect.any(Function),
+      undefined,
+      ["live", "bare"],
+    );
+  });
+
+  /** P13 · P14 — a panel's action crosses to the session from the moment the load completes until the
+   *  unload; a Reload wires the new session. What fails this: no `wireSandboxPanels` (nothing crosses),
+   *  or a delivery left after the unload (a click on a stale button would reach a stopped session). */
+  it("deliver a panel's action to the session until the unload", async () => {
+    const f = fakeHost();
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin("/p/demo", manifest());
+    await dispatchPanelAction("demo", "demo:live", "go");
+    expect(f.invokeAction).toHaveBeenCalledWith(
+      { kind: "panel", panelId: "live" },
+      "go",
+    );
+    await loader.reloadPlugin("/p/demo", manifest());
+    await dispatchPanelAction("demo", "demo:live", "again");
+    expect(f.invokeAction).toHaveBeenCalledTimes(2);
+    await loader.unloadPlugin("demo");
+    await dispatchPanelAction("demo", "demo:live", "late");
+    expect(f.invokeAction).toHaveBeenCalledTimes(2);
   });
 });

@@ -36,6 +36,10 @@ export type HostToSandbox =
       // without `codeblocks`, and then `ctx.codeBlocks` refuses every call. The host claims before
       // it sends this, so `register` can refuse a lost language synchronously.
       codeBlockLangs?: CodeBlockLangClaim[];
+      // §394 spec 0073 D14 · plan 0126 P11 — the panel ids this plugin declared (`declaredPanels`), so
+      // `ui.setPanel` and `ui.onPanelAction` refuse any other at once. Absent without panels; the host
+      // refuses an undeclared id itself too (`host-ui-bridge.ts`).
+      panelIds?: string[];
       // §260 3c-2b — no URL here: the sandbox pulls its own bundle through the
       // broker (`source_read`, resolved in Rust from the caller's window label) and
       // imports it from a blob URL, so the realm needs no `asset:` and holds no
