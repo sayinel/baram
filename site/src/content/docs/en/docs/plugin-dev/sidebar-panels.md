@@ -35,9 +35,9 @@ Declare every panel in the manifest, with the `sidebar` capability:
 ```
 
 - At most 3 panels. An `id` is letters, digits, `_` and `-`, at most 64 characters, each id once. A
-  `title` is any text that is not empty. An `icon`, if you give one, is a single character — an
-  emoji or a letter — of at most 16 UTF-16 units. Without an icon, or with one that draws nothing (a
-  space, a line break, a zero-width joiner, a variation selector on its own, a Hangul filler), the
+  `title` is text that is not empty; Baram sanitizes it and shortens it to 64 characters, and shows the panel's `id` if nothing is left. An `icon`, if you give one, is a single character — an
+  emoji or a letter — of at most 16 UTF-16 units. Without an icon, or with one that draws nothing (for
+  example a space, a line break, a zero-width joiner, a variation selector on its own, a Hangul filler), the
   button shows a generic plugin icon.
 - `panels` without the `sidebar` capability is a manifest error, and so is `panels` in a trusted
   manifest.
@@ -45,7 +45,7 @@ Declare every panel in the manifest, with the `sidebar` capability:
   is the panel's title followed by `Plugin · ` and your plugin's name, so a panel cannot pass for one
   of Baram's own.
 - A user may install the plugin without granting `sidebar`. The plugin still loads, but Baram refuses
-  each `setPanel` — it does not throw, and the refusal is logged in the plugin's console.
+  each `setPanel` — it does not throw, and your plugin gets no error.
 
 ## Sending content
 
@@ -97,10 +97,9 @@ these differences:
 
 - `data-note="notes/a.md"` is relative to the root of the vault or folder that is active **when the
   user clicks**: a panel belongs to no note. With no vault or folder active, or if the path is not a
-  note there, nothing opens and Baram says so. If your panel lists the notes of one vault, draw it
-  again when the user switches: `vault:changed` carries the context (it needs `files` or
-  `files:readonly`), and so does `file:open`, which a sandboxed plugin receives only with the
-  `events` capability.
+  note there, nothing opens and Baram says so. `data-note` and `listDir("")` both use whichever
+  context is active at that moment. To keep a list current, redraw on `vault:changed` (needs `files`
+  or `files:readonly`) or on `file:open` (needs `events`); both carry the `context` they refer to.
 - `data-action="name"` calls the handlers you registered for that panel with
   `onPanelAction(id, handler)`; each gets the name. Until every one has settled,
   [`ctx.prompts`](/en/docs/plugin-dev/context-prompts/) may open, for the 30 seconds a command runs
