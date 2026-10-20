@@ -1577,7 +1577,7 @@ describe("빌드 잡이 publish 에 넘기는 것", () => {
     const UPLOAD =
       "uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2";
     const DOWNLOAD =
-      "uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1";
+      "uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2";
     expect(jobText("release")).toContain(UPLOAD);
     expect(jobText("release-theme")).toContain(UPLOAD);
     expect(jobText("publish")).toContain(DOWNLOAD);
@@ -1749,7 +1749,7 @@ describe("publish — 키가 닿는 자리", () => {
     expect(code).not.toMatch(/\b(node|npx|npm|tsx|yarn|pnpm|bun)\b/);
     const uses = [...code.matchAll(/uses: (\S+)/g)].map((m) => m[1]);
     expect(uses).toEqual([
-      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
     ]);
   });
 
