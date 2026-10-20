@@ -170,7 +170,10 @@ export class SandboxSession {
     declared: PluginContributions,
     /** §394 — the claimed code block languages (`claimCodeBlocks`); absent without `codeblocks`. */
     codeBlockLangs?: CodeBlockLangClaim[],
-    /** §394 plan 0126 P11 — the declared panel ids (`declaredPanels`); absent without panels. */
+    /**
+     * §394 plan 0126 P11 — the panel ids declared in the manifest, granted or not; absent without
+     * panels.
+     */
     panelIds?: string[],
   ): Promise<PluginContributions> {
     this.declared = declared;

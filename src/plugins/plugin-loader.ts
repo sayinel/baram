@@ -334,6 +334,14 @@ export class PluginLoader {
       // webview: their buttons show while the sandbox boots, and a panel takes content only once open.
       registerDeclaredPanels(manifest, disposables);
       const panelIds = declaredPanels(manifest).map((p) => p.id);
+      // §394 plan 0126 P11 — every panel id the manifest declares, granted or not, for `activate`: the
+      // sandbox's `setPanel` and `onPanelAction` refuse any other at once. Not `panelIds`, which is empty
+      // when consent withheld `sidebar` (`narrowToConsent`): a call naming a declared panel in the
+      // plugin's `activate` would then throw and fail the load. Named, a `setPanel` meets the host's
+      // `sidebar` gate instead, which refuses it, and the sandbox logs the refusal.
+      const manifestPanelIds = (manifest.contributions?.panels ?? []).map(
+        (p) => p.id,
+      );
       // §394 plan 0125 P10 — the declared code block languages are claimed before the sandbox
       // starts, so its `register` refuses a language a plugin loaded earlier draws. A throw below
       // is rolled back by `rollbackSandboxLoad`, whose `unregisterPluginUI` releases them.
@@ -382,8 +390,8 @@ export class PluginLoader {
           renderSource: (id) => started?.renderSource(id),
         }),
         codeBlockLangs,
-        // §394 plan 0126 P11 — the declared panel ids, for `activate`; absent without panels.
-        panelIds.length > 0 ? panelIds : undefined,
+        // §394 plan 0126 P11 — absent when the manifest declares no panels.
+        manifestPanelIds.length > 0 ? manifestPanelIds : undefined,
       );
       started = session;
       this.wireSandboxContributions(

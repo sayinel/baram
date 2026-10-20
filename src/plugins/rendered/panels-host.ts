@@ -102,8 +102,9 @@ export function panelClickHandlers(
  * before the sandbox starts, as `registerDeclaredStatusBar` puts declared items up: each button shows
  * while the plugin boots, and each panel is open (`openPanel`) before a request can name it. The list
  * is `declaredPanels`' — the one the loader also hands the request handler (`declaredPanelIds`, the ids
- * `ui_set_panel` may name) and the sandbox's `activate` (`panelIds`, the ids `setPanel` and
- * `onPanelAction` take).
+ * `ui_set_panel` may name). The sandbox's `activate` gets every id declared in the manifest instead
+ * (`panelIds`, plan 0126 P11), granted or not, so a withheld `sidebar` is refused at the host's gate
+ * rather than inside the plugin's `activate`.
  * The title, the icon and the plugin's name are the author's and reach the activity bar with no plugin
  * code running, so they are sanitized here; an icon that then draws nothing (`BLANK_ICON`) is left
  * out, and the activity bar draws its own in its place. Without `sidebar` — a consent that narrowed it

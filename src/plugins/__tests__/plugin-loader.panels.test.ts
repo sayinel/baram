@@ -22,6 +22,7 @@ vi.mock("../../ipc/plugin-invoke", () => ({
 import type { PluginManifest } from "../types";
 
 import { PluginPanelHost } from "../../components/layout/PluginPanelHost";
+import { usePluginStore } from "../../stores/system/plugin";
 import { logger } from "../../utils/logger";
 import { validateManifest } from "../manifest";
 import { PluginLoader } from "../plugin-loader";
@@ -117,6 +118,7 @@ beforeEach(() => {
   pluginSandboxRegister.mockReset().mockImplementation(async () => {});
   pluginSandboxDeregister.mockReset().mockImplementation(async () => {});
   __resetPanelContents();
+  usePluginStore.setState({ installedPlugins: {} });
   usePluginUIStore.setState({
     activePluginPanelId: null,
     paletteCommands: [],
@@ -356,5 +358,46 @@ describe("a sandboxed load's declared panels", () => {
     await loader.unloadPlugin("demo");
     await dispatchPanelAction("demo", "demo:live", "late");
     expect(f.invokeAction).toHaveBeenCalledTimes(2);
+  });
+
+  /** I1 · P11 — an update that added `sidebar` to an installed plugin whose consent did not hold it: the
+   *  load narrows the capability away (`narrowToConsent`, the warning below) and still names every
+   *  declared panel id to `activate`, so the plugin's `setPanel` meets the host's gate rather than an
+   *  "is not declared" throw inside its `activate`. The grant still decides the rest — no panel goes up
+   *  and no action is wired. What fails this: the fifth argument taken from `declaredPanels`, which is
+   *  empty without `sidebar` (`undefined` here). The sandbox's half is `sandbox-panels.test.ts`'s "is
+   *  refused by the host without sidebar". */
+  it("are still named to the sandbox when consent withheld sidebar", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    usePluginStore.setState({
+      installedPlugins: {
+        demo: {
+          checksum: "c",
+          consent: { capabilities: [], trust: "sandboxed" },
+          enabled: true,
+          installedAt: 0,
+          installPath: "/p/demo",
+          manifest: manifest(),
+          updatedAt: 0,
+        },
+      },
+    });
+    const f = fakeHost();
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin("/p/demo", manifest());
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/demo: withholding sidebar/),
+    );
+    expect(loader.isLoaded("demo")).toBe(true);
+    expect(f.start).toHaveBeenCalledWith(
+      "demo",
+      manifest().contributions,
+      expect.any(Function),
+      undefined,
+      ["live", "bare"],
+    );
+    expect(usePluginUIStore.getState().sidebarPanels).toEqual([]);
+    await dispatchPanelAction("demo", "demo:live", "go");
+    expect(f.invokeAction).not.toHaveBeenCalled();
   });
 });

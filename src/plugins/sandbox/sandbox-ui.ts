@@ -1,8 +1,9 @@
 // §260 Phase 4a · §394 spec 0073 D14 — `ctx.ui` inside the sandbox realm: the status bar and the toast
 // (moved out of `sandbox-client.ts` by plan 0126 P2) and the plugin's sidebar panels. The host told
-// `activate` which panel ids the plugin declared (`panelIds`, plan 0126 P11): `setPanel` and
-// `onPanelAction` refuse any other id at once, with the host's sentence (`panel-messages.ts`), and the
-// host refuses it again (`host-ui-bridge.ts`).
+// `activate` which panel ids the manifest declares (`panelIds`, plan 0126 P11), whether or not consent
+// granted `sidebar`: `setPanel` and `onPanelAction` refuse any other id at once, with the host's
+// sentence (`panel-messages.ts`), and the host refuses it again (`host-ui-bridge.ts`). Without
+// `sidebar` the host's gate refuses every `setPanel`, which `send` logs.
 //
 // `setPanel` keeps one `ui_set_panel` per panel on its way, each started at least
 // `PANEL_UPDATE_INTERVAL_MS` after the one before, and a call made meanwhile replaces the content

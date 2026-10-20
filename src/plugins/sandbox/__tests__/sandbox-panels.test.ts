@@ -38,8 +38,9 @@ import { createChannelPair } from "./channel-pair";
 const PANEL_IDS = ["live", "other"];
 
 /**
- * Start a sandbox whose plugin runs `activate`, wired as `plugin-loader.ts` wires one with panels:
- * the panels open, their ids in the `activate` frame and the handler, the action delivery set. `sent`
+ * Start a sandbox whose plugin runs `activate`, wired as `plugin-loader.ts` wires one with panels: the
+ * `activate` frame names every declared id whatever was granted (P11); the handler's ids, the open
+ * panels and the action delivery follow the grant (`declaredPanels` — none without `sidebar`). `sent`
  * records each `ui_set_panel` the host was asked for, in order. `now` is the host's clock — its
  * acceptance bucket's (P34); `Date.now` when absent. The host side's `close()` does nothing: the
  * pair's own clears its handlers, which would drop a frame sent after `dispose` before the session's
@@ -51,6 +52,7 @@ async function start(
   now?: () => number,
 ) {
   const sent: Array<{ html: string; id: string }> = [];
+  const granted = capabilities.includes("sidebar") ? PANEL_IDS : [];
   const pair = createChannelPair();
   const host = { ...pair.host, close: () => {} };
   startSandboxClient(
@@ -63,7 +65,7 @@ async function start(
   );
   const services = createHostRequestHandler({
     capabilities,
-    declaredPanelIds: PANEL_IDS,
+    declaredPanelIds: granted,
     declaredSettings: [],
     declaredStatusBarIds: [],
     now,
@@ -77,9 +79,9 @@ async function start(
     return services(request, onToken);
   };
   const session = new SandboxSession(host, handler);
-  for (const id of PANEL_IDS) openPanel(panelKey("sb", id));
+  for (const id of granted) openPanel(panelKey("sb", id));
   await session.activate("sb", {}, undefined, [...PANEL_IDS]);
-  wireSandboxPanels("sb", session, []);
+  if (granted.length > 0) wireSandboxPanels("sb", session, []);
   return { sandbox: pair.sandbox, sent, session };
 }
 
@@ -209,18 +211,22 @@ describe("ctx.ui.setPanel (§4 · §6 · D14)", () => {
     expect(panelContent("sb:live")?.content.html).toBe("<p>99</p>");
   });
 
-  /** §4 · D4 — the host gates on `sidebar`. `setPanel` is void, so the refusal reaches the sandbox's
-   *  log and not the plugin. */
-  it("is refused by the host without sidebar — logged, not thrown", async () => {
+  /** §4 · D4 · P11 — consent withheld `sidebar` (`narrowToConsent`): the loader still names the declared
+   *  ids to `activate` but gives the host's handler none, opens no panel and wires no action, as `start`
+   *  does here. A plugin whose `activate` registers an action and sets a panel then activates:
+   *  `onPanelAction` registers, and `setPanel` — void — is refused by the host's gate, which reaches the
+   *  sandbox's log and not the plugin. What fails this: an `activate` frame without the ids (both calls
+   *  throw "not declared" and the activate rejects). The loader's half — the ids it sends — is
+   *  `plugin-loader.panels.test.ts`'s "are still named to the sandbox when consent withheld sidebar". */
+  it("is refused by the host without sidebar — logged, not thrown, and activate completes", async () => {
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    let ctx!: SandboxContext;
     await start(
-      (c) => {
-        ctx = c;
+      (ctx) => {
+        ctx.ui.onPanelAction("live", () => {});
+        ctx.ui.setPanel("live", { html: "<p>x</p>" });
       },
       ["statusbar"],
     );
-    expect(() => ctx.ui.setPanel("live", { html: "<p>x</p>" })).not.toThrow();
     await vi.waitFor(() =>
       expect(warn).toHaveBeenCalledWith(
         expect.stringMatching(/ui_set_panel refused: .*"sidebar"/),
