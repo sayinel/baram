@@ -37,9 +37,12 @@ import {
 } from "./panel-contents";
 
 /**
- * An icon that draws nothing: empty, or default-ignorable code points alone — some of which
- * `sanitizePluginText` keeps and a manifest accepts as one character (measured: ZWJ and ZWNJ, which
- * join emoji and scripts; the variation selector U+FE0F; U+3164 HANGUL FILLER).
+ * An icon that draws nothing: empty, or default-ignorable code points alone. Measured on one-character
+ * icons a manifest accepts: `sanitizePluginText` empties " ", "\n", "\t", U+00A0, U+3000, U+202E and
+ * U+2060, and keeps U+200D ZWJ and U+200C ZWNJ (which join emoji and scripts), U+FE0F, U+3164 HANGUL
+ * FILLER, U+2062 and U+180E — default-ignorable, so blank. Not blank, so kept: a lone U+2800 BRAILLE
+ * PATTERN BLANK or combining U+0301 (not default-ignorable), and any icon with a visible code point
+ * beside its joiners (a ZWJ family emoji).
  */
 const BLANK_ICON = /^\p{Default_Ignorable_Code_Point}*$/u;
 

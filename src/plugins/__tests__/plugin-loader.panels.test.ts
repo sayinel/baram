@@ -72,8 +72,8 @@ function manifest(overrides: Partial<PluginManifest> = {}): PluginManifest {
     capabilities: ["sidebar"],
     contributions: {
       panels: [
-        { icon: "🧪", id: "live", title: "Li‮ve\nnow" },
-        { icon: "‮", id: "bare", title: "Bare" },
+        { icon: "🧪", id: "live", title: "Li\u202eve\nnow" },
+        { icon: "\u202e", id: "bare", title: "Bare" },
       ],
     },
     description: "t",
@@ -152,10 +152,11 @@ describe("a sandboxed load's declared panels", () => {
 
   /** P22 · Task 1 review — an icon the manifest accepts as one character but that draws nothing once
    *  sanitized is left out, so the activity bar draws its `Blocks` icon in its place: a lone space or
-   *  line break (the sanitizer removes them) and a lone ZWJ or HANGUL FILLER (it keeps them; they are
-   *  default-ignorable). The pairs: each manifest is valid, so the icon does reach registration, and a
-   *  ZWJ inside an emoji sequence keeps the icon. What fails this: storing the sanitized icon when it is
-   *  empty (`icon: ""`) or invisible, or leaving out any icon that holds a default-ignorable code point. */
+   *  line break (the sanitizer removes them), and a lone ZWJ, U+FE0F or U+3164 HANGUL FILLER (it keeps
+   *  them; they are default-ignorable). The pairs: each manifest is valid, so the icon does reach
+   *  registration, and icons that draw — a flag, a ZWJ family emoji, a Hangul syllable — are kept as
+   *  they are. What fails this: storing the sanitized icon when it is empty (`icon: ""`) or invisible,
+   *  or leaving out an icon that holds a default-ignorable code point beside a visible one. */
   it("leave out an icon that draws nothing", () => {
     /** The icon stored for a lone panel declaring `icon` — `null` when it is left out. */
     const storedIcon = (icon: string) => {
@@ -169,14 +170,10 @@ describe("a sandboxed load's declared panels", () => {
       expect(panel.panelId).toBe("demo:p");
       return Object.hasOwn(panel, "icon") ? panel.icon : null;
     };
-    expect([" ", "\n", "‍", "ㅤ"].map(storedIcon)).toEqual([
-      null,
-      null,
-      null,
-      null,
-    ]);
-    const family = "\u{1F468}‍\u{1F469}‍\u{1F467}";
-    expect(storedIcon(family)).toBe(family);
+    const blank = [" ", "\n", "\u200d", "\ufe0f", "\u3164"];
+    expect(blank.map(storedIcon)).toEqual(blank.map(() => null));
+    const drawn = ["🇰🇷", "\u{1F468}\u200d\u{1F469}\u200d\u{1F467}", "가"];
+    expect(drawn.map(storedIcon)).toEqual(drawn);
   });
 
   /** P8 — the session's handler keeps a declared panel's content and refuses another id, by the
