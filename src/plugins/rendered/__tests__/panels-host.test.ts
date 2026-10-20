@@ -73,7 +73,8 @@ describe("a data-note in a panel (P7)", () => {
 describe("a data-action in a panel (D11 ③ · P13)", () => {
   /** The second entrance for a panel: rights from the click until the delivery settles, and the
    *  plugin hears its declared id, not the key. What fails this: a delivery outside `runPluginAction`
-   *  (no rights while it runs), rights ended before it settles, or the key passed as the id. */
+   *  (no rights while it runs), rights ended before it settles (the pending check before `release`), or
+   *  the key passed as the id. */
   it("crosses with the declared id under prompt rights until it settles", async () => {
     let release!: () => void;
     const seen: Array<[string, string, null | string]> = [];
@@ -88,6 +89,8 @@ describe("a data-action in a panel (D11 ③ · P13)", () => {
     handlers().action("go");
     await vi.waitFor(() => expect(seen).toHaveLength(1));
     expect(seen[0]).toEqual(["live", "go", null]);
+    // Still pending: the rights are held until the delivery settles, not only while it is called.
+    expect(promptRefusal("sb")).toBeNull();
     release();
     await vi.waitFor(() =>
       expect(promptRefusal("sb")).toMatch(/commands is running/),
