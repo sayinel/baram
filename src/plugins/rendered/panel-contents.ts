@@ -3,10 +3,13 @@
 // so content for a panel nobody is looking at costs a string and no DOM.
 //
 // A panel takes content only while it is OPEN — from `openPanel` to `closePanel` or `releasePanels`.
-// A request that arrives after the release meets a closed panel and writes nothing. That is the case
-// on the rollback path, which releases the plugin's UI before it stops the session
-// (`rollbackSandboxLoad`); the unload path stops the session first, and a disposed session hands no
-// request on (`SandboxSession.dispose`).
+// A request that arrives after either meets a closed panel and writes nothing. The loader stops a
+// sandboxed session (`sandboxTeardown`) in two places — the rollback of a failed load
+// (`rollbackSandboxLoad`) and the unload (`unloadPlugin`) — and each runs the load's disposables, among
+// them the `closePanel` of every panel `registerDeclaredPanels` opened, before the stop; the rollback
+// also releases (`unregisterPluginUI`) before it. So a request the session hands on between those
+// disposables and the stop meets closed panels, and once stopped it hands none on
+// (`SandboxSession.dispose`).
 //
 // Also here: each plugin's action delivery — how a panel's `data-action` click reaches the plugin
 // (`panels-host.ts`). It is set once the plugin's session is up and taken away by the release, so a

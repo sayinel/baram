@@ -34,6 +34,7 @@ import {
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
+import { declaredPanels } from "./manifest-panels";
 import { grantableCapabilities } from "./plugin-consent";
 import { registerEntryContributions } from "./plugin-entry-points";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
@@ -46,6 +47,7 @@ import {
   releaseCodeBlocks,
   wireSandboxCodeBlocks,
 } from "./rendered/code-blocks-api";
+import { registerDeclaredPanels } from "./rendered/panels-host";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import {
@@ -325,6 +327,10 @@ export class PluginLoader {
       // fails. Registering here makes the documented behaviour the real one, and the
       // rollback below removes them if the load does not complete.
       this.registerDeclaredStatusBar(manifest, disposables);
+      // §394 spec 0073 D14 · plan 0126 P9 — the declared panels go up here too, before any grant or
+      // webview: their buttons show while the sandbox boots, and a panel takes content only once open.
+      registerDeclaredPanels(manifest, disposables);
+      const panelIds = declaredPanels(manifest).map((p) => p.id);
       // §394 plan 0125 P10 — the declared code block languages are claimed before the sandbox
       // starts, so its `register` refuses a language a plugin loaded earlier draws. A throw below
       // is rolled back by `rollbackSandboxLoad`, whose `unregisterPluginUI` releases them.
@@ -353,6 +359,8 @@ export class PluginLoader {
         // from the sandbox to a model.
         createHostRequestHandler({
           capabilities: manifest.capabilities,
+          // §394 plan 0126 P8 — the panel ids `ui_set_panel` may name: the ones registered above.
+          declaredPanelIds: panelIds,
           // §260 Phase 4a — `ui` rides the same mediated channel. The declared item ids
           // travel with it because the host, not the plugin, decides which items exist.
           declaredStatusBarIds: (manifest.contributions?.statusBar ?? []).map(
@@ -793,8 +801,9 @@ export class PluginLoader {
   /**
    * Map a started sandbox's declared commands onto the host and subscribe it to app
    * events. Everything it registers is pushed onto `disposables`, which is both the
-   * unload path and the rollback path. (The status bar is registered earlier, before the
-   * sandbox starts — see `registerDeclaredStatusBar`.)
+   * unload path and the rollback path. (The status bar and the declared panels are
+   * registered earlier, before the sandbox starts — see `registerDeclaredStatusBar` and
+   * `registerDeclaredPanels`.)
    */
   private wireSandboxContributions(
     manifest: PluginManifest,
