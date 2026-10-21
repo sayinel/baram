@@ -1,6 +1,6 @@
 ---
 title: "사이드바 패널"
-sourceHash: "1a4a460d5636"
+sourceHash: "4ab817967f2d"
 ---
 
 ## `context.ui.setPanel` (`sidebar` 필요, sandboxed)
@@ -40,8 +40,10 @@ onPanelAction(id: string, handler: (action: string) => Promise<void> | void): Di
 - `sidebar` 권한이 없는 `panels`는 매니페스트 오류이고, trusted 매니페스트의 `panels`도 오류입니다.
 - 버튼은 플러그인 코드가 돌기 전에 나오므로 플러그인이 시작하는 동안에도 보입니다. 버튼의 이름은 패널 제목 뒤에
   `플러그인 · `과 플러그인 이름을 붙인 것이라, 패널이 Baram의 패널인 척할 수 없습니다.
-- 사용자가 `sidebar` 권한을 주지 않고 플러그인을 설치할 수도 있습니다. 플러그인은 그대로 로드되지만 Baram이 `setPanel`을
-  하나하나 거부합니다 — throw하지 않으므로 플러그인은 오류를 받지 않습니다.
+- 사용자는 매니페스트가 적은 권한 전부를 한 번의 답으로 승인합니다 — 플러그인을 설치할 때, 그리고 업데이트가 권한을
+  더할 때 다시. 그래서 `sidebar` 없이 설치하는 길은 없습니다. Baram이 `sidebar`를 주지 않는 것은 플러그인에 기록된
+  승인이 그것을 담지 않을 때뿐입니다. 그때는 패널 버튼이 나오지 않고 Baram이 `setPanel`을 하나하나 거부합니다 —
+  throw하지 않으므로 플러그인은 오류를 받지 않습니다.
 
 ## 내용 보내기
 
@@ -88,9 +90,12 @@ Baram은 패널의 내용을 코드 블록 렌더러의 결과처럼 거릅니�
 
 - `data-note="notes/a.md"`는 **사용자가 누를 때** 활성인 볼트나 폴더의 루트 기준입니다 — 패널은 어느 노트에도 속하지
   않습니다. 활성인 볼트나 폴더가 없거나 그 경로가 거기 있는 노트가 아니면 아무것도 열지 않고 Baram이 그렇게 알립니다.
-  `data-note`와 `listDir("")`는 둘 다 그 순간 활성인
-  컨텍스트를 씁니다. 목록을 최신으로 두려면 `vault:changed`(`files`나 `files:readonly`가 필요합니다)나 `file:open`(`events`가
-  필요합니다)에서 다시 그리십시오. 둘 다 자기가 가리키는 `context`를 싣습니다.
+- `data-note`와 `context` 없는 `listDir("")`가 늘 같은 볼트를 읽는 것은 아닙니다. 클릭은 앱이 활성으로 보이는 볼트나
+  폴더를 쓰고, `listDir`는 Baram의 백엔드가 활성으로 쥔 것을 씁니다. 둘은 다를 수 있습니다 — 예를 들어 단일 파일로 연
+  노트가 활성인 동안(클릭은 아무것도 열지 않지만 `listDir("")`는 그 전에 활성이던 볼트나 폴더를 여전히 나열할 수
+  있습니다)과 볼트를 바꾸는 잠깐 동안입니다. 볼트를 직접 고르려면 `listDir("", { context })`에 `context`를 넘기십시오. `vault:changed`(`files`나
+  `files:readonly`가 필요합니다)나 `file:open`(`events`가 필요합니다)에서 다시 그리면 되고, 둘 다 자기가 가리키는
+  `context`를 싣습니다.
 - `data-action="name"`은 `onPanelAction(id, handler)`로 그 패널에 등록한 핸들러를 부르고, 핸들러마다 그 이름을
   받습니다. 모든 핸들러가 끝날 때까지 [`ctx.prompts`](/ko/docs/plugin-dev/context-prompts/)를 열 수 있습니다 — 명령이
   도는 30초와 같고, 클릭부터, 그리고 선택창이나 입력창이 닫힐 때마다 다시 흐릅니다. `onPanelAction`은 선언하지 않은

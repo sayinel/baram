@@ -1119,12 +1119,14 @@ export interface SandboxUIAPI {
   /**
    * §394 Show `content` in panel `id`, one declared in `contributions.panels` (which needs `sidebar`).
    * Throws at once for an undeclared id and for content over a limit — 1 MiB of HTML or 64 KiB of CSS
-   * in UTF-8, or a lone surrogate. If the user did not grant `sidebar`, the app refuses each update
-   * without throwing. The app keeps the last content and draws it while the panel is
-   * shown, at most once every `PANEL_UPDATE_INTERVAL_MS` milliseconds (the app's update interval); a
-   * call made while the previous one is on its way replaces the content waiting to go, so the last
-   * call's content is the one sent last. What the HTML and CSS may hold is a code block renderer's
-   * rule (`RenderedContent`).
+   * in UTF-8, or a lone surrogate. The user approves every capability the manifest lists in one
+   * answer, at install and again when an update adds one, so there is no install without `sidebar`.
+   * The app withholds it only when the approval it recorded for the plugin does not cover it; then no
+   * panel button appears and the app refuses each `setPanel` without throwing. The app keeps the last
+   * content and draws it while the panel is shown, at most once every `PANEL_UPDATE_INTERVAL_MS`
+   * milliseconds (the app's update interval); a call made while the previous one is on its way
+   * replaces the content waiting to go, so the last call's content is the one sent last. What the
+   * HTML and CSS may hold is a code block renderer's rule (`RenderedContent`).
    */
   setPanel(id: string, content: RenderedContent): void;
   /**

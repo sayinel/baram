@@ -35,17 +35,20 @@ Declare every panel in the manifest, with the `sidebar` capability:
 ```
 
 - At most 3 panels. An `id` is letters, digits, `_` and `-`, at most 64 characters, each id once. A
-  `title` is text that is not empty; Baram sanitizes it and shortens it to 64 characters, and shows the panel's `id` if nothing is left. An `icon`, if you give one, is a single character — an
-  emoji or a letter — of at most 16 UTF-16 units. Without an icon, or with one that draws nothing (for
-  example a space, a line break, a zero-width joiner, a variation selector on its own, a Hangul filler), the
-  button shows a generic plugin icon.
+  `title` is text that is not empty; Baram sanitizes it and shortens it to 64 characters, and shows
+  the panel's `id` if nothing is left. An `icon`, if you give one, is a single character — an emoji
+  or a letter — of at most 16 UTF-16 units. Without an icon, or with one that draws nothing (for
+  example a space, a line break, a zero-width joiner, a variation selector on its own, a Hangul
+  filler), the button shows a generic plugin icon.
 - `panels` without the `sidebar` capability is a manifest error, and so is `panels` in a trusted
   manifest.
 - The buttons appear before your plugin's code runs, so they show while it starts. A button's label
   is the panel's title followed by `Plugin · ` and your plugin's name, so a panel cannot pass for one
   of Baram's own.
-- A user may install the plugin without granting `sidebar`. The plugin still loads, but Baram refuses
-  each `setPanel` — it does not throw, and your plugin gets no error.
+- The user approves every capability your manifest lists in one answer, when installing the plugin
+  and again when an update adds one, so there is no install without `sidebar`. Baram withholds it
+  only when the approval it recorded for your plugin does not cover it. Then no panel button appears,
+  and Baram refuses each `setPanel` — it does not throw, and your plugin gets no error.
 
 ## Sending content
 
@@ -97,9 +100,15 @@ these differences:
 
 - `data-note="notes/a.md"` is relative to the root of the vault or folder that is active **when the
   user clicks**: a panel belongs to no note. With no vault or folder active, or if the path is not a
-  note there, nothing opens and Baram says so. `data-note` and `listDir("")` both use whichever
-  context is active at that moment. To keep a list current, redraw on `vault:changed` (needs `files`
-  or `files:readonly`) or on `file:open` (needs `events`); both carry the `context` they refer to.
+  note there, nothing opens and Baram says so.
+- A `data-note` and a `listDir("")` without a `context` do not always read the same vault. The click
+  uses the vault or folder the app shows as active; `listDir` uses the one Baram's backend holds as
+  active. The two can differ — for example while a note opened as a single file is active (a click
+  then opens nothing, while `listDir("")` can still list the vault or folder that was active before
+  it), and for a moment during a switch between vaults. To choose the vault yourself, pass a
+  `context` to `listDir("", { context })`: redraw on `vault:changed` (needs `files` or
+  `files:readonly`) or on `file:open` (needs `events`), which both carry the `context` they refer
+  to.
 - `data-action="name"` calls the handlers you registered for that panel with
   `onPanelAction(id, handler)`; each gets the name. Until every one has settled,
   [`ctx.prompts`](/en/docs/plugin-dev/context-prompts/) may open, for the 30 seconds a command runs
