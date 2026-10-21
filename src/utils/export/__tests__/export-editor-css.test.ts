@@ -210,11 +210,15 @@ describe("what the exported page actually looks like", () => {
     }
   });
 
-  // jsdom 30.1.3부터 var()가 든 단축 속성 선언은 cascade에서 이겨도 longhand 값이
-  // `unset`이 된다(computed-style.js `handleProperty`의 TODO — 변수를 치환하기 전에는
-  // 계산하지 못한다). 타입 규칙도, 그것을 덮던 일반 다크 규칙도 `background: …var()…`
-  // 라서 둘 다 투명으로 읽혀 구별되지 않는다. 그래서 tip 토큰 참조만 리터럴로 바꿔
-  // 끼운다 — 셀렉터는 건드리지 않으므로 누가 이기는지는 여전히 jsdom의 cascade가 정한다.
+  // jsdom은 var()가 든 `background` 단축 속성에서 온 배경색을 풀지 못해 초기값인
+  // 투명으로 읽는다(30.1.2·30.1.3 실측 — 30.1.3에서는 computed-style.js
+  // `handleProperty`가 그 longhand를 `unset`으로 둔다, 변수 치환 전에는 계산하지
+  // 못한다는 TODO). 30.1.2의 `.background`는 선언 문자열을 그대로 돌려줘 토큰
+  // 이름이 보였지만 30.1.3은 longhand로 직렬화해 투명만 남는다. 그러면 타입 규칙과,
+  // var() 값으로 다시 들어온 일반 다크 규칙(아래 CONTROL)이 둘 다 투명으로 읽힌다
+  // — 옛 규칙처럼 리터럴이면 치환 없이도 구별된다. 그래서 tip 토큰 참조만 리터럴로
+  // 바꿔 끼운다. 셀렉터는 건드리지 않으므로 누가 이기는지는 여전히 jsdom의
+  // cascade가 정한다.
   function tipBackground(theme?: "dark", extraCSS = ""): string {
     const shipped = style.textContent;
     style.textContent =
@@ -236,9 +240,14 @@ describe("what the exported page actually looks like", () => {
     // 명시적 다크 테마에서만 13개 타입 배경이 한 색으로 뭉개지는 결함이 실제로
     // 있었다. 정규식 핀은 표기(인용부호·:where()·selector list)에 속았으므로,
     // 다크 root 아래 타입 callout을 실제로 마운트해 계산된 배경이 라이트와
-    // 같은 규칙에서 오는지를 본다 — 어떤 표기로 재유입돼도 cascade 결과로 잡힌다.
+    // 같은 규칙에서 오는지를 본다. 인용부호·:where()·:is()·selector list·
+    // !important·`@media screen` 안의 규칙으로 다시 들어와도 cascade 결과로
+    // 잡힌다(30.1.3 실측). CSS 중첩 규칙은 jsdom이 파싱하지 못해 이 핀이 보지
+    // 못한다. 다크 === 라이트이므로 타입별 다크 override도 걸린다 — blocks.css는
+    // 그런 override를 두지 않는다.
     const light = tipBackground();
-    // 짝: 리터럴이 계산값까지 닿았다. 아니면 아래 비교는 투명 = 투명이다.
+    // 짝: 치환이 빗나가면(토큰 표기가 바뀌면) 라이트가 투명으로 남고, 아래 비교는
+    // 투명 = 투명이 된다.
     expect(light).not.toBe("rgba(0, 0, 0, 0)");
     expect(tipBackground("dark")).toBe(light);
   });
