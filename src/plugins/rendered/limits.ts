@@ -79,6 +79,14 @@ export const MAX_ACTION_CHARS = 64;
 export const MAX_FRAME_ID_CHARS = 64;
 
 /**
+ * D14 — the longest panel id a manifest may declare, in UTF-16 units: `MAX_CONTRIBUTION_ID_CHARS`
+ * (`manifest.ts`), the bound on every contribution id, a pair `manifest-panels.test.ts` holds
+ * together. Here so the frame check `isSetPanel` can read it — `manifest.ts` reaches the editor's
+ * language list (`manifest-code-blocks.ts`), and the sandbox realm imports that check's module.
+ */
+export const MAX_PANEL_ID_CHARS = 64;
+
+/**
  * D5 — the longest fenced language a manifest may declare: what `CODE_BLOCK_LANG`
  * (`manifest-code-blocks.ts`) admits, a pair `tauri-host-transport.test.ts` holds together. Here
  * so the sandbox realm's frame checks can read it — that module reaches the editor's language list.

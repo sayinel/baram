@@ -98,23 +98,35 @@ describe("a data-action in a panel (D11 ③ · P13)", () => {
   });
 
   /** P13 — before the session sets its delivery, and after the release takes it, a click does nothing
-   *  and grants nothing. The pair is the row above. */
+   *  and grants nothing. "Grants nothing" is read right after the call, while rights a dispatch began
+   *  would still be held (`beginPluginInvocation` runs synchronously), and again once it settles. What
+   *  fails this: a dispatch that begins and ends rights with no delivery. The pair is the row above. */
   it("does nothing without a delivery", async () => {
-    await dispatchPanelAction("sb", "sb:live", "go");
+    const unset = dispatchPanelAction("sb", "sb:live", "go");
+    expect(promptRefusal("sb")).toMatch(/commands is running/);
+    await unset;
     expect(promptRefusal("sb")).toMatch(/commands is running/);
     const deliver = vi.fn(async () => {});
     setPanelActions("sb", deliver);
     releasePanels("sb");
-    await dispatchPanelAction("sb", "sb:live", "go");
+    const released = dispatchPanelAction("sb", "sb:live", "go");
+    expect(promptRefusal("sb")).toMatch(/commands is running/);
+    await released;
+    expect(promptRefusal("sb")).toMatch(/commands is running/);
     expect(deliver).not.toHaveBeenCalled();
   });
 
-  /** A key is the plugin's own only under its `${pluginId}:` prefix. What fails this: slicing any key,
-   *  which would hand plugin `sb` an id made from another plugin's key. */
+  /** A key is the plugin's own only under its `${pluginId}:` prefix, and a foreign key grants nothing —
+   *  read right after the call and once it settles, as in the row above. What fails this: slicing any
+   *  key, which would hand plugin `sb` an id made from another plugin's key, or rights begun for a
+   *  click that delivers nothing. */
   it("ignores a key outside the plugin's prefix", async () => {
     const deliver = vi.fn(async () => {});
     setPanelActions("sb", deliver);
-    await dispatchPanelAction("sb", "other:live", "go");
+    const foreign = dispatchPanelAction("sb", "other:live", "go");
+    expect(promptRefusal("sb")).toMatch(/commands is running/);
+    await foreign;
+    expect(promptRefusal("sb")).toMatch(/commands is running/);
     expect(deliver).not.toHaveBeenCalled();
   });
 });

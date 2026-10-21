@@ -8,7 +8,7 @@
 
 import { PANEL_UPDATE_BURST, PANEL_UPDATE_INTERVAL_MS } from "./limits";
 
-/** plan 0126 P23 — a `ui_set_panel` for panel `id` after its release (or before its registration). The host's only. */
+/** plan 0126 P23 — a `ui_set_panel` for panel `id` after its release. The host's only. */
 export function closedPanelMessage(id: string): string {
   return `ui.setPanel: panel "${id}" is not open`;
 }

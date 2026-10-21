@@ -1,7 +1,9 @@
 // §394 spec 0073 D10 · D14 · plan 0126 P6 — a sandboxed panel's containment lives in the SHIPPED
 // stylesheets, on two elements outside the shadow root: the shadow host first, the panel's root second
 // (the header of plugin-panels.css). jsdom does no layout, so whether a `position: fixed` result stays
-// inside the panel is a manual check (plan 0126 Task 9); this pins the rules that make it so.
+// inside the panel is a manual check (plan 0126 Task 9); this pins the rules that make it so. The last
+// rule is the activity-bar icon's clip (panels.css): the icon is the author's text, drawn outside the
+// panel.
 import { describe, expect, it } from "vitest";
 
 import { cssDeclarations, cssRules } from "./css-rules";
@@ -44,5 +46,18 @@ describe("plugin-panels.css", () => {
     expect(
       declared("styles/plugin-panels.css", ".plugin-panel-body").overflow,
     ).toBe("hidden auto");
+  });
+});
+
+describe("panels.css", () => {
+  /** An icon is one grapheme of up to `MAX_PANEL_ICON_CHARS` UTF-16 units, and a base letter under
+   *  fifteen combining marks is one. The button does not clip (its active marker sits outside it), so
+   *  the icon's span fills the button and clips there. What fails this: dropping `overflow: hidden`
+   *  (the stacked ink would paint over the neighbouring buttons), or a span sized to its glyph (the
+   *  clip box would be the glyph's line, not the button). */
+  it("clips a panel's activity-bar icon at its button", () => {
+    expect(
+      declared("styles/panels.css", ".activity-bar-plugin-icon"),
+    ).toMatchObject({ height: "100%", overflow: "hidden", width: "100%" });
   });
 });

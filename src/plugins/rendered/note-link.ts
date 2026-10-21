@@ -1,7 +1,8 @@
-// §394 spec 0073 D11 ② — open the note a `data-note` link names. Rust decides whether it is a
-// note under the block's context (`plugin_note_link`); the shared opener opens it — the same steps
-// the backlinks panel takes (select an open tab, else read and open one) plus the §81 context
-// switch (plan 0125 P12). Every refusal is one fixed toast badged with the plugin's name (§6).
+// §394 spec 0073 D11 ② — open the note a `data-note` link names. Rust (`plugin_note_link`) decides
+// whether it is a note under the context it is given (a block's, or for a panel the active one); the
+// shared opener opens it — the same steps the backlinks panel takes (select an open tab, else read
+// and open one) plus the §81 context switch (plan 0125 P12). Every refusal is one fixed toast badged
+// with the plugin's name (§6).
 
 import type { Locale } from "../../i18n";
 

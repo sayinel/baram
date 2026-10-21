@@ -142,7 +142,7 @@ describe("ui_set_panel — the acceptance bound (plan 0126 P34)", () => {
    *  interval. What fails this: a burst too small for jitter (a burst of one refuses the first
    *  jittered write), or a bucket that drops the part of an interval it has not yet turned into a
    *  token (`bucket.at = at` on every refill) — the refills here fall between interval marks, and
-   *  that bucket refuses the 23rd jittered write (re-review N2; scratchpad `p0126/sim/bucket.mjs`). */
+   *  that bucket refuses the 23rd jittered write (re-review N2; ledger 0096). */
   it("never refuses one write per interval, steady or jittered", async () => {
     const { advance, write } = clocked();
     for (let i = 0; i < 40; i += 1) {

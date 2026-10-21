@@ -9,6 +9,7 @@ import {
   MAX_PANEL_ICON_CHARS,
   MAX_PANELS,
 } from "../manifest-panels";
+import { MAX_PANEL_ID_CHARS } from "../rendered/limits";
 
 const BASE = {
   author: "a",
@@ -70,6 +71,18 @@ describe("contributions.panels — the entries", () => {
       "contributions.panels[2].id",
       "contributions.panels[3].title",
     ]);
+  });
+
+  /** A panel id is bounded like every contribution id (`MAX_CONTRIBUTION_ID_CHARS`, `manifest.ts`), and
+   *  the transport's `isSetPanel` bounds it with the same number from `limits.ts`. What fails this: the
+   *  two drifting apart — a longer manifest bound admits the over-long id below, whose `setPanel` the
+   *  transport would drop; a shorter one refuses the max-length id. */
+  it("takes an id of MAX_PANEL_ID_CHARS and refuses a longer one", () => {
+    const id = "p".repeat(MAX_PANEL_ID_CHARS);
+    expect(errorsOf(panels([{ id, title: "P" }]))).toEqual([]);
+    expect(
+      errorsOf(panels([{ id: `${id}p`, title: "P" }])).map((e) => e.field),
+    ).toEqual(["contributions.panels[0].id"]);
   });
 
   /** P10 · P25 — an icon is one grapheme within 16 UTF-16 units. What fails this: counting UTF-16
