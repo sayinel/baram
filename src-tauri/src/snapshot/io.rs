@@ -363,7 +363,7 @@ mod tests {
         let checksum = compute_checksum(&file_path.to_string_lossy()).unwrap();
         // The exact digest, not just its length: `create_snapshot` compares it as a string
         // with the one the index stored for the last snapshot, so a change in case or zero
-        // padding would mark every file as changed and copy it again.
+        // padding would mark every file whose digest it alters as changed and copy it again.
         assert_eq!(
             checksum,
             "sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
