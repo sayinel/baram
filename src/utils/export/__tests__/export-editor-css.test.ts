@@ -242,9 +242,11 @@ describe("what the exported page actually looks like", () => {
     // 다크 root 아래 타입 callout을 실제로 마운트해 계산된 배경이 라이트와
     // 같은 규칙에서 오는지를 본다. 인용부호·:where()·:is()·selector list·
     // !important·`@media screen` 안의 규칙으로 다시 들어와도 cascade 결과로
-    // 잡힌다(30.1.3 실측). CSS 중첩 규칙은 jsdom이 파싱하지 못해 이 핀이 보지
-    // 못한다. 다크 === 라이트이므로 타입별 다크 override도 걸린다 — blocks.css는
-    // 그런 override를 두지 않는다.
+    // 잡힌다(30.1.3 실측). CSS 중첩 규칙은 CSSOM에는 들어가지만 jsdom의 cascade가
+    // style rule 안의 규칙으로 내려가지 않아(30.1.3 computed-style.js
+    // `collectCandidateStylesFrom`은 `@import`·`@media`만 내려간다) 이 핀이 보지
+    // 못한다. tip만 마운트하므로 다크 override는 일반 `.callout` 규칙과 tip 규칙만
+    // 걸린다 — 다른 타입의 override는 보지 못한다(blocks.css에는 어느 쪽도 없다).
     const light = tipBackground();
     // 짝: 치환이 빗나가면(토큰 표기가 바뀌면) 라이트가 투명으로 남고, 아래 비교는
     // 투명 = 투명이 된다.
