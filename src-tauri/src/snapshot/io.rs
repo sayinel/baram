@@ -33,8 +33,12 @@ pub fn compute_checksum(path: &str) -> Result<String, SnapshotError> {
     let content = std::fs::read(path)?;
     let mut hasher = Sha256::new();
     hasher.update(&content);
-    let result = hasher.finalize();
-    Ok(format!("sha256:{:x}", result))
+    let hex = hasher.finalize().iter().fold(String::new(), |mut s, b| {
+        use std::fmt::Write;
+        let _ = write!(s, "{b:02x}");
+        s
+    });
+    Ok(format!("sha256:{hex}"))
 }
 
 /// Generate a filesystem-safe ISO 8601 timestamp (uses `-` instead of `:`).
@@ -357,8 +361,13 @@ mod tests {
         std::fs::write(&file_path, "hello world").unwrap();
 
         let checksum = compute_checksum(&file_path.to_string_lossy()).unwrap();
-        assert!(checksum.starts_with("sha256:"));
-        assert_eq!(checksum.len(), 7 + 64); // "sha256:" + 64 hex chars
+        // The exact digest, not just its length: `create_snapshot` compares it as a string
+        // with the one the index stored for the last snapshot, so a change in case or zero
+        // padding would mark every file whose digest it alters as changed and copy it again.
+        assert_eq!(
+            checksum,
+            "sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
     }
 
     #[test]
