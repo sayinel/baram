@@ -18,6 +18,7 @@
 // 아니라 화이트리스트다.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -87,6 +88,10 @@ pub async fn archive_tasks(
             today
         )));
     }
+    // The archive directory as the task scan would spell a file in it: the home as handed,
+    // then the OS separator. `home`, `tasks_root` and `archive_root` below are `norm`'s
+    // spelling, for comparing and the log line only — see `Spelled`.
+    let archive_dir = Path::new(home).join(TASKS_DIR).join(ARCHIVE_DIR);
     let home = norm(home);
     // §312.1 화이트리스트는 이 한 줄이다 — `{tasksHome}/tasks/` 아래 전부. 수집함도
     // 아카이브도 그 안에 살기 때문에 예외 조항이 없다.
@@ -106,8 +111,18 @@ pub async fn archive_tasks(
     // 원본 파일별로 모은다. BTreeMap이라 순서가 결정적이다 — 회계와 `paths`가 실행마다
     // 같아야 테스트가 무엇을 고정하는지 말할 수 있다.
     let mut by_source: BTreeMap<String, Vec<&ArchiveItem>> = BTreeMap::new();
+    let mut spelled = Spelled {
+        sources: BTreeMap::new(),
+        archive_key: archive_root,
+        archive_dir,
+    };
     for item in items {
-        by_source.entry(norm(&item.path)).or_default().push(item);
+        let key = norm(&item.path);
+        spelled
+            .sources
+            .entry(key.clone())
+            .or_insert_with(|| item.path.clone());
+        by_source.entry(key).or_default().push(item);
     }
 
     // 파일 여러 개를 한 번에 고치는 조작이라 무엇을 했는지 기록으로 남긴다. 프런트의
@@ -122,15 +137,7 @@ pub async fn archive_tasks(
 
     let mut outcome = ArchiveOutcome::default();
     for (source, group) in by_source {
-        drain_one_file(
-            &source,
-            &group,
-            &archive_root,
-            today,
-            after_days,
-            &mut outcome,
-        )
-        .await;
+        drain_one_file(&source, &group, &spelled, today, after_days, &mut outcome).await;
     }
     log::info!(
         "[task] archive: archived={} skipped={} stale={} failed={}",
@@ -147,15 +154,53 @@ pub async fn archive_tasks(
     Ok(outcome)
 }
 
+/// The spelling a touched file is read, written and reported under: the caller's, never
+/// `norm`'s. `norm` turns `\` into `/` so that two spellings of one path compare alike, and
+/// that is all it is for — on unix `\` is an ordinary name character, so `norm`'s spelling
+/// can name another file, and the frontend matches `ArchiveOutcome::paths` against the paths
+/// it sent exactly, so on Windows a `C:/…` report matched none of its `C:\…` tabs and task
+/// entries.
+struct Spelled {
+    /// `norm(path)` → the path as the first item naming that file spelled it.
+    sources: BTreeMap<String, String>,
+    /// `{home}/tasks/archive` in `norm`'s spelling, to compare with a source's `norm`.
+    archive_key: String,
+    /// `{home}/tasks/archive`, the home as handed and the rest joined with the OS separator.
+    archive_dir: std::path::PathBuf,
+}
+
+impl Spelled {
+    /// The archive file for `month`, whose `norm` spelling is `key`: as a source spelled it,
+    /// when it is also one, so the file is reported once; otherwise under `archive_dir`.
+    fn archive_file(&self, key: &str, month: &str) -> String {
+        match self.sources.get(key) {
+            Some(spelling) => spelling.clone(),
+            None => self
+                .archive_dir
+                .join(format!("{month}.md"))
+                .to_string_lossy()
+                .into_owned(),
+        }
+    }
+}
+
 /// 원본 한 파일의 배수 — 검증 → 붙이기 → 지우기.
+///
+/// `source` is `norm`'s spelling and is only compared; the paths this reads, writes and
+/// reports come from `spelled`.
 async fn drain_one_file(
     source: &str,
     group: &[&ArchiveItem],
-    archive_root: &str,
+    spelled: &Spelled,
     today: &str,
     after_days: u32,
     outcome: &mut ArchiveOutcome,
 ) {
+    let source_key = source;
+    let source = spelled
+        .sources
+        .get(source_key)
+        .map_or(source_key, String::as_str);
     let content = match tokio::fs::read_to_string(source).await {
         Ok(c) => c,
         Err(e) => {
@@ -217,13 +262,14 @@ async fn drain_one_file(
             outcome.skipped += 1;
             continue;
         }
-        let dest = format!("{}/{}.md", archive_root, month);
+        let dest_key = format!("{}/{}.md", spelled.archive_key, month);
         // 이미 제자리인 줄은 옮기지 않는다. 자기 파일에 붙였다가 지우면 줄이 파일
         // 끝으로 이사만 하고, 실행할 때마다 순서가 바뀐다.
-        if dest == source {
+        if dest_key == source_key {
             outcome.skipped += 1;
             continue;
         }
+        let dest = spelled.archive_file(&dest_key, &month);
         movers.entry(dest).or_default().push((idx, raw));
     }
 
@@ -398,8 +444,18 @@ mod tests {
             Self { _dir: dir, root }
         }
 
+        /// `rel` (`/`-separated) under the home, spelled as the task scan spells a file it
+        /// walked — the home as given, each further part joined with the OS separator, as
+        /// `read_dir`'s `DirEntry::path` joins it for `fs::collect_md_files`. That is the
+        /// spelling the frontend holds in its task entries and tabs, and on unix it is
+        /// `{root}/{rel}`.
         fn at(&self, rel: &str) -> String {
-            format!("{}/{}", self.root, rel)
+            rel.split('/')
+                .fold(std::path::PathBuf::from(&self.root), |path, part| {
+                    path.join(part)
+                })
+                .to_string_lossy()
+                .into_owned()
         }
 
         fn read(&self, rel: &str) -> String {
@@ -826,6 +882,56 @@ mod tests {
         unique.dedup();
         assert_eq!(out.paths, unique);
         assert!(out.paths.contains(&aug_path));
+    }
+
+    /// `norm` makes two spellings of one path COMPARE alike; it must not become the path the
+    /// archive reads, writes or reports. What fails this: reading the source under `norm`'s
+    /// spelling — on unix `\` is an ordinary name character, so `my\notes` names another
+    /// directory, the read fails and nothing moves — or reporting that spelling back.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_home_whose_name_holds_a_backslash_is_read_and_reported_as_given() {
+        let dir = TempDir::new().unwrap();
+        let home = dir.path().join(r"my\notes");
+        std::fs::create_dir_all(home.join("tasks")).unwrap();
+        let v = Vault {
+            root: home.to_string_lossy().into_owned(),
+            _dir: dir,
+        };
+        let raw = "- [x] 세금 신고 ✅2026-07-04";
+        let inbox = v.write("tasks/inbox.md", &format!("{}\n", raw));
+
+        let out = run(&v, &[item(&inbox, 0, raw)]).await.unwrap();
+
+        assert_eq!((out.archived, out.failed), (1, 0));
+        assert_eq!(v.read("tasks/inbox.md"), "");
+        assert_eq!(v.read("tasks/archive/2026-07.md"), format!("{}\n", raw));
+        let mut paths = out.paths.clone();
+        paths.sort();
+        assert_eq!(paths, vec![v.at("tasks/archive/2026-07.md"), inbox]);
+    }
+
+    /// The frontend finds the tabs and task entries to refresh by comparing `paths` with the
+    /// paths it sent, exactly (`use-archive-done.ts`). What fails this: reporting a source in
+    /// `norm`'s spelling — on Windows `C:/…/tasks/inbox.md` for the `C:\…/tasks/inbox.md`
+    /// it was handed, which matched nothing.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_source_is_reported_in_the_spelling_it_was_handed() {
+        let v = Vault::new();
+        let raw = "- [x] 세금 신고 ✅2026-07-04";
+        v.write("tasks/inbox.md", &format!("{}\n", raw));
+        let handed = format!("{}/tasks/inbox.md", v.root);
+        assert_ne!(
+            handed,
+            v.at("tasks/inbox.md"),
+            "the fixture needs a second spelling"
+        );
+
+        let out = run(&v, &[item(&handed, 0, raw)]).await.unwrap();
+
+        assert_eq!(out.archived, 1);
+        assert!(out.paths.contains(&handed), "{:?}", out.paths);
     }
 
     #[tokio::test]
