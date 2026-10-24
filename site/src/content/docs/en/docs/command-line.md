@@ -55,7 +55,7 @@ When the current directory is inside more than one registered vault or folder, a
 | `files [--folder <path>]` | The markdown files in the vault — `.md` and `.markdown`. |
 | `read <path>` | One file, exactly as it is on disk. A file that is not UTF-8 text is an `IO` error. |
 | `search <query> [--regex] [--case-sensitive] [--word] [--folder <path>] [--limit N]` | One item per match in `.md` files — a line with two matches appears twice. Upper and lower case match each other unless you pass `--case-sensitive`. `--word` puts a word boundary (`\b`) at each end of the match — with `--regex`, around the whole expression: `a\|b` finds the word `a` or the word `b`. Stops after 100 matches unless `--limit` says otherwise. |
-| `tags` | Each tag and how many times it occurs. |
+| `tags` | Each tag and how many times it occurs. A tag in the front matter (`tags: ["#work"]`) is named without its leading `#`, so it is counted with `#work` in the text. |
 | `tag <name>` | The files that carry a tag. A leading `#` is optional. |
 | `tasks [--status open\|done\|cancelled\|all] [--file <path>]` | Tasks. `open`, the default, is `todo` and `doing`. |
 | `backlinks <path>` | The links that point at a note. |
