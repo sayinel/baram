@@ -139,7 +139,7 @@ pub enum RewritePass {
 }
 
 /// The in-memory link index
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LinkIndex {
     /// source_path → list of links found in that file
     outgoing: HashMap<String, Vec<LinkEntry>>,
@@ -154,7 +154,8 @@ pub struct LinkIndex {
     /// Normalized file stem (folded by `fold_name`, no extension) → list of absolute file paths
     /// Used to resolve [[name]] style wikilinks to actual file locations in subdirectories
     file_map: HashMap<String, Vec<String>>,
-    /// Normalized relative path (folded by `fold_name`, no extension) → absolute file path
+    /// Relative path under the root (`root_relative_key`: components joined with `/`,
+    /// folded by `fold_name`, no extension) → absolute file path
     /// Used to resolve [[path/name]] style wikilinks (e.g., [[notes/architecture]])
     relative_map: HashMap<String, String>,
     /// Note id (12–14 digit filename prefix) → absolute file path (Zettelkasten `[[ID]]` links)
@@ -173,11 +174,44 @@ pub struct LinkIndex {
     name_map: HashMap<String, Vec<String>>,
     /// file_path → list of tags found in that file (for graph tag nodes)
     file_tags: HashMap<String, Vec<String>>,
+    /// Whether paths are read the Windows way — `\` a separator too, and
+    /// path components compared without ASCII case (`same_component`) — by
+    /// the keys this index's methods build: a link's (`file_incoming`), a
+    /// file's (`filing_keys_of`, `backlink_keys`, the path-key counts) and
+    /// the resolver's maps (`register_file_path`, `register_link_target`,
+    /// `resolve_link`). Not by `extract_links`, whose self-reference target
+    /// is the stem `std::path` reads on this host. This host's rule
+    /// (`cfg!(windows)`) except in the tests that pass `true` to
+    /// `with_windows` (issue 595: the Windows shape is tested by passing
+    /// `windows = true`, never behind `cfg(windows)`).
+    windows: bool,
+}
+
+impl Default for LinkIndex {
+    fn default() -> Self {
+        Self::with_windows(cfg!(windows))
+    }
 }
 
 impl LinkIndex {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// An empty index that reads paths the Windows way when `windows`,
+    /// whatever the host (`LinkIndex::windows`).
+    pub(crate) fn with_windows(windows: bool) -> Self {
+        Self {
+            outgoing: HashMap::new(),
+            incoming: HashMap::new(),
+            root_path: None,
+            file_map: HashMap::new(),
+            relative_map: HashMap::new(),
+            id_map: HashMap::new(),
+            name_map: HashMap::new(),
+            file_tags: HashMap::new(),
+            windows,
+        }
     }
 
     /// Build the full index by scanning all .md files under root_path
@@ -253,7 +287,7 @@ impl LinkIndex {
         self.incoming.retain(|_, v| !v.is_empty());
 
         // Remove from file maps
-        let stem = normalize_file_path(file_path);
+        let stem = normalize_file_path(filing::file_name(file_path, self.windows));
         if let Some(paths) = self.file_map.get_mut(&stem) {
             paths.retain(|p| p != file_path);
             if paths.is_empty() {
@@ -278,7 +312,7 @@ impl LinkIndex {
             &entry.target,
             entry.target_vault_alias.as_deref(),
             self.root_path.as_deref(),
-            cfg!(windows),
+            self.windows,
         );
         self.incoming.entry(key).or_default().push(entry.clone());
     }
@@ -292,7 +326,7 @@ impl LinkIndex {
             file_path,
             self.root_path.as_deref(),
             local_aliases,
-            cfg!(windows),
+            self.windows,
         )
     }
 
@@ -300,8 +334,7 @@ impl LinkIndex {
     /// with how many of its notes fold to it: `root_relative_key` — the
     /// function `keys_for` spells a file's path key with, so the shapes
     /// agree — of each path in `file_map`, which holds each path once. Not
-    /// `relative_map`, whose keys keep the host's separators and hold one
-    /// path per key. Empty with no root. The rename reads it to tell whether
+    /// `relative_map`, which holds one path per key. Empty with no root. The rename reads it to tell whether
     /// a path link names an existing note under a root that holds the
     /// referrer, and whether more than one note there answers to it — on a
     /// file system that keeps case, `A/note.md` and `a/note.md` both fold
@@ -321,7 +354,7 @@ impl LinkIndex {
         let mut by_name: HashMap<String, Vec<&String>> = HashMap::new();
         for path in self.file_map.values().flatten() {
             by_name
-                .entry(filing::path_key_name(path, cfg!(windows)))
+                .entry(filing::path_key_name(path, self.windows))
                 .or_default()
                 .push(path);
         }
@@ -346,7 +379,7 @@ impl LinkIndex {
             .file_map
             .values()
             .flatten()
-            .filter(|path| filing::path_key_name(path, cfg!(windows)) == name);
+            .filter(|path| filing::path_key_name(path, self.windows) == name);
         self.path_keys_of(same_name).get(key).copied().unwrap_or(0)
     }
 
@@ -361,7 +394,7 @@ impl LinkIndex {
         for path in paths {
             #[cfg(test)]
             PATH_KEYS_SPELLED.with(|n| n.set(n.get() + 1));
-            if let Some(key) = filing::root_relative_key(root, path, cfg!(windows)) {
+            if let Some(key) = filing::root_relative_key(root, path, self.windows) {
                 *keys.entry(key).or_insert(0) += 1;
             }
         }
@@ -378,7 +411,7 @@ impl LinkIndex {
             file_path,
             self.root_path.as_deref(),
             local_aliases,
-            cfg!(windows),
+            self.windows,
         )
     }
 

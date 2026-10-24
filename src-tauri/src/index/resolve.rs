@@ -1,29 +1,29 @@
 //! The maps a `[[name]]` is resolved through and the graph built on them (§29).
 
+use super::filing::{file_name, is_relative, root_relative_key, root_relative_path};
 use super::normalizer::{
     extract_id_from_stem, fold_name, is_id_target, normalize_file_path, normalize_target,
-    resolve_target, strip_extension_and_fold,
+    resolve_target,
 };
 use super::{LinkEdge, LinkEntry, LinkGraph, LinkIndex, LinkResolution};
+use std::borrow::Cow;
 
 impl LinkIndex {
-    /// Register a file path in file_map and relative_map for target resolution
+    /// Register a file path in file_map and relative_map for target resolution.
+    /// Both keys are read from the path's components (`LinkIndex::windows`):
+    /// the stem from its file name, the relative path from those under the
+    /// root joined with `/` — the `Path` key `keys_for` gives the file, so a
+    /// Windows path is keyed `notes/architecture`, as its link is written.
     pub(super) fn register_file_path(&mut self, file_path: &str, root_path: &str) {
-        let stem = normalize_file_path(file_path);
+        let stem = normalize_file_path(file_name(file_path, self.windows));
         let paths = self.file_map.entry(stem.clone()).or_default();
         if !paths.contains(&file_path.to_string()) {
             paths.push(file_path.to_string());
         }
 
         // Build relative path mapping (e.g., "notes/architecture" → "/vault/notes/architecture.md")
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel);
-            let rel_normalized = strip_extension_and_fold(rel);
-            self.relative_map
-                .insert(rel_normalized, file_path.to_string());
+        if let Some(rel) = root_relative_key(root_path, file_path, self.windows) {
+            self.relative_map.insert(rel, file_path.to_string());
         }
 
         // Register id → path for [[ID]] resolution (Zettelkasten)
@@ -52,19 +52,13 @@ impl LinkIndex {
     pub(super) fn register_link_target(&mut self, file_path: &str, root_path: &str) -> bool {
         let mut keys: Vec<String> = Vec::new();
 
-        if let Some(name) = std::path::Path::new(file_path)
-            .file_name()
-            .map(|n| fold_name(&n.to_string_lossy()))
-        {
-            keys.push(name);
+        let name = file_name(file_path, self.windows);
+        if !name.is_empty() {
+            keys.push(fold_name(name));
         }
 
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = fold_name(
-                rel.strip_prefix('/')
-                    .or_else(|| rel.strip_prefix('\\'))
-                    .unwrap_or(rel),
-            );
+        if let Some(rel) = root_relative_path(root_path, file_path, self.windows) {
+            let rel = fold_name(&rel);
             if !keys.contains(&rel) {
                 keys.push(rel);
             }
@@ -170,18 +164,10 @@ impl LinkIndex {
         }
         let stem = normalized.rsplit('/').next().unwrap_or(normalized);
         let notes = self.file_map.get(stem)?;
-        let name_of = |path: &String| {
-            std::path::Path::new(path.as_str())
-                .file_name()
-                .map(|n| fold_name(&n.to_string_lossy()))
-        };
+        let name_of = |path: &String| Some(fold_name(file_name(path, self.windows)));
         let relative_of = |path: &String| {
-            let rel = path.strip_prefix(self.root_path.as_deref()?)?;
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel);
-            Some(fold_name(rel))
+            root_relative_path(self.root_path.as_deref()?, path, self.windows)
+                .map(|rel| fold_name(&rel))
         };
         notes
             .iter()
@@ -197,9 +183,21 @@ impl LinkIndex {
     /// Resolve a link's target to an indexed file, preferring its spelled
     /// note extension before the normalized map lookup. Reached only through
     /// `resolve_entry`, for an entry that is not a self-reference.
+    ///
+    /// The maps' path keys are joined with `/` (`register_file_path`), so a
+    /// target that is not relative has its `\` read as `/` when the index
+    /// reads paths the Windows way, as `filing_key` files it: `[[notes\x]]`
+    /// and `[[notes/x]]` name one note. A relative target keeps its text —
+    /// the resolver has no relative step.
     fn resolve_link(&self, raw_target: &str) -> Option<String> {
-        let normalized = normalize_target(raw_target);
-        let full = fold_name(raw_target.trim());
+        let raw = raw_target.trim();
+        let raw = if self.windows && !is_relative(raw, true) {
+            Cow::Owned(raw.replace('\\', "/"))
+        } else {
+            Cow::Borrowed(raw)
+        };
+        let normalized = normalize_target(&raw);
+        let full = fold_name(&raw);
         self.spelled_note_name(&full, &normalized)
             .or_else(|| self.resolve_target_from_map(&normalized))
     }
@@ -687,6 +685,73 @@ mod tests {
                 vec![LinkResolution::Resolved("/vault/plan.md".to_string())]
             )
         );
+    }
+
+    #[test]
+    fn a_windows_path_is_keyed_by_its_components_joined_with_a_slash() {
+        // The walk spells a Windows path with `\`; the links are written
+        // with `/`, or `\`. Read the Windows way (`with_windows(true)`, on
+        // any host — issue 595's rule), the maps key each path by its
+        // components, so the links resolve as on any other host, and the
+        // backlinks agree with them. `other\x.md` is registered first: a
+        // path link that misses the relative path falls back to it by stem.
+        // What fails this, one site at a time: `register_file_path` keying
+        // `relative_map` by the stripped string — `[[notes/x]]` falls back
+        // to `other\x.md`; `register_link_target` so — `[[papers/Paper.pdf]]`
+        // is unresolved; `relative_of` in `spelled_note_name` so —
+        // `[[d/x.md]]` goes to `d\x.markdown`, registered last under `d/x`;
+        // dropping the `\` fold from `resolve_link` — `[[notes\x]]` is
+        // unresolved; `register_file_path` reading the stem from the whole
+        // path — `[[x]]` is unresolved where `\` is no separator to the host;
+        // `file_incoming` filing with `cfg!(windows)` — `[[notes\x]]` is not
+        // a backlink.
+        let mut index = LinkIndex::with_windows(true);
+        index.root_path = Some(r"C:\v".to_string());
+        for note in [
+            r"C:\v\other\x.md",
+            r"C:\v\notes\x.md",
+            r"C:\v\d\x.md",
+            r"C:\v\d\x.markdown",
+        ] {
+            index.register_file_path(note, r"C:\v");
+        }
+        index.register_link_target(r"C:\v\papers\Paper.pdf", r"C:\v");
+        index.update_file_from_content(
+            r"C:\v\r.md",
+            "[[notes/x]]\n[[notes\\x]]\n[[papers/Paper.pdf]]\n[[Paper.pdf]]\n\
+             [[d/x.md]]\n[[d\\x.markdown]]\n[[x]]\n",
+        );
+        let resolved = |path: &str| LinkResolution::Resolved(path.to_string());
+        let expected = vec![
+            resolved(r"C:\v\notes\x.md"),
+            resolved(r"C:\v\notes\x.md"),
+            resolved(r"C:\v\papers\Paper.pdf"),
+            resolved(r"C:\v\papers\Paper.pdf"),
+            resolved(r"C:\v\d\x.md"),
+            resolved(r"C:\v\d\x.markdown"),
+            resolved(r"C:\v\other\x.md"),
+        ];
+        let outgoing: Vec<LinkResolution> = index
+            .outgoing_resolved(r"C:\v\r.md")
+            .expect("r.md is indexed")
+            .into_iter()
+            .map(|(_, resolution)| resolution)
+            .collect();
+        assert_eq!(outgoing, expected);
+        let graph: Vec<LinkResolution> = index
+            .get_link_graph()
+            .edges
+            .into_iter()
+            .filter(|e| e.from == r"C:\v\r.md")
+            .map(|e| LinkResolution::Resolved(e.to))
+            .collect();
+        assert_eq!(graph, expected);
+        let lines: Vec<u32> = index
+            .get_backlinks(r"C:\v\notes\x.md", &[])
+            .into_iter()
+            .map(|b| b.line)
+            .collect();
+        assert_eq!(lines, vec![1, 2, 7]);
     }
 
     #[test]

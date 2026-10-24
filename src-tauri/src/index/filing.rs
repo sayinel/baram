@@ -16,8 +16,9 @@
 //!   and `link_reads_back_as_the_file` in `rewriter.rs`.
 //! - `root_relative_key` calls: `keys_for` here; `RenameTarget::judge`,
 //!   `refers_behind_alias`, `alias_root_reads_another_note`, `expected_key` in
-//!   `judgement.rs`; `path_keys_of` in `mod.rs`; and `spell_under_each_root`
-//!   and `known_paths_of` in `rename/scope.rs`.
+//!   `judgement.rs`; `path_keys_of` in `mod.rs`; `register_file_path` in
+//!   `resolve.rs`; and `spell_under_each_root` and `known_paths_of` in
+//!   `rename/scope.rs`.
 //! - `normalize_file_path` calls: `keys_for`, `backlink_keys_for` here;
 //!   `register_file_path` in `resolve.rs`; `remove_file` in `mod.rs`;
 //!   `rename_file_with_links_inner` in `rename/file.rs` (the old key, the
@@ -33,8 +34,10 @@
 //! the zettel id as a `Stem` and behind each local alias as a `Foreign`.
 //! `filing_key` builds link-side keys, while `keys_for` builds file-side keys.
 //! `file_map`, `relative_map` and `id_map` in `mod.rs` (filled by
-//! `register_file_path`, emptied by `remove_file`) resolve targets; they are
-//! not `incoming` keys. Add a new key shape here and fix these sites with it.
+//! `register_file_path`, emptied by `remove_file`) and `name_map` (filled by
+//! `register_link_target`, keyed by `file_name` and `root_relative_path`)
+//! resolve targets; they are not `incoming` keys. Add a new key shape here
+//! and fix these sites with it.
 //!
 //! Every `match` on `FilingKey` names each variant, with no `_` arm. A fourth
 //! variant stops compilation at five sites: `read_as_another_note`,
@@ -103,18 +106,22 @@ fn has_separator(target: &str, windows: bool) -> bool {
     target.contains('/') || (windows && target.contains('\\'))
 }
 
+/// The file name of `path`: the last of `path_components`, found without
+/// collecting them, so a Windows path is read on any host — `""` when there
+/// is none.
+pub(super) fn file_name(path: &str, windows: bool) -> &str {
+    path.rsplit(|c| c == '/' || (windows && c == '\\'))
+        .find(|part| !part.is_empty() && *part != ".")
+        .unwrap_or("")
+}
+
 /// The last component of the key `root_relative_key` gives `file_path` — its
 /// file name, one `.md` or `.markdown` off, folded (`fold_name`) — without
 /// spelling the rest. Two files whose path keys are equal have equal names
 /// here, so grouping by this finds every collision
 /// (`LinkIndex::colliding_path_keys`).
-/// The name is the last of `path_components`, found without collecting them.
 pub fn path_key_name(file_path: &str, windows: bool) -> String {
-    let name = file_path
-        .rsplit(|c| c == '/' || (windows && c == '\\'))
-        .find(|part| !part.is_empty() && *part != ".")
-        .unwrap_or("");
-    strip_extension_and_fold(name)
+    strip_extension_and_fold(file_name(file_path, windows))
 }
 
 /// The components of `path` under the directory `root`, or None when `path`
@@ -184,13 +191,21 @@ pub fn filing_key(
     FilingKey::Stem(normalized)
 }
 
+/// The path of `file_path` under `root` as written: its components under
+/// the root joined with `/` — whatever separator the host spells — not
+/// folded, no extension removed. None when the file is not under `root`.
+/// `root_relative_key` makes a `Path` key of it; the resolver's `name_map`
+/// and `spelled_note_name` fold it with the extension kept.
+pub(super) fn root_relative_path(root: &str, file_path: &str, windows: bool) -> Option<String> {
+    let file = path_components(file_path, windows);
+    under_root(&path_components(root, windows), &file, windows).map(|rest| rest.join("/"))
+}
+
 /// The path of `file_path` under `root` the way a link to it is filed:
-/// components joined with `/`, folded (`fold_name`), one `.md` or `.markdown`
+/// `root_relative_path` folded (`fold_name`), one `.md` or `.markdown`
 /// removed. None when the file is not under `root`.
 pub fn root_relative_key(root: &str, file_path: &str, windows: bool) -> Option<String> {
-    let file = path_components(file_path, windows);
-    under_root(&path_components(root, windows), &file, windows)
-        .map(|rest| strip_extension_and_fold(&rest.join("/")))
+    root_relative_path(root, file_path, windows).map(|rel| strip_extension_and_fold(&rel))
 }
 
 /// Every key a link to the file at `file_path` may be filed under, in order:
@@ -207,11 +222,7 @@ pub fn keys_for(
     windows: bool,
 ) -> Vec<FilingKey> {
     // The file name alone, so a Windows path is read on any host.
-    let name = path_components(file_path, windows)
-        .last()
-        .copied()
-        .unwrap_or_default();
-    let stem = normalize_file_path(name);
+    let stem = normalize_file_path(file_name(file_path, windows));
     let rel = root.and_then(|root| root_relative_key(root, file_path, windows));
 
     let mut keys = vec![FilingKey::Stem(stem.clone())];
@@ -245,7 +256,7 @@ pub(crate) fn backlink_keys_for(
     windows: bool,
 ) -> Vec<FilingKey> {
     let mut keys = keys_for(file_path, root, local_aliases, windows);
-    if let Some(id) = extract_id_from_stem(&normalize_file_path(file_path)) {
+    if let Some(id) = extract_id_from_stem(&normalize_file_path(file_name(file_path, windows))) {
         for la in local_aliases {
             keys.push(FilingKey::Foreign {
                 alias: la.alias.clone(),
