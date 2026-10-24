@@ -46,8 +46,8 @@ async fn backlink_rows_are_written_in_the_tiers_form() {
             { "blockId": "blk", "line": 2, "path": "z.md", "snippet": "((b#^blk))", "type": "blockRef" },
         ])
     );
-    assert_eq!(absolute[0]["path"], json!(format!("{root}/a.md")));
-    assert_eq!(absolute[2]["path"], json!(format!("{root}/z.md")));
+    assert_eq!(absolute[0]["path"], json!(super::absolute(&root, "a.md")));
+    assert_eq!(absolute[2]["path"], json!(super::absolute(&root, "z.md")));
 }
 
 /// Each resolution's fields: `path` only when resolved — a non-note target too (§278) — and
@@ -197,7 +197,10 @@ async fn notes_with_a_tag_come_in_path_order() {
     assert_eq!(relative, json!(["notes/c.md", "t.md"]));
     assert_eq!(
         absolute,
-        json!([format!("{root}/notes/c.md"), format!("{root}/t.md")])
+        json!([
+            super::absolute(&root, "notes/c.md"),
+            super::absolute(&root, "t.md")
+        ])
     );
 }
 

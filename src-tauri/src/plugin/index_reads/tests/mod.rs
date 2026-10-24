@@ -43,6 +43,17 @@ async fn context_with(
     (dir, root)
 }
 
+/// `relative` (`/`-separated) under `root` as `PathForm::Absolute` writes it: the root as
+/// registered, each further part joined with the OS separator. On unix that is
+/// `{root}/{relative}`.
+fn absolute(root: &str, relative: &str) -> String {
+    relative
+        .split('/')
+        .fold(std::path::PathBuf::from(root), |path, part| path.join(part))
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// The scope an edge would build for `id`.
 async fn scope(ctx: &ContextManager, id: &str, form: PathForm) -> Scope {
     Scope {
