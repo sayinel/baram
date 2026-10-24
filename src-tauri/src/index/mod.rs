@@ -335,11 +335,11 @@ impl LinkIndex {
     /// with how many of its notes fold to it: `root_relative_key` — the
     /// function `keys_for` spells a file's path key with, so the shapes
     /// agree — of each path in `file_map`, which holds each path once. Not
-    /// `relative_map`, which holds one path per key. Empty with no root. The rename reads it to tell whether
-    /// a path link names an existing note under a root that holds the
-    /// referrer, and whether more than one note there answers to it — on a
-    /// file system that keeps case, `A/note.md` and `a/note.md` both fold
-    /// to `a/note` (`judgement::KnownPaths`).
+    /// `relative_map`, which holds one path per key. Empty with no root. The
+    /// rename reads it to tell whether a path link names an existing note
+    /// under a root that holds the referrer, and whether more than one note
+    /// there answers to it — on a file system that keeps case, `A/note.md`
+    /// and `a/note.md` both fold to `a/note` (`judgement::KnownPaths`).
     pub fn registered_path_keys(&self) -> HashMap<String, usize> {
         self.path_keys_of(self.file_map.values().flatten())
     }
@@ -404,8 +404,8 @@ impl LinkIndex {
 
     /// The keys `get_backlinks` and `block_reference_lines` read for
     /// `file_path` (`backlink_keys_for` under `root_path`): `filing_keys_of`,
-    /// plus the zettel id inside a note's stem if it has one, under which a bare
-    /// `[[202607051530]]` is filed, and that id behind each of
+    /// plus the zettel id inside a note's stem if it has one, under which a
+    /// bare `[[202607051530]]` is filed, and that id behind each of
     /// `local_aliases` (`[[Zettel::202607051530]]`).
     pub fn backlink_keys(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
         filing::backlink_keys_for(
@@ -688,10 +688,10 @@ mod tests {
         // `A/note.md` and `a/note.md` fold to `a/note`. `a/x.txt` — a save
         // files whatever path it is given (`update_file_index_inner` →
         // `write_note`), so a note saved as `.txt` is in `file_map` — and
-        // `a/x.txt.md` both
-        // fold to `a/x.txt` although their stems, `x` and `x.txt`, differ:
-        // the notes are grouped by the key's own last component, not by
-        // stem. `b/note.md` shares a name with the first pair but not a key.
+        // `a/x.txt.md` both fold to `a/x.txt` although their stems, `x` and
+        // `x.txt`, differ: the notes are grouped by the key's own last
+        // component, not by stem. `b/note.md` shares a name with the first
+        // pair but not a key.
         // What fails this: grouping by `file_map`'s stem buckets instead of
         // `path_key_name` — `a/x.txt` is missed; and keeping the keys only
         // one note has — `b/note` appears.
@@ -885,8 +885,9 @@ mod tests {
     fn a_file_that_is_no_note_is_named_by_its_whole_name_and_its_path() {
         // §278 A PDF is a backlink target by its whole name, whatever the
         // case, display, heading or `!` around it, and by its path from the
-        // root or from the referrer's folder — the links the resolver sends
-        // to it. `[[Paper]]` and `[[papers/Paper]]` name a note: the PDF's
+        // root or from the referrer's folder. The resolver sends the same
+        // links to it but the relative one — it has no relative step.
+        // `[[Paper]]` and `[[papers/Paper]]` name a note: the PDF's
         // highlight companion, which shares the stem, answers the first.
         // `[[Paper.pdf|Paper]]` is the link the backlinks panel's "link it"
         // writes for an unlinked mention `Paper` on the PDF's tab
