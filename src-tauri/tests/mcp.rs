@@ -441,12 +441,14 @@ fn a_data_tool_answers_a_vault_outside_the_scope_as_it_answers_a_missing_one() {
 /// A tool's `vault` and an absolute path argument are matched against the spellings of the
 /// vaults the server reads by their letters (spec 0068 §3.2). A link to the vault, which the
 /// disk would resolve onto it, is refused — as `vault` with the answer a missing path gets,
-/// as a path as outside — while the server was started with the folder's own path; started
-/// with the link as `--vault`, the server reads it both ways, and the folder's own path too.
+/// as a path as outside — while the server was started with the folder's own path, or with
+/// no `--vault` and the folder registered; started with the link as `--vault`, the server
+/// reads it both ways, and the folder's own path too.
 ///
 /// What fails this: either argument resolved on disk before it is compared (the link is read
-/// in the first session); the `--vault` value left out of the spellings (the link is refused
-/// in the second).
+/// in the first session); the default vault handed to the tool without its spellings (the
+/// link is read in the second); the `--vault` value left out of the spellings (the link is
+/// refused in the third).
 #[test]
 fn a_spelling_of_the_vault_the_server_was_not_given_is_refused() {
     let sb = sandbox();
@@ -472,6 +474,25 @@ fn a_spelling_of_the_vault_the_server_was_not_given_is_refused() {
     );
     let result = s.call(
         4,
+        "read_note",
+        json!({ "path": format!("{canonical}/a.md") }),
+    );
+    assert_eq!(structured(&result)["content"], json!("inside\n"));
+    assert_eq!(s.end().code, 0);
+
+    // Without `--vault`, the default vault — the registered one that holds the project
+    // directory — is matched by the same letters.
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let project = [("CLAUDE_PROJECT_DIR", canonical.as_str())];
+    let mut s = session_with(&sb, &sb.home, &[], &project);
+    s.handshake();
+    let result = s.call(1, "read_note", json!({ "path": through }));
+    assert_eq!(
+        tool_error(&result),
+        format!("error[PATH_OUTSIDE_VAULT]: {through} is outside the vault at {canonical}")
+    );
+    let result = s.call(
+        2,
         "read_note",
         json!({ "path": format!("{canonical}/a.md") }),
     );

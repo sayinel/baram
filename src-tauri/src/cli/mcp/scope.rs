@@ -275,9 +275,22 @@ impl<'a> Scope<'a> {
     fn default_vault(&self) -> Result<Vault, CliError> {
         let found = match self.allowed {
             Allowed::Fixed(_) => self.members.first().map(Member::vault),
+            // `from_cwd` gives the command line's vault, with no spellings: the member at its
+            // root gives them — the roots `from_cwd` picks from are `vault::live`'s, which are
+            // the members here.
             Allowed::Registered { inputs } => inputs
                 .iter()
-                .find_map(|input| vault::from_cwd(input, &self.config.registered).ok()),
+                .find_map(|input| vault::from_cwd(input, &self.config.registered).ok())
+                .map(|found| Vault {
+                    spellings: Some(
+                        self.members
+                            .iter()
+                            .find(|member| member.root == found.root)
+                            .map(|member| member.spellings.clone())
+                            .unwrap_or_else(|| vec![found.root.to_string_lossy().into_owned()]),
+                    ),
+                    ..found
+                }),
         };
         found.ok_or_else(|| {
             CliError::new(
@@ -692,6 +705,33 @@ mod tests {
         );
         assert_eq!(scope.rows(None).len(), 1);
         assert_eq!(root(Scope::new(&allowed, &both).resolve(None, None)), d.b);
+    }
+
+    /// Every vault a call reads carries the spellings its absolute path arguments are matched
+    /// against (`paths::locate`), however it was chosen: by path, by name, or as the default
+    /// — with `--vault` and without, where the default is found through the CLI's
+    /// `from_cwd`, which gives the command line's vault, with no spellings.
+    ///
+    /// What fails this: a vault handed to a tool without spellings — `locate` then resolves
+    /// an absolute path on disk, so a link to the vault is read.
+    #[test]
+    fn every_vault_a_call_reads_carries_its_spellings() {
+        let d = disk();
+        let cfg = config(vec![entry("Alpha", None, &d.a)]);
+        let registered = everything(vec![d.a.join("sub")]);
+        let only_a = fixed(&[&d.a]);
+        let path = arg(&d.a);
+        for allowed in [&registered, &only_a] {
+            let scope = Scope::new(allowed, &cfg);
+            for given in [None, Some("Alpha"), Some(path.as_str())] {
+                let vault = scope.resolve(given, None).expect("a vault");
+                assert_eq!(
+                    vault.spellings,
+                    Some(vec![path.clone(), path.clone()]),
+                    "{allowed:?} {given:?}"
+                );
+            }
+        }
     }
 
     /// What fails this: a `--vault` root's name taken at start instead of from each call.
