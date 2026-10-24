@@ -42,8 +42,16 @@ canonical 이다.
 
 `baram mcp` 에서는 도구의 파일 경계다. 호출자는 셸이 없는 모델이고, 그 인자는 모델이 읽은 노트 본문이
 움직일 수 있다. 도구가 받는 노트 · 폴더 경로는 모두 `paths::locate` 를 지난다 — `backlinks` 는 직접,
-나머지는 `paths::note_arg` · `paths::folder_arg` 를 거쳐서. 그래서 이 셋이 도구와 vault 밖의 파일 사이에
-선 판정이다.
+나머지는 `paths::note_names_first` · `paths::folder_arg` 를 거쳐서. 그래서 이 셋이 도구와 vault 밖의 파일
+사이에 선 판정이다.
+
+`note_names_first` 는 CLI 의 `note_arg` 와 규칙이 같고 순서가 다르다 — 노트 규칙(이름 · 걷기가 가지 않는
+자리)을 파일이 있는지 묻기 전에 묻는다. 그래서 노트를 읽는 도구는 그 규칙이 거절하는 경로에 파일이 있든
+없든 같은 답을 준다. CLI 는 있는지를 먼저 묻는다 — 없는 `notes.txt` 는 `FILE_NOT_FOUND` 다.
+
+규칙은 `locate` 가 푼 경로에 묻는다. 그래서 다른 글자로 풀리는 경로에서는 답이 갈린다 — 노트 아닌 파일을
+가리키는 `link.md` 와, 대소문자를 접는 볼륨의 `NODE_MODULES/m.md` 는 있을 때만 거절되고 없으면
+`FILE_NOT_FOUND` 다. 같은 볼륨에서 `X.MD` 는 `x.md` 가 있으면 그 노트로 읽힌다.
 
 ## 두 번 밟지 말 것
 

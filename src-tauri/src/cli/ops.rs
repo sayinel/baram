@@ -112,11 +112,11 @@ pub(crate) async fn read(vault: &Vault, path: &str) -> Result<Envelope<FileConte
 }
 
 /// `read` for the MCP server's `read_note`, which reads notes only (spec 0068 D6): the path
-/// passes `paths::note_arg`, so a file that is there but hidden, in a folder the walk skips,
-/// or not `.md` or `.markdown` is INVALID_ARGUMENT — and one that is not there is
-/// FILE_NOT_FOUND, as for `read`.
+/// passes `paths::note_names_first`, so a path that is hidden, in a folder the walk skips,
+/// or not `.md` or `.markdown` is INVALID_ARGUMENT whether a file is there or not — and a
+/// note that is not there is FILE_NOT_FOUND, as for `read`.
 pub(crate) async fn read_note(vault: &Vault, path: &str) -> Result<FileContent, CliError> {
-    let file = paths::note_arg(vault, path)?;
+    let file = paths::note_names_first(vault, path)?;
     read_text(vault, path, file).await
 }
 

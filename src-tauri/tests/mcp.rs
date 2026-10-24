@@ -1044,6 +1044,89 @@ fn a_path_no_file_system_takes_is_an_invalid_argument() {
     assert_eq!(s.end().code, 0);
 }
 
+/// The three tools that read a note refuse a name the note rules refuse with one answer,
+/// whether a file is there or not (spec 0068 D6): asked of the sandbox vault, which holds
+/// each file below, and of an empty vault, `read_note`, `list_tasks` with `file` and
+/// `outgoing_links` give the same text. The note both vaults lack is FILE_NOT_FOUND in
+/// both, and `a.md`, which only the sandbox vault holds, is read there — the vaults are
+/// the ones asked.
+///
+/// What fails this: any of the three asking for the file before the note rules — the
+/// empty vault then answers FILE_NOT_FOUND where the full one says why it refuses.
+#[test]
+fn the_note_tools_answer_a_name_they_refuse_alike_whether_a_file_is_there() {
+    let sb = sandbox();
+    for file in [
+        ".env",
+        ".git/config",
+        "x.txt",
+        "notes/.draft.md",
+        "node_modules/m.md",
+    ] {
+        write(&sb.vault, file, "- [ ] a task\n");
+    }
+    write(&sb.vault, "a.md", "- [ ] a task\n");
+    let empty = sb.base.join("empty");
+    std::fs::create_dir_all(&empty).expect("mkdir");
+    let empty = empty.to_string_lossy().into_owned();
+    let full = vault_arg(&sb);
+    let mut s = session(&sb, &["--vault", &full, "--vault", &empty]);
+    s.handshake();
+    let mut id = 0;
+    for (input, first) in [
+        (
+            ".env",
+            "error[INVALID_ARGUMENT]: .env is not a markdown note",
+        ),
+        (
+            ".git/config",
+            "error[INVALID_ARGUMENT]: .git/config is not a markdown note",
+        ),
+        (
+            "x.txt",
+            "error[INVALID_ARGUMENT]: x.txt is not a markdown note",
+        ),
+        (
+            "notes/.draft.md",
+            "error[INVALID_ARGUMENT]: notes/.draft.md is where the vault walk does not go",
+        ),
+        (
+            "node_modules/m.md",
+            "error[INVALID_ARGUMENT]: node_modules/m.md is where the vault walk does not go",
+        ),
+        ("nope.md", "error[FILE_NOT_FOUND]: no file at nope.md"),
+    ] {
+        for (tool, key) in [
+            ("read_note", "path"),
+            ("list_tasks", "file"),
+            ("outgoing_links", "path"),
+        ] {
+            for vault in [&full, &empty] {
+                id += 1;
+                let result = s.call(id, tool, json!({ "vault": vault, key: input }));
+                assert_eq!(tool_error(&result), first, "{tool} {input} in {vault}");
+            }
+        }
+    }
+    for (tool, key) in [
+        ("read_note", "path"),
+        ("list_tasks", "file"),
+        ("outgoing_links", "path"),
+    ] {
+        id += 1;
+        let result = s.call(id, tool, json!({ "vault": &full, key: "a.md" }));
+        structured(&result);
+        id += 1;
+        let result = s.call(id, tool, json!({ "vault": &empty, key: "a.md" }));
+        assert_eq!(
+            tool_error(&result),
+            "error[FILE_NOT_FOUND]: no file at a.md",
+            "{tool}"
+        );
+    }
+    assert_eq!(s.end().code, 0);
+}
+
 /// The nine tools of spec 0068 §3.3 as `tools/list` gives them: each says it only reads,
 /// each output schema is an object, and each page tool bounds `limit` and `offset` in its
 /// input schema, so a model knows the range from the list alone. Each page tool's default

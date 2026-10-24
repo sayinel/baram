@@ -71,8 +71,9 @@ PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 �
   건너뛸 수 있으므로, 쓰기 · 네트워크 · 디스크 캐시가 있는 도구를 이 표시로 더하지 않는다. 읽기 전용은
   `a_session_writes_nothing_into_the_vault_the_config_or_the_logs` 가 CLI 와 같은 스냅샷으로 잰다.
 - **도구의 `vault` 는 허용 집합 안만 받는다**(`cli/mcp/scope.rs`) — 없는 경로와 집합 밖의 경로가 같은 메시지다. 그 vault 안에서 도구의 파일
-  경계는 `paths::locate` · `note_arg` · `folder_arg` 다 — 도구가 받는 노트 · 폴더 경로는 모두 이 셋을 거친다(`backlinks` 는 `locate` 를 직접,
-  나머지는 `folder_arg` · `note_arg` 로). CLI 에서는 범위 규칙이지만(호출자의 셸이 그 파일을 어차피 읽을 수 있다), MCP 에서는 도구의 파일 경계다 —
+  경계는 `paths::locate` · `note_names_first` · `folder_arg` 다 — 도구가 받는 노트 · 폴더 경로는 모두 이 셋을 거친다(`backlinks` 는 `locate` 를 직접,
+  `folder` 는 `folder_arg` 로, 노트를 읽는 `read_note` · `list_tasks` 의 `file` · `outgoing_links` 는 `note_names_first` 로 — CLI 의 `note_arg` 와
+  규칙은 같고, 노트 규칙을 파일이 있는지보다 먼저 묻는다. 그 답이 갈리는 경로는 `note_names_first` 의 doc). CLI 에서는 범위 규칙이지만(호출자의 셸이 그 파일을 어차피 읽을 수 있다), MCP 에서는 도구의 파일 경계다 —
   호출자는 셸이 없는 모델이고, 그 인자는 노트 본문이 움직일 수 있다(스펙 D6).
 - **핸들러 경로는 패닉하지 않는다**: `unwrap` · `expect` · `unreachable!` · 색인 접근(`v[i]`, serde_json `Value` 의 `IndexMut` 도)을 두지 않고, 덧셈은
   포화한다(`saturating_add`). 릴리스는 `panic = "abort"` 이고 `rmcp` 는 핸들러 패닉을 잡지 않는다.

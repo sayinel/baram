@@ -1182,6 +1182,35 @@ fn tasks_of_a_file_the_vault_walk_never_shows_is_refused() {
     }
 }
 
+/// The command line asks whether the file is there before the note rules (spec 0066
+/// §3.4): a name the rules would refuse is FILE_NOT_FOUND, exit 1, when nothing is there.
+/// Only `baram mcp` asks the rules first (spec 0068 D6).
+///
+/// What fails this: `tasks --file` or `links` switched to the MCP server's order, which
+/// answers exit 2, INVALID_ARGUMENT.
+#[test]
+fn on_the_command_line_a_missing_file_is_not_found_before_the_note_rules_refuse_it() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "- [ ] a task\n");
+    let vault = vault_arg(&sb);
+    for args in [
+        &["tasks", "--file", "nope.txt"][..],
+        &["links", "nope.txt"][..],
+        &["tasks", "--file", ".hidden/nope.md"][..],
+        &["links", ".hidden/nope.md"][..],
+    ] {
+        let mut argv = vec!["--vault", vault.as_str()];
+        argv.extend_from_slice(args);
+        let ran = baram(&sb, &sb.home, &argv);
+        assert_eq!(ran.code, 1, "{args:?}: stderr: {}", ran.stderr);
+        assert!(
+            ran.stderr.starts_with("error[FILE_NOT_FOUND]: no file at "),
+            "{args:?}: stderr: {}",
+            ran.stderr
+        );
+    }
+}
+
 /// `home/secret.md` holds a task, so a `--file` that reached it would print it.
 #[test]
 fn tasks_of_a_file_outside_the_vault_is_refused() {

@@ -12,6 +12,7 @@ use crate::cli::ops_links;
 use crate::cli::ops_notes;
 use crate::cli::ops_search::{self, SearchQuery};
 use crate::cli::output::VaultInfo;
+use crate::cli::paths;
 use crate::cli::vault::Vault;
 use rmcp::model::JsonObject;
 use schemars::JsonSchema;
@@ -193,6 +194,11 @@ pub(super) async fn call(
             // `read` has checked the value against TASK_STATUSES, the CLI's own names.
             let status = <TaskStatus as clap::ValueEnum>::from_str(args.choice("status"), false)
                 .map_err(Failure::Internal)?;
+            // The note rules before the file question (spec 0068 D6). The CLI's function then
+            // asks both again, in its own order.
+            if let Some(file) = args.text("file") {
+                paths::note_names_first(&vault, file)?;
+            }
             let found = ops_notes::tasks(
                 &vault,
                 &config.tasks_exclude_paths,
@@ -214,6 +220,8 @@ pub(super) async fn call(
         ToolName::OutgoingLinks => {
             let vault = resolve()?;
             let path = args.text("path").unwrap_or_default();
+            // As for `list_tasks`' `file`.
+            paths::note_names_first(&vault, path)?;
             let found = server.gate.run(ops_links::links(&vault, path)).await?;
             paged(&vault, found.items, &args)
         }

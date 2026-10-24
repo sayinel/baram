@@ -35,7 +35,7 @@ pub(crate) fn fold(path: &Path) -> Option<PathBuf> {
 /// boundary: the caller is a model with no shell, whose arguments can come from the text of
 /// a note it read (spec 0068 D6), and every note or folder path a tool takes reaches the
 /// disk through this function — `backlinks` calls it directly, every other tool that takes
-/// one through `folder_arg` or `note_arg`.
+/// one through `folder_arg` or `note_names_first`.
 pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let outside = || {
         CliError::new(
@@ -106,7 +106,11 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
 /// cannot be entered would be reported as absent. A failed read is split by
 /// `metadata_failure`; a directory is FILE_NOT_FOUND too, as it is not a file.
 pub(crate) fn file_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
-    let file = locate(vault, input)?;
+    existing_file(input, locate(vault, input)?)
+}
+
+/// The question `file_arg` asks of what `locate` returned: is a file there.
+fn existing_file(input: &str, file: PathBuf) -> Result<PathBuf, CliError> {
     match std::fs::metadata(&file) {
         Ok(meta) if meta.is_file() => Ok(file),
         Ok(_) => Err(CliError::new(
@@ -163,9 +167,34 @@ fn metadata_failure(input: &str, noun: &str, source: std::io::Error) -> CliError
 /// The walk lists a file by its name (`fs::is_note_name`) and never enters a hidden or
 /// `SKIP_DIRS` folder (`walk_skips`), so a file outside that is refused the way
 /// `folder_arg` refuses a skipped folder — an answer for it would show what the app never
-/// shows (spec 0066 §3.4).
+/// shows (spec 0066 §3.4). Whether the file is there is asked first: on the command line a
+/// missing `notes.txt` is FILE_NOT_FOUND. `baram mcp` asks in the other order
+/// (`note_names_first`).
 pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let file = file_arg(vault, input)?;
+    note_rules(vault, input, &file)?;
+    Ok(file)
+}
+
+/// `note_arg` for the MCP server's tools that read a note — `read_note`, `list_tasks` with
+/// `file`, `outgoing_links` (spec 0068 D6): the note rules are asked after `locate` and
+/// before the file is, so a path they refuse gets one answer whether a file is there or
+/// not, and a tool does not tell whether a file it would never read exists. The rules are
+/// asked of `locate`'s result, not of the letters given: on a volume that ignores case
+/// (measured on macOS APFS), `X.MD` resolves to a note stored as `x.md` and is read, as it
+/// is on the command line. Where `locate` resolves a path to other letters, the one answer
+/// ends: a `link.md` that links to a file that is no note, and on such a volume
+/// `NODE_MODULES/m.md`, are refused when they resolve and FILE_NOT_FOUND when nothing is
+/// there.
+pub(crate) fn note_names_first(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
+    let file = locate(vault, input)?;
+    note_rules(vault, input, &file)?;
+    existing_file(input, file)
+}
+
+/// The two rules a note path meets, both asked of the path `locate` returned — neither reads
+/// the disk.
+fn note_rules(vault: &Vault, input: &str, file: &Path) -> Result<(), CliError> {
     let name = file
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -176,13 +205,13 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
             format!("{input} is not a markdown note"),
         ));
     }
-    if walk_skips(vault, &file) {
+    if walk_skips(vault, file) {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is where the vault walk does not go"),
         ));
     }
-    Ok(file)
+    Ok(())
 }
 
 /// Whether the vault walk never reaches `path`: `fs::is_skipped_relative`, the walkers' own
@@ -574,6 +603,71 @@ mod tests {
                 "{folder:?}"
             );
         }
+    }
+
+    /// For `baram mcp` the note rules come before the file questions (`note_names_first`):
+    /// a name the rules refuse gets the same answer whether a file is there or not, so a
+    /// tool does not tell whether a file it would never read exists (spec 0068 D6). What
+    /// `locate` refuses still comes first, and a name the rules take is then asked about —
+    /// a note is read when it is there and missing when it is not.
+    ///
+    /// What fails this: `note_names_first` asking for the file before the rules (each
+    /// refused name is then FILE_NOT_FOUND in the empty vault); the rules asked before
+    /// `locate` (`../other/x.txt` is then "not a markdown note").
+    #[test]
+    fn for_the_mcp_server_a_name_the_note_rules_refuse_answers_alike_whether_it_is_there() {
+        let (_t, base) = tree(&[
+            "full/notes",
+            "full/.git",
+            "full/node_modules",
+            "empty",
+            "other",
+        ]);
+        let full = base.join("full");
+        for file in [
+            ".env",
+            ".git/config",
+            "x.txt",
+            "notes/.draft.md",
+            "node_modules/m.md",
+            "a.md",
+        ] {
+            std::fs::write(full.join(file), "x").unwrap();
+        }
+        std::fs::create_dir_all(full.join("d.md")).unwrap();
+        std::fs::write(base.join("other/x.txt"), "x").unwrap();
+        let (full, empty) = (vault_at(&full), vault_at(&base.join("empty")));
+        for (input, code) in [
+            (".env", ErrorCode::InvalidArgument),
+            (".git/config", ErrorCode::InvalidArgument),
+            ("x.txt", ErrorCode::InvalidArgument),
+            ("notes/.draft.md", ErrorCode::InvalidArgument),
+            ("node_modules/m.md", ErrorCode::InvalidArgument),
+            ("d.md", ErrorCode::FileNotFound),
+            ("../other/x.txt", ErrorCode::PathOutsideVault),
+        ] {
+            let there = note_names_first(&full, input).unwrap_err();
+            let absent = note_names_first(&empty, input).unwrap_err();
+            assert_eq!(there.code, code, "{input}: {}", there.message);
+            assert_eq!(
+                there
+                    .message
+                    .replace(&full.root.to_string_lossy().into_owned(), "<root>"),
+                absent
+                    .message
+                    .replace(&empty.root.to_string_lossy().into_owned(), "<root>"),
+                "{input}"
+            );
+            assert_eq!(there.code, absent.code, "{input}");
+        }
+        assert_eq!(
+            note_names_first(&full, "a.md").unwrap(),
+            full.root.join("a.md")
+        );
+        assert_eq!(
+            note_names_first(&empty, "a.md").unwrap_err().code,
+            ErrorCode::FileNotFound
+        );
     }
 
     /// The file questions come first: a name that would fail the note check is still
