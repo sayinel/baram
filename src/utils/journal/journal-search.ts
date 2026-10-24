@@ -1,5 +1,7 @@
 // §56k Journal Search utilities — categorize, group, and highlight journal search results
 import { extractFrontmatter } from "../markdown/frontmatter";
+import { readFrontmatterList } from "../markdown/frontmatter-list";
+import { tagName } from "../tags/tag-name";
 import { JOURNAL_FILENAME_COMPACT_RE, JOURNAL_FILENAME_RE } from "./journal";
 
 export type JournalCategory =
@@ -96,25 +98,10 @@ export function extractFrontmatterFields(content: string): {
   const yaml = fm.yaml;
   const date = yaml.match(/^date:\s*(\d{4}-\d{2}-\d{2})/m)?.[1];
 
-  // Inline tags: tags: [tag1, tag2]
-  const tagsInline = yaml.match(/^tags:\s*\[([^\]]*)\]/m)?.[1];
-  const tags: string[] = tagsInline
-    ? tagsInline
-        .split(",")
-        .map((t) => t.trim().replace(/['"]/g, ""))
-        .filter(Boolean)
-    : [];
-
-  // Block tags: tags:\n  - tag1
-  if (tags.length === 0) {
-    const blockTagMatch = yaml.match(/^tags:\s*\n((?:\s+-\s+.+\n?)*)/m);
-    if (blockTagMatch) {
-      for (const line of blockTagMatch[1].split("\n")) {
-        const m = line.match(/^\s+-\s+(.+)/);
-        if (m) tags.push(m[1].trim().replace(/['"]/g, ""));
-      }
-    }
-  }
+  // `tags: [a, b]` or `tags:\n  - a`, each by its name — `"#여행"` is the tag `여행`.
+  const tags = (readFrontmatterList(yaml, "tags")?.items ?? [])
+    .map((i) => tagName(i.value))
+    .filter(Boolean);
 
   return { date, tags, hasPhotos };
 }
@@ -135,11 +122,11 @@ export function filterByFrontmatter(
       if (filters.dateTo && date > filters.dateTo) return false;
     }
 
-    // Tags — ANY match (OR logic)
+    // Tags — ANY match (OR logic), by name: a filter typed `#여행` is the tag `여행`
     if (filters.tagsFilter && filters.tagsFilter.length > 0) {
       if (
         !fields.tags ||
-        !filters.tagsFilter.some((t) => fields.tags!.includes(t))
+        !filters.tagsFilter.some((t) => fields.tags!.includes(tagName(t)))
       )
         return false;
     }

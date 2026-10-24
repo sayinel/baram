@@ -1,6 +1,8 @@
 /**
  * §56l — Tag index and autocomplete utilities for journal captures
  */
+import { readFrontmatterList } from "../markdown/frontmatter-list";
+import { tagName } from "../tags/tag-name";
 
 /** Pattern matching #tag with word chars, Korean characters, and nested paths (#parent/child) */
 const TAG_PATTERN = /#([\w가-힣]+(?:\/[\w가-힣]+)*)/g;
@@ -34,34 +36,14 @@ export function extractTagsFromContent(content: string): string[] {
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`]*`/g, "");
 
-  // Extract frontmatter tags: `tags: [a, b, c]` or `tags:\n  - a`
+  // Extract frontmatter tags: `tags: [a, b, c]` or `tags:\n  - a`, each by its name — an
+  // item spelled `"#solo"` is the tag `solo`.
   const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
   if (frontmatterMatch) {
-    const fm = frontmatterMatch[1];
-
-    // Inline array: tags: [tag1, tag2]
-    const inlineArrayMatch = fm.match(/^tags:\s*\[([^\]]*)\]/m);
-    if (inlineArrayMatch) {
-      inlineArrayMatch[1]
-        .split(",")
-        .map((t) => t.trim().replace(/^["']|["']$/g, ""))
-        .filter(Boolean)
-        .forEach((t) => tags.add(t.toLowerCase()));
-    } else {
-      // Block list: tags:\n  - tag1\n  - tag2
-      const blockListMatch = fm.match(/^tags:\s*\n((?:\s+-\s+.+\n?)+)/m);
-      if (blockListMatch) {
-        blockListMatch[1]
-          .split("\n")
-          .map((line) =>
-            line
-              .replace(/^\s+-\s+/, "")
-              .trim()
-              .replace(/^["']|["']$/g, ""),
-          )
-          .filter(Boolean)
-          .forEach((t) => tags.add(t.toLowerCase()));
-      }
+    for (const { value } of readFrontmatterList(frontmatterMatch[1], "tags")
+      ?.items ?? []) {
+      const name = tagName(value).toLowerCase();
+      if (name) tags.add(name);
     }
   }
 

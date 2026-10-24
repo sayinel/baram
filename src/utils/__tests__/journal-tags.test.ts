@@ -92,6 +92,27 @@ tags: [shared, frontonly]
       "shared",
     ]);
   });
+
+  // §56m What turns these red: keeping the front-matter value as written — `"#solo"` became
+  // the tag `#solo` beside `solo`, which the Zettel inbox showed as `##solo`.
+  it("reads a #-spelled front-matter item as its name", () => {
+    const content = `---
+tags: ["#solo", "##deep", plain]
+---
+
+body`;
+    expect(extractTagsFromContent(content)).toEqual(["deep", "plain", "solo"]);
+  });
+
+  it("reads a quoted block item without its quotes or #", () => {
+    const content = `---
+tags:
+  - "#solo"
+  - 'b'
+---
+`;
+    expect(extractTagsFromContent(content)).toEqual(["b", "solo"]);
+  });
 });
 
 describe("buildTagIndex", () => {
