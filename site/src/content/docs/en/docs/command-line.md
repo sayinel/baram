@@ -37,7 +37,7 @@ With no arguments, or when its first argument is an absolute path or a URL, `bar
 
 A command reads one vault. `--vault` names it in one of two forms; without the flag, the current directory decides:
 
-1. `--vault <path>` — a folder. The value is read as a path when it contains `/` (or `\` on Windows) or starts with `.` or `~`. A relative path starts from the current directory. The folder does not have to be registered in the app; a folder inside a registered vault is then read as a vault of its own (see [What differs from the app](#what-differs-from-the-app)).
+1. `--vault <path>` — a folder. The value is read as a path when it contains `/` (or `\` on Windows) or starts with `.` or `~`. A relative path starts from the current directory. The folder does not have to be registered in the app; a folder inside a registered vault is read as a vault of its own (see [What differs from the app](#what-differs-from-the-app)).
 2. `--vault <name>` — any other value is a name: the name or alias the app shows for a registered vault or folder. Upper and lower case do not matter.
 3. No `--vault` — the registered vault that contains the current directory or, when no vault does, the registered folder that does.
 
