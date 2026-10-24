@@ -60,8 +60,10 @@ jobs:
           rustc -vV
           mkdir -p evidence
           cargo build --manifest-path src-tauri/Cargo.toml --bin baram
+          # The cdylib links with the suffix-free args too; neither step above links it.
+          cargo build --manifest-path src-tauri/Cargo.toml --lib
           echo "== build script link args (branch)"
-          cat src-tauri/target/debug/build/baram-*/output | grep -E '^cargo:rustc-link-arg' || true
+          cat src-tauri/target/debug/build/baram-*/output | grep -E '^cargo:rustc-link-arg' | sort -u || true
           cp src-tauri/target/debug/baram.exe evidence/branch-baram.exe
           cp src-tauri/target/debug/baram_lib.dll evidence/branch-baram_lib.dll
           for f in src-tauri/target/debug/deps/baram_lib-*.exe src-tauri/target/debug/deps/logging_install-*.exe; do
