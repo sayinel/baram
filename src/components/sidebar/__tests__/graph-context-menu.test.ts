@@ -86,6 +86,14 @@ describe("nodeClipboardText", () => {
     ).toBe("#project");
   });
 
+  // §56m What turns this red: prefixing the node's name with `#` as the index spells it — a
+  // front-matter tag `"#solo"` is the node `tag:#solo`, copied as `##solo`, which is not a tag.
+  it("tag node read from front matter with # → one #", () => {
+    expect(
+      nodeClipboardText(target({ isTag: true, nodeId: "tag:#solo" })),
+    ).toBe("#solo");
+  });
+
   it("ghost node → wikilink", () => {
     expect(
       nodeClipboardText(target({ isGhost: true, nodeId: "/vault/missing.md" })),

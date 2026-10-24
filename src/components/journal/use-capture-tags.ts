@@ -12,6 +12,7 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
+import { tagName } from "../../utils/tags/tag-name";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 
 export interface CaptureTags {
@@ -187,7 +188,7 @@ export function useCaptureTags(
     () =>
       value
         .split(/\s+/)
-        .map((tag) => tag.replace(/^#/, "").trim())
+        .map((tag) => tagName(tag.trim()))
         .filter(Boolean),
     [value],
   );
@@ -229,8 +230,9 @@ function buildSuggestions(
   const tagMatches = filterTags(query, tagIndex);
 
   // ‼️ 소문자 키로만 중복 제거가 성립한다. `tagIndex`의 키가 이미 소문자라는
-  // 보장은 Rust 쪽에 있다 — `src-tauri/src/tag/mod.rs:126`(프론트매터)·`:135`
-  // (본문 인라인) 둘 다 `tag.to_lowercase()`를 거친다. 그 불변조건이 깨지면
+  // 보장은 Rust 쪽에 있다 — `tag::get_vault_tags`가 프론트매터·본문 인라인 태그
+  // 둘 다 `to_lowercase()`를 거친다(`getVaultTags`의 이름 병합 `tagEntriesByName`은
+  // 대소문자를 건드리지 않는다). 그 불변조건이 깨지면
   // "Hub"(노트)와 "Hub"(태그)가 여기서 다른 키로 보여 중복 React key로 두 번
   // 그려진다. `.toLowerCase()`를 여기서 다시 걸지 않는다 — 그러면 실제 불일치를
   // 조용히 가릴 뿐이다.

@@ -11,6 +11,7 @@ import { getVaultTags } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file/file";
 import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
+import { tagName } from "../../utils/tags/tag-name";
 import { tagSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 
@@ -93,12 +94,13 @@ export const TagSuggest = Extension.create({
           props: TagSuggestionItem;
           range: { from: number; to: number };
         }) => {
-          // Replace the #query with tagNode atom + trailing space
+          // Replace the #query with tagNode atom + trailing space. The node holds the
+          // name: one spelled `#solo` serializes as `##solo`, which is not a tag.
           ed.chain()
             .focus()
             .deleteRange(range)
             .insertContent([
-              { type: "tagNode", attrs: { tag: props.tag } },
+              { type: "tagNode", attrs: { tag: tagName(props.tag) } },
               { type: "text", text: " " },
             ])
             .run();

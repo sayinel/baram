@@ -19,6 +19,7 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
+import { tagName } from "../../utils/tags/tag-name";
 
 const TAG_COLOR_PRESETS = [
   "#ef4444", // red
@@ -106,7 +107,7 @@ export function TagPanel() {
 
   const totalTags = entries.length;
   const totalCount = entries.reduce((sum, e) => sum + e.count, 0);
-  const normalizedFilter = filter.toLowerCase().replace(/^#/, "");
+  const normalizedFilter = tagName(filter.toLowerCase());
 
   const handleToggle = useCallback((fullPath: string) => {
     setExpandState((prev) => {
@@ -170,7 +171,8 @@ export function TagPanel() {
     async (e: React.KeyboardEvent<HTMLInputElement>, tag: string) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        const newTag = renameValue.trim().replace(/^#/, "");
+        // Every leading `#`: the rename writes `#` + this into the body, and `##x` is no tag.
+        const newTag = tagName(renameValue.trim());
         if (!newTag || newTag === tag) {
           setRenaming(null);
           return;

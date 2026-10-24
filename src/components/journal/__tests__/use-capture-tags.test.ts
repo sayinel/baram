@@ -176,6 +176,16 @@ describe("§324-b useCaptureTags", () => {
     document.body.removeChild(input);
   });
 
+  // §56m What turns this red: stripping one `#` per word — `##solo` reached the fleeting
+  // note's front matter and the §320 note match as `#solo`, not as the tag `solo`.
+  it("lists each typed tag by its name, without any of its leading #s", async () => {
+    const { result } = renderHook(() =>
+      useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+    );
+    act(() => result.current.onChange(changeEvent("##solo #idea plain")));
+    expect(result.current.list).toEqual(["solo", "idea", "plain"]);
+  });
+
   it("logs and keeps an empty index when the IPC fails", async () => {
     const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
     getVaultTags.mockRejectedValue(new Error("nope"));

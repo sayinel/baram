@@ -10,6 +10,7 @@ import { Tooltip } from "../../components/Tooltip";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { tagName } from "../../utils/tags/tag-name";
 
 export function TagNodeView({
   node,
@@ -56,7 +57,8 @@ export function TagNodeView({
 
   const commitEdit = useCallback(() => {
     setIsEditing(false);
-    const trimmed = editValue.trim().replace(/^#/, "");
+    // Every leading `#`: the node serializes as `#` + its tag, so `##x` is not a tag.
+    const trimmed = tagName(editValue.trim());
     if (trimmed && trimmed !== tag) {
       updateAttributes({ tag: trimmed });
     }
