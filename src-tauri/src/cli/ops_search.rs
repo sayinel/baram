@@ -129,6 +129,7 @@ mod tests {
         Vault {
             name: "v".into(),
             root: PathBuf::from(root),
+            spellings: None,
         }
     }
 
@@ -230,6 +231,7 @@ mod tests {
         let vault = Vault {
             name: "v".into(),
             root: dir.path().canonicalize().unwrap(),
+            spellings: None,
         };
         std::fs::write(vault.root.join("a.md"), "needle\n").unwrap();
         let query = |offset| SearchQuery {

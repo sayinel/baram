@@ -438,6 +438,62 @@ fn a_data_tool_answers_a_vault_outside_the_scope_as_it_answers_a_missing_one() {
     assert_eq!(s.end().code, 0);
 }
 
+/// A tool's `vault` and an absolute path argument are matched against the spellings of the
+/// vaults the server reads by their letters (spec 0068 §3.2). A link to the vault, which the
+/// disk would resolve onto it, is refused — as `vault` with the answer a missing path gets,
+/// as a path as outside — while the server was started with the folder's own path; started
+/// with the link as `--vault`, the server reads it both ways, and the folder's own path too.
+///
+/// What fails this: either argument resolved on disk before it is compared (the link is read
+/// in the first session); the `--vault` value left out of the spellings (the link is refused
+/// in the second).
+#[test]
+fn a_spelling_of_the_vault_the_server_was_not_given_is_refused() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "inside\n");
+    let link = sb.base.join("link");
+    std::os::unix::fs::symlink(&sb.vault, &link).expect("link to the vault");
+    let link = link.to_string_lossy().into_owned();
+    let missing = sb.base.join("missing").to_string_lossy().into_owned();
+    let canonical = vault_arg(&sb);
+    let mut s = session(&sb, &["--vault", &canonical]);
+    s.handshake();
+    let linked = s.call(1, "read_note", json!({ "vault": link, "path": "a.md" }));
+    let absent = s.call(2, "read_note", json!({ "vault": missing, "path": "a.md" }));
+    assert_eq!(
+        tool_error(&linked).replace(&link, "<path>"),
+        tool_error(&absent).replace(&missing, "<path>")
+    );
+    let through = format!("{link}/a.md");
+    let result = s.call(3, "read_note", json!({ "path": through }));
+    assert_eq!(
+        tool_error(&result),
+        format!("error[PATH_OUTSIDE_VAULT]: {through} is outside the vault at {canonical}")
+    );
+    let result = s.call(
+        4,
+        "read_note",
+        json!({ "path": format!("{canonical}/a.md") }),
+    );
+    assert_eq!(structured(&result)["content"], json!("inside\n"));
+    assert_eq!(s.end().code, 0);
+
+    let mut s = session(&sb, &["--vault", &link]);
+    s.handshake();
+    let result = s.call(1, "read_note", json!({ "vault": link, "path": through }));
+    let page = structured(&result);
+    assert_eq!(page["content"], json!("inside\n"));
+    assert_eq!(page["path"], json!("a.md"));
+    assert_eq!(page["vault"]["path"], json!(canonical));
+    let result = s.call(
+        2,
+        "read_note",
+        json!({ "vault": canonical, "path": format!("{canonical}/a.md") }),
+    );
+    assert_eq!(structured(&result)["content"], json!("inside\n"));
+    assert_eq!(s.end().code, 0);
+}
+
 /// Every `--vault` written before `mcp` reaches the server, the first of them as its default:
 /// the refusal of a `--vault` on both sides of the command name does not touch the form
 /// where they are all on one side.

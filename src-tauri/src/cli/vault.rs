@@ -38,6 +38,11 @@ pub(crate) struct Registered {
 pub(crate) struct Vault {
     pub name: String,
     pub root: PathBuf,
+    /// The spellings an absolute path argument may start with, matched by their letters
+    /// (`paths::locate`) — `baram mcp`'s, built per call by `mcp::scope` (spec 0068 §3.2).
+    /// `None` on the command line, where an absolute path is resolved on disk and then
+    /// checked against `root`.
+    pub spellings: Option<Vec<String>>,
 }
 
 /// Registered roots that are directories right now, canonical, one per directory.
@@ -110,24 +115,7 @@ pub(crate) fn from_path(
     home: Option<&Path>,
     registered: &[Registered],
 ) -> Result<Vault, CliError> {
-    let separators = ['/', std::path::MAIN_SEPARATOR];
-    let expanded = match arg.strip_prefix('~') {
-        Some(rest) if rest.is_empty() || rest.starts_with(separators) => {
-            let home = home.ok_or_else(|| {
-                CliError::new(
-                    ErrorCode::InvalidArgument,
-                    "cannot expand `~`: no home directory",
-                )
-            })?;
-            home.join(rest.trim_start_matches(separators))
-        }
-        _ => PathBuf::from(arg),
-    };
-    let path = if expanded.is_absolute() {
-        expanded
-    } else {
-        cwd.map_err(CliError::clone)?.join(expanded)
-    };
+    let path = spelled(arg, cwd, home)?;
     match directory_at(&path) {
         Ok(()) => {}
         Err(None) => {
@@ -154,7 +142,38 @@ pub(crate) fn from_path(
         .find(|(_, seen)| seen == &root)
         .map(|(entry, _)| entry.label.clone())
         .unwrap_or_else(|| folder_name(&root));
-    Ok(Vault { name, root })
+    Ok(Vault {
+        name,
+        root,
+        spellings: None,
+    })
+}
+
+/// A path-form `--vault` as the path it spells, before the disk is asked: `~` expanded
+/// against `home`, and a path still relative after that joined to `cwd`.
+pub(crate) fn spelled(
+    arg: &str,
+    cwd: Result<&Path, &CliError>,
+    home: Option<&Path>,
+) -> Result<PathBuf, CliError> {
+    let separators = ['/', std::path::MAIN_SEPARATOR];
+    let expanded = match arg.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with(separators) => {
+            let home = home.ok_or_else(|| {
+                CliError::new(
+                    ErrorCode::InvalidArgument,
+                    "cannot expand `~`: no home directory",
+                )
+            })?;
+            home.join(rest.trim_start_matches(separators))
+        }
+        _ => PathBuf::from(arg),
+    };
+    Ok(if expanded.is_absolute() {
+        expanded
+    } else {
+        cwd.map_err(CliError::clone)?.join(expanded)
+    })
 }
 
 /// Whether `path` is a directory, asked of `std::fs::metadata` — `Path::is_dir` is false
@@ -207,6 +226,7 @@ pub(crate) fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, 
         [(entry, root)] => Ok(Vault {
             name: entry.label.clone(),
             root: root.clone(),
+            spellings: None,
         }),
         [] if matched.is_empty() => Err(CliError::new(
             ErrorCode::VaultNotFound,
@@ -282,6 +302,7 @@ pub(crate) fn from_cwd(cwd: &Path, registered: &[Registered]) -> Result<Vault, C
         .map(|(entry, root)| Vault {
             name: entry.label.clone(),
             root,
+            spellings: None,
         })
         .ok_or_else(|| {
             CliError::new(

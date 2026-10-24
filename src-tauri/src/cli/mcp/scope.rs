@@ -8,7 +8,7 @@
 use crate::cli::app_config::AppConfig;
 use crate::cli::error::{Candidate, CliError, ErrorCode};
 use crate::cli::ops::{self, VaultRow};
-use crate::cli::paths;
+use crate::cli::spelling;
 use crate::cli::vault::{self, Registered, Vault};
 use crate::context::manager::resolve_canonical;
 use std::path::{Path, PathBuf};
@@ -22,7 +22,17 @@ pub(super) enum Allowed {
     /// The roots `--vault` named — canonical, without repeats, in the order given; the first
     /// is the default. Registered or not: the user wrote them into the client's
     /// configuration (D6).
-    Fixed(Vec<PathBuf>),
+    Fixed(Vec<FixedRoot>),
+}
+
+/// One root `--vault` named.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct FixedRoot {
+    pub(super) root: PathBuf,
+    /// Each path-form `--vault` that resolved to `root`, as it spells it once `~` is
+    /// expanded — the spellings of the root the user gave, which a tool's path argument may
+    /// start with (`Member::spellings`). A name-form `--vault` spells no path.
+    pub(super) spelled: Vec<PathBuf>,
 }
 
 /// `mcp`'s path form (spec 0068 §3.2): absolute, `~` alone, or `~/` (`~\` on Windows).
@@ -52,15 +62,20 @@ pub(super) fn start(
     // relative once `from_path` has expanded `~` only when the home directory itself is —
     // `dirs::home_dir` takes `$HOME` as it is set — and only then is this error returned.
     let no_cwd = CliError::new(ErrorCode::Io, "`mcp --vault` takes no relative path");
-    let mut roots: Vec<PathBuf> = Vec::new();
+    let mut roots: Vec<FixedRoot> = Vec::new();
     for value in values {
-        let found = if is_path_form(value) {
-            vault::from_path(value, Err(&no_cwd), home, registered)?
+        let (found, spelled) = if is_path_form(value) {
+            let found = vault::from_path(value, Err(&no_cwd), home, registered)?;
+            (found, vault::spelled(value, Err(&no_cwd), home).ok())
         } else {
-            vault::from_name(value, registered)?
+            (vault::from_name(value, registered)?, None)
         };
-        if !roots.contains(&found.root) {
-            roots.push(found.root);
+        match roots.iter_mut().find(|fixed| fixed.root == found.root) {
+            Some(fixed) => fixed.spelled.extend(spelled),
+            None => roots.push(FixedRoot {
+                root: found.root,
+                spelled: spelled.into_iter().collect(),
+            }),
         }
     }
     Ok(Allowed::Fixed(roots))
@@ -80,6 +95,10 @@ struct Member {
     /// As a candidate line prints it: the registered spelling, or the canonical root.
     path: String,
     registered: bool,
+    /// What a path-form `vault`, and an absolute path argument, may spell this root as
+    /// (spec 0068 §3.2): the canonical root, the path of every registered root at this
+    /// directory as config.json spells it, and each path-form `--vault` that named it.
+    spellings: Vec<String>,
 }
 
 impl Member {
@@ -87,7 +106,15 @@ impl Member {
         Vault {
             name: self.name.clone(),
             root: self.root.clone(),
+            spellings: Some(self.spellings.clone()),
         }
+    }
+
+    /// Whether `wanted` spells this root, by the letters alone.
+    fn spelled_as(&self, wanted: &spelling::Letters) -> bool {
+        self.spellings.iter().any(|spelled| {
+            spelling::letters(spelled, cfg!(windows)).is_some_and(|own| own.same_place(wanted))
+        })
     }
 
     fn candidate(&self) -> Candidate {
@@ -120,35 +147,54 @@ impl<'a> Scope<'a> {
                     .map(|root| (entry, root))
             })
             .collect();
-        let roots: Vec<PathBuf> = match allowed {
-            Allowed::Registered { .. } => live.iter().map(|(_, root)| root.clone()).collect(),
-            Allowed::Fixed(roots) => roots.clone(),
+        let roots: Vec<(PathBuf, &[PathBuf])> = match allowed {
+            Allowed::Registered { .. } => live
+                .iter()
+                .map(|(_, root)| (root.clone(), &[][..]))
+                .collect(),
+            Allowed::Fixed(roots) => roots
+                .iter()
+                .map(|fixed| (fixed.root.clone(), fixed.spelled.as_slice()))
+                .collect(),
         };
         let members = roots
             .into_iter()
-            .map(|root| match live.iter().find(|(_, seen)| *seen == root) {
-                Some((shown, _)) => Member {
-                    name: shown.label.clone(),
-                    names: present
-                        .iter()
-                        .filter(|(_, seen)| *seen == root)
-                        .flat_map(|(entry, _)| {
-                            std::iter::once(entry.label.to_lowercase())
-                                .chain(entry.alias.as_deref().map(str::to_lowercase))
-                        })
-                        .collect(),
-                    path: shown.path.clone(),
-                    registered: true,
-                    root,
-                },
-                None => {
-                    let name = vault::folder_name(&root);
-                    Member {
-                        names: vec![name.to_lowercase()],
-                        path: root.to_string_lossy().into_owned(),
-                        registered: false,
-                        name,
+            .map(|(root, given)| {
+                let spellings: Vec<String> = std::iter::once(root.to_string_lossy().into_owned())
+                    .chain(
+                        present
+                            .iter()
+                            .filter(|(_, seen)| *seen == root)
+                            .map(|(entry, _)| entry.path.clone()),
+                    )
+                    .chain(given.iter().map(|path| path.to_string_lossy().into_owned()))
+                    .collect();
+                match live.iter().find(|(_, seen)| *seen == root) {
+                    Some((shown, _)) => Member {
+                        name: shown.label.clone(),
+                        names: present
+                            .iter()
+                            .filter(|(_, seen)| *seen == root)
+                            .flat_map(|(entry, _)| {
+                                std::iter::once(entry.label.to_lowercase())
+                                    .chain(entry.alias.as_deref().map(str::to_lowercase))
+                            })
+                            .collect(),
+                        path: shown.path.clone(),
+                        registered: true,
+                        spellings,
                         root,
+                    },
+                    None => {
+                        let name = vault::folder_name(&root);
+                        Member {
+                            names: vec![name.to_lowercase()],
+                            path: root.to_string_lossy().into_owned(),
+                            registered: false,
+                            spellings,
+                            name,
+                            root,
+                        }
                     }
                 }
             })
@@ -199,20 +245,21 @@ impl<'a> Scope<'a> {
         }
     }
 
-    /// Only a path that IS one of the roots, after `..` is folded and both are canonicalized,
-    /// so a path that does not exist and one that exists outside the scope get the same
-    /// error (spec 0068 §3.2). The `..` is folded BEFORE the disk is asked, as `paths::locate`
-    /// folds a note path: `canonicalize` gets through `<dir>/..` only when `<dir>` is a
-    /// directory, so asking first would tell of any directory on disk whether it is there.
-    /// What still shows is a symbolic link on the way to a root: a path that resolves through
-    /// links onto a root is accepted — a link to the root, or a path through a link to a
-    /// folder above it (`/tmp/…` for `/private/tmp/…` on macOS) — and the same path with the
-    /// link missing is refused.
+    /// Only a path that spells one of the roots — one of its `Member::spellings` — by the
+    /// letters alone, once `~` is expanded and `.` and `..` are folded (`spelling::letters`).
+    /// Nothing is asked of the disk, so a path that does not exist, one that exists outside
+    /// the scope, and one that would resolve onto a root but is no spelling of it — through a
+    /// link, or in a case the letters do not fold — all get the same error (spec 0068 §3.2).
+    /// Asking the disk first told of any directory whether it was there (#875 folded `..`
+    /// for that), and then of any link whether it led to a root.
     fn by_path(&self, arg: &str, home: Option<&Path>) -> Result<Vault, CliError> {
         expand(arg, home)
-            .and_then(|path| paths::fold(&path))
-            .and_then(|path| resolve_canonical(&path.to_string_lossy()).ok())
-            .and_then(|root| self.members.iter().find(|member| member.root == root))
+            .and_then(|path| spelling::letters(&path.to_string_lossy(), cfg!(windows)))
+            .and_then(|wanted| {
+                self.members
+                    .iter()
+                    .find(|member| member.spelled_as(&wanted))
+            })
             .map(Member::vault)
             .ok_or_else(|| {
                 CliError::new(
@@ -257,7 +304,10 @@ impl<'a> Scope<'a> {
             .registered
             .iter()
             .filter(|entry| Path::new(&entry.path).is_dir())
-            .filter(|entry| resolve_canonical(&entry.path).is_ok_and(|root| roots.contains(&root)))
+            .filter(|entry| {
+                resolve_canonical(&entry.path)
+                    .is_ok_and(|root| roots.iter().any(|fixed| fixed.root == root))
+            })
             .cloned()
             .collect();
         let in_scope = AppConfig {
@@ -356,6 +406,19 @@ mod tests {
         Allowed::Registered { inputs }
     }
 
+    /// `--vault` roots given by name, which spell no path.
+    fn fixed(roots: &[&PathBuf]) -> Allowed {
+        Allowed::Fixed(
+            roots
+                .iter()
+                .map(|root| FixedRoot {
+                    root: (*root).clone(),
+                    spelled: Vec::new(),
+                })
+                .collect(),
+        )
+    }
+
     fn arg(path: &Path) -> String {
         path.to_string_lossy().into_owned()
     }
@@ -369,7 +432,7 @@ mod tests {
     }
 
     /// What fails this: names matched with case; the alias not matched; a path compared
-    /// before canonicalization.
+    /// before its `..` is folded.
     #[test]
     fn without_vault_flags_a_registered_name_alias_or_root_is_in_scope() {
         let d = disk();
@@ -396,7 +459,7 @@ mod tests {
         let d = disk();
         let cfg = config(vec![entry("Alpha", None, &d.a), entry("Beta", None, &d.b)]);
         let registered = everything(Vec::new());
-        let only_a = Allowed::Fixed(vec![d.a.clone()]);
+        let only_a = fixed(&[&d.a]);
         for (allowed, outside) in [(&registered, &d.u), (&only_a, &d.b)] {
             let scope = Scope::new(allowed, &cfg);
             let there = error(scope.resolve(Some(&arg(outside)), None));
@@ -428,7 +491,7 @@ mod tests {
         let d = disk();
         let cfg = config(vec![entry("Alpha", None, &d.a)]);
         let registered = everything(Vec::new());
-        let only_a = Allowed::Fixed(vec![d.a.clone()]);
+        let only_a = fixed(&[&d.a]);
         for allowed in [&registered, &only_a] {
             let scope = Scope::new(allowed, &cfg);
             for spelled in [
@@ -444,25 +507,92 @@ mod tests {
 
     /// The fold is lexical: `<base>/l/../a` is `<base>/a` even when `l` is a link elsewhere,
     /// where the kernel would resolve it through the link's target. And a link to a root is
-    /// that vault (the `by_path` doc comment's one channel).
+    /// that vault only when it is one of the root's spellings: the letters are compared and
+    /// the disk is not asked (spec 0068 §3.2), so the link is refused with the error a
+    /// missing path gets — until the app registers the vault at the link, or `--vault`
+    /// names the link.
     ///
     /// What fails this: the fold dropped (the kernel reads `l/..` as `a`, so the path is
-    /// `<a>/a`, which is missing);
-    /// links not followed after the fold.
+    /// `<a>/a`, which is missing); the path resolved on disk before it is compared (the link
+    /// is accepted while it is no spelling); the registered path or the `--vault` value left
+    /// out of the spellings.
     #[cfg(unix)]
     #[test]
-    fn a_dot_dot_is_folded_by_the_letters_and_a_link_to_a_root_is_that_vault() {
+    fn a_dot_dot_is_folded_by_the_letters_and_a_link_to_a_root_is_that_vault_only_as_given() {
         let d = disk();
         let base = d.a.parent().expect("a base").to_path_buf();
         std::os::unix::fs::symlink(d.a.join("sub"), base.join("l")).expect("link into a/sub");
-        std::os::unix::fs::symlink(&d.a, base.join("to-a")).expect("link to a");
+        let link = base.join("to-a");
+        std::os::unix::fs::symlink(&d.a, &link).expect("link to a");
         let cfg = config(vec![entry("Alpha", None, &d.a)]);
-        let only_a = Allowed::Fixed(vec![d.a.clone()]);
+        let only_a = fixed(&[&d.a]);
         let scope = Scope::new(&only_a, &cfg);
         let folded = format!("{}/l/../a", arg(&base));
         assert_eq!(root(scope.resolve(Some(&folded), None)), d.a, "{folded}");
-        let linked = arg(&base.join("to-a"));
-        assert_eq!(root(scope.resolve(Some(&linked), None)), d.a, "{linked}");
+        let linked = error(scope.resolve(Some(&arg(&link)), None));
+        let missing = error(scope.resolve(Some(&arg(&d.gone)), None));
+        assert_eq!(linked.code, ErrorCode::VaultNotFound);
+        assert_eq!(
+            linked.message.replace(&arg(&link), "<path>"),
+            missing.message.replace(&arg(&d.gone), "<path>")
+        );
+
+        let registered_at_link = config(vec![entry("Alpha", None, &link)]);
+        let scope = Scope::new(&only_a, &registered_at_link);
+        assert_eq!(root(scope.resolve(Some(&arg(&link)), None)), d.a);
+        let given = start(&[arg(&link)], &[], None, Vec::new()).expect("a link to a folder");
+        assert_eq!(
+            given,
+            Allowed::Fixed(vec![FixedRoot {
+                root: d.a.clone(),
+                spelled: vec![link.clone()],
+            }])
+        );
+        let scope = Scope::new(&given, &cfg);
+        assert_eq!(root(scope.resolve(Some(&arg(&link)), None)), d.a);
+        assert_eq!(
+            scope.resolve(Some(&arg(&link)), None).unwrap().spellings,
+            Some(vec![arg(&d.a), arg(&d.a), arg(&link)])
+        );
+    }
+
+    /// A spelling is matched by its letters (spec 0068 §3.2): separators that change no
+    /// component, `.`, and a name typed composed for one stored decomposed are the same
+    /// spelling (§390); a name in another case is another spelling, whatever the volume
+    /// does with it — compared with ASCII case folded on Windows only.
+    ///
+    /// What fails this: components compared as raw bytes (the NFD spelling is refused);
+    /// case folded on Unix (the upper-case spelling is accepted).
+    #[test]
+    fn a_vault_path_is_compared_by_its_letters() {
+        let d = disk();
+        let base = d.a.parent().expect("a base").to_path_buf();
+        let composed = base.join("\u{d68c}\u{c758}");
+        std::fs::create_dir_all(&composed).expect("mkdir");
+        let cfg = config(vec![
+            entry("Alpha", None, &d.a),
+            entry("Meeting", None, &composed),
+        ]);
+        let allowed = everything(Vec::new());
+        let scope = Scope::new(&allowed, &cfg);
+        for spelled in [
+            format!("{}/", arg(&d.a)),
+            format!("{}//./a", arg(&base)),
+            format!("{}/sub/./..", arg(&d.a)),
+        ] {
+            assert_eq!(root(scope.resolve(Some(&spelled), None)), d.a, "{spelled}");
+        }
+        let decomposed = format!("{}/\u{1112}\u{116c}\u{110b}\u{1174}", arg(&base));
+        assert_eq!(
+            root(scope.resolve(Some(&decomposed), None)),
+            resolve_canonical(&arg(&composed)).expect("canonical")
+        );
+        let upper = format!("{}/A", arg(&base));
+        assert_eq!(
+            error(scope.resolve(Some(&upper), None)).code,
+            ErrorCode::VaultNotFound,
+            "{upper}"
+        );
     }
 
     /// What fails this: an unregistered `--vault` given no member; its row left out or
@@ -471,7 +601,7 @@ mod tests {
     fn an_unregistered_vault_flag_answers_to_its_folder_name_and_path() {
         let d = disk();
         let cfg = config(vec![entry("Alpha", None, &d.a)]);
-        let allowed = Allowed::Fixed(vec![d.u.clone()]);
+        let allowed = fixed(&[&d.u]);
         let scope = Scope::new(&allowed, &cfg);
         let by_name = scope.resolve(Some("U"), None).unwrap();
         assert_eq!(
@@ -523,7 +653,7 @@ mod tests {
         let both = error(Scope::new(&allowed, &cfg).resolve(Some("SAME"), None));
         assert_eq!(both.code, ErrorCode::VaultAmbiguous);
         assert_eq!(both.candidates.len(), 2);
-        let only_a = Allowed::Fixed(vec![d.a.clone()]);
+        let only_a = fixed(&[&d.a]);
         assert_eq!(
             root(Scope::new(&only_a, &cfg).resolve(Some("same"), None)),
             d.a
@@ -535,7 +665,7 @@ mod tests {
     fn the_first_vault_flag_is_the_default() {
         let d = disk();
         let cfg = config(vec![entry("Alpha", None, &d.a), entry("Beta", None, &d.b)]);
-        let allowed = Allowed::Fixed(vec![d.b.clone(), d.a.clone()]);
+        let allowed = fixed(&[&d.b, &d.a]);
         assert_eq!(root(Scope::new(&allowed, &cfg).resolve(None, None)), d.b);
     }
 
@@ -568,7 +698,7 @@ mod tests {
     #[test]
     fn a_vault_flag_root_answers_to_the_name_the_app_gives_it_now() {
         let d = disk();
-        let allowed = Allowed::Fixed(vec![d.a.clone()]);
+        let allowed = fixed(&[&d.a]);
         let before = config(vec![entry("Alpha", None, &d.a)]);
         assert_eq!(
             root(Scope::new(&allowed, &before).resolve(Some("Alpha"), None)),
@@ -599,7 +729,16 @@ mod tests {
         );
         assert_eq!(
             started.unwrap(),
-            Allowed::Fixed(vec![d.a.clone(), d.b.clone()])
+            Allowed::Fixed(vec![
+                FixedRoot {
+                    root: d.a.clone(),
+                    spelled: vec![d.a.clone()],
+                },
+                FixedRoot {
+                    root: d.b.clone(),
+                    spelled: vec![d.b.join("")],
+                },
+            ])
         );
         let inputs = vec![d.u.clone()];
         assert_eq!(

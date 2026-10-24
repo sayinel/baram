@@ -321,6 +321,7 @@ mod tests {
         Vault {
             name: "v".into(),
             root: PathBuf::from(root),
+            spellings: None,
         }
     }
 
@@ -354,6 +355,7 @@ mod tests {
         let vault = Vault {
             name: "v".into(),
             root: dir.path().canonicalize().unwrap(),
+            spellings: None,
         };
         for (rel, body) in [
             ("n.md", "note"),

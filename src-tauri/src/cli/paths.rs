@@ -2,6 +2,7 @@
 // is printed (spec 0066 §3.4). Which vault that is, is `vault.rs`.
 
 use super::error::{CliError, ErrorCode};
+use super::spelling;
 use super::vault::Vault;
 use crate::context::manager::resolve_canonical;
 use std::path::{Component, Path, PathBuf};
@@ -35,7 +36,12 @@ pub(crate) fn fold(path: &Path) -> Option<PathBuf> {
 /// boundary: the caller is a model with no shell, whose arguments can come from the text of
 /// a note it read (spec 0068 D6), and every note or folder path a tool takes reaches the
 /// disk through this function — `backlinks` calls it directly, every other tool that takes
-/// one through `folder_arg` or `note_names_first`.
+/// one through `folder_arg` or `note_names_first`. There an absolute input must start with
+/// one of `Vault::spellings` by its letters, which asks nothing of the disk: a spelling of
+/// the root that the server was not given — a link to it, another case on a volume that
+/// ignores case — is outside, whether or not it would resolve into the vault (spec 0068
+/// §3.2). What follows the spelling is put onto the canonical root as written, and is then
+/// resolved and checked as on the command line.
 pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let outside = || {
         CliError::new(
@@ -43,20 +49,26 @@ pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
             format!("{input} is outside the vault at {}", vault.root.display()),
         )
     };
+    let windows = cfg!(windows);
     let candidate = if Path::new(input).is_absolute() {
-        PathBuf::from(input)
+        match &vault.spellings {
+            None => PathBuf::from(input),
+            Some(spellings) => {
+                let rest = below_a_spelling(input, spellings, windows).ok_or_else(outside)?;
+                pushed(&vault.root, input, rest.iter().map(String::as_str), windows)?
+            }
+        }
     } else {
         // Pushed component by component: a verbatim Windows root (`\\?\C:\…`, what
         // canonicalize returns there) does not read `/` as a separator.
-        let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
-        let mut joined = vault.root.clone();
-        for part in input.split(separators).filter(|part| !part.is_empty()) {
-            joined.push(part);
-        }
-        joined
+        let separators: &[char] = if windows { &['/', '\\'] } else { &['/'] };
+        let parts = input.split(separators).filter(|part| !part.is_empty());
+        pushed(&vault.root, input, parts, windows)?
     };
     // `..` is folded BEFORE the filesystem is asked: `resolve_canonical` climbs to an
-    // existing ancestor by file name, and a path that ends in `..` has none.
+    // existing ancestor by file name, and a path that ends in `..` has none. Only `folded`
+    // reaches the disk — neither `input` nor `candidate` is handed to it — so a `..` is
+    // applied to the letters even after a symbolic link (`only_the_folded_path_reaches_the_disk`).
     let folded = fold(&candidate).ok_or_else(outside)?;
     let resolved = resolve_canonical(&folded.to_string_lossy())
         .map_err(|e| CliError::new(ErrorCode::Io, format!("cannot resolve {input}: {e}")))?;
@@ -65,6 +77,40 @@ pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
         return Err(outside());
     }
     Ok(resolved)
+}
+
+/// The parts of the absolute `input` below one of `spellings`, as written, by their letters
+/// (`spelling::letters`) — `None` when no spelling starts it, or `input` climbs past its
+/// root.
+fn below_a_spelling(input: &str, spellings: &[String], windows: bool) -> Option<Vec<String>> {
+    let path = spelling::letters(input, windows)?;
+    spellings.iter().find_map(|spelled| {
+        let root = spelling::letters(spelled, windows)?;
+        path.below(&root).map(<[String]>::to_vec)
+    })
+}
+
+/// `root` with each of `parts` pushed onto it. A part that `PathBuf::push` would not append
+/// as one name (`spelling::not_one_name` — on Windows, `C:x` replaces the path it is pushed
+/// onto) is refused before it is pushed: INVALID_ARGUMENT, the argument being what has to
+/// change, as for a path the system refuses as written (`refused_as_written`).
+fn pushed<'a>(
+    root: &Path,
+    input: &str,
+    parts: impl IntoIterator<Item = &'a str>,
+    windows: bool,
+) -> Result<PathBuf, CliError> {
+    let mut joined = root.to_path_buf();
+    for part in parts {
+        if spelling::not_one_name(part, windows) {
+            return Err(CliError::new(
+                ErrorCode::InvalidArgument,
+                format!("{input} is not a valid path: `{part}` is not a name a folder can hold"),
+            ));
+        }
+        joined.push(part);
+    }
+    Ok(joined)
 }
 
 /// A `--folder` value: a directory inside the vault that a whole-vault walk would also
@@ -259,6 +305,7 @@ mod tests {
         Vault {
             name: "v".into(),
             root: root.to_path_buf(),
+            spellings: None,
         }
     }
 
@@ -321,6 +368,111 @@ mod tests {
         let vault = vault_at(&base.join("vault"));
         let error = locate(&vault, "link/secret.md").unwrap_err();
         assert_eq!(error.code, ErrorCode::PathOutsideVault);
+    }
+
+    /// Only the folded path reaches the disk: a `..` after a link is applied to the letters,
+    /// so `out/../tabs.md` is the vault's own `tabs.md` although `out` links elsewhere —
+    /// following the link first, as the kernel would, gives `<elsewhere>/tabs.md`, outside.
+    ///
+    /// What fails this: `resolve_canonical` given the joined path instead of the folded one.
+    #[cfg(unix)]
+    #[test]
+    fn only_the_folded_path_reaches_the_disk() {
+        let (_t, base) = tree(&["vault", "elsewhere/deep"]);
+        std::fs::write(base.join("vault/tabs.md"), "x").unwrap();
+        std::fs::write(base.join("elsewhere/tabs.md"), "x").unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere/deep"), base.join("vault/out")).unwrap();
+        let vault = vault_at(&base.join("vault"));
+        assert_eq!(
+            locate(&vault, "out/../tabs.md").unwrap(),
+            base.join("vault/tabs.md")
+        );
+        // The control: the link itself leads out of the vault.
+        assert_eq!(
+            locate(&vault, "out").unwrap_err().code,
+            ErrorCode::PathOutsideVault
+        );
+    }
+
+    /// For `baram mcp` (`Vault::spellings` set) an absolute path must start with one of the
+    /// root's spellings by its letters (spec 0068 §3.2), and the rest is put onto the
+    /// canonical root as written. A link to the vault is no spelling unless it is given as
+    /// one, so it is refused as outside whatever it resolves to — while the command line,
+    /// which has no spellings, resolves it on disk and accepts it. A link inside the vault
+    /// that points out is still caught after the rebase.
+    ///
+    /// What fails this: the spellings ignored (the link is accepted); the containment check
+    /// skipped after a rebase (`out/secret.md` is accepted).
+    #[cfg(unix)]
+    #[test]
+    fn for_the_mcp_server_an_absolute_path_starts_with_a_spelling_of_the_root() {
+        let (_t, base) = tree(&["vault/Notes", "other"]);
+        std::fs::write(base.join("other/secret.md"), "x").unwrap();
+        std::os::unix::fs::symlink(base.join("vault"), base.join("to-vault")).unwrap();
+        std::os::unix::fs::symlink(base.join("other"), base.join("vault/out")).unwrap();
+        let root = base.join("vault");
+        let canonical = root.to_string_lossy().into_owned();
+        let link = base.join("to-vault").to_string_lossy().into_owned();
+        let cli = vault_at(&root);
+        let given = |spellings: &[&str]| Vault {
+            spellings: Some(spellings.iter().map(|s| s.to_string()).collect()),
+            ..vault_at(&root)
+        };
+        let through_link = format!("{link}/Notes/a.md");
+        assert_eq!(
+            locate(&cli, &through_link).unwrap(),
+            root.join("Notes/a.md")
+        );
+        let only_canonical = given(&[&canonical]);
+        let refused = locate(&only_canonical, &through_link).unwrap_err();
+        assert_eq!(refused.code, ErrorCode::PathOutsideVault);
+        assert_eq!(
+            refused.message,
+            format!("{through_link} is outside the vault at {canonical}")
+        );
+        for spelled in [
+            format!("{canonical}/Notes/a.md"),
+            format!("{canonical}/./Notes//a.md"),
+            format!("{canonical}/x/../Notes/a.md"),
+        ] {
+            assert_eq!(
+                locate(&only_canonical, &spelled).unwrap(),
+                root.join("Notes/a.md"),
+                "{spelled}"
+            );
+        }
+        let with_link = given(&[&canonical, &link]);
+        assert_eq!(
+            locate(&with_link, &through_link).unwrap(),
+            root.join("Notes/a.md")
+        );
+        assert_eq!(
+            locate(&with_link, &format!("{link}/out/secret.md"))
+                .unwrap_err()
+                .code,
+            ErrorCode::PathOutsideVault
+        );
+    }
+
+    /// On Windows a part of a relative path that starts with a drive (`C:x`) would replace
+    /// the vault root when pushed — `C:x` names the current directory of drive `C:` — so it
+    /// is refused before it is pushed. Tested with `windows = true` on every host; on Unix
+    /// the same part is a name.
+    ///
+    /// What fails this: `pushed` without the `spelling::not_one_name` check.
+    #[test]
+    fn a_part_that_names_a_drive_is_refused_before_it_is_pushed() {
+        let root = Path::new("/v");
+        let error = pushed(root, "notes/C:x", ["notes", "C:x"], true).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert_eq!(
+            error.message,
+            "notes/C:x is not a valid path: `C:x` is not a name a folder can hold"
+        );
+        assert_eq!(
+            pushed(root, "notes/C:x", ["notes", "C:x"], false).unwrap(),
+            root.join("notes").join("C:x")
+        );
     }
 
     #[test]
@@ -449,6 +601,7 @@ mod tests {
         let vault = Vault {
             name: "v".into(),
             root: dir.path().canonicalize().unwrap(),
+            spellings: None,
         };
         let long = format!("{}.md", "x".repeat(300));
         for input in ["a\0b.md", long.as_str()] {

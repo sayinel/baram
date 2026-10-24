@@ -463,6 +463,27 @@ fn a_vault_behind_a_folder_that_cannot_be_entered_is_io() {
     );
 }
 
+/// The command line resolves an absolute path on disk and then checks that it is in the
+/// vault — a scope rule, not the MCP server's spellings (spec 0066 §3.4): a path through a
+/// link to the vault is read.
+///
+/// What fails this: the MCP server's letter rule applied to the command line.
+#[test]
+fn on_the_command_line_an_absolute_path_through_a_link_to_the_vault_is_read() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "inside\n");
+    let link = sb.base.join("link");
+    std::os::unix::fs::symlink(&sb.vault, &link).expect("link to the vault");
+    let through = link.join("a.md").to_string_lossy().into_owned();
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault_arg(&sb), "read", &through],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, "inside\n");
+}
+
 #[test]
 fn the_hangul_check_sees_what_it_looks_for() {
     // \u{D30C}\u{C77C} is a Hangul syllable pair, \u{1100} a jamo, \u{3131} a compatibility jamo.
