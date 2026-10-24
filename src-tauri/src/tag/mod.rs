@@ -5,9 +5,9 @@ mod frontmatter;
 pub(crate) use frontmatter::extract_frontmatter_tags;
 
 use crate::md::{
-    extract_inline_tags, is_fence_delimiter, is_tag_char, split_frontmatter, strip_code_blocks,
+    cut_frontmatter, extract_inline_tags, is_fence_delimiter, is_tag_char, split_frontmatter,
+    strip_code_blocks,
 };
-use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -226,6 +226,23 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
+/// §56m One note's rename, cut where the readers cut it (`md::cut_frontmatter`): the front
+/// matter's tag lists (`frontmatter::rename_frontmatter_tags`) and the body's `#tags`
+/// (`rename_inline`). Neither writer sees the other's part — as neither reader does — so a
+/// `#old` in another front-matter field and a `- old` line in the body stay as uncounted as
+/// the readers leave them, and no entry is rewritten twice.
+fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
+    let Some(cut) = cut_frontmatter(content) else {
+        return rename_inline(content, old, new);
+    };
+    let (matter, in_matter) = frontmatter::rename_frontmatter_tags(cut.matter, old, new);
+    let (body, in_body) = rename_inline(cut.body, old, new);
+    (
+        [cut.open, matter.as_str(), cut.close, body.as_str()].concat(),
+        in_matter + in_body,
+    )
+}
+
 /// Rename (or merge) a tag across all .md files in the vault.
 /// Handles:
 ///   - Inline #tags in body text
@@ -233,6 +250,7 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
 ///   - Frontmatter tags: block list `tags:\n  - tag1`
 ///
 /// Prefix rename: renaming `project` also renames `project/baram` → `new/baram`.
+/// Both names are bare (`bare_tag`) — `tag_cmd::rename_tag` strips what the app passes.
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
@@ -257,14 +275,6 @@ pub async fn rename_tag(
         .await
         .map_err(|e| TagError::Custom(e.to_string()))?;
 
-    // 프론트매터 블록 리스트 항목: `  - old_tag` (줄 전체). 이것만 정규식으로 남는다 —
-    // lookaround가 없고 줄 앵커만 쓰기 때문이다.
-    let fm_block_re = Regex::new(&format!(
-        r"(?m)^([ \t]+-[ \t]+)({})$",
-        regex::escape(old_tag)
-    ))
-    .map_err(|e| TagError::Custom(e.to_string()))?;
-
     let mut files_modified = 0usize;
     let mut occurrences_replaced = 0usize;
 
@@ -274,24 +284,7 @@ pub async fn rename_tag(
             Err(_) => continue,
         };
 
-        let mut count = 0usize;
-
-        // 본문의 `#old_tag`와 `#old_tag/child`
-        let (after_inline, n) = rename_inline(&content, old_tag, new_tag);
-        count += n;
-
-        // 프론트매터 인라인 배열 `tags: [..., old_tag, ...]`
-        let (after_fm_inline, n) =
-            frontmatter::rename_frontmatter_list(&after_inline, old_tag, new_tag);
-        count += n;
-
-        // 프론트매터 블록 리스트 항목
-        let after_fm_block = fm_block_re.replace_all(&after_fm_inline, |caps: &regex::Captures| {
-            count += 1;
-            format!("{}{}", &caps[1], new_tag)
-        });
-
-        let new_content = after_fm_block.into_owned();
+        let (new_content, count) = rename_in_note(&content, old_tag, new_tag);
 
         if new_content != content {
             if let Err(e) = crate::fs::write_file(&file_path.to_string_lossy(), &new_content).await
@@ -455,6 +448,118 @@ mod tests {
         let r = rename_tag(&root, "deep-work", "focus").await.unwrap();
         assert_eq!(r.occurrences_replaced, 1);
         assert_eq!(read(&d).await, "---\ntags:\n  - focus\n---\n본문\n");
+    }
+
+    /// §56m Every front-matter spelling the reader names `solo` is renamed, and only the
+    /// name changes: the user's quotes and `#` stay. What fails this: the block-item writer
+    /// matching only a bare value that fills the line (the old `fm_block_re` — the three
+    /// quoted block rows stay `solo`).
+    #[tokio::test]
+    async fn every_front_matter_spelling_of_a_tag_is_renamed_keeping_its_quotes_and_hash() {
+        for (spelling, want) in [
+            ("tags: [\"#solo\"]", "tags: [\"#focus\"]"),
+            ("tags: [#solo]", "tags: [#focus]"),
+            ("tags: ['solo']", "tags: ['focus']"),
+            ("tags: [a, \"#solo\", b]", "tags: [a, \"#focus\", b]"),
+            ("tags:\n  - solo", "tags:\n  - focus"),
+            ("tags:\n  - \"#solo\"", "tags:\n  - \"#focus\""),
+            ("tags:\n  - '#solo'", "tags:\n  - '#focus'"),
+            ("tags:\n  - #solo", "tags:\n  - #focus"),
+            ("tags:\n  - \"solo\"", "tags:\n  - \"focus\""),
+        ] {
+            let (d, root) = vault(&format!("---\n{spelling}\n---\n본문\n")).await;
+            let r = rename_tag(&root, "solo", "focus").await.unwrap();
+            assert_eq!(r.occurrences_replaced, 1, "{spelling:?}");
+            assert_eq!(
+                read(&d).await,
+                format!("---\n{want}\n---\n본문\n"),
+                "{spelling:?}"
+            );
+        }
+    }
+
+    /// A child follows its parent in a block list as it does in an inline array and in the
+    /// body. What fails this: a block-item writer that matches the whole name only.
+    #[tokio::test]
+    async fn a_nested_child_in_a_front_matter_list_follows_its_renamed_parent() {
+        let (d, root) = vault(
+            "---\ntags:\n  - project/baram\n  - \"#project/x\"\n  - project-two\n---\n\
+             tags: [project/baram] 아님\n",
+        )
+        .await;
+        let r = rename_tag(&root, "project", "work").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags:\n  - work/baram\n  - \"#work/x\"\n  - project-two\n---\n\
+             tags: [project/baram] 아님\n"
+        );
+    }
+
+    /// The rename rewrites what the readers count and nothing else (the code-fence rule
+    /// above, applied to the front matter): an indented `- solo` in the body, a `- solo`
+    /// under another key, a `tags: [solo]` line in the body, `#solo` in another front-matter
+    /// field, and an entry the reader names something else (`solo.x`, `my solo`) are left
+    /// alone, while the `tags:` entries in the same note are renamed. What fails this:
+    /// running the front-matter writer over the whole note, or the body's writer over the
+    /// front matter (the old `rename_tag` did both — the body's `  - solo` became `  - focus`).
+    #[tokio::test]
+    async fn only_the_lines_a_reader_counts_are_rewritten() {
+        let (d, root) = vault(
+            "---\ntitle: about #solo\naliases:\n  - solo\ntags:\n  - solo\nkeywords: [solo.x, my solo]\n\
+             ---\n- list\n  - solo\ntags: [solo]\n본문 #solo\n",
+        )
+        .await;
+        let r = rename_tag(&root, "solo", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntitle: about #solo\naliases:\n  - solo\ntags:\n  - focus\nkeywords: [solo.x, my solo]\n\
+             ---\n- list\n  - solo\ntags: [solo]\n본문 #focus\n"
+        );
+    }
+
+    /// An inline-array entry is the tag the reader names, not every run of the name inside
+    /// the brackets. What fails this: matching the name by its tag-character boundaries in the
+    /// whole list (the old `rename_in_list`), which renamed `solo.x` and `my solo`.
+    #[tokio::test]
+    async fn an_inline_array_entry_naming_another_tag_is_left_alone() {
+        let body = "---\ntags: [solo.x, my solo, \"#solo\"]\n---\n";
+        let (d, root) = vault(body).await;
+        let r = rename_tag(&root, "solo", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 1);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags: [solo.x, my solo, \"#focus\"]\n---\n"
+        );
+    }
+
+    /// Renaming a tag to a child of itself rewrites each entry once. What fails this: two
+    /// writers over one entry — the old body writer turned `#solo` in `[a, #solo]` into
+    /// `#solo/x`, then the list writer found `solo` again and wrote `#solo/x/x`.
+    #[tokio::test]
+    async fn renaming_into_a_child_of_itself_rewrites_each_entry_once() {
+        let (d, root) = vault("---\ntags: [a, #solo]\n---\n본문 #solo\n").await;
+        let r = rename_tag(&root, "solo", "solo/x").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags: [a, #solo/x]\n---\n본문 #solo/x\n"
+        );
+    }
+
+    /// The front matter's last line keeps its `\r` (the cut ends at the `\n` before the
+    /// closing `---`); the name is renamed inside it and every CRLF survives. What fails
+    /// this: taking the `\r` into the entry's name (`"#solo"\r` would not name `solo`).
+    #[tokio::test]
+    async fn a_crlf_front_matter_is_renamed_byte_for_byte() {
+        let (d, root) = vault("---\r\ntags:\r\n  - \"#solo\"\r\n---\r\n본문 #solo\r\n").await;
+        let r = rename_tag(&root, "solo", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\r\ntags:\r\n  - \"#focus\"\r\n---\r\n본문 #focus\r\n"
+        );
     }
 
     #[tokio::test]

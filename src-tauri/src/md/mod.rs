@@ -65,21 +65,43 @@ pub fn strip_code_blocks(content: &str) -> String {
     result
 }
 
+/// A note cut where `split_frontmatter` cuts it. The four parts, in order, are the note.
+pub struct FrontMatterCut<'a> {
+    /// The first line, `---` with whitespace around it, and its `\n`.
+    pub open: &'a str,
+    /// The front matter, up to the `\n` before the closing `---`.
+    pub matter: &'a str,
+    /// That `\n` and `---`.
+    pub close: &'a str,
+    /// The rest of the closing line and everything after it.
+    pub body: &'a str,
+}
+
+/// Where the front matter is: the first line is `---` once trimmed, and the front matter runs
+/// to the next line that begins with `---`, the second line not counted (a `---` there does not
+/// close it). `None` when there is none. The tag readers (through `split_frontmatter`) and
+/// `tag::rename_tag` cut a note here, so the writer rewrites the parts the readers read.
+pub fn cut_frontmatter(content: &str) -> Option<FrontMatterCut<'_>> {
+    let (open, rest) = content.split_at_checked(content.find('\n')?.saturating_add(1))?;
+    if open.trim() != "---" {
+        return None;
+    }
+    let (matter, after) = rest.split_at_checked(rest.find("\n---")?)?;
+    let (close, body) = after.split_at_checked("\n---".len())?;
+    Some(FrontMatterCut {
+        open,
+        matter,
+        close,
+        body,
+    })
+}
+
 /// Extract frontmatter block (between first `---` lines) from content.
 /// Returns (frontmatter, rest_of_content).
 pub fn split_frontmatter(content: &str) -> (String, String) {
-    let mut lines = content.splitn(2, '\n');
-    let first = lines.next().unwrap_or("").trim();
-    if first != "---" {
-        return (String::new(), content.to_string());
-    }
-    let rest = lines.next().unwrap_or("");
-    if let Some(end) = rest.find("\n---") {
-        let fm = rest[..end].to_string();
-        let body = rest[end + 4..].to_string(); // skip "\n---"
-        (fm, body)
-    } else {
-        (String::new(), content.to_string())
+    match cut_frontmatter(content) {
+        Some(cut) => (cut.matter.to_string(), cut.body.to_string()),
+        None => (String::new(), content.to_string()),
     }
 }
 
@@ -125,6 +147,42 @@ mod tests {
         let (fm, body) = split_frontmatter("---\ntags: [a]\n---\nbody line");
         assert!(fm.contains("tags: [a]"));
         assert!(body.contains("body line"));
+    }
+
+    /// `tag::rename_tag` puts a note back together from these parts, so they must be the note
+    /// byte for byte — CRLF included — and the two middle ones what `split_frontmatter` gives
+    /// the readers. What fails this: dropping the `\r` of the opening line from `open`, or
+    /// cutting `close` at a length other than that of `\n---`.
+    #[test]
+    fn the_cut_puts_the_note_back_together_and_agrees_with_the_split() {
+        for note in [
+            "---\ntags: [a]\n---\nbody line",
+            "---\r\ntags:\r\n  - a\r\n---\r\nbody\r\n",
+            "---\n\n---\n",
+            "---\n---\nx\n---\n",
+        ] {
+            let cut = cut_frontmatter(note).expect(note);
+            assert_eq!(
+                [cut.open, cut.matter, cut.close, cut.body].concat(),
+                note,
+                "{note:?}"
+            );
+            assert_eq!(cut.close, "\n---", "{note:?}");
+            assert_eq!(
+                split_frontmatter(note),
+                (cut.matter.to_string(), cut.body.to_string()),
+                "{note:?}"
+            );
+        }
+        // The second line does not close: the `---` there is front matter.
+        assert_eq!(
+            cut_frontmatter("---\n---\nx\n---\n").map(|cut| cut.matter),
+            Some("---\nx")
+        );
+        for none in ["just body", "---", "---\nno close\n", "x\n---\na\n---\n"] {
+            assert!(cut_frontmatter(none).is_none(), "{none:?}");
+            assert_eq!(split_frontmatter(none), (String::new(), none.to_string()));
+        }
     }
 
     #[test]
