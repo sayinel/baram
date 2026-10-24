@@ -109,7 +109,7 @@ pub fn isolated(sb: &Sandbox, program: &str) -> Command {
     let mut command = Command::new(program);
     command
         // `dirs` reads these. Without them the child reads the developer's real
-        // config.json — `logging_install_unwritable.rs` isolates the same way.
+        // config.json.
         .env("HOME", &sb.home)
         .env("XDG_DATA_HOME", &sb.xdg)
         .env_remove("BARAM_LOG")

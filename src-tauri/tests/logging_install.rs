@@ -11,13 +11,14 @@
 //! stdout-only target list (a bundled app then writes no file at all), dropping the
 //! `attach` call (`log::*` is a no-op facade again — the original defect, restored),
 //! and panicking on the error instead of absorbing it (the whole point of the
-//! function). This file is its own binary, so it can own the global logger and point
-//! `HOME` at a temp directory, and it kills all three.
+//! function). This file is its own binary, so it can own the global logger, and it
+//! kills all three.
 //!
-//! The companion `logging_install_unwritable.rs` covers the failure branch; it needs a
-//! different `HOME`, and `HOME` is per-process.
+//! The companion `logging_install_unwritable.rs` covers the failure branch. It is a
+//! separate binary for the same reason: the logger it installs is process-global too.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tauri::utils::config::{AppDirectoriesOverride, AppDirectoryOverrides};
 
 /// Every `log::*` in the app compiles to nothing until a logger is installed, so this
 /// is the observable that says installation happened at all.
@@ -25,7 +26,28 @@ fn logging_is_live() -> bool {
     log::max_level() != log::LevelFilter::Off
 }
 
-fn find_log_file(root: &std::path::Path) -> Option<PathBuf> {
+/// A mock app whose log directory is `dir`, on every platform.
+///
+/// Through tauri's `appDirectoriesOverride`, not by pointing `HOME` at `dir`. Without
+/// an override `app_log_dir()` asks `dirs`, which reads `HOME` on macOS and
+/// `XDG_DATA_HOME` on Linux but, on Windows, the Known Folder API — no environment
+/// variable at all, `LOCALAPPDATA` included — so there an environment redirect would
+/// leave the log in the developer's real `%LOCALAPPDATA%`. `app_log_dir()` reads the
+/// override before asking `dirs`, and the production target (`TargetKind::LogDir`)
+/// resolves its directory through `app_log_dir()`.
+fn app_logging_into(dir: &Path) -> tauri::App<tauri::test::MockRuntime> {
+    let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+    context.config_mut().app.app_directories_override =
+        Some(AppDirectoriesOverride::Directories(AppDirectoryOverrides {
+            log: Some(dir.to_path_buf()),
+            ..Default::default()
+        }));
+    tauri::test::mock_builder()
+        .build(context)
+        .expect("mock app")
+}
+
+fn find_log_file(root: &Path) -> Option<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
@@ -42,38 +64,27 @@ fn find_log_file(root: &std::path::Path) -> Option<PathBuf> {
 
 #[test]
 fn install_attaches_a_logger_that_writes_our_records_to_a_file() {
-    let home = tempfile::tempdir().expect("tempdir");
-    // Before any other thread could read them. `app_log_dir()` resolves under
-    // `dirs::home_dir()` on macOS and `dirs::data_local_dir()` elsewhere, and both
-    // read these.
-    std::env::set_var("HOME", home.path());
-    std::env::set_var("XDG_DATA_HOME", home.path());
+    let logs = tempfile::tempdir().expect("tempdir");
 
     assert!(
         !logging_is_live(),
         "no logger may be installed before install() runs, or this test proves nothing"
     );
 
-    let app = tauri::test::mock_app();
+    let app = app_logging_into(logs.path());
 
-    // Fail on the CAUSE, not on the symptom. The redirect above works on macOS
-    // (`dirs::home_dir()` reads `$HOME`) and on Linux (`dirs::data_local_dir()` reads
-    // `$XDG_DATA_HOME`). It does NOT work on Windows: `data_local_dir()` there calls
-    // `SHGetKnownFolderPath` and reads no environment variable at all — setting
-    // `LOCALAPPDATA` would not help either. So on Windows the log would land in the
-    // developer's real `%LOCALAPPDATA%` and the assertion below would read "no
-    // baram.log", pointing at the logger instead of at the harness. CI runs
-    // `cargo test` on ubuntu only today.
+    // Fail on the CAUSE, not on the symptom. If the redirect stopped applying, the log
+    // would land in the real log directory and the assertion below would read "no
+    // baram.log", pointing at the logger instead of at the harness.
     let resolved = tauri::Manager::path(app.handle())
         .app_log_dir()
         .expect("app_log_dir must resolve");
     assert!(
-        resolved.starts_with(home.path()),
-        "this platform ignores HOME/XDG_DATA_HOME for the log directory: it resolved to \
-         {} instead of under {}. The test needs a different redirect here, not a change \
-         to the logger.",
+        resolved.starts_with(logs.path()),
+        "the log directory ignored the override: it resolved to {} instead of under {}. \
+         The test needs a different redirect, not a change to the logger.",
         resolved.display(),
-        home.path().display()
+        logs.path().display()
     );
 
     baram_lib::logging::install(app.handle());
@@ -88,11 +99,11 @@ fn install_attaches_a_logger_that_writes_our_records_to_a_file() {
     // call sites actually take, including the global `max_level` gate.
     log::warn!("integration probe: asset scope registration failed");
 
-    let log_file = find_log_file(home.path()).unwrap_or_else(|| {
+    let log_file = find_log_file(logs.path()).unwrap_or_else(|| {
         panic!(
             "no baram.log under {} — install() must use the FILE target; in a bundled \
              app stdout has no reader",
-            home.path().display()
+            logs.path().display()
         )
     });
     let written = std::fs::read_to_string(&log_file).expect("read baram.log");
