@@ -3,7 +3,7 @@
 //! rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::ContextManager;
-use crate::index::filing::name_key;
+use crate::index::filing::{is_note, name_key};
 use crate::index::{keys_for, reads_a_link_under, RenameTarget};
 use std::collections::HashMap;
 
@@ -90,19 +90,44 @@ pub(crate) async fn rename_file_with_links_inner(
     // rewritten, not left unchanged.
     let stem_unchanged = name_key(new_path, windows) == old_key;
 
-    // The note is dropped under what the old path resolved to before the
+    // The file is dropped under what the old path resolved to before the
     // move (`RenameSource::identity`) and filed under what the new path
     // resolves to AFTER it (below).
     let remove_old = Mutation::Remove {
         path: source.identity.clone(),
     };
 
-    // The file's own content, read BEFORE it moves: it is what the index will
-    // hold under the new path. Unreadable here means nothing has changed yet,
-    // so this is an honest `Err` (not a file that vanishes from the index).
-    let renamed_content = tokio::fs::read_to_string(old_path)
-        .await
-        .map_err(|e| format!("{old_path} could not be read: {e}"))?;
+    // The file's own content, read BEFORE it moves, only where the index
+    // reads it as a note (`is_note`): under the old name, the index read its
+    // links, so its own references are rewritten below; under the new name,
+    // it is what the index will hold. A file that is a note under neither
+    // name — a PDF, an image — is never read: a build reads no link in it
+    // (`collect_md_files`) and its bytes need not be text. A note unreadable
+    // here means nothing has changed yet, so this is an honest `Err` (not a
+    // file that vanishes from the index). A file that only becomes a note
+    // (`x.txt` → `x.md`) and cannot be read as text still moves, and is
+    // filed as a link target (below).
+    let was_note = is_note(old_path, windows);
+    let becomes_note = is_note(new_path, windows);
+    let renamed_content = if was_note {
+        Some(
+            tokio::fs::read_to_string(old_path)
+                .await
+                .map_err(|e| format!("{old_path} could not be read: {e}"))?,
+        )
+    } else if becomes_note {
+        match tokio::fs::read_to_string(old_path).await {
+            Ok(content) => Some(content),
+            Err(e) => {
+                log::warn!(
+                    "rename: {old_path} could not be read as a note, so {new_path} is filed as a link target only: {e}"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // `fs::rename` replaces an existing destination on Unix; a rename is not a
     // way to overwrite another note. Checked here, after every index build and
@@ -167,50 +192,59 @@ pub(crate) async fn rename_file_with_links_inner(
     } else {
         scope.keys.clone()
     };
-    //    Then the renamed note itself, which rewrite_referrers skips. Its
-    //    destination passes the gate every referrer passes right before it is
-    //    written: resolved again NOW — after the move and every referrer
-    //    write, not before them — it must still lie inside the file's
-    //    contexts. It is stale news on a referrer's terms: the index named it
-    //    under the old key for more than its own `((#^id))` references.
-    let renamed_content = rewrite_renamed_note(
-        new_path,
-        renamed_content,
-        |content, ref_path| rewrite(content, ref_path, &own_roots),
-        || confined_both_ways(new_path, &scope.dirs, source.parent.as_deref()),
-        |content| {
-            matches!(unchanged, Unchanged::Report { .. })
-                && named_lines.contains_key(old_path)
-                && !named_for_its_own_references(old_path, content)
-        },
-        &mut rewritten,
-    )
-    .await;
+    //    Then the renamed note itself, which rewrite_referrers skips — only
+    //    when it was a note: a build reads the links of notes alone
+    //    (`collect_md_files`), so it counted none of another file's references
+    //    (`x.txt` → `x.md` keeps its text).
+    //    Its destination passes the gate every referrer passes right before
+    //    it is written: resolved again NOW — after the move and every
+    //    referrer write, not before them — it must still lie inside the
+    //    file's contexts. It is stale news on a referrer's terms: the index
+    //    named it under the old key for more than its own `((#^id))`
+    //    references.
+    let renamed_content = match renamed_content {
+        Some(content) if was_note => Some(
+            rewrite_renamed_note(
+                new_path,
+                content,
+                |content, ref_path| rewrite(content, ref_path, &own_roots),
+                || confined_both_ways(new_path, &scope.dirs, source.parent.as_deref()),
+                |content| {
+                    matches!(unchanged, Unchanged::Report { .. })
+                        && named_lines.contains_key(old_path)
+                        && !named_for_its_own_references(old_path, content)
+                },
+                &mut rewritten,
+            )
+            .await,
+        ),
+        unread_or_not_a_note => unread_or_not_a_note,
+    };
 
-    // 4. Drop the old entry and add the renamed note in its owning indexes.
+    // 4. Drop the old entry and add the renamed file in its owning indexes.
     //    Re-index rewritten referrers from the content we already have in
     //    the holding indexes that cover each one, including indexes built
     //    for the judgement. Each index spells paths its own way (Mutation::apply_to).
-    //    The renamed note is filed under what its new path resolves to now,
+    //    The renamed file is filed under what its new path resolves to now,
     //    after the move and its own rewrite — the identity a save would file
-    //    it under (see `remove_old`). A note that no longer resolves (a link
-    //    whose target went since) is not filed. Reading it after the note's
-    //    own rewrite, not right after the move, matters only when that write
-    //    turns a symlinked note into a regular file (the atomic-write
-    //    followup): the note is then its own path.
+    //    it under (see `remove_old`): as a note when its new name is one and
+    //    its content was read, otherwise as a link target only (§278), as a
+    //    build files a file that is no note — `old.md` → `old.txt` leaves the
+    //    notes. A file that no longer resolves (a link whose target went
+    //    since) is not filed. Reading it after the note's own rewrite, not
+    //    right after the move, matters only when that write turns a
+    //    symlinked note into a regular file (the atomic-write followup): the
+    //    note is then its own path.
     let new_identity = std::fs::canonicalize(new_path).ok();
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &scope.keys, &remove_old);
     queue_rewritten(&mut per_key, ctx_mgr, &holding_keys, rewritten.contents).await;
     if let Some(path) = new_identity {
-        push_for_keys(
-            &mut per_key,
-            &scope.keys,
-            &Mutation::Update {
-                path,
-                content: renamed_content,
-            },
-        );
+        let filed = match renamed_content {
+            Some(content) if becomes_note => Mutation::Update { path, content },
+            _ => Mutation::Target { path },
+        };
+        push_for_keys(&mut per_key, &scope.keys, &filed);
     }
     apply_queued(state, per_key).await;
 

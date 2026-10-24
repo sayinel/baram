@@ -10,6 +10,7 @@ use crate::context::{ContextInfo, ContextManager, ContextType, VaultType};
 use crate::index::{BacklinkResult, IndexStats, LinkGraph, LinkIndex};
 
 mod alias;
+mod attachments;
 mod block_id;
 mod boundary;
 mod builds;

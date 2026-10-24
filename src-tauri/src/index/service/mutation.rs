@@ -15,7 +15,8 @@ pub(super) enum Mutation {
     /// A file is gone under this path (renamed away).
     Remove { path: PathBuf },
     /// §393 A non-markdown file to register as a link target (§278) — the build registers
-    /// every file it finds; this is the one that appeared since.
+    /// every file it finds; this is one that appeared since, or a file a rename moved whose
+    /// new name is no note (`rename/file.rs`).
     Target { path: PathBuf },
     /// §393 Everything at or under each of these paths is gone — removed or replaced
     /// folders and files, as one change (one scan of the index however many paths).
