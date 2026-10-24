@@ -562,6 +562,30 @@ mod tests {
         );
     }
 
+    /// An unindented block list is renamed like an indented one, each item keeping its
+    /// quotes and `#`, children following; a later key's unindented `- solo` and one before
+    /// `tags:` are left alone, and so is a CRLF note's every line ending. What fails this: an
+    /// item pattern that requires indentation (nothing in the list is renamed), or a list that
+    /// runs on past `related:` (its `- solo` becomes `- focus`).
+    #[tokio::test]
+    async fn an_unindented_block_list_is_renamed_keeping_its_spelling() {
+        for eol in ["\n", "\r\n"] {
+            let note = "---\naliases:\n- solo\ntags:\n- solo\n- \"#solo\"\n- '#solo/x'\n- #solo\n\
+                        related:\n- solo\n---\n본문\n"
+                .replace('\n', eol);
+            let (d, root) = vault(&note).await;
+            let r = rename_tag(&root, "solo", "focus").await.unwrap();
+            assert_eq!(r.occurrences_replaced, 4, "{eol:?}");
+            assert_eq!(
+                read(&d).await,
+                "---\naliases:\n- solo\ntags:\n- focus\n- \"#focus\"\n- '#focus/x'\n- #focus\n\
+                 related:\n- solo\n---\n본문\n"
+                    .replace('\n', eol),
+                "{eol:?}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn reports_nothing_changed_when_the_tag_is_absent() {
         let body = "아무 태그도 없다\n";
@@ -628,6 +652,22 @@ mod tests {
         let (_d, root) = vault_of(&[("n.md", "---\ntags: [\"#a/b\"]\n---\nbody #a/b\n")]).await;
         assert_eq!(rows(&root).await, [("a/b".to_string(), 2)]);
         assert_eq!(files_with(&root, "a/b").await, ["n.md"]);
+    }
+
+    /// An unindented block list counts and is found like an indented one, and a later key's
+    /// unindented list is not tags. What fails this: an item pattern that requires indentation
+    /// (no `solo` row, and `files_with("solo")` is empty), or a list that runs on past
+    /// `related:` (a `notatag` row).
+    #[tokio::test]
+    async fn an_unindented_block_list_is_counted_and_found() {
+        let (_d, root) = vault_of(&[(
+            "u.md",
+            "---\ntags:\n- solo\n- '#Solo'\nrelated:\n- notatag\n---\n본문\n",
+        )])
+        .await;
+        assert_eq!(rows(&root).await, [("solo".to_string(), 2)]);
+        assert_eq!(files_with(&root, "solo").await, ["u.md"]);
+        assert!(files_with(&root, "notatag").await.is_empty());
     }
 
     /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match

@@ -19,14 +19,16 @@ static FM_TAGS_INLINE_RE: LazyLock<Regex> =
 static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*$").unwrap());
 
-// Frontmatter block list item:   - tag
+// Frontmatter block list item: `  - tag`, or `- tag` at the key's own indentation — YAML
+// reads `tags:\n- a` as the list `[a]` too.
 static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
+    LazyLock::new(|| Regex::new(r"^\s*-\s+(.+)$").unwrap());
 
 /// Every entry of the front matter's tag lists, in order, as byte ranges of `frontmatter`:
-/// each comma-separated part of a `tags: [a, b]` line, and the value of each indented
-/// `- item` line after a `tags:` line, up to the first line that is not one. A line is read
-/// without its `\n` (or `\r\n`), as `str::lines` gives it.
+/// each comma-separated part of a `tags: [a, b]` line, and the value of each `- item` line
+/// after a `tags:` line, indented or not, up to the first line that is not one — so the next
+/// key ends the list, and its own `- x` items are not tags. A line is read without its `\n`
+/// (or `\r\n`), as `str::lines` gives it.
 fn tag_entries(frontmatter: &str) -> Vec<Range<usize>> {
     let mut entries = Vec::new();
     let mut in_block = false;
@@ -165,6 +167,31 @@ mod tests {
             extract_frontmatter_tags("tags:\n  - #blockunq"),
             ["blockunq"]
         );
+    }
+
+    /// A block list may sit at its key's own indentation — `yaml` 2.9.1 and `js-yaml` 4.3.2
+    /// both read `tags:\n- solo` as `tags: [solo]` (measured 2026-10-24) — and such a list is
+    /// read as far as an indented one: to the first line that is not an item. A later key's
+    /// `- x` list, and one before `tags:`, are not tags. What fails this: an item pattern that
+    /// requires indentation (every row but the last reads nothing), or a list that runs on past
+    /// `related:` (its `x` and `y` are read).
+    #[test]
+    fn an_unindented_block_list_is_read_up_to_the_next_key() {
+        for (frontmatter, want) in [
+            ("tags:\n- solo\n- \"#b\"", vec!["solo", "b"]),
+            ("tags:\n- '#solo'\r\n- c\r", vec!["solo", "c"]),
+            (
+                "aliases:\n- x\ntags:\n- a\n- b\nrelated:\n- x\n- y",
+                vec!["a", "b"],
+            ),
+            ("related:\n- x\ntitle: t", vec![]),
+        ] {
+            assert_eq!(
+                extract_frontmatter_tags(frontmatter),
+                want,
+                "{frontmatter:?}"
+            );
+        }
     }
 
     /// An entry that is only `#`s, or nothing, names no tag and is not indexed — before,

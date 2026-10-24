@@ -757,4 +757,15 @@ mod tests {
         tags.sort();
         assert_eq!(tags, vec!["Solo", "a/b", "solo"]);
     }
+
+    /// §56m An unindented `tags:` block list gives the graph its tags, through
+    /// the same reader; a later key's list does not. What fails this: an item
+    /// pattern that requires indentation (only the body's `#body` is a node).
+    #[test]
+    fn an_unindented_front_matter_tag_list_gives_graph_nodes() {
+        let body = "---\ntags:\n- solo\n- \"#a/b\"\nrelated:\n- notatag\n---\n#body\n";
+        let mut tags = extract_file_tags(body);
+        tags.sort();
+        assert_eq!(tags, vec!["a/b", "body", "solo"]);
+    }
 }
