@@ -1759,13 +1759,14 @@ fn backlinks_count_links_behind_the_notes_own_vault_names() {
 }
 
 #[test]
-fn backlinks_of_an_attachment_go_by_its_path_and_its_name_without_the_extension() {
-    // Pins what the command-line page states. A file's name key is its name without its
-    // last extension, whatever it is (`paper`), while a link's name drops a note extension
-    // only, so `[[Paper.pdf]]` is filed under `paper.pdf`, which is not this file's name
-    // key, and `[[Paper]]` under `paper`. A path key drops a note extension only on both
-    // sides, so `[[papers/Paper.pdf]]` meets the file. What fails this: a link's name
-    // dropping any extension — `bare.md` then counts.
+fn backlinks_of_an_attachment_go_by_its_path_and_its_whole_name() {
+    // Pins what the command-line page states. A file that is no note is keyed by its whole
+    // name (`paper.pdf`), and a link's name drops a note extension only, so `[[Paper.pdf]]`
+    // meets the file and `[[Paper]]`, filed under `paper`, does not — `links` resolves it
+    // to a note called `Paper` only, so to nothing here. A path key drops a note extension
+    // only on both sides, so `[[papers/Paper.pdf]]` meets the file. What fails this: keying
+    // the file by its name without its last extension (`Path::file_stem`) — `stem.md`
+    // counts and `bare.md` does not.
     let sb = sandbox();
     write(&sb.vault, "papers/Paper.pdf", "%PDF-1.4\n");
     write(&sb.vault, "path.md", "[[papers/Paper.pdf]]\n");
@@ -1777,8 +1778,8 @@ fn backlinks_of_an_attachment_go_by_its_path_and_its_name_without_the_extension(
         &sb.home,
         &["--json", "--vault", &vault, "backlinks", "papers/Paper.pdf"],
     );
-    assert_eq!(sources(&ran), ["path.md", "stem.md"]);
-    // `links` reads the two bare ones the other way round.
+    assert_eq!(sources(&ran), ["bare.md", "path.md"]);
+    // `links` reads the two bare ones the same way.
     let bare = baram(&sb, &sb.home, &["--vault", &vault, "links", "bare.md"]);
     assert_eq!(
         bare.stdout,

@@ -43,16 +43,18 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// root, `/private/tmp` for `/tmp`, has no `Path` key, so its path links
 /// are missed, never miswritten), and `target.local_aliases` are the ones
 /// the caller read when the rename started (a registration made since is not
-/// seen). The keys are a bare `[[Old.md]]`'s stem, and for a path-qualified
-/// `[[a/old]]` or a relative `[[./old]]` the file's path under a covering
-/// root. A file whose stem itself ends in `.md` (`diagram.md.txt`) never
+/// seen). The keys are a bare link's name (`name_key`: `[[Old.md]]` for a
+/// note's stem, `[[Paper.pdf]]` for another file's whole name), and for a
+/// path-qualified `[[a/old]]` or a relative `[[./old]]` the file's path
+/// under a covering root. A file that is no note (`diagram.md.txt`) never
 /// claims the note `diagram.md`'s links, and a link behind an alias that is
 /// not local (`[[work::old]]` naming another vault) is that vault's and stays.
 /// A path link that a root holding the referrer reads as a different note
 /// that exists is ambiguous (`RenameTarget::judge`) and stays too; the pass
 /// counts those (`PassReport::ambiguous`) and the file rename reports the
 /// file. The new text is `RenameTarget::respell`, in NFC (§390): the new
-/// stem, or the new path, with the `.md` or `.markdown` the link was spelled
+/// name (`RenameTarget::new_stem` — a note's stem, any other file's whole
+/// name), or the new path, with the `.md` or `.markdown` the link was spelled
 /// with when the new file name ends in one too, and without it otherwise.
 ///
 /// A stem no wikilink can spell (`wikilink_can_spell`) is never written —
@@ -281,7 +283,9 @@ pub fn replace_block_id_refs_to(
 /// the file's path under such a root is respelled with the new path (issue
 /// 619), one that names another file's path stays, a self-reference names
 /// no target and stays, a literal region is never touched (issue 620), and a
-/// file whose stem ends in `.md` never claims the note's references.
+/// file that is no note, keyed by its whole name (`name_key`), never claims
+/// the references of the note its stem would name (`diagram.md.txt` and the
+/// note `diagram.md`).
 ///
 /// A stem no reference can spell (`block_reference_can_spell`) is never
 /// written: the reference would parse as nothing, silently. The content comes
@@ -1057,18 +1061,23 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn a_file_whose_stem_ends_in_md_does_not_claim_the_notes_links() {
-        // The index files a FILE under its lowercased stem (`normalize_file_path`)
-        // and a LINK under `normalize_target`, which also strips `.md`. For a
-        // note the two agree; for `diagram.md.txt` the file's key is
-        // `diagram.md` while `[[diagram]]` and `[[diagram.md]]` are the note
-        // `diagram.md`'s links, filed under `diagram`. Renaming the file must
-        // not touch them — and renaming the note must (the pair below).
+    fn a_file_that_is_no_note_claims_its_whole_name_and_not_the_notes_links() {
+        // The index files a file that is no note under its whole name
+        // (`name_key`) and a LINK under `normalize_target`, which strips a
+        // note extension. `[[diagram.md.txt]]` is the text file's link;
+        // `[[diagram]]` and `[[diagram.md]]` are the note `diagram.md`'s,
+        // filed under `diagram`. Renaming the file rewrites its own link and
+        // must not touch the note's — and renaming the note must (the pair
+        // below).
+        // What fails this: keying the file by its stem (`Path::file_stem`,
+        // `diagram.md`) — `[[diagram.md.txt]]` is left; reading that stem
+        // by the link rule (`normalize_target`, `diagram`) — the note's
+        // links are claimed.
         let content = "see [[diagram]] [[diagram.md]] [[diagram.md.txt]] ((diagram#^a))\n";
         let txt = rename_target("/v/diagram.md.txt", "/v/chart.txt");
         assert_eq!(
             replace_wikilink_target(content, "/v/r.md", &v(), &txt),
-            content
+            "see [[diagram]] [[diagram.md]] [[chart.txt]] ((diagram#^a))\n"
         );
         assert_eq!(
             replace_block_reference_target(content, "/v/r.md", &v(), &txt),

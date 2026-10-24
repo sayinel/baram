@@ -3,8 +3,7 @@
 
 use crate::context::manager::Registered;
 use crate::context::ContextManager;
-use crate::index::filing::backlink_keys_for;
-use crate::index::normalizer::normalize_file_path;
+use crate::index::filing::{backlink_keys_for, name_key};
 use crate::index::{replace_block_id_refs_to, BlockTarget, FilingKey, KnownPaths};
 use std::collections::HashMap;
 
@@ -61,7 +60,7 @@ pub(crate) async fn rename_block_id_inner(
     // target's keys in every index read — a zettel id included.
     let named_for_its_own_references = |path: &str, content: &str| {
         named_only_for_own_references(path, content, &named_lines, Some(old_id), |p| {
-            let stem = FilingKey::Stem(normalize_file_path(p));
+            let stem = FilingKey::Stem(name_key(p, cfg!(windows)));
             target
                 .keys_by_root
                 .iter()

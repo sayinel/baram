@@ -248,10 +248,11 @@ async fn the_renamed_note_behind_an_alias_two_vaults_carry_is_reported() {
 }
 
 #[tokio::test]
-async fn a_rename_that_keeps_the_stem_leaves_a_link_behind_a_shared_alias_unreported() {
-    // `old.md` → `old.txt` keeps the stem, so `[[notes::old]]` behind the
-    // alias A and B both carry reads as the renamed note as much as it did
-    // before: nothing is left behind, and `r.md` is not reported.
+async fn a_rename_that_keeps_the_name_key_leaves_a_link_behind_a_shared_alias_unreported() {
+    // `old.md` → `old.markdown` keeps the name key (`name_key`), so
+    // `[[notes::old]]` behind the alias A and B both carry reads as the
+    // renamed note as much as it did before: nothing is left behind, and
+    // `r.md` is not reported.
     // What fails this: dropping `!still_named.contains(k)` from the
     // `behind_ambiguous_name` filter in `rename_file_with_links_inner` —
     // `Foreign { notes, old }` stays in the set and `r.md` is reported.
@@ -269,9 +270,10 @@ async fn a_rename_that_keeps_the_stem_leaves_a_link_behind_a_shared_alias_unrepo
     refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
     let old = format!("{root_a}/old.md");
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/old.txt"))
-        .await
-        .unwrap();
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/old.markdown"))
+            .await
+            .unwrap();
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",

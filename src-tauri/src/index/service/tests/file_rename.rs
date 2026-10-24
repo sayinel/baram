@@ -205,9 +205,15 @@ async fn a_file_rename_reports_a_referrer_whose_reference_is_gone() {
 }
 
 #[tokio::test]
-async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
-    // issue 678: `old.md` → `old.txt` changes no reference — every referrer
-    // is unchanged, and none of them is stale news.
+async fn a_rename_to_a_name_that_is_no_note_respells_a_bare_reference_with_the_whole_name() {
+    // `old.md` → `old.txt`: the file is no note any more, and a bare link
+    // names a file that is not a note by its whole name (`name_key`) — the
+    // resolver answers a bare `[[old]]` with a note only. So every bare
+    // reference is respelled with the whole new name, and is a backlink of
+    // `old.txt` once rewritten.
+    // What fails this: respelling a `Stem` match with the new name's stem
+    // (`Path::file_stem`) in `new_stem` — `r.md` keeps `old` and is not
+    // updated.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678d", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
@@ -224,28 +230,43 @@ async fn a_rename_that_keeps_the_stem_rewrites_nothing_and_reports_nothing() {
     .await
     .unwrap();
     assert!(dir.path().join("old.txt").exists());
-    assert_eq!(result.updated_files, Vec::<String>::new());
+    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
         result.skipped_files
     );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "see ((old.txt#^b1)) [[old.txt]]\n"
+    );
+    assert_eq!(
+        backlink_lines(
+            &state,
+            &ctx,
+            &format!("{root}/old.txt"),
+            &format!("{root}/r.md")
+        )
+        .await,
+        vec![1]
+    );
 }
 
 #[tokio::test]
-async fn a_rename_that_keeps_the_stem_still_respells_a_path_link_for_the_new_extension() {
-    // issue 619: `a/old.md` → `a/old.txt` keeps the stem key but not the
-    // path key — the index files a link to `a/old.txt` by its path as
-    // `a/old.txt`, since only a note extension comes off. The bare link
-    // stays; the path link is respelled, and both remain backlinks.
+async fn a_rename_to_a_name_that_is_no_note_respells_every_link_with_the_whole_name() {
+    // issue 619: `a/old.md` → `a/old.txt` changes the name key and the path
+    // key alike — the index files a link to `a/old.txt` by its whole name
+    // and by its path as `a/old.txt`, since only a note extension comes off.
+    // Every link is respelled, and all four remain backlinks.
     // What fails this: spelling a path link's last component with the new
     // stem (`Path::file_stem`, its last extension off) instead of the name
     // without its note extension — `[[a/old]]` then stays and names nothing.
     // A link spelled with `.md` loses it, because the new name is no note:
     // `[[a/old.md]]` becomes `[[a/old.txt]]` and the bare `[[old.md]]`
-    // becomes `[[old]]`.
+    // becomes `[[old.txt]]`.
     // What fails this too: keeping the captured suffix whatever the new name
-    // ends in (`respell`) — `[[a/old.txt.md]]` and `[[old.md]]` are written.
+    // ends in (`respell`) — `[[a/old.txt.md]]` and `[[old.txt.md]]` are
+    // written.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-619t", true).await;
     std::fs::create_dir_all(dir.path().join("a")).unwrap();
@@ -274,7 +295,7 @@ async fn a_rename_that_keeps_the_stem_still_respells_a_path_link_for_the_new_ext
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
-        "[[old]]\n[[a/old.txt]]\n[[a/old.txt]]\n[[old]]\n"
+        "[[old.txt]]\n[[a/old.txt]]\n[[a/old.txt]]\n[[old.txt]]\n"
     );
     let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.txt"))
         .await

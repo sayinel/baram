@@ -305,8 +305,9 @@ async fn a_reference_left_on_purpose_is_reported_before_the_same_stem_exemption_
 
 #[tokio::test]
 async fn renaming_a_file_whose_stem_ends_in_md_leaves_the_notes_referrers_alone() {
-    // `diagram.md.txt` has the stem `diagram.md`; the note `diagram.md` has
-    // the stem `diagram`, and `[[diagram]]`·`((diagram#^b1))` are ITS links.
+    // `diagram.md.txt` is no note, so its key is its whole name
+    // (`name_key`); the note `diagram.md` has the stem `diagram`, and
+    // `[[diagram]]`·`((diagram#^b1))` are ITS links.
     // Renaming the text file finds no referrer under its own key, rewrites
     // nothing and reports nothing — and the note keeps its backlink.
     let ctx = ContextManager::new();
@@ -350,13 +351,18 @@ async fn renaming_a_file_whose_stem_ends_in_md_leaves_the_notes_referrers_alone(
 }
 
 #[tokio::test]
-async fn a_rename_that_keeps_the_stem_does_not_report_the_renamed_note_for_its_own_references() {
+async fn a_rename_that_keeps_the_name_key_does_not_report_the_renamed_note_for_its_own_references()
+{
     // issue 678: the note itself spells its own name — `((old#^b1))`, which
-    // the index files under `old`, its own key — and `old.md` → `old.txt`
-    // leaves it rightly untouched. Under `Unchanged::Ignore` nothing is news,
-    // so the note is not reported either; without that test the note would
-    // be, because its self-references name a target and so account for none
-    // of the lines the index named it for.
+    // the index files under `old`, its own key — and `old.md` →
+    // `old.markdown` keeps that key (`name_key`), so the reference is
+    // rightly left untouched. Under `Unchanged::Ignore` nothing is news, so
+    // the note is not reported either; without that test the note would be,
+    // because its self-references name a target and so account for none of
+    // the lines the index named it for.
+    // What fails this: dropping `matches!(unchanged, Unchanged::Report { .. })`
+    // from the `named_for_more` test `rename_file_with_links_inner` hands
+    // `rewrite_renamed_note` — the note is reported.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678m", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n\nsee ((old#^b1))\n").unwrap();
@@ -367,7 +373,7 @@ async fn a_rename_that_keeps_the_stem_does_not_report_the_renamed_note_for_its_o
         &state,
         &ctx,
         &format!("{root}/old.md"),
-        &format!("{root}/old.txt"),
+        &format!("{root}/old.markdown"),
     )
     .await
     .unwrap();
@@ -382,7 +388,7 @@ async fn a_rename_that_keeps_the_stem_does_not_report_the_renamed_note_for_its_o
         result.skipped_files
     );
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("old.txt")).unwrap(),
+        std::fs::read_to_string(dir.path().join("old.markdown")).unwrap(),
         "para ^b1\n\nsee ((old#^b1))\n"
     );
 }

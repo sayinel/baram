@@ -3,7 +3,8 @@
 //! rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::ContextManager;
-use crate::index::{keys_for, normalize_file_path, reads_a_link_under, RenameTarget};
+use crate::index::filing::name_key;
+use crate::index::{keys_for, reads_a_link_under, RenameTarget};
 use std::collections::HashMap;
 
 use super::super::keys::{keys_of, local_aliases_of, OwnAliases};
@@ -57,13 +58,14 @@ pub(crate) async fn rename_file_with_links_inner(
         .await?;
     // The keys a link behind an ambiguous own name is filed under that name
     // the old note and not the new one — `[[notes::old]]` for `old.md` →
-    // `new.md`, not for `old.md` → `old.txt`, whose stem the link still
-    // reads as. Set differences, so no key is told apart by its variant. A
-    // file whose links the passes leave holding one is reported, rewritten
-    // or not (`left_behind`), as for an ambiguous path link. `plain` takes
-    // out the stem key, under which a same-stem note's own `((#^id))` is
-    // filed — what fails this: dropping `!plain.contains(k)`, and the two
-    // same-stem exemption tests in `tests/same_stem.rs` report that note.
+    // `new.md`, not for `old.md` → `old.markdown`, whose name key (`name_key`)
+    // the link still reads as. Set differences, so no key is told apart by
+    // its variant. A file whose links the passes leave holding one is
+    // reported, rewritten or not (`left_behind`), as for an ambiguous path
+    // link. `plain` takes out the stem key, under which a same-stem note's
+    // own `((#^id))` is filed — what fails this: dropping
+    // `!plain.contains(k)`, and the two same-stem exemption tests in
+    // `tests/same_stem.rs` report that note.
     let windows = cfg!(windows);
     let behind_ambiguous_name = {
         let plain = keys_for(old_path, None, &local_aliases, windows);
@@ -75,18 +77,18 @@ pub(crate) async fn rename_file_with_links_inner(
     // The same-stem exemption (`named_only_for_own_references`), with the
     // stem compared to the old key: a referrer is exempt only under the name
     // being renamed away.
-    let old_key = normalize_file_path(old_path);
+    let old_key = name_key(old_path, windows);
     let named_for_its_own_references = |path: &str, content: &str| {
         named_only_for_own_references(path, content, &named_lines, None, |p| {
-            normalize_file_path(p) == old_key
+            name_key(p, windows) == old_key
         })
     };
-    // A rename that keeps the stem — `old.md` → `old.txt`, or `Note.md` →
-    // `note.md`, whose case the passes respell in every referrer — leaves no
-    // referrer stale: none the index named is news. A path link it does
-    // change (`[[a/old]]` → `[[a/old.txt]]`, issue 619) is rewritten, not
-    // left unchanged.
-    let stem_unchanged = normalize_file_path(new_path) == old_key;
+    // A rename that keeps the name key (`name_key`) — `Note.md` →
+    // `note.md`, whose case the passes respell in every referrer, or
+    // `old.md` → `old.markdown` — leaves no referrer stale: none the index
+    // named is news. A link it does change (`[[a/Note]]` → `[[a/note]]`) is
+    // rewritten, not left unchanged.
+    let stem_unchanged = name_key(new_path, windows) == old_key;
 
     // The note is dropped under what the old path resolved to before the
     // move (`RenameSource::identity`) and filed under what the new path

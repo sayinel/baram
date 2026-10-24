@@ -3,9 +3,10 @@
 // ambiguous; and, for a file rename, how the reference is respelled.
 
 use super::filing::{
-    filing_key, is_relative, root_relative_key, under_root, FilingKey, LocalAlias,
+    bare_name, filing_key, is_note, is_relative, name_key, root_relative_key, under_root,
+    FilingKey, LocalAlias,
 };
-use super::normalizer::{file_key, fold_name, nfc, strip_note_extension};
+use super::normalizer::{fold_name, nfc, strip_note_extension};
 use super::relative_links::{path_components, relative_components};
 use std::collections::{HashMap, HashSet};
 
@@ -297,17 +298,6 @@ pub struct RenameTarget<'a> {
     pub windows: bool,
 }
 
-/// The stem of the file at `path`, read from its last component so that a
-/// Windows path is read on any host: `std::path::Path::file_stem` of that
-/// name — the name without its last extension, as `keys_for` reads it.
-fn stem_of(path: &str, windows: bool) -> &str {
-    let name = path_components(path, windows).last().copied().unwrap_or("");
-    std::path::Path::new(name)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or(name)
-}
-
 /// The note extension `strip_note_extension` removes from a captured
 /// target, as spelled there, or "". Uses the index's lower-case suffix rule.
 fn note_suffix(captured: &str) -> &str {
@@ -316,16 +306,13 @@ fn note_suffix(captured: &str) -> &str {
 }
 
 impl RenameTarget<'_> {
-    /// The renamed file's stem before the rename.
-    pub fn old_stem(&self) -> &str {
-        stem_of(self.old_path, self.windows)
-    }
-
-    /// The renamed file's stem after the rename, in NFC (§390, spec 0069
-    /// D7): what a stem link is respelled with, and what the spellability
-    /// predicates judge — one string, so they judge what is written.
+    /// The renamed file's name as a bare link spells it after the rename
+    /// (`bare_name`: a note's stem, any other file's whole name), in NFC
+    /// (§390, spec 0069 D7): what a `Stem` match is respelled with, and what
+    /// the spellability predicates judge — one string, so they judge what
+    /// is written.
     pub fn new_stem(&self) -> String {
-        nfc(stem_of(self.new_path, self.windows)).into_owned()
+        nfc(bare_name(self.new_path, self.windows)).into_owned()
     }
 
     /// Does `raw_target`, written in the referrer at `ref_path` behind
@@ -379,7 +366,7 @@ impl RenameTarget<'_> {
                 None => Judgement::NotOurs,
             };
         }
-        let stem = file_key(self.old_stem());
+        let stem = name_key(self.old_path, self.windows);
         let relative = is_relative(raw_target.trim(), self.windows);
         let matched = keyed_under(ref_path, covering_roots, None, raw_target, self.windows)
             .find_map(|(root, key)| {
@@ -421,10 +408,10 @@ impl RenameTarget<'_> {
     /// `refers` for a link behind `alias`: judged as the index files it —
     /// `filing_key(.., Some(alias), ..)`, a `Foreign` key whatever the root —
     /// against the two `Foreign` keys `keys_for` gives this file under each
-    /// local alias of that name: its stem (a `Stem` match), or its path under
-    /// THAT alias's root (a `Path` match under that root, which `respell`
-    /// spells from it and `expected_key` keys under it; the read-back gate
-    /// wraps the alias around that key). So `[[work::old]]` and
+    /// local alias of that name: its name (`name_key`, a `Stem` match), or
+    /// its path under THAT alias's root (a `Path` match under that root,
+    /// which `respell` spells from it and `expected_key` keys under it; the
+    /// read-back gate wraps the alias around that key). So `[[work::old]]` and
     /// `[[work::dir/old]]` match the local alias `work`, and `[[work::./old]]`
     /// never does: a `Foreign` target is not resolved against the referrer's
     /// folder and the index never counts it under this file. A covering root
@@ -437,7 +424,7 @@ impl RenameTarget<'_> {
         raw_target: &str,
     ) -> Option<Match> {
         let alias = fold_name(alias);
-        let stem = file_key(self.old_stem());
+        let stem = name_key(self.old_path, self.windows);
         let (_, key) = keyed_under(
             ref_path,
             covering_roots,
@@ -501,7 +488,7 @@ impl RenameTarget<'_> {
     }
 
     /// The new target TEXT for a reference `refers` matched — no alias
-    /// prefix, no heading, block or display: the new stem for `Stem`; the
+    /// prefix, no heading, block or display: `new_stem` for `Stem`; the
     /// file's components under `root` joined with `/` for `Path`, or, when
     /// `relative`, the way from the referrer's folder (`relative_components`)
     /// — spelled as `new_path` spells them, whatever the link's case or
@@ -510,19 +497,17 @@ impl RenameTarget<'_> {
     /// lower-case `.md` or `.markdown` that `strip_note_extension` removes
     /// from the captured target when the new file name also has one of those
     /// lower-case suffixes. After `a/old.md` → `a/old.txt`, `[[a/old.md]]`
-    /// becomes `[[a/old.txt]]` and `[[old.md]]` becomes `[[old]]` — a kept
-    /// `.md` would spell `a/old.txt.md`, which names no file.
+    /// becomes `[[a/old.txt]]` and `[[old.md]]` becomes `[[old.txt]]` — a
+    /// kept `.md` would spell `a/old.txt.md`, which names no file, and the
+    /// resolver finds a file that is not a note by its whole name
+    /// (`bare_name`), not by `[[old]]`.
     pub fn respell(&self, ref_path: &str, m: &Match, captured_target: &str) -> String {
-        let new_name = path_components(self.new_path, self.windows)
-            .last()
-            .copied()
-            .unwrap_or("");
         // The new name is a note only by a lower-case extension, as the
-        // index reads it (`strip_note_extension`); `a/new.MD` is no note.
-        let suffix = if strip_note_extension(new_name) == new_name {
-            ""
-        } else {
+        // index reads it (`is_note`); `a/new.MD` is no note.
+        let suffix = if is_note(self.new_path, self.windows) {
             note_suffix(captured_target)
+        } else {
+            ""
         };
         let target = match m {
             Match::Stem => self.new_stem(),
@@ -546,12 +531,12 @@ impl RenameTarget<'_> {
 
     /// The key the index files a reference `respell` wrote under, in the
     /// index whose root the match was made under — the read-back gate's
-    /// expectation: `Stem(file_key(new stem))`, or the new file's
+    /// expectation: `Stem(name_key(new path))`, or the new file's
     /// `root_relative_key` under `root`. A new path outside `root` (which a
-    /// rename in place never makes) falls back to the new stem's key, which
+    /// rename in place never makes) falls back to the new name's key, which
     /// the gate then finds unequal and the file is left and reported.
     pub fn expected_key(&self, m: &Match) -> FilingKey {
-        let stem = file_key(&self.new_stem());
+        let stem = name_key(self.new_path, self.windows);
         match m {
             Match::Stem => FilingKey::Stem(stem),
             Match::Path { root, .. } => FilingKey::Path(
