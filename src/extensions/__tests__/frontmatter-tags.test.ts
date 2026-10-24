@@ -48,6 +48,17 @@ describe("tag bar writes front matter YAML still reads (§56m)", () => {
 
   // An unquoted `#` item is already unreadable; the bar's next write quotes it rather than
   // carrying the broken spelling forward.
+  it("an unindented block list stays unindented", () => {
+    const out = addPill("title: t\ntags:\n- a\n- b\ndate: d", "x");
+    expect(out).toBe("title: t\ntags:\n- a\n- b\n- x\ndate: d");
+    expect(parse(out).tags).toEqual(["a", "b", "x"]);
+  });
+
+  it("keeps the key as it is spelled", () => {
+    expect(addPill("Tags: [a]", "x")).toBe("Tags: [a, x]");
+    expect(removePill("tags :\n  - a\n  - x", "x")).toBe("tags :\n  - a");
+  });
+
   it("quotes an item whose spelling YAML cannot read", () => {
     const out = addPill("tags: [#unq]", "x");
     expect(out).toBe(`tags: ["#unq", x]`);
@@ -77,7 +88,7 @@ describe("tag bar writes front matter YAML still reads (§56m)", () => {
 
   // A `tags:` the bar cannot read as a list is left alone: writing a list beside it would be
   // a duplicate key, and writing one over its first line would strand the rest.
-  it.each([["tags: solo"], ["title: t\ntags:\n- a\n- b"]])(
+  it.each([["tags: solo"], ["title: t\ntags: [a,\n  b]"]])(
     "does not write when tags is %j",
     (yaml) => {
       expect(addPill(yaml, "x")).toBe(yaml);

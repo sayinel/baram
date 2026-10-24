@@ -131,6 +131,14 @@ describe("carriedTagList", () => {
   it("quotes an item whose spelling YAML cannot read", () => {
     expect(carriedTagList("---\ntags: [#unq]\n---\n")).toBe(`["#unq"]`);
   });
+
+  // What turns this red: carrying a block item of blanks as an empty flow item — `[, a]`,
+  // which YAML cannot parse.
+  it("leaves out a block item that names nothing", () => {
+    const list = carriedTagList("---\ntags:\n  -  \n  - a\n---\n");
+    expect(list).toBe("[a]");
+    expect(parse(`tags: ${list}`)).toEqual({ tags: ["a"] });
+  });
 });
 
 describe("parseFrontmatterAliases", () => {

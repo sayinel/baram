@@ -41,7 +41,7 @@ describe("resolveCaptureMatches", () => {
   });
 
   // ‼️ 자동완성 출처(`getVaultTags`)가 태그를 **소문자로** 정규화한다
-  // (`src-tauri/src/tag/mod.rs:126`·`:135`). 제안을 고른 사용자는 `#links`를 얻고,
+  // (`tag::get_vault_tags` 의 `to_lowercase`). 제안을 고른 사용자는 `#links`를 얻고,
   // 노트 제목은 `Links`다. 대소문자를 구분하면 제안대로 고른 태그가 매칭에 실패한다.
   it("matches case-insensitively, ignoring surrounding whitespace", () => {
     expect(resolveCaptureMatches(["  links  "], [links]).targets).toEqual([

@@ -187,9 +187,9 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
  * The tag names in the `tags:` field of a YAML frontmatter string (without its `---` fences),
  * once each — a pill per tag. A name is the item's value without quotes and without its leading
  * `#`s (`tagName`), so `"#solo"` and `solo` are the one pill `#solo`.
- * Supports:
+ * Supports, as `readFrontmatterList` reads them:
  *   tags: [tag1, tag2]       (inline array)
- *   tags:\n  - tag1\n  - tag2  (block list)
+ *   tags:\n  - tag1\n  - tag2  (block list, indented or not)
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function parseFrontmatterTags(yaml: string): string[] {
@@ -198,19 +198,20 @@ export function parseFrontmatterTags(yaml: string): string[] {
 }
 
 /**
- * Rewrites the `tags:` field to hold the tag names `tags`, in its own form (inline or block).
- * The items of a name that stays are kept as written — quotes, `#` and block indentation — and
- * quoted only when YAML could not read them; a new name is quoted when YAML would not read it
- * back as written (`listItemSpelling`). An emptied list is written `tags: []`. Without a
- * `tags:` field, `tags: [...]` goes after the first line. A `tags:` this cannot read as a list
- * (a scalar, an unindented `- a` sequence) is left alone and `yaml` is returned unchanged:
- * writing a list beside it would repeat the key, and over its first line would strand the rest.
+ * Rewrites the `tags:` field to hold the tag names `tags`, in its own form (inline or block)
+ * and under its own key spelling. The items of a name that stays are kept as written — quotes,
+ * `#` and block indentation — and quoted only when YAML could not read them; a new name is
+ * quoted when YAML would not read it back as written (`listItemSpelling`). An emptied list is
+ * written `tags: []`. Without a `tags:` field, `tags: [...]` goes after the first line. A
+ * `tags:` this cannot read as a list (a scalar, a flow list over several lines) is left alone
+ * and `yaml` is returned unchanged: writing a list beside it would repeat the key, and over its
+ * first line would strand the rest.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function updateFrontmatterTags(yaml: string, tags: string[]): string {
   const list = readFrontmatterList(yaml, "tags");
   if (!list) {
-    if (/^tags[ \t]*:/m.test(yaml)) return yaml;
+    if (/^tags[ \t]*:/im.test(yaml)) return yaml;
     const lines = yaml.split("\n");
     lines.splice(1, 0, `tags: ${flowList(tags)}`);
     return lines.join("\n");
@@ -223,11 +224,11 @@ export function updateFrontmatterTags(yaml: string, tags: string[]): string {
 
   let field: string;
   if (list.form === "inline" || kept.length + added.length === 0) {
-    field = `tags: ${flowList([...kept, ...added])}`;
+    field = `${list.key} ${flowList([...kept, ...added])}`;
   } else {
     const lead = list.items[0]?.lead ?? "  - ";
     field = [
-      "tags:",
+      list.key,
       ...kept.map((i) => `${i.lead ?? lead}${listItemSpelling(i, false)}`),
       ...added.map((t) => `${lead}${listItemSpelling(t, false)}`),
     ].join("\n");

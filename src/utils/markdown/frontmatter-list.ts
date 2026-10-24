@@ -11,9 +11,11 @@
 export interface FrontmatterList {
   /** Offset just past the field: its `]`, or the end of its last item line. */
   end: number;
-  /** `inline` — `field: [a, b]`; `block` — `field:` and then indented `- a` lines, or none. */
+  /** `inline` — `field: [a, b]`; `block` — `field:` and then `- a` lines, or none. */
   form: "block" | "inline";
   items: FrontmatterListItem[];
+  /** The key as written, through its colon — `tags:`, `Tags :`. */
+  key: string;
   /** Offset of the field's key. */
   start: number;
 }
@@ -58,30 +60,42 @@ export function listItemSpelling(
 }
 
 /**
- * Reads `field` at the start of a line of `yaml` (front matter without its `---` fences), in
- * the two forms the app writes: `field: [a, b]` and `field:` followed by `- a` lines indented
- * under it. `field:` with nothing under it is an empty block list. Returns null when the field
- * is absent, and when it is present in a form this does not read — a scalar, an unindented
- * `- a` sequence, a mapping — so a caller does not write a list over the first line of it.
+ * Reads `field` at the start of a line of `yaml` (front matter without its `---` fences), the
+ * way the backend's tag reader (`tag::frontmatter`) finds a tag list: the key in any case, with
+ * blanks allowed before its colon; either `field: [a, b]` on that one line, or `field:` alone
+ * and then the `- a` lines under it, indented or not, up to the first line that is not one.
+ * `field:` with nothing under it is an empty block list. Returns null when the field is absent,
+ * and when it is present in a form this does not read — a scalar, a flow list over several
+ * lines, a mapping — so a caller does not write a list over the first line of it.
+ *
+ * One reading differs from the backend's on purpose: a comma inside a quoted inline item does
+ * not split it (`["a, b"]` is one item here, two there), so that writing the list back keeps
+ * the item whole.
  */
 export function readFrontmatterList(
   yaml: string,
   field: string,
 ): FrontmatterList | null {
-  const inline = new RegExp(`^${field}:\\s*\\[([^\\]]*)\\]`, "m").exec(yaml);
+  const inline = new RegExp(
+    `^(${field}[ \\t]*:)[ \\t]*\\[([^\\]\\n]*)\\]`,
+    "im",
+  ).exec(yaml);
   if (inline) {
     return {
       end: inline.index + inline[0].length,
       form: "inline",
-      items: splitFlowItems(inline[1]).map((raw) => ({
+      items: splitFlowItems(inline[2]).map((raw) => ({
         raw,
         value: unquote(raw),
       })),
+      key: inline[1],
       start: inline.index,
     };
   }
 
-  const header = new RegExp(`^${field}:[ \\t]*(?=\\r?$)`, "m").exec(yaml);
+  const header = new RegExp(`^(${field}[ \\t]*:)[ \\t]*(?=\\r?$)`, "im").exec(
+    yaml,
+  );
   if (!header) return null;
   const items: FrontmatterListItem[] = [];
   let end = header.index + header[0].length;
@@ -96,18 +110,19 @@ export function readFrontmatterList(
     const line = yaml
       .slice(lineStart, lineEnd === -1 ? yaml.length : lineEnd)
       .replace(/\r$/, "");
-    const item = /^([ \t]+-[ \t]+)(\S.*)$/.exec(line);
+    const item = /^([ \t]*-[ \t]+)(.+)$/.exec(line);
     if (!item) {
-      // An indented line or an unindented `-` straight under the key is a value in a form
-      // this does not read; anything else is the next key.
+      // An indented line or a `-` that is not an item, straight under the key, is a value in
+      // a form this does not read; anything else is the next key.
       if (items.length === 0 && /^(?:[ \t]+\S|-)/.test(line)) return null;
       break;
     }
+    // An item of blanks names nothing: it is passed over, and a rewrite drops its line.
     const raw = item[2].trim();
-    items.push({ lead: item[1], raw, value: unquote(raw) });
+    if (raw) items.push({ lead: item[1], raw, value: unquote(raw) });
     end = lineStart + line.length;
   }
-  return { end, form: "block", items, start: header.index };
+  return { end, form: "block", items, key: header[1], start: header.index };
 }
 
 /** Plain letters, digits and `_-./`, not starting with a mark or punctuation. */
@@ -165,18 +180,9 @@ function splitFlowItems(inner: string): string[] {
 }
 
 /**
- * An item's text without its quotes. A stray quote at either end of an unquoted item is
- * dropped, as the readers this replaced did.
+ * An item's text without its quotes, taken off as the backend's tag reader takes them
+ * (`entry_name`): every `"` at either end, then every `'`. No escape is read.
  */
 function unquote(raw: string): string {
-  if (DOUBLE_QUOTED.test(raw)) {
-    try {
-      return JSON.parse(raw) as string;
-    } catch {
-      // A YAML escape JSON does not know (`\x41`, `\ `): the text between the quotes.
-      return raw.slice(1, -1);
-    }
-  }
-  if (SINGLE_QUOTED.test(raw)) return raw.slice(1, -1).replace(/''/g, "'");
-  return raw.replace(/^["']|["']$/g, "");
+  return raw.replace(/^"+|"+$/g, "").replace(/^'+|'+$/g, "");
 }

@@ -56,8 +56,22 @@ describe("readFrontmatterList", () => {
   // first line would leave the rest dangling.
   it("refuses a field it cannot read as a list", () => {
     expect(readFrontmatterList("tags: solo", "tags")).toBeNull();
-    expect(readFrontmatterList("tags:\n- a\n- b", "tags")).toBeNull();
     expect(readFrontmatterList("tags:\n  a: b", "tags")).toBeNull();
+    expect(readFrontmatterList("tags: [a,\n  b]", "tags")).toBeNull();
+  });
+
+  it("reads block items that are not indented, keeping their lead", () => {
+    const list = readFrontmatterList(`tags:\n- a\n-   "#b"\nnext: 1`, "tags");
+    expect(list?.items).toEqual([
+      { lead: "- ", raw: "a", value: "a" },
+      { lead: "-   ", raw: `"#b"`, value: "#b" },
+    ]);
+  });
+
+  it("reads the key in any case, with blanks before its colon, and keeps it", () => {
+    expect(readFrontmatterList("Tags: [x]", "tags")?.key).toBe("Tags:");
+    expect(readFrontmatterList("tags : [x]", "tags")?.key).toBe("tags :");
+    expect(readFrontmatterList("TAGS:\n  - x", "tags")?.key).toBe("TAGS:");
   });
 
   it("returns null when the field is absent", () => {
