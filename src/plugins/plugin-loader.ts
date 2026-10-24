@@ -34,6 +34,7 @@ import {
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
+import { declaredPanels } from "./manifest-panels";
 import { grantableCapabilities } from "./plugin-consent";
 import { registerEntryContributions } from "./plugin-entry-points";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
@@ -46,6 +47,10 @@ import {
   releaseCodeBlocks,
   wireSandboxCodeBlocks,
 } from "./rendered/code-blocks-api";
+import {
+  registerDeclaredPanels,
+  wireSandboxPanels,
+} from "./rendered/panels-host";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import {
@@ -325,6 +330,18 @@ export class PluginLoader {
       // fails. Registering here makes the documented behaviour the real one, and the
       // rollback below removes them if the load does not complete.
       this.registerDeclaredStatusBar(manifest, disposables);
+      // §394 spec 0073 D14 · plan 0126 P9 — the declared panels go up here too, before any grant or
+      // webview: their buttons show while the sandbox boots, and a panel takes content only once open.
+      registerDeclaredPanels(manifest, disposables);
+      const panelIds = declaredPanels(manifest).map((p) => p.id);
+      // §394 plan 0126 P11 — every panel id the manifest declares, granted or not, for `activate`: the
+      // sandbox's `setPanel` and `onPanelAction` refuse any other at once. Not `panelIds`, which is empty
+      // when consent withheld `sidebar` (`narrowToConsent`): a call naming a declared panel in the
+      // plugin's `activate` would then throw and fail the load. Named, a `setPanel` meets the host's
+      // `sidebar` gate instead, which refuses it, and the sandbox logs the refusal.
+      const manifestPanelIds = (manifest.contributions?.panels ?? []).map(
+        (p) => p.id,
+      );
       // §394 plan 0125 P10 — the declared code block languages are claimed before the sandbox
       // starts, so its `register` refuses a language a plugin loaded earlier draws. A throw below
       // is rolled back by `rollbackSandboxLoad`, whose `unregisterPluginUI` releases them.
@@ -353,6 +370,8 @@ export class PluginLoader {
         // from the sandbox to a model.
         createHostRequestHandler({
           capabilities: manifest.capabilities,
+          // §394 plan 0126 P8 — the panel ids `ui_set_panel` may name: the ones registered above.
+          declaredPanelIds: panelIds,
           // §260 Phase 4a — `ui` rides the same mediated channel. The declared item ids
           // travel with it because the host, not the plugin, decides which items exist.
           declaredStatusBarIds: (manifest.contributions?.statusBar ?? []).map(
@@ -371,6 +390,8 @@ export class PluginLoader {
           renderSource: (id) => started?.renderSource(id),
         }),
         codeBlockLangs,
+        // §394 plan 0126 P11 — absent when the manifest declares no panels.
+        manifestPanelIds.length > 0 ? manifestPanelIds : undefined,
       );
       started = session;
       this.wireSandboxContributions(
@@ -793,8 +814,9 @@ export class PluginLoader {
   /**
    * Map a started sandbox's declared commands onto the host and subscribe it to app
    * events. Everything it registers is pushed onto `disposables`, which is both the
-   * unload path and the rollback path. (The status bar is registered earlier, before the
-   * sandbox starts — see `registerDeclaredStatusBar`.)
+   * unload path and the rollback path. (The status bar and the declared panels are
+   * registered earlier, before the sandbox starts — see `registerDeclaredStatusBar` and
+   * `registerDeclaredPanels`.)
    */
   private wireSandboxContributions(
     manifest: PluginManifest,
@@ -864,6 +886,10 @@ export class PluginLoader {
     // §394 — renderers for what the sandbox registered during activate, and its action dispatch.
     if (codeBlockLangs !== undefined) {
       wireSandboxCodeBlocks(manifest.id, codeBlockLangs, session, disposables);
+    }
+    // §394 plan 0126 P13 — from here a panel's `data-action` click crosses as `invokeAction`.
+    if (declaredPanels(manifest).length > 0) {
+      wireSandboxPanels(manifest.id, session, disposables);
     }
     // …and tell it what is already open, so its first useful moment does not depend on
     // the user switching tabs (the normal case at startup).

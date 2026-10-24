@@ -4,6 +4,7 @@
 import {
   MAX_CODE_BLOCK_LANG_CHARS,
   MAX_FRAME_ID_CHARS,
+  MAX_PANEL_ID_CHARS,
   MAX_RENDER_ERROR_CHARS,
   MAX_RENDERED_CSS_BYTES,
   MAX_RENDERED_HTML_BYTES,
@@ -72,8 +73,28 @@ export function isRenderResult(m: Fields): boolean {
       m.error.length <= MAX_RENDER_ERROR_CHARS * 4
     );
   }
+  return m.ok === true && isContentWithinFloor(m);
+}
+
+/**
+ * `ui_set_panel` (§394 plan 0126 P8): a panel id and content within the floor `isRenderResult` checks,
+ * for its reason. Whether the id is declared, and the exact byte counts, are the handler's
+ * (`host-ui-bridge.ts`). The id is bounded at the longest a manifest may declare
+ * (`MAX_PANEL_ID_CHARS`) because the handler echoes an undeclared one into its refusal
+ * (`undeclaredPanelMessage`); our client throws for an undeclared id before sending, so the bound
+ * only refuses a frame it never sends.
+ */
+export function isSetPanel(r: Fields): boolean {
   return (
-    m.ok === true &&
+    typeof r.id === "string" &&
+    r.id.length <= MAX_PANEL_ID_CHARS &&
+    isContentWithinFloor(r)
+  );
+}
+
+/** `html` a string and `css` absent or a string, neither longer in UTF-16 units than its byte cap. */
+function isContentWithinFloor(m: Fields): boolean {
+  return (
     typeof m.html === "string" &&
     m.html.length <= MAX_RENDERED_HTML_BYTES &&
     (m.css === undefined ||

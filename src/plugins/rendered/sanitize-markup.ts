@@ -49,7 +49,7 @@ export interface SanitizedMarkup {
   nodes: number;
   /**
    * Elements and attributes DOMPurify removed — logged while developer mode is on (§6, §379: a dev
-   * build, or the user's switch in a release build — `toDrawable` in `render-queue.ts`). A LOWER
+   * build, or the user's switch in a release build — `prepareDrawable` in `drawable.ts`). A LOWER
    * bound: DOMPurify 3.4.16 (no `FORCE_BODY`) parses the input as a document and returns its
    * `<body>`, so what the HTML parser puts into `<head>` — any element the parser's in-head rules
    * take at the start of the input, `<script>`, `<style>`, `<link>`, `<meta>`, `<base>`, `<title>`

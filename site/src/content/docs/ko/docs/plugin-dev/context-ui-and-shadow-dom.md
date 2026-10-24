@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: UI 와 Shadow DOM 격리"
-sourceHash: "3a78d5d2f8eb"
+sourceHash: "4a8454fe0aa9"
 ---
 
 ## `context.ui`
@@ -45,6 +45,9 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 
 답을 돌려받는 선택창 · 입력창은 [컨텍스트: 선택창과 입력창](/ko/docs/plugin-dev/context-prompts/)을
 보십시오 — `ui` 권한이 필요 없습니다.
+
+sandboxed 플러그인에는 `addSidebarPanel`이 없습니다. 패널을 매니페스트에 선언하고 내용을 보냅니다 —
+[사이드바 패널](/ko/docs/plugin-dev/sidebar-panels/)을 보십시오.
 
 참고:
 

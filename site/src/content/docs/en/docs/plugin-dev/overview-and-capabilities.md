@@ -49,7 +49,7 @@ Accessing an API whose capability was not declared throws a clear error
 | `extensions`      | Contribute a ProseMirror plugin to the editor (trusted tier only) | |
 | `files`           | Read and write files in the vault; also [`ctx.index`](/en/docs/plugin-dev/context-index/) and `vault:changed` | sensitive     |
 | `files:readonly`  | Read files in the vault (no writing); also [`ctx.index`](/en/docs/plugin-dev/context-index/) and `vault:changed` |               |
-| `sidebar`         | Add panels to the sidebar               |               |
+| `sidebar`         | Add panels to the sidebar — a trusted plugin mounts its own DOM, a sandboxed one declares [panels](/en/docs/plugin-dev/sidebar-panels/) | |
 | `statusbar`       | Display items in the status bar         |               |
 | `settings`        | Declare options in the settings screen  |               |
 | `ai`              | Access AI/LLM features                  | **sensitive** |

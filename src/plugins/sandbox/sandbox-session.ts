@@ -68,6 +68,10 @@ export const INFLIGHT_BUDGET: Record<HostService, number> = {
   // `MAX_SETTING_FIELDS` values. The client serialises staged reads anyway, so this bound
   // is a backstop against a plugin driving the transport directly, not a queue depth.
   settings: 4,
+  // §394 plan 0126 — `ui_set_panel` shares it: the client keeps one per declared panel on its way
+  // (`sandbox-ui.ts`; three panels at most), so panels leave five for the toast and the status bar —
+  // except across a re-activation, which can start one while the previous activation's is still on
+  // its way.
   ui: 8,
 };
 
@@ -166,15 +170,21 @@ export class SandboxSession {
     declared: PluginContributions,
     /** §394 — the claimed code block languages (`claimCodeBlocks`); absent without `codeblocks`. */
     codeBlockLangs?: CodeBlockLangClaim[],
+    /**
+     * §394 plan 0126 P11 — the panel ids declared in the manifest, granted or not; absent without
+     * panels.
+     */
+    panelIds?: string[],
   ): Promise<PluginContributions> {
     this.declared = declared;
     return new Promise<PluginContributions>((resolve, reject) => {
       const send = () =>
-        this.transport.send(
-          codeBlockLangs === undefined
-            ? { type: "activate", pluginId }
-            : { codeBlockLangs, pluginId, type: "activate" },
-        );
+        this.transport.send({
+          ...(codeBlockLangs === undefined ? {} : { codeBlockLangs }),
+          ...(panelIds === undefined ? {} : { panelIds }),
+          pluginId,
+          type: "activate",
+        });
       const retry = setInterval(send, ACTIVATE_RETRY_MS);
       const timeout = setTimeout(() => {
         finish();

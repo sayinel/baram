@@ -2,8 +2,9 @@
 // same refusal sentences as the trusted tier (`rendered/code-block-messages.ts`). The host told
 // this realm, in the `activate` frame, which declared languages it holds; `register` binds a
 // renderer locally and the `ready` report names what was bound, `invalidate` crosses as
-// `render_invalidate`, and the host's `renderCodeBlock` / `invokeAction` frames come here. A result
-// is checked before it is sent (`renderedContentProblem`), so an over-cap one meets the fixed
+// `render_invalidate`, and the host's `renderCodeBlock` / `invokeAction` frames come here — an
+// `invokeAction` for a panel goes on to the panels' handlers (`sandbox-ui.ts`, plan 0126 P26). A result
+// is checked before it is sent (`readRenderedContent`), so an over-cap one meets the fixed
 // sentence however far over it is. Unchecked, the host's `isRenderResult` would drop a frame whose
 // UTF-16 length already passes a cap and Rust a report over its 8 MiB cap — both unanswered, so
 // the block would show a timeout — and only one over by its UTF-8 bytes alone would reach the
@@ -29,7 +30,7 @@ import {
 } from "../rendered/code-block-messages";
 import {
   MAX_RENDER_ERROR_CHARS,
-  renderedContentProblem,
+  readRenderedContent,
 } from "../rendered/limits";
 import { isActionTarget } from "./render-frames";
 
@@ -50,6 +51,8 @@ export interface SandboxCodeBlocks {
 export function createSandboxCodeBlocks(deps: {
   hostRequest: (request: SandboxHostRequest) => Promise<unknown>;
   readStaged: (request: SandboxHostRequest) => Promise<{ payload: string }>;
+  /** plan 0126 P26 — an action on a panel: that panel's handlers (`SandboxUI.runPanelAction`). */
+  runPanelAction: (id: string, action: string) => Promise<void>;
   send: (frame: SandboxToHost) => void;
 }): SandboxCodeBlocks {
   let declared: Map<string, null | string> | null = null;
@@ -117,22 +120,23 @@ export function createSandboxCodeBlocks(deps: {
           throw new Error("malformed action target");
         }
         const target = frame.target;
-        if (target.kind !== "codeBlock") {
-          throw new Error("panel actions are not available");
+        if (target.kind === "panel") {
+          await deps.runPanelAction(target.panelId, frame.action);
+        } else {
+          const action: RenderedAction = {
+            action: frame.action,
+            context: target.context,
+            lang: target.lang,
+            path: target.path,
+          };
+          // D11 ③ — as the trusted dispatch (`createCodeBlocksAPI`): every handler settles before
+          // the answer goes, so one rejecting does not end the rights while another still runs.
+          const settled = await Promise.allSettled(
+            [...handlers].map((h) => Promise.resolve().then(() => h(action))),
+          );
+          const failed = settled.find((r) => r.status === "rejected");
+          if (failed !== undefined) throw failed.reason;
         }
-        const action: RenderedAction = {
-          action: frame.action,
-          context: target.context,
-          lang: target.lang,
-          path: target.path,
-        };
-        // D11 ③ — as the trusted dispatch (`createCodeBlocksAPI`): every handler settles before
-        // the answer goes, so one rejecting does not end the rights while another still runs.
-        const settled = await Promise.allSettled(
-          [...handlers].map((h) => Promise.resolve().then(() => h(action))),
-        );
-        const failed = settled.find((r) => r.status === "rejected");
-        if (failed !== undefined) throw failed.reason;
         deps.send({ id: frame.id, ok: true, type: "actionResult" });
       } catch (err) {
         deps.send({
@@ -155,30 +159,12 @@ export function createSandboxCodeBlocks(deps: {
           frame.source ??
           (await deps.readStaged({ id: frame.id, kind: "render_get_source" }))
             .payload;
-        // Read as the host's `toDrawable` reads it: a non-object answer meets the same fixed
-        // sentence, and each field is read once, so the value checked is the value sent.
-        const raw: unknown = await renderer(source, frame.info);
-        const { css, html }: { css?: unknown; html?: unknown } =
-          typeof raw === "object" && raw !== null ? raw : {};
-        const problem = renderedContentProblem({ css, html });
-        if (problem !== null) throw new Error(problem);
-        // `renderedContentProblem` passed: `html` is a string, `css` a string or absent.
-        deps.send(
-          css === undefined
-            ? {
-                html: html as string,
-                id: frame.id,
-                ok: true,
-                type: "renderResult",
-              }
-            : {
-                css: css as string,
-                html: html as string,
-                id: frame.id,
-                ok: true,
-                type: "renderResult",
-              },
-        );
+        // Read as the host's `prepareDrawable` reads it (`readRenderedContent`): a non-object answer
+        // meets the same fixed sentence, and each field is read once, so the value checked is the
+        // value sent.
+        const content = readRenderedContent(await renderer(source, frame.info));
+        if (typeof content === "string") throw new Error(content);
+        deps.send({ ...content, id: frame.id, ok: true, type: "renderResult" });
       } catch (err) {
         deps.send({
           error: failure(err),

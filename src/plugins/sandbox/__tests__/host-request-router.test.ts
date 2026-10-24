@@ -76,6 +76,15 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     );
   });
 
+  /** §394 plan 0126 — `ui_set_panel` reaches the ui bridge, under that bridge's `sidebar` gate. What
+   *  fails this: a kind the router does not route (it answers "unsupported host request"). */
+  it("routes a panel's content to the ui bridge, under its own gate", async () => {
+    const { handler } = handlerFor(["statusbar"]);
+    await expect(
+      handler({ html: "", id: "p", kind: "ui_set_panel" }, noop),
+    ).rejects.toThrow(/"sidebar" to call ui\.setPanel/);
+  });
+
   it("keeps each service behind its OWN gate", async () => {
     const { handler } = handlerFor(["statusbar"]);
     await expect(

@@ -1,10 +1,12 @@
 // §394 spec 0073 §11 — the numbers the plugin-rendered areas run on, in one place (plan 0125 P3).
 // Each is a starting value; the task that owns it measures it and ledger 0095 records the run —
-// change a value here and the committed tests follow it, because they import it.
+// change a value here and the committed tests follow it, because they import it. Two are not in
+// ledger 0095: `PANEL_UPDATE_BURST` is a ruling (plan 0126 P34), and `PANEL_UPDATE_INTERVAL_MS` is
+// measured by plan 0126's ledger 0096.
 //
 // ‼️ A leaf with no imports: the sandbox realm imports this (`sandbox/sandbox-code-blocks.ts`,
-// added by plan 0125 Task 11) to check a result before sending it, and that realm must not reach a
-// store.
+// added by plan 0125 Task 11, and `sandbox/sandbox-ui.ts`, plan 0126 Task 7) to check a result or a
+// panel's content before sending it, and that realm must not reach a store.
 
 /** D13 — HTML of one result, in UTF-8 bytes. */
 export const MAX_RENDERED_HTML_BYTES = 1024 * 1024;
@@ -40,6 +42,22 @@ export const SOURCE_DEBOUNCE_MS = 300;
 export const INVALIDATE_COALESCE_MS = 250;
 
 /**
+ * D14 — "four a second": a sandboxed panel's update interval — the least time between two draws of
+ * one panel while its view stays mounted (`panel-painter.ts`) and between the starts of two
+ * `ui_set_panel` requests a sandbox sends for it (`sandbox-ui.ts`), and the refill of the host's
+ * acceptance bucket, one token per interval (`host-ui-bridge.ts`, plan 0126 P34). Plan 0126 Task 4
+ * measured a 1,000-row panel's draw against it (ledger 0096).
+ */
+export const PANEL_UPDATE_INTERVAL_MS = 250;
+
+/**
+ * D14 · plan 0126 P34 — the tokens a panel's acceptance bucket holds: the `ui_set_panel` requests the
+ * host takes at once before `PANEL_UPDATE_INTERVAL_MS` paces them. Room for delivery jitter around a
+ * client that sends one per interval.
+ */
+export const PANEL_UPDATE_BURST = 8;
+
+/**
  * D13 — a `renderCodeBlock` frame carries the source inline while the whole serialized frame is
  * at most this many UTF-8 bytes; above it the sandbox pulls the source (`render_get_source`). A
  * margin under tauri's 8,192-byte direct-delivery threshold (`MAX_JSON_DIRECT_EXECUTE_THRESHOLD`
@@ -59,6 +77,14 @@ export const MAX_ACTION_CHARS = 64;
  * `action-<n>`), so this only bounds what a sandbox may echo.
  */
 export const MAX_FRAME_ID_CHARS = 64;
+
+/**
+ * D14 — the longest panel id a manifest may declare, in UTF-16 units: `MAX_CONTRIBUTION_ID_CHARS`
+ * (`manifest.ts`), the bound on every contribution id, a pair `manifest-panels.test.ts` holds
+ * together. Here so the frame check `isSetPanel` can read it — `manifest.ts` reaches the editor's
+ * language list (`manifest-code-blocks.ts`), and the sandbox realm imports that check's module.
+ */
+export const MAX_PANEL_ID_CHARS = 64;
 
 /**
  * D5 — the longest fenced language a manifest may declare: what `CODE_BLOCK_LANG`
@@ -109,4 +135,25 @@ export function renderedContentProblem(content: {
     return "rendered output holds a lone surrogate, which Baram's IPC cannot carry";
   }
   return null;
+}
+
+/**
+ * `raw` — a renderer's answer, or the content a plugin hands `setPanel` — as the content it names, or
+ * the fixed sentence of `renderedContentProblem` when it cannot be drawn; anything but an object meets
+ * the wrong-shape sentence. Each field is read once, so the value checked is the value used: a getter
+ * cannot pass the check with one string and be sent or drawn with another. `css` is absent when
+ * `raw`'s is. The host reads a result with it before sanitizing (`prepareDrawable`) and the sandbox
+ * before sending one, so the two sides judge one reading alike.
+ */
+export function readRenderedContent(
+  raw: unknown,
+): string | { css?: string; html: string } {
+  const { css, html }: { css?: unknown; html?: unknown } =
+    typeof raw === "object" && raw !== null ? raw : {};
+  const problem = renderedContentProblem({ css, html });
+  if (problem !== null) return problem;
+  // `renderedContentProblem` passed: `html` is a string, `css` a string or absent.
+  return css === undefined
+    ? { html: html as string }
+    : { css: css as string, html: html as string };
 }

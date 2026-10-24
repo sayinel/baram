@@ -514,6 +514,13 @@ export interface PluginContributions {
     title?: string;
     when?: "selection";
   }>;
+  /**
+   * §394 A sandboxed plugin's sidebar panels (spec 0073 D14), at most 3 — each shows what
+   * `ctx.ui.setPanel` sends it. Needs the `sidebar` capability; a trusted manifest declares none (that
+   * tier mounts its own DOM with `ui.addSidebarPanel`). `id` follows the contribution id rule; `icon`,
+   * when given, is one character (an emoji or a letter) of at most 16 UTF-16 units.
+   */
+  panels?: Array<{ icon?: string; id: string; title: string }>;
   settings?: PluginSettingField[];
   /** Items at the end of the slash menu, at most 10. */
   slash?: Array<{
@@ -1034,10 +1041,10 @@ export interface SandboxContext {
   settings: SandboxSettingsAPI;
   storage: StorageAPI;
   /**
-   * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is
-   * no DOM or CSS here (that is the trusted tier's `UIAPI`). Host-mediated like `ai`,
-   * and gated there — attribution, sanitising and rate limiting cannot be enforced in
-   * this realm.
+   * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is no DOM here
+   * (that is the trusted tier's `UIAPI`); a panel's HTML and CSS are strings the host sanitizes (§394).
+   * Host-mediated like `ai`, and gated there — attribution, sanitising and rate limiting cannot be
+   * enforced in this realm.
    */
   ui: SandboxUIAPI;
 }
@@ -1092,12 +1099,36 @@ export interface SandboxSettingsAPI {
 }
 
 /**
- * §260 Phase 4a — the sandboxed tier's UI surface: no DOM, no CSS, no element handle.
- * Everything here is data the host renders on the plugin's behalf, which is why it can
- * be offered to code the app does not trust. Arbitrary-DOM panels and injected styles
+ * §260 Phase 4a — the sandboxed tier's UI surface: no DOM and no element handle. Everything here is
+ * data the host renders on the plugin's behalf, which is why it can be offered to code the app does
+ * not trust. §394 — a panel's content is HTML and CSS as strings, which the host sanitizes before it
+ * draws them, as it does a code block renderer's result. Arbitrary-DOM panels and injected styles
  * remain trusted-tier only (see `UIAPI`).
  */
 export interface SandboxUIAPI {
+  /**
+   * §394 A click on an element with `data-action` inside panel `id`'s content: `handler` gets the
+   * value. Only a panel declared in `contributions.panels`; throws for any other. While the handler's
+   * promise is pending, `ctx.prompts` may open — for the 30 s a command runs on, which stops while a
+   * prompt is open and starts again from 30 s when it closes. Several handlers may listen to one panel.
+   */
+  onPanelAction(
+    id: string,
+    handler: (action: string) => Promise<void> | void,
+  ): Disposable;
+  /**
+   * §394 Show `content` in panel `id`, one declared in `contributions.panels` (which needs `sidebar`).
+   * Throws at once for an undeclared id and for content over a limit — 1 MiB of HTML or 64 KiB of CSS
+   * in UTF-8, or a lone surrogate. The user approves every capability the manifest lists in one
+   * answer, at install and again when an update adds one, so there is no install without `sidebar`.
+   * The app withholds it only when the approval it recorded for the plugin does not cover it; then no
+   * panel button appears and the app refuses each `setPanel` without throwing. The app keeps the last
+   * content and draws it while the panel is shown, at most once every `PANEL_UPDATE_INTERVAL_MS`
+   * milliseconds (the app's update interval); a call made while the previous one is on its way
+   * replaces the content waiting to go, so the last call's content is the one sent last. What the
+   * HTML and CSS may hold is a code block renderer's rule (`RenderedContent`).
+   */
+  setPanel(id: string, content: RenderedContent): void;
   /**
    * Update one status-bar item this plugin DECLARED in `contributions.statusBar`. The
    * host resolves `id` against that declaration, so a plugin can neither invent an item

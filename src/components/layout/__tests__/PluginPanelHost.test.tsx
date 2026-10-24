@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { usePluginUIStore } from "../../../plugins/plugin-ui-store";
@@ -14,7 +14,13 @@ describe("PluginPanelHost", () => {
     usePluginUIStore.setState({
       activePluginPanelId: "p1:notes",
       sidebarPanels: [
-        { onMount, panelId: "p1:notes", pluginId: "p1", title: "Notes" },
+        {
+          kind: "dom" as const,
+          onMount,
+          panelId: "p1:notes",
+          pluginId: "p1",
+          title: "Notes",
+        },
       ],
     });
     render(<PluginPanelHost />);
@@ -22,8 +28,8 @@ describe("PluginPanelHost", () => {
   });
 
   it("shows an empty state when the active panel is missing", () => {
-    const { container } = render(<PluginPanelHost />);
-    expect(container.querySelector(".plugin-panel-empty")).not.toBeNull();
+    render(<PluginPanelHost />);
+    expect(screen.getByText("No plugin panel selected.")).toBeTruthy();
   });
 
   it("remounts (unmount old / mount new) when the active panel switches", () => {
@@ -31,6 +37,7 @@ describe("PluginPanelHost", () => {
     const onUnmountA = vi.fn();
     const onMountB = vi.fn();
     const panelA = {
+      kind: "dom" as const,
       onMount: onMountA,
       onUnmount: onUnmountA,
       panelId: "p1:a",
@@ -38,6 +45,7 @@ describe("PluginPanelHost", () => {
       title: "Panel A",
     };
     const panelB = {
+      kind: "dom" as const,
       onMount: onMountB,
       panelId: "p1:b",
       pluginId: "p1",

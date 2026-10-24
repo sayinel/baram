@@ -1,6 +1,6 @@
 ---
 title: "개요와 권한"
-sourceHash: "75cc8bba66d9"
+sourceHash: "1c3d5ccac371"
 ---
 
 ## 개요
@@ -45,7 +45,7 @@ Tiptap 확장이나 DOM에 붙는 UI를 기여하는 경우가 아니면 sandbox
 | `extensions`      | 에디터에 ProseMirror 플러그인 기여(trusted 티어 전용) | |
 | `files`           | 볼트 안 파일 읽기·쓰기, [`ctx.index`](/ko/docs/plugin-dev/context-index/)와 `vault:changed` 포함 | 민감          |
 | `files:readonly`  | 볼트 안 파일 읽기(쓰기 불가), [`ctx.index`](/ko/docs/plugin-dev/context-index/)와 `vault:changed` 포함 |               |
-| `sidebar`         | 사이드바에 패널 추가                     |               |
+| `sidebar`         | 사이드바에 패널 추가 — trusted 플러그인은 자기 DOM을 붙이고, sandboxed 플러그인은 [패널](/ko/docs/plugin-dev/sidebar-panels/)을 선언 | |
 | `statusbar`       | 상태바에 항목 표시                       |               |
 | `settings`        | 설정 화면에 옵션 선언                    |               |
 | `ai`              | AI/LLM 기능 접근                         | **민감**      |

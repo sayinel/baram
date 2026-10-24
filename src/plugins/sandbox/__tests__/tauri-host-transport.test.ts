@@ -20,7 +20,9 @@ import { CODE_BLOCK_LANG } from "../../manifest-code-blocks";
 import {
   MAX_CODE_BLOCK_LANG_CHARS,
   MAX_FRAME_ID_CHARS,
+  MAX_PANEL_ID_CHARS,
   MAX_RENDER_ERROR_CHARS,
+  MAX_RENDERED_CSS_BYTES,
   MAX_RENDERED_HTML_BYTES,
 } from "../../rendered/limits";
 import { SandboxSession } from "../sandbox-session";
@@ -377,6 +379,59 @@ describe("createHostTransport (§260 host end)", () => {
     expect(
       CODE_BLOCK_LANG.test("x".repeat(MAX_CODE_BLOCK_LANG_CHARS + 1)),
     ).toBe(false);
+  });
+
+  /** §394 plan 0126 P8 — `ui_set_panel` has its validator (`isSetPanel`): an id of at most
+   *  `MAX_PANEL_ID_CHARS`, `html`, an optional `css`, each within the UTF-16 floor of its byte cap.
+   *  What fails this: a validator that skips one of the fields or the id's bound (its broken request
+   *  below is then delivered), or a bound below the longest id a manifest may declare (the max-length
+   *  id is then dropped). The record is a mapped type, so a missing entry does not compile. */
+  it("§394 plan 0126 delivers a well-formed ui_set_panel and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    const asked = (request: unknown) => ({
+      msg: { request, requestId: "r", type: "hostRequest" },
+      pluginId: "alpha",
+    });
+    for (const request of [
+      { html: "", kind: "ui_set_panel" }, // no id
+      { html: "", id: 1, kind: "ui_set_panel" },
+      {
+        html: "",
+        id: "p".repeat(MAX_PANEL_ID_CHARS + 1),
+        kind: "ui_set_panel",
+      },
+      { id: "p", kind: "ui_set_panel" }, // no html
+      { css: 1, html: "", id: "p", kind: "ui_set_panel" },
+      {
+        html: "x".repeat(MAX_RENDERED_HTML_BYTES + 1),
+        id: "p",
+        kind: "ui_set_panel",
+      },
+      {
+        css: "x".repeat(MAX_RENDERED_CSS_BYTES + 1),
+        html: "",
+        id: "p",
+        kind: "ui_set_panel",
+      },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toEqual([]);
+    for (const request of [
+      { html: "", id: "p", kind: "ui_set_panel" },
+      { html: "", id: "p".repeat(MAX_PANEL_ID_CHARS), kind: "ui_set_panel" },
+      {
+        css: "",
+        html: "x".repeat(MAX_RENDERED_HTML_BYTES),
+        id: "p",
+        kind: "ui_set_panel",
+      },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toHaveLength(3);
   });
 
   it("caps the document a plugin may install, at the frame", async () => {

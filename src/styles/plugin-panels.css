@@ -1,0 +1,58 @@
+/* §394 spec 0073 D14 · D10 — a sandboxed plugin's sidebar panel (RenderedPanelView). Two elements
+   OUTSIDE the panel's shadow root, where the plugin's CSS cannot select them, contain paint. The
+   first is the shadow host, the code block's .plugin-block-host (its rule is in
+   editor/plugin-blocks.css): the first element above the plugin's output in the flat tree, so its
+   paint containment clips everything that output paints to its box, fixed and absolutely positioned
+   elements included (CSS Containment Level 1). The second is the root (data-plugin-panel) below: it
+   holds the host-drawn header and error line, and would hold the plugin's output only if the host's
+   rule were lost. The top layer is the exception to both, and its entrances are removed by the
+   sanitizer. */
+[data-plugin-panel] {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  contain: paint;
+  overflow: hidden;
+}
+
+.plugin-panel-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.plugin-panel-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.plugin-panel-source {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.plugin-panel-error {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.75rem;
+  color: var(--color-status-danger);
+}
+
+/* The body scrolls inside the sidebar, vertically only (as .sidebar-content does): a panel has no
+   height cap of its own, and content wider than the sidebar is cut off — a plugin puts wide content
+   in an element of its own with overflow-x: auto. */
+.plugin-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden auto;
+}
+
+.plugin-panel-stale .plugin-block-host {
+  opacity: 0.5;
+}
