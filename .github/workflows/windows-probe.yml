@@ -49,3 +49,19 @@ jobs:
         if: ${{ !cancelled() }}
         shell: bash
         run: npm run rust:_test -- --no-fail-fast
+
+      # Probe-only evidence for build.rs: the manifest each linked artifact carries.
+      # The app exe (built by `cargo test` for tests/*.rs) must hold the Common-Controls
+      # 6.0 dependency, as tauri-build's resource gave it before.
+      - name: Dump embedded manifests
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          MT=$(ls "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/mt.exe | sort -V | tail -1)
+          echo "mt: $MT"
+          for exe in src-tauri/target/debug/baram.exe src-tauri/target/debug/deps/baram_lib-*.exe; do
+            echo "== $exe"
+            "$MT" -nologo "-inputresource:$(cygpath -w "$exe");#1" -out:manifest.xml && cat manifest.xml
+          done
+          echo "== baram_lib.dll (#2)"
+          "$MT" -nologo "-inputresource:$(cygpath -w src-tauri/target/debug/baram_lib.dll);#2" -out:manifest.xml && cat manifest.xml || true
