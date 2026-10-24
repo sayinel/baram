@@ -50,18 +50,98 @@ jobs:
         shell: bash
         run: npm run rust:_test -- --no-fail-fast
 
-      # Probe-only evidence for build.rs: the manifest each linked artifact carries.
-      # The app exe (built by `cargo test` for tests/*.rs) must hold the Common-Controls
-      # 6.0 dependency, as tauri-build's resource gave it before.
-      - name: Dump embedded manifests
+      # Probe-only evidence for build.rs. Both app exes are `cargo build --bin baram`,
+      # dev profile, on this runner: first this branch, then main's build.rs, Cargo.toml
+      # and Cargo.lock (and no windows-app-manifest.rc), the only inputs that differ.
+      - name: Build the app exe on this branch and on main's build inputs
         if: ${{ !cancelled() }}
         shell: bash
         run: |
-          MT=$(ls "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/mt.exe | sort -V | tail -1)
-          echo "mt: $MT"
-          for exe in src-tauri/target/debug/baram.exe src-tauri/target/debug/deps/baram_lib-*.exe; do
-            echo "== $exe"
-            "$MT" -nologo "-inputresource:$(cygpath -w "$exe");#1" -out:manifest.xml && cat manifest.xml
+          rustc -vV
+          mkdir -p evidence
+          cargo build --manifest-path src-tauri/Cargo.toml --bin baram
+          echo "== build script link args (branch)"
+          cat src-tauri/target/debug/build/baram-*/output | grep -E '^cargo:rustc-link-arg' || true
+          cp src-tauri/target/debug/baram.exe evidence/branch-baram.exe
+          cp src-tauri/target/debug/baram_lib.dll evidence/branch-baram_lib.dll
+          for f in src-tauri/target/debug/deps/baram_lib-*.exe src-tauri/target/debug/deps/logging_install-*.exe; do
+            cp "$f" "evidence/branch-$(basename "$f")"
           done
-          echo "== baram_lib.dll (#2)"
-          "$MT" -nologo "-inputresource:$(cygpath -w src-tauri/target/debug/baram_lib.dll);#2" -out:manifest.xml && cat manifest.xml || true
+          git fetch --no-tags --depth=1 origin main
+          git checkout FETCH_HEAD -- src-tauri/build.rs src-tauri/Cargo.toml src-tauri/Cargo.lock
+          rm src-tauri/windows-app-manifest.rc
+          git status --short
+          cargo build --manifest-path src-tauri/Cargo.toml --bin baram
+          cp src-tauri/target/debug/baram.exe evidence/main-baram.exe
+          ls -la evidence
+
+      - name: Compare the embedded resources
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          $src = @'
+          using System;
+          using System.Collections.Generic;
+          using System.Runtime.InteropServices;
+          using System.Security.Cryptography;
+          public static class Res {
+            [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] static extern IntPtr LoadLibraryExW(string f, IntPtr h, uint flags);
+            [DllImport("kernel32.dll")] static extern bool FreeLibrary(IntPtr h);
+            public delegate bool TypeProc(IntPtr h, IntPtr type, IntPtr p);
+            public delegate bool NameProc(IntPtr h, IntPtr type, IntPtr name, IntPtr p);
+            public delegate bool LangProc(IntPtr h, IntPtr type, IntPtr name, ushort lang, IntPtr p);
+            [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool EnumResourceTypesW(IntPtr h, TypeProc cb, IntPtr p);
+            [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool EnumResourceNamesW(IntPtr h, IntPtr type, NameProc cb, IntPtr p);
+            [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern bool EnumResourceLanguagesW(IntPtr h, IntPtr type, IntPtr name, LangProc cb, IntPtr p);
+            [DllImport("kernel32.dll")] static extern IntPtr FindResourceExW(IntPtr h, IntPtr type, IntPtr name, ushort lang);
+            [DllImport("kernel32.dll")] static extern uint SizeofResource(IntPtr h, IntPtr r);
+            [DllImport("kernel32.dll")] static extern IntPtr LoadResource(IntPtr h, IntPtr r);
+            [DllImport("kernel32.dll")] static extern IntPtr LockResource(IntPtr r);
+            static string Id(IntPtr p) { long v = p.ToInt64(); return (v >> 16) == 0 ? "#" + v : Marshal.PtrToStringUni(p); }
+            // One line per resource: "type name lang size sha256". RT_MANIFEST bytes go to <prefix>-manifest-<name>-<lang>.bin.
+            public static List<string> List(string path, string prefix) {
+              var lines = new List<string>();
+              IntPtr h = LoadLibraryExW(path, IntPtr.Zero, 0x2 | 0x20);
+              if (h == IntPtr.Zero) throw new Exception("LoadLibraryExW failed " + Marshal.GetLastWin32Error() + ": " + path);
+              EnumResourceTypesW(h, (m, t, p0) => {
+                EnumResourceNamesW(m, t, (m1, t1, n, p1) => {
+                  EnumResourceLanguagesW(m1, t1, n, (m2, t2, n2, l, p2) => {
+                    IntPtr r = FindResourceExW(m2, t2, n2, l);
+                    uint size = SizeofResource(m2, r);
+                    byte[] bytes = new byte[size];
+                    Marshal.Copy(LockResource(LoadResource(m2, r)), bytes, 0, (int)size);
+                    string hash = BitConverter.ToString(SHA256.Create().ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+                    lines.Add(Id(t2) + " " + Id(n2) + " " + l + " " + size + " " + hash);
+                    if (t2.ToInt64() == 24) System.IO.File.WriteAllBytes(prefix + "-manifest-" + Id(n2).TrimStart('#') + "-" + l + ".bin", bytes);
+                    return true;
+                  }, IntPtr.Zero);
+                  return true;
+                }, IntPtr.Zero);
+                return true;
+              }, IntPtr.Zero);
+              FreeLibrary(h);
+              lines.Sort(StringComparer.Ordinal);
+              return lines;
+            }
+          }
+          '@
+          Add-Type -TypeDefinition $src -Language CSharp
+          $failed = $false
+          $tables = @{}
+          foreach ($f in Get-ChildItem evidence -Filter *.* | Where-Object { $_.Extension -in '.exe', '.dll' }) {
+            $prefix = Join-Path evidence $f.BaseName
+            $lines = [Res]::List($f.FullName, $prefix)
+            $tables[$f.Name] = $lines
+            $manifests = @($lines | Where-Object { $_.StartsWith('#24 ') })
+            "== $($f.Name): $($lines.Count) resources, $($manifests.Count) RT_MANIFEST"
+            $lines | ForEach-Object { "   $_" }
+            Get-ChildItem evidence -Filter "$($f.BaseName)-manifest-*.bin" | ForEach-Object {
+              "   -- $($_.Name) as text:"
+              "   [" + [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($_.FullName)) + "]"
+            }
+            if ($f.Extension -eq '.exe' -and $manifests.Count -ne 1) { "!! expected exactly one RT_MANIFEST"; $failed = $true }
+          }
+          "== main-baram.exe vs branch-baram.exe, every resource"
+          $diff = Compare-Object $tables['main-baram.exe'] $tables['branch-baram.exe']
+          if ($diff) { $diff | Format-Table -AutoSize | Out-String -Width 400; $failed = $true } else { "IDENTICAL: same types, names, languages, sizes and SHA-256" }
+          if ($failed) { exit 1 }
