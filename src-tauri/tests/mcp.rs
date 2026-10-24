@@ -329,6 +329,31 @@ fn a_vault_flag_that_does_not_resolve_stops_the_server_before_stdout() {
     }
 }
 
+/// A `--vault` behind a folder that cannot be entered stops the server the way the CLI
+/// stops (spec 0068 §3.1): IO with the OS's reason, exit 1, and nothing on stdout.
+///
+/// What fails this: `vault::from_path` deciding by `Path::is_dir` (VAULT_NOT_FOUND).
+#[test]
+fn a_vault_flag_behind_a_folder_that_cannot_be_entered_stops_the_server_with_io() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    let locked = sb.base.join("locked");
+    write(&locked, "v/a.md", "x\n");
+    let unreachable = locked.join("v").to_string_lossy().into_owned();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let ended = session(&sb, &["--vault", &unreachable]).end();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    assert_eq!(ended.code, 1, "{}", ended.stderr);
+    assert!(ended.seen.is_empty(), "{:?}", ended.seen);
+    assert!(
+        ended
+            .stderr
+            .starts_with(&format!("error[IO]: cannot read {unreachable}: ")),
+        "{}",
+        ended.stderr
+    );
+}
+
 /// `list_vaults` lists the vaults the server may read — a registered one by the CLI's row,
 /// a `--vault` the app does not register as `unregistered` — and names the one the call
 /// resolved to: the first `--vault` by default, the `vault` argument when it is given, and
@@ -364,29 +389,37 @@ fn list_vaults_shows_the_scope_and_the_vault_a_call_reads() {
     assert_eq!(s.end().code, 0);
 }
 
-/// A data tool's `vault` gets one answer for a directory outside the scope and for a path
-/// that is not there (spec 0068 §3.2): `read_note` through each gives the same error text,
-/// candidates included, but for the path it repeats. The scope's own vault is read, so the
-/// error is the scope's.
+/// A data tool's `vault` gets one answer for a directory outside the scope, for a path
+/// that is not there, and for one behind a folder that cannot be entered (spec 0068 §3.2):
+/// `read_note` through each gives the same error text, candidates included, but for the
+/// path it repeats. The scope's own vault is read, so the error is the scope's.
 ///
 /// What fails this: an existence check before the scope (the CLI's `no directory at …` for
-/// the missing path); candidates listed for one of the two and not the other.
+/// the missing path, `cannot read …` for the locked one); candidates listed for one of them
+/// and not the others.
 #[test]
 fn a_data_tool_answers_a_vault_outside_the_scope_as_it_answers_a_missing_one() {
+    use std::os::unix::fs::PermissionsExt;
     let sb = sandbox();
     write(&sb.vault, "a.md", "inside\n");
     let outside = sb.base.join("outside");
     write(&outside, "a.md", "outside\n");
     let missing = sb.base.join("missing");
+    let locked = sb.base.join("locked");
+    write(&locked, "v/a.md", "locked\n");
+    let unreachable = locked.join("v");
     let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
     s.handshake();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
     let mut answers = Vec::new();
-    for (id, vault) in [(1, &outside), (2, &missing)] {
+    for (id, vault) in [(1, &outside), (2, &missing), (4, &unreachable)] {
         let vault = vault.to_string_lossy().into_owned();
         let result = s.call(id, "read_note", json!({ "vault": vault, "path": "a.md" }));
         answers.push(tool_error(&result).replace(&vault, "<vault>"));
     }
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     assert_eq!(answers[0], answers[1]);
+    assert_eq!(answers[0], answers[2]);
     let mut lines = answers[0].lines();
     assert_eq!(
         lines.next(),

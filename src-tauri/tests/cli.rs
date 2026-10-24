@@ -430,6 +430,39 @@ fn outside_any_vault_the_command_fails_instead_of_guessing() {
     );
 }
 
+/// A `--vault` that is there but behind a folder that cannot be entered is IO with the OS's
+/// reason, not VAULT_NOT_FOUND (spec 0066 §3.7): the folder was not deleted. The same
+/// folder with nothing in it at that name is VAULT_NOT_FOUND — the control.
+///
+/// What fails this: `vault::from_path` deciding by `Path::is_dir`.
+#[test]
+fn a_vault_behind_a_folder_that_cannot_be_entered_is_io() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.base, "locked/v/a.md", "x\n");
+    let locked = sb.base.join("locked");
+    let unreachable = locked.join("v").to_string_lossy().into_owned();
+    let missing = locked.join("nope").to_string_lossy().into_owned();
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let ran = baram(&sb, &sb.home, &["--vault", &unreachable, "files"]);
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with(&format!("error[IO]: cannot read {unreachable}: ")),
+        "stderr: {}",
+        ran.stderr
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let ran = baram(&sb, &sb.home, &["--vault", &missing, "files"]);
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert_eq!(
+        ran.stderr,
+        format!("error[VAULT_NOT_FOUND]: no directory at {missing}\n")
+    );
+}
+
 #[test]
 fn the_hangul_check_sees_what_it_looks_for() {
     // \u{D30C}\u{C77C} is a Hangul syllable pair, \u{1100} a jamo, \u{3131} a compatibility jamo.

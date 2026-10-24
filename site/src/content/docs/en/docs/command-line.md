@@ -41,7 +41,7 @@ A command reads one vault. `--vault` names it in one of two forms; without the f
 2. `--vault <name>` — any other value is a name: the name or alias the app shows for a registered vault or folder. Upper and lower case do not matter.
 3. No `--vault` — the registered vault that contains the current directory or, when no vault does, the registered folder that does.
 
-Only the form you used is tried: a name that matches nothing is not looked for as a folder, and a `--vault` that fails does not fall back to the current directory. When the form finds nothing, the command stops with `VAULT_NOT_FOUND`. When a name fits more than one registered vault or folder, it stops with `VAULT_AMBIGUOUS` — but only entries whose folder exists are counted, and entries that point at the same folder count as one. For a name or for the current directory, the error lists the vaults and folders it could have meant; for a `--vault` path that is not a folder, it lists none. Nothing falls back to the vault that was last open in the app: run from somewhere else, that would quietly read the wrong notes.
+Only the form you used is tried: a name that matches nothing is not looked for as a folder, and a `--vault` that fails does not fall back to the current directory. When the form finds nothing, the command stops with `VAULT_NOT_FOUND`. A folder that may be there but cannot be reached — inside a folder you have no permission to enter, for example — stops it with `IO` instead, whether you gave its path or the name it is registered under. When a name fits more than one registered vault or folder, it stops with `VAULT_AMBIGUOUS` — but only entries whose folder exists are counted, and entries that point at the same folder count as one. For a name or for the current directory, the error lists the vaults and folders it could have meant; for a `--vault` path that is not a folder, it lists none. Nothing falls back to the vault that was last open in the app: run from somewhere else, that would quietly read the wrong notes.
 
 `baram vaults` shows what is registered, and it does not stop on these errors: when no vault resolves, it still lists every registered vault and folder, with none of them marked.
 
@@ -107,12 +107,12 @@ Without `--json`, the same error is `error[FILE_NOT_FOUND]: no file at notes/a.m
 
 | Code | When | Exit code |
 | --- | --- | --- |
-| `VAULT_NOT_FOUND` | Nothing answers to `--vault`, or the current directory is in no registered vault or folder. | `1` |
+| `VAULT_NOT_FOUND` | Nothing answers to `--vault`, or the current directory is in no registered vault or folder. For a `--vault` path, that is when no folder is there, or when the system cannot take the path (a name too long). | `1` |
 | `VAULT_AMBIGUOUS` | More than one registered vault or folder answers to the name — counting only those whose folder exists, and entries for the same folder once. | `1` |
 | `PATH_OUTSIDE_VAULT` | The path leads out of the vault. | `1` |
 | `FILE_NOT_FOUND` | Nothing is at the path, or a folder is where a file is wanted. | `1` |
-| `INVALID_ARGUMENT` | The command does not take the value — for example an empty query or tag name, a bad regular expression, a query that makes too large a search pattern, a path the system cannot take (a name too long), or a folder or note it refuses (see above). | `2` |
-| `IO` | Something that is there could not be read — for example a file or folder you have no permission for, a file that is not UTF-8, or the current directory. | `1` |
+| `INVALID_ARGUMENT` | The command does not take the value — for example an empty query or tag name, a bad regular expression, a query that makes too large a search pattern, a note or folder path the system cannot take (a name too long), or a folder or note it refuses (see above). | `2` |
+| `IO` | Something that is there could not be read — for example a file or folder you have no permission for, or one inside a folder you cannot enter, a file that is not UTF-8, or the current directory. | `1` |
 
 A command that walks the vault stops with `IO` at a folder it cannot read, and the message names that folder. `search` skips such a folder instead. Messages are in English, except what they quote: the paths and names they repeat, and the operating system's own description of a failure in an `IO` message — on Windows, that description is expected to follow the system's language (not yet checked on Windows).
 
