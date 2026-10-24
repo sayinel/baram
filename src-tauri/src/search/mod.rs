@@ -280,6 +280,20 @@ pub async fn search_files(
     query: &str,
     opts: &SearchOptions,
 ) -> Result<Vec<SearchResult>, String> {
+    search_page(root, query, opts, 0).await
+}
+
+/// `search_files` from the `skip`-th match on, in the order the search finds matches: by
+/// file (the sorted paths `collect_files` gives), then line, then position in the line. The
+/// first `skip` matches are counted and not kept — no snippet is built and no path copied
+/// for them — and up to `opts.max_results` after them are returned, so a page far into a
+/// search holds no more than one page of results (§389, the MCP server's `search` offset).
+pub(crate) async fn search_page(
+    root: &str,
+    query: &str,
+    opts: &SearchOptions,
+    skip: usize,
+) -> Result<Vec<SearchResult>, String> {
     if query.is_empty() {
         return Ok(Vec::new());
     }
@@ -299,6 +313,7 @@ pub async fn search_files(
     )
     .await;
     let mut results = Vec::new();
+    let mut skipped: usize = 0;
 
     for file_path in files {
         if results.len() >= opts.max_results {
@@ -318,6 +333,10 @@ pub async fn search_files(
             for mat in pattern.find_iter(line_text) {
                 if results.len() >= opts.max_results {
                     break;
+                }
+                if skipped < skip {
+                    skipped = skipped.saturating_add(1);
+                    continue;
                 }
 
                 results.push(SearchResult {
@@ -602,6 +621,59 @@ mod tests {
             .unwrap();
 
         assert_eq!(results.len(), 10);
+    }
+
+    /// A page from `skip` is the slice `[skip, skip + max_results)` of the whole search, in
+    /// the order the search finds the matches — the skip counted by match, not by line or by
+    /// file: one start lands inside a line that holds three matches, another crosses from one
+    /// file into the next, and a third lies past the last match.
+    ///
+    /// What fails this: the skip counted per line or per file (the page starts at another
+    /// match); a skipped match kept, or `max_results` counted with the skipped ones (the
+    /// page is longer or shorter).
+    #[tokio::test]
+    async fn a_page_from_an_offset_is_that_slice_of_the_whole_search() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std_fs::write(root.join("a.md"), "x x x\nnone\nx\n").unwrap();
+        std_fs::write(root.join("b.md"), "one x\nx and x\n").unwrap();
+        let root = root.to_str().unwrap();
+        let all = search_files(root, "x", &SearchOptions::default())
+            .await
+            .unwrap();
+        let key = |hits: &[SearchResult]| -> Vec<(String, usize, usize, String)> {
+            hits.iter()
+                .map(|hit| {
+                    (
+                        hit.file_path.clone(),
+                        hit.line,
+                        hit.column,
+                        hit.snippet.clone(),
+                    )
+                })
+                .collect()
+        };
+        // Four matches in a.md (three on its first line), three in b.md.
+        assert_eq!(all.len(), 7);
+        for (skip, max) in [
+            (0, 3),
+            (1, 2),
+            (2, 3),
+            (3, 2),
+            (4, 3),
+            (6, 5),
+            (7, 2),
+            (99, 2),
+        ] {
+            let options = SearchOptions {
+                max_results: max,
+                ..Default::default()
+            };
+            let page = search_page(root, "x", &options, skip).await.unwrap();
+            let end = skip.saturating_add(max).min(all.len());
+            let expected = all.get(skip.min(all.len())..end).unwrap_or(&[]);
+            assert_eq!(key(&page), key(expected), "skip {skip}, max {max}");
+        }
     }
 
     #[tokio::test]
