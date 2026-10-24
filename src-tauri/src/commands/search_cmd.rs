@@ -198,8 +198,14 @@ mod tests {
                 }
                 .parse()
                 .unwrap(),
+                // Absolute on the platform running the test: `validate_path` refuses a
+                // driveless path on Windows before the guard this pins is reached.
                 body: tauri::ipc::InvokeBody::Json(serde_json::json!({
-                    "rootPath": "/definitely/not/a/registered/context",
+                    "rootPath": if cfg!(windows) {
+                        r"C:\definitely\not\a\registered\context"
+                    } else {
+                        "/definitely/not/a/registered/context"
+                    },
                     "query": "needle",
                 })),
                 headers: Default::default(),
