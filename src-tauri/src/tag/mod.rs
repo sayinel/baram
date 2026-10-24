@@ -1,5 +1,9 @@
 // §56m Vault-wide tag index — business logic
 
+mod frontmatter;
+
+pub(crate) use frontmatter::extract_frontmatter_tags;
+
 use crate::md::{
     extract_inline_tags, is_fence_delimiter, is_tag_char, split_frontmatter, strip_code_blocks,
 };
@@ -7,23 +11,7 @@ use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::LazyLock;
 use thiserror::Error;
-
-// Frontmatter inline array: tags: [tag1, tag2, ...]
-// ‼️ `(?m)` — `extract_frontmatter_tags`는 한 줄씩 넣으므로 있으나 없으나 같지만,
-// `rename_frontmatter_list`는 파일 전체를 넣는다. 줄 앵커가 없으면 파일 첫 글자에서만
-// 맞아 프론트매터를 영영 못 찾는다.
-static FM_TAGS_INLINE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?im)^tags\s*:\s*\[([^\]]*)\]").unwrap());
-
-// Frontmatter block list header: tags:
-static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*$").unwrap());
-
-// Frontmatter block list item:   - tag
-static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
 
 #[derive(Debug, Error)]
 pub enum TagError {
@@ -45,56 +33,6 @@ pub struct TagEntry {
 pub struct RenameTagResult {
     pub files_modified: usize,
     pub occurrences_replaced: usize,
-}
-
-/// Extract tags from frontmatter string.
-/// Handles both:
-///   tags: [tag1, tag2]
-///   tags:
-///     - tag1
-///     - tag2
-fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
-    let mut tags = Vec::new();
-
-    let lines: Vec<&str> = frontmatter.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i];
-        if let Some(cap) = FM_TAGS_INLINE_RE.captures(line) {
-            let inner = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-            for part in inner.split(',') {
-                let t = part.trim().trim_matches('"').trim_matches('\'').to_string();
-                if !t.is_empty() {
-                    tags.push(t);
-                }
-            }
-        } else if FM_TAGS_BLOCK_HEADER_RE.is_match(line) {
-            // Consume following list items
-            i += 1;
-            while i < lines.len() {
-                if let Some(cap) = FM_TAGS_BLOCK_ITEM_RE.captures(lines[i]) {
-                    let t = cap
-                        .get(1)
-                        .map(|m| m.as_str())
-                        .unwrap_or("")
-                        .trim()
-                        .trim_matches('"')
-                        .trim_matches('\'')
-                        .to_string();
-                    if !t.is_empty() {
-                        tags.push(t);
-                    }
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-            continue;
-        }
-        i += 1;
-    }
-
-    tags
 }
 
 pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> {
@@ -150,9 +88,10 @@ pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> 
     Ok(entries)
 }
 
-/// §393 A tag name as the index keeps it: without the `#`s a user types in front — every
-/// leading one, the rule `baram tag` has always applied. Case is left alone; the walks compare
-/// lowercased.
+/// §393 A tag name as the index keeps it: without the `#`s in front — every leading one, the
+/// rule `baram tag` has always applied to the name typed. §56m The front-matter reader keeps a
+/// `tags:` entry the same way (`frontmatter::entry_name`), so `"#solo"` there and a body `#solo`
+/// are one tag `solo`. Case is left alone; the walks compare lowercased.
 pub fn bare_tag(name: &str) -> &str {
     name.trim_start_matches('#')
 }
@@ -287,51 +226,6 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
-/// 프론트매터 인라인 배열 `tags: [a, old, b]` 안의 이름 하나를 바꾼다.
-///
-/// 대괄호 **안에서만** 바꾼다 — 본문에 우연히 같은 낱말이 있어도 건드리지 않는다.
-/// 여기서도 경계는 `md::is_tag_char`다: 원래의 `(?<!\w)`/`(?!\w)`는 lookaround라
-/// 컴파일되지 않았고, `\w`는 하이픈도 `/`도 태그 글자로 보지 않아 `deep-work`를
-/// `deep`으로 바꿔 놓았을 것이다.
-fn rename_frontmatter_list(content: &str, old: &str, new: &str) -> (String, usize) {
-    let mut out = String::with_capacity(content.len());
-    let mut count = 0usize;
-    let mut last = 0usize;
-    // 바꿀 것은 캡처 그룹(대괄호 **안**)뿐이므로 나머지는 그대로 흘려보낸다.
-    for caps in FM_TAGS_INLINE_RE.captures_iter(content) {
-        let inner = caps.get(1).unwrap();
-        out.push_str(&content[last..inner.start()]);
-        let (replaced, n) = rename_in_list(inner.as_str(), old, new);
-        out.push_str(&replaced);
-        count += n;
-        last = inner.end();
-    }
-    out.push_str(&content[last..]);
-    (out, count)
-}
-
-/// 쉼표로 나열된 이름들 안에서 `old`를 통째로 만나는 자리마다 바꾼다.
-fn rename_in_list(list: &str, old: &str, new: &str) -> (String, usize) {
-    let mut out = String::with_capacity(list.len());
-    let mut count = 0usize;
-    let mut from = 0usize;
-    while let Some(rel) = list[from..].find(old) {
-        let start = from + rel;
-        let end = start + old.len();
-        let before_ok = start == 0 || !list[..start].ends_with(is_tag_char);
-        out.push_str(&list[from..start]);
-        if before_ok && ends_tag(list[end..].chars().next()) {
-            out.push_str(new);
-            count += 1;
-        } else {
-            out.push_str(old);
-        }
-        from = end;
-    }
-    out.push_str(&list[from..]);
-    (out, count)
-}
-
 /// Rename (or merge) a tag across all .md files in the vault.
 /// Handles:
 ///   - Inline #tags in body text
@@ -387,7 +281,8 @@ pub async fn rename_tag(
         count += n;
 
         // 프론트매터 인라인 배열 `tags: [..., old_tag, ...]`
-        let (after_fm_inline, n) = rename_frontmatter_list(&after_inline, old_tag, new_tag);
+        let (after_fm_inline, n) =
+            frontmatter::rename_frontmatter_list(&after_inline, old_tag, new_tag);
         count += n;
 
         // 프론트매터 블록 리스트 항목
@@ -576,6 +471,58 @@ mod tests {
         let (d, root) = vault("메모 #project/baram 끝\n").await;
         rename_tag(&root, "project", "work").await.unwrap();
         assert_eq!(read(&d).await, "메모 #work/baram 끝\n");
+    }
+
+    async fn vault_of(files: &[(&str, &str)]) -> (TempDir, String) {
+        let d = TempDir::new().unwrap();
+        for (name, body) in files {
+            tokio::fs::write(d.path().join(name), body).await.unwrap();
+        }
+        let root = d.path().to_string_lossy().into_owned();
+        (d, root)
+    }
+
+    async fn rows(root: &str) -> Vec<(String, u32)> {
+        get_vault_tags(root)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|entry| (entry.tag, entry.count))
+            .collect()
+    }
+
+    async fn files_with(root: &str, tag: &str) -> Vec<String> {
+        let mut found = get_files_by_tag(root, tag).await.unwrap();
+        found.sort();
+        found
+    }
+
+    /// §56m Normalized at storage (maintainer's decision, 2026-10-24): a front-matter
+    /// `"#solo"`, a front-matter `"#Solo"` and a body `#solo` are one tag `solo`, counted
+    /// together and found by its name. What fails this: the front-matter reader keeping the
+    /// `#` (rows `#solo 2` and `solo 1`, and `solo` finds only `body.md`).
+    #[tokio::test]
+    async fn a_front_matter_hash_tag_and_a_body_tag_are_one_tag() {
+        let (_d, root) = vault_of(&[
+            ("fm.md", "---\ntags: [\"#solo\"]\n---\nfront only\n"),
+            ("upper.md", "---\ntags: [\"#Solo\"]\n---\nfront upper\n"),
+            ("body.md", "body #solo here\n"),
+        ])
+        .await;
+        assert_eq!(rows(&root).await, [("solo".to_string(), 3)]);
+        assert_eq!(
+            files_with(&root, "solo").await,
+            ["body.md", "fm.md", "upper.md"]
+        );
+    }
+
+    /// A nested tag in the front matter, `"#a/b"`, is the body's `#a/b` — one row, counted
+    /// twice. What fails this: the same `#` kept (rows `#a/b 1` and `a/b 1`).
+    #[tokio::test]
+    async fn a_nested_front_matter_hash_tag_is_the_bodys_nested_tag() {
+        let (_d, root) = vault_of(&[("n.md", "---\ntags: [\"#a/b\"]\n---\nbody #a/b\n")]).await;
+        assert_eq!(rows(&root).await, [("a/b".to_string(), 2)]);
+        assert_eq!(files_with(&root, "a/b").await, ["n.md"]);
     }
 
     /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match
