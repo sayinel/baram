@@ -802,6 +802,37 @@ fn search_and_read_note_page_through_notes() {
     assert_eq!(s.end().code, 0);
 }
 
+/// `list_files` and `search` refuse a `folder` the vault walk skips with the CLI's message,
+/// which names the rule (spec 0066 §3.4).
+///
+/// What fails this: the folder check dropped from either tool (`.obsidian` is there and
+/// holds a note with the query in it, so the call would answer); the message's list built
+/// from anything but the walkers' `SKIP_DIRS`.
+#[test]
+fn a_folder_the_vault_walk_skips_is_refused_by_both_tools_that_take_one() {
+    let sb = sandbox();
+    write(&sb.vault, ".obsidian/app.md", "needle\n");
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    for (id, tool, arguments) in [
+        (1, "list_files", json!({ "folder": ".obsidian" })),
+        (
+            2,
+            "search",
+            json!({ "query": "needle", "folder": ".obsidian" }),
+        ),
+    ] {
+        let result = s.call(id, tool, arguments);
+        assert_eq!(
+            tool_error(&result),
+            "error[INVALID_ARGUMENT]: .obsidian is a folder the vault walk skips \
+             (hidden, or one of: node_modules, .git, .obsidian, .baram)",
+            "{tool}"
+        );
+    }
+    assert_eq!(s.end().code, 0);
+}
+
 /// A search page's rows as (path, line).
 fn hit_keys(page: &Value) -> Vec<(&str, u64)> {
     page["items"]

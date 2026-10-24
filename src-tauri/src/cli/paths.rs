@@ -160,8 +160,8 @@ fn metadata_failure(input: &str, noun: &str, source: std::io::Error) -> CliError
 }
 
 /// A `--file` value for a command that reads a NOTE: a file the vault walk would list.
-/// The walk lists `.md` and `.markdown` files by name, case-sensitively, and never
-/// enters a hidden or `SKIP_DIRS` folder, so a file outside that is refused the way
+/// The walk lists a file by its name (`fs::is_note_name`) and never enters a hidden or
+/// `SKIP_DIRS` folder (`walk_skips`), so a file outside that is refused the way
 /// `folder_arg` refuses a skipped folder — an answer for it would show what the app never
 /// shows (spec 0066 §3.4).
 pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
@@ -170,7 +170,7 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if !(name.ends_with(".md") || name.ends_with(".markdown")) {
+    if !crate::fs::is_note_name(&name) {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is not a markdown note"),
@@ -185,21 +185,13 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
     Ok(file)
 }
 
-/// Whether the vault walk never reaches `path`: a component BELOW the vault root is
-/// hidden, or is one of `SKIP_DIRS`. The two `fs` walkers, `collect_md_files` and
-/// `collect_all_files`, skip a hidden ENTRY of either kind and test `SKIP_DIRS` on
-/// directories only; a file named exactly like one of `SKIP_DIRS` is never a note, so for
-/// what the callers ask — a folder, or a markdown file — the answer is the one those two
-/// walkers give. `search`'s own walker skips hidden directories but not hidden files;
-/// `search` reaches this only through `--folder`, and for a folder the two rules agree.
+/// Whether the vault walk never reaches `path`: `fs::is_skipped_relative`, the walkers' own
+/// rule, asked of the components BELOW the vault root. The callers pass what `locate`
+/// returned, which lies under the root. `search`'s own walker skips hidden directories but
+/// not hidden files; `search` reaches this only through `--folder`, and for a folder the
+/// two rules agree.
 pub(crate) fn walk_skips(vault: &Vault, path: &Path) -> bool {
-    path.strip_prefix(&vault.root)
-        .unwrap_or(path)
-        .components()
-        .any(|component| {
-            let name = component.as_os_str().to_string_lossy();
-            name.starts_with('.') || crate::fs::SKIP_DIRS.contains(&name.as_ref())
-        })
+    crate::fs::is_skipped_relative(path.strip_prefix(&vault.root).unwrap_or(path))
 }
 
 /// `/` between components on every platform.
@@ -315,6 +307,11 @@ mod tests {
 
     // ── --folder ──────────────────────────────────────────────────────────────────
 
+    /// The message names the rule. The list is written out here, not built from
+    /// `SKIP_DIRS`: built from it, the test would agree with any list.
+    ///
+    /// What fails this: the folder check dropped (`.obsidian` exists, so it is listed);
+    /// the message's list built from anything but the walkers' `SKIP_DIRS`.
     #[test]
     fn a_folder_the_walk_skips_is_refused_even_when_it_does_not_exist() {
         let (_t, base) = tree(&["vault/docs", "vault/.obsidian", "vault/node_modules"]);
@@ -327,6 +324,14 @@ mod tests {
         ] {
             let error = folder_arg(&vault, input).unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidArgument, "{input}");
+            assert_eq!(
+                error.message,
+                format!(
+                    "{input} is a folder the vault walk skips \
+                     (hidden, or one of: node_modules, .git, .obsidian, .baram)"
+                ),
+                "{input}"
+            );
         }
     }
 
@@ -500,6 +505,74 @@ mod tests {
             let error = note_arg(&vault, input).unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidArgument, "{input}");
             assert_eq!(error.message, message, "{input}");
+        }
+    }
+
+    /// `note_arg` and `folder_arg` answer as the walk does, over the fixture of
+    /// `fs::walk_rules`' own parity test plus `c.MD`: a note is accepted exactly when
+    /// `collect_md_files` lists it, and a folder exactly when the walk enters it. Links are
+    /// left out — the walk does not follow them, and `locate` resolves them first.
+    ///
+    /// What fails this: either check reading a rule of its own that the walkers do not share
+    /// — `.md` matched without regard to case (`c.MD` accepted), `.markdown` left out,
+    /// hidden files let through (`sub/.h.md`), a `SKIP_DIRS` folder entered.
+    #[tokio::test]
+    async fn the_note_and_folder_checks_admit_what_the_vault_walk_does() {
+        let (_t, base) = tree(&["vault"]);
+        let root = base.join("vault");
+        let files = [
+            "a.md",
+            "b.markdown",
+            "c.pdf",
+            "c.MD",
+            ".DS_Store",
+            ".obsidian/w.json",
+            "node_modules/x.md",
+            "sub/.h.md",
+            "sub/d.md",
+            "sub/.drafts/e.md",
+        ];
+        for file in files {
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "x").unwrap();
+        }
+        let vault = vault_at(&root);
+        let mut listed = Vec::new();
+        crate::fs::collect_md_files(&root, &mut listed)
+            .await
+            .unwrap();
+        let mut accepted: Vec<&str> = files
+            .iter()
+            .copied()
+            .filter(|file| note_arg(&vault, file).is_ok())
+            .collect();
+        let mut walked: Vec<String> = listed.iter().map(|path| relative(&vault, path)).collect();
+        accepted.sort_unstable();
+        walked.sort_unstable();
+        assert_eq!(accepted, walked);
+        // A positive half: the fixture puts notes on both sides of the rule.
+        assert_eq!(accepted, ["a.md", "b.markdown", "sub/d.md"]);
+
+        // The folders the walk enters: the root and each one a file it collects lies in.
+        let mut every = Vec::new();
+        crate::fs::collect_all_files(&root, &mut every)
+            .await
+            .unwrap();
+        let mut entered: Vec<String> = every
+            .iter()
+            .filter_map(|path| path.parent())
+            .map(|dir| relative(&vault, dir))
+            .collect();
+        entered.sort_unstable();
+        entered.dedup();
+        assert_eq!(entered, ["", "sub"]);
+        for folder in ["", "sub", ".obsidian", "node_modules", "sub/.drafts"] {
+            assert_eq!(
+                folder_arg(&vault, folder).is_ok(),
+                entered.iter().any(|dir| dir == folder),
+                "{folder:?}"
+            );
         }
     }
 

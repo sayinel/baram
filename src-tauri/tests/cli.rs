@@ -604,6 +604,14 @@ fn a_folder_argument_is_checked_before_anything_is_walked() {
                 code,
                 "{command:?} --folder {folder}"
             );
+            if folder == ".obsidian" {
+                assert_eq!(
+                    json(&ran.stderr)["error"]["message"],
+                    ".obsidian is a folder the vault walk skips \
+                     (hidden, or one of: node_modules, .git, .obsidian, .baram)",
+                    "{command:?}"
+                );
+            }
         }
     }
 }
