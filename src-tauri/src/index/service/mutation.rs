@@ -140,7 +140,10 @@ fn canonical_entry(path: &str) -> Result<PathBuf, String> {
     }
 }
 
-#[cfg(test)]
+// Unix-only as a whole module, not per test: the test makes its link with
+// `std::os::unix::fs::symlink`, and with only the test gated, `use super::*` is unused on
+// Windows — which clippy's `-D warnings` refuses.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
@@ -149,7 +152,6 @@ mod tests {
     /// `a.md`, which is still there. On macOS, where a temporary directory sits under the
     /// `/var` → `/private/var` link, the expected path also pins the other half: the parent is
     /// canonicalised.
-    #[cfg(unix)]
     #[test]
     fn a_removed_link_is_named_by_its_own_spelling_not_by_its_target() {
         let dir = tempfile::tempdir().unwrap();
