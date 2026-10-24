@@ -263,7 +263,7 @@ export interface IndexOptions {
 export interface IndexSearchMatch {
     line: number;
     path: string;
-    /** The matched line, cut about 100 bytes either side of the match (`…` marks a cut). */
+    /** The matched line, cut about 100 bytes either side of the match and at 300 characters in all, so a long match is cut too (`…` marks a cut). */
     snippet: string;
 }
 /** §393 `IndexAPI.search` options. */

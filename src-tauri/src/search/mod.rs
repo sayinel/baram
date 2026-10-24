@@ -143,29 +143,49 @@ pub(crate) fn lines_with_endings(content: &str) -> impl Iterator<Item = (&str, &
     })
 }
 
-/// Build a snippet around a match, showing up to ~100 chars of context on each side.
-/// All offsets are byte-based (from regex::Match), so we must snap to char boundaries.
-fn build_snippet(line_text: &str, match_start: usize, match_end: usize) -> String {
-    let max_context = 100;
+/// The context a snippet takes on each side of a match: up to this many bytes, widened to
+/// the nearest character boundary.
+const SNIPPET_CONTEXT: usize = 100;
 
+/// The most characters of the line a snippet holds, the `…` marks aside. The context before
+/// a match is at most `SNIPPET_CONTEXT` bytes, so the cap never cuts into the context before
+/// it or the match's start: what it cuts is a long match and what follows it. With the
+/// context on both sides, a match up to 100 characters long is never cut. The number is in
+/// the contracts that describe a snippet: `cli::ops_search::SearchRow::snippet`, the MCP
+/// `search` tool's description (`cli::mcp::catalog`), the plugin API's
+/// `IndexSearchMatch.snippet` (`src/plugins/types.ts`) and the `context-index` page.
+const SNIPPET_CHARS: usize = 300;
+
+/// The line around a match for a result row: up to `SNIPPET_CONTEXT` bytes either side of
+/// the match, then at most `SNIPPET_CHARS` characters of that, with `…` where the line is
+/// cut — before the snippet, after it, or both. Offsets are the regex's byte offsets, so
+/// each cut is moved to a character boundary.
+fn build_snippet(line_text: &str, match_start: usize, match_end: usize) -> String {
     // Snap start backward to nearest char boundary
-    let mut snippet_start = match_start.saturating_sub(max_context);
+    let mut snippet_start = match_start.saturating_sub(SNIPPET_CONTEXT);
     while snippet_start > 0 && !line_text.is_char_boundary(snippet_start) {
         snippet_start -= 1;
     }
 
     // Snap end forward to nearest char boundary
-    let mut snippet_end = (match_end + max_context).min(line_text.len());
+    let mut snippet_end = match_end
+        .saturating_add(SNIPPET_CONTEXT)
+        .min(line_text.len());
     while snippet_end < line_text.len() && !line_text.is_char_boundary(snippet_end) {
         snippet_end += 1;
     }
 
+    let around = line_text.get(snippet_start..snippet_end).unwrap_or("");
+    let (kept, capped) = match around.char_indices().nth(SNIPPET_CHARS) {
+        Some((at, _)) => (around.get(..at).unwrap_or(""), true),
+        None => (around, false),
+    };
     let mut snippet = String::new();
     if snippet_start > 0 {
         snippet.push('…');
     }
-    snippet.push_str(&line_text[snippet_start..snippet_end]);
-    if snippet_end < line_text.len() {
+    snippet.push_str(kept);
+    if capped || snippet_end < line_text.len() {
         snippet.push('…');
     }
     snippet
@@ -542,6 +562,35 @@ mod tests {
         assert!(snippet.starts_with('…'));
         assert!(snippet.ends_with('…'));
         assert!(snippet.len() < long.len());
+    }
+
+    /// A snippet holds at most `SNIPPET_CHARS` characters of the line, the `…` marks aside,
+    /// and always the start of the match: a match longer than that is cut, and so is what
+    /// follows it. A short match keeps its context on both sides.
+    ///
+    /// What fails this: the match kept whole (`.*` over a line of a million characters gave a
+    /// snippet of a million characters); the cap counted in bytes (the Hangul snippet holds a
+    /// third as many characters); the cut made from the start of the line (the match's start
+    /// is lost behind its context).
+    #[test]
+    fn a_snippet_is_bounded_in_characters_and_keeps_the_start_of_the_match() {
+        let line = "x".repeat(1_000_000);
+        let snippet = build_snippet(&line, 0, line.len());
+        assert_eq!(snippet, format!("{}…", "x".repeat(SNIPPET_CHARS)));
+        let line = "\u{AC00}".repeat(1_000);
+        let snippet = build_snippet(&line, 0, line.len());
+        assert_eq!(snippet, format!("{}…", "\u{AC00}".repeat(SNIPPET_CHARS)));
+        let line = format!("{}{}", "a".repeat(500), "b".repeat(1_000));
+        let snippet = build_snippet(&line, 500, line.len());
+        assert_eq!(
+            snippet,
+            format!("…{}{}…", "a".repeat(100), "b".repeat(SNIPPET_CHARS - 100))
+        );
+        let line = format!("{}needle{}", "a".repeat(150), "c".repeat(150));
+        assert_eq!(
+            build_snippet(&line, 150, 156),
+            format!("…{}needle{}…", "a".repeat(100), "c".repeat(100))
+        );
     }
 
     #[test]

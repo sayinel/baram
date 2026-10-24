@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: 인덱스"
-sourceHash: "2365566ab3a6"
+sourceHash: "43844553bb0c"
 ---
 
 ## `context.index` (`files` 또는 `files:readonly` 필요)
@@ -69,7 +69,7 @@ interface IndexSearchResult { items: { line: number; path: string; snippet: stri
 - 값이 없는 필드는 `null`이고, 필드가 빠지는 일은 없습니다.
 - `backlinks`는 (path, line) 순이고 한 줄에 한 행입니다. `links`는 줄 순, `tags`는 등장 횟수 순 다음 이름
   순, `notesWithTag`는 경로 순, `tasks`는 경로와 줄 순입니다.
-- `snippet`은 링크가 있는 줄을 앞뒤 공백 없이, 200바이트에서 `…`로 잘라 담습니다 — 검색 일치라면 일치 앞뒤 100바이트까지이고, 잘린 쪽에 `…`가 붙습니다.
+- `snippet`은 링크가 있는 줄을 앞뒤 공백 없이, 200바이트에서 `…`로 잘라 담습니다 — 검색 일치라면 일치 앞뒤 100바이트까지이고 모두 합쳐 300자까지라서 긴 일치는 일치도 잘리며, 잘린 쪽에 `…`가 붙습니다.
 
 ## 읽기마다
 

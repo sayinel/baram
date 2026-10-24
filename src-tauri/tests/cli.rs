@@ -695,6 +695,27 @@ fn search_finds_md_only_and_reports_line_numbers_from_one() {
     );
 }
 
+/// A snippet is bounded in characters however long the match (`search::SNIPPET_CHARS`): `.*`
+/// over a line of 10,000 characters gives 300 of them and the `…` that marks the cut.
+///
+/// What fails this: the match kept whole in the snippet.
+#[test]
+fn a_long_match_gives_a_bounded_snippet() {
+    let sb = sandbox();
+    write(&sb.vault, "long.md", &format!("{}\n", "x".repeat(10_000)));
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "--regex", ".*"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout)["items"][0]["snippet"],
+        format!("{}…", "x".repeat(300))
+    );
+}
+
 #[test]
 fn search_says_when_it_stopped_early() {
     let sb = sandbox();
