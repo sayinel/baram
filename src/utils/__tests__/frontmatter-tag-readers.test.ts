@@ -1,11 +1,11 @@
 // §56m The app's front-matter tag readers name the same tags as the backend's.
 //
-// The rows are the inputs the backend's reader is tested on (`tag::frontmatter`'s tests, on
-// the branch that names a front-matter tag without its `#`), with the names it reads from them.
+// Each row is front matter and the names the backend's front-matter tag reader
+// (`extract_frontmatter_tags`, §56m) gives it; most rows are that reader's own test inputs.
 // Every reader in the app that reads front-matter tags must name the same tags from the same
 // front matter — the tag bar's pills, the journal tag index and the Zettel inbox
 // (`extractTagsFromContent`, which lowercases as the backend's index does), and the journal
-// search filter.
+// search filter. A row changed here changes there too.
 import { describe, expect, it } from "vitest";
 
 import { parseFrontmatterTags } from "../../extensions/nodes/frontmatter-view";

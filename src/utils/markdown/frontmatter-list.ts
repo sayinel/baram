@@ -2,10 +2,10 @@
 // YAML still reads it.
 //
 // The writers this serves — the tag bar, a fleeting note, a promoted note — used to join bare
-// values with `, `. A value that starts with `#` then wrote `tags: [#solo]`: YAML reads a `#`
-// after a space as a comment, so the flow list never closes and the whole front matter fails
-// to parse. Items are therefore kept as they were written when YAML reads that spelling back
-// as their value, and quoted when it would not.
+// values with `, `. A value that starts with `#` then wrote `tags: [#solo]` or `[a, #solo]`,
+// and the whole front matter failed to parse: a plain scalar cannot begin with `#`, and after
+// a space `#` begins a comment, so the flow list never closes. Items are therefore kept as they
+// were written when YAML reads that spelling back as their value, and quoted when it would not.
 
 /** One list field as the YAML spells it. */
 export interface FrontmatterList {
@@ -60,10 +60,11 @@ export function listItemSpelling(
 }
 
 /**
- * Reads `field` at the start of a line of `yaml` (front matter without its `---` fences), the
- * way the backend's tag reader (`tag::frontmatter`) finds a tag list: the key in any case, with
- * blanks allowed before its colon; either `field: [a, b]` on that one line, or `field:` alone
- * and then the `- a` lines under it, indented or not, up to the first line that is not one.
+ * Reads `field` at the start of a line of `yaml` (front matter without its `---` fences) where
+ * the backend's front-matter tag reader (`extract_frontmatter_tags`) finds a tag list: the key
+ * in any case, with blanks allowed before its colon; either `field: [a, b]` on that one line,
+ * or `field:` alone and then the `- a` lines under it, indented or not, up to the first line
+ * that is not one.
  * `field:` with nothing under it is an empty block list. Returns null when the field is absent,
  * and when it is present in a form this does not read — a scalar, a flow list over several
  * lines, a mapping — so a caller does not write a list over the first line of it.
@@ -180,8 +181,8 @@ function splitFlowItems(inner: string): string[] {
 }
 
 /**
- * An item's text without its quotes, taken off as the backend's tag reader takes them
- * (`entry_name`): every `"` at either end, then every `'`. No escape is read.
+ * An item's text without its quotes, taken off as the backend's front-matter tag reader takes
+ * them (`extract_frontmatter_tags`): every `"` at either end, then every `'`. No escape is read.
  */
 function unquote(raw: string): string {
   return raw.replace(/^"+|"+$/g, "").replace(/^'+|'+$/g, "");
