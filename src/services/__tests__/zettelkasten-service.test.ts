@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { parse } from "yaml";
 
 // vi.mock factories are hoisted above top-level consts, so the mocked fns
 // must be created via vi.hoisted() to be safely referenced inside them.
@@ -183,6 +184,32 @@ describe("promoteFleeting", () => {
     const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
     expect(call[1]).toContain("tags: [idea, todo]");
   });
+
+  // §56m What turns these red: rewriting the carried tags unquoted — `"#solo"` became
+  // `tags: [#solo, idea]`, which YAML cannot parse, so the promoted note's front matter
+  // (id, title, created) was unreadable too.
+  it.each([
+    ["an inline", `tags: ["#solo", idea]`],
+    ["a block", `tags:\n  - "#solo"\n  - idea`],
+  ])(
+    "writes front matter YAML reads when %s list holds a # tag",
+    async (_form, tagsField) => {
+      readFile.mockResolvedValueOnce(
+        `---\nid: 202607051530\ncreated: 2026-07-05T15:30\n${tagsField}\n---\n\nseed\n`,
+      );
+      const res = await promoteFleeting(
+        "/z",
+        "/z/inbox/202607051530.md",
+        "Hash Tags",
+      );
+      const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
+      const fm = /^---\n([\s\S]*?)\n---/.exec(call[1])![1];
+      expect(parse(fm)).toMatchObject({
+        tags: ["#solo", "idea"],
+        title: "Hash Tags",
+      });
+    },
+  );
 
   it("preserves the fleeting note's original `created` (does not stamp promotion time)", async () => {
     readFile.mockResolvedValueOnce(

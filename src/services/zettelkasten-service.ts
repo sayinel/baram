@@ -15,7 +15,7 @@ import {
 import {
   buildFleetingNote,
   buildPermanentNote,
-  parseFrontmatterTags,
+  carriedTagList,
   sanitizeZettelTitle,
 } from "../utils/zettelkasten/zettel-note";
 import { openFileInTab } from "./journal-file-service";
@@ -123,7 +123,7 @@ export async function promoteFleeting(
   const seedBody = stripFrontmatter(raw);
   // §99 A: carry the fleeting note's frontmatter tags forward — stripFrontmatter
   // discards them, so re-read them before rebuilding the permanent frontmatter.
-  const tags = parseFrontmatterTags(raw);
+  const tags = carriedTagList(raw);
   const created =
     extractCreated(raw) ?? deriveCreatedFromId(id) ?? localIsoMinute();
   const notesDir = `${zettelDir}/notes`;
@@ -135,7 +135,7 @@ export async function promoteFleeting(
     `id: ${id}\n` +
     `title: ${title}\n` +
     `created: ${created}\n` +
-    `tags: [${tags.join(", ")}]\n` +
+    `tags: ${tags}\n` +
     `aliases: []\n` +
     `---\n\n` +
     `# ${title}\n\n${seedBody}\n`;

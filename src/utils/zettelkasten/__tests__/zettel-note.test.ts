@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 
 import {
   buildFleetingNote,
   buildPermanentNote,
+  carriedTagList,
   parseFrontmatterAliases,
-  parseFrontmatterTags,
   sanitizeZettelTitle,
 } from "../zettel-note";
+
+/** The YAML a note's front matter holds. */
+function frontmatter(md: string): unknown {
+  return parse(/^---\n([\s\S]*?)\n---/.exec(md)![1]);
+}
 
 describe("sanitizeZettelTitle", () => {
   it("strips filesystem-reserved chars and collapses whitespace", () => {
@@ -70,32 +76,60 @@ describe("buildFleetingNote", () => {
     expect(content).toContain("tags: [idea, zettel/inbox]");
     expect(content).not.toContain("#idea");
   });
+
+  // What turns this red: joining the tags with `, ` — `tags: [#solo, idea]` is a YAML parse
+  // error (the `#` opens a comment), so the note's whole front matter is lost to every reader.
+  it("writes a tag YAML cannot hold plain quoted (§56m)", () => {
+    const { content } = buildFleetingNote({
+      id: "202607051530",
+      body: "x",
+      created: "2026-07-05T15:30",
+      tags: ["#solo", "idea"],
+    });
+    expect(content).toContain(`tags: ["#solo", idea]`);
+    expect(frontmatter(content)).toMatchObject({ tags: ["#solo", "idea"] });
+  });
 });
 
-describe("parseFrontmatterTags", () => {
-  it("parses an inline tags array", () => {
-    expect(parseFrontmatterTags("---\ntags: [a, b/c]\n---\n\nx")).toEqual([
-      "a",
-      "b/c",
-    ]);
+describe("carriedTagList", () => {
+  it("reads an inline tags array", () => {
+    expect(carriedTagList("---\ntags: [a, b/c]\n---\n\nx")).toBe("[a, b/c]");
   });
 
-  it("parses a block-list tags field", () => {
-    expect(
-      parseFrontmatterTags("---\ntags:\n  - one\n  - two\n---\n\nx"),
-    ).toEqual(["one", "two"]);
+  it("reads a block-list tags field", () => {
+    expect(carriedTagList("---\ntags:\n  - one\n  - two\n---\n\nx")).toBe(
+      "[one, two]",
+    );
   });
 
-  it("returns [] when there is no frontmatter or no tags field", () => {
-    expect(parseFrontmatterTags("no frontmatter")).toEqual([]);
-    expect(parseFrontmatterTags("---\nid: 1\n---\n")).toEqual([]);
+  it("is [] when there is no frontmatter or no tags field", () => {
+    expect(carriedTagList("no frontmatter")).toBe("[]");
+    expect(carriedTagList("---\nid: 1\n---\n")).toBe("[]");
   });
 
   // ‼️ 반대 방향 핀: `aliases:`를 읽지 않는 것. 공용 코어를 쓰므로 필드 이름 파라미터가
   // 없어지면 이 테스트만 잡는다.
   it("does not read the aliases field", () => {
     const md = `---\ntags: []\naliases: [Note, 영감노트]\n---\n`;
-    expect(parseFrontmatterTags(md)).toEqual([]);
+    expect(carriedTagList(md)).toBe("[]");
+  });
+
+  // §56m What turns these red: carrying the values instead of the items — `"#solo"` lost its
+  // quotes and `tags: [#solo]` stopped parsing.
+  it("keeps each item as written", () => {
+    expect(carriedTagList(`---\ntags: ["#solo", 'sq', plain]\n---\n`)).toBe(
+      `["#solo", 'sq', plain]`,
+    );
+  });
+
+  it("carries a block list's quoted items into a list YAML reads", () => {
+    const list = carriedTagList(`---\ntags:\n  - "#solo"\n  - idea\n---\n`);
+    expect(list).toBe(`["#solo", idea]`);
+    expect(parse(`tags: ${list}`)).toEqual({ tags: ["#solo", "idea"] });
+  });
+
+  it("quotes an item whose spelling YAML cannot read", () => {
+    expect(carriedTagList("---\ntags: [#unq]\n---\n")).toBe(`["#unq"]`);
   });
 });
 

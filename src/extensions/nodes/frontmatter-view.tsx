@@ -11,6 +11,12 @@ import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
+  flowList,
+  listItemSpelling,
+  readFrontmatterList,
+} from "../../utils/markdown/frontmatter-list";
+import { tagName } from "../../utils/tags/tag-name";
+import {
   canUseEditorChrome,
   withVimExternalEdit,
 } from "../plugins/vim/vim-keys";
@@ -20,8 +26,6 @@ import {
 /** §12-⑩/§5b provenance: the remove pill is NodeView chrome (tagged); the
  *  input is a focus-local island under data-vim-suspend (untagged). */
 type TagMutationOrigin = "chrome" | "island";
-
-type TagsFormat = "block" | "inline" | "none";
 
 export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const { t } = useTranslation();
@@ -35,14 +39,17 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   // unchanged nodes).
   const canEdit = useEditorChrome(editor);
 
+  /** Whether the edit was dispatched — `false` leaves the front matter as it was. */
   const applyTags = useCallback(
-    (newTags: string[], origin: TagMutationOrigin) => {
+    (newTags: string[], origin: TagMutationOrigin): boolean => {
       // §12-⑩ event-time guard: this callback can fire from stale-rendered
       // UI after capability was revoked — the render gate is not enough.
-      if (!canUseEditorChrome(editor)) return;
+      if (!canUseEditorChrome(editor)) return false;
       const pos = getPos();
-      if (typeof pos !== "number") return;
+      if (typeof pos !== "number") return false;
       const newYaml = updateFrontmatterTags(node.textContent, newTags);
+      // A `tags:` field the bar cannot rewrite comes back unchanged.
+      if (newYaml === node.textContent) return false;
       const { tr } = editor.view.state;
       const nodeStart = pos + 1;
       const nodeEnd = pos + node.nodeSize - 1;
@@ -57,6 +64,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       }
       if (origin === "chrome") withVimExternalEdit(tr);
       editor.view.dispatch(tr);
+      return true;
     },
     [editor, getPos, node],
   );
@@ -73,10 +81,10 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
 
   const addTag = useCallback(
     (raw: string) => {
-      const tag = raw.trim().replace(/^#+/, "");
+      const tag = tagName(raw.trim());
       if (!tag || tags.includes(tag)) return;
-      applyTags([...tags, tag], "island");
-      setInputValue("");
+      // The typed text stays when nothing was written, rather than vanish as if it had been.
+      if (applyTags([...tags, tag], "island")) setInputValue("");
     },
     [applyTags, tags],
   );
@@ -176,65 +184,53 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
 }
 
 /**
- * Parses the `tags:` field from a YAML frontmatter string.
+ * The tag names in the `tags:` field of a YAML frontmatter string (without its `---` fences),
+ * once each — a pill per tag. A name is the item's value without quotes and without its leading
+ * `#`s (`tagName`), so `"#solo"` and `solo` are the one pill `#solo`.
  * Supports:
  *   tags: [tag1, tag2]       (inline array)
  *   tags:\n  - tag1\n  - tag2  (block list)
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function parseFrontmatterTags(yaml: string): string[] {
-  // Inline array: tags: [tag1, "tag 2", tag3]
-  const inlineMatch = yaml.match(/^tags:\s*\[([^\]]*)\]/m);
-  if (inlineMatch) {
-    return inlineMatch[1]
-      .split(",")
-      .map((t) => t.trim().replace(/^["']|["']$/g, ""))
-      .filter(Boolean);
-  }
-
-  // Block list: tags:\n  - tag1\n  - tag2
-  const blockMatch = yaml.match(/^tags:\s*\n((?:[ \t]+-[ \t]+\S[^\n]*\n?)+)/m);
-  if (blockMatch) {
-    return blockMatch[1]
-      .split("\n")
-      .map((line) => line.match(/^[ \t]+-[ \t]+(.+)$/)?.[1]?.trim() ?? "")
-      .filter(Boolean);
-  }
-
-  return [];
+  const items = readFrontmatterList(yaml, "tags")?.items ?? [];
+  return [...new Set(items.map((i) => tagName(i.value)).filter(Boolean))];
 }
 
 /**
- * Rewrites the `tags:` section in YAML with new tags, preserving the original format.
- * If no tags field exists, appends `tags: [...]` after the first line.
+ * Rewrites the `tags:` field to hold the tag names `tags`, in its own form (inline or block).
+ * The items of a name that stays are kept as written — quotes, `#` and block indentation — and
+ * quoted only when YAML could not read them; a new name is quoted when YAML would not read it
+ * back as written (`listItemSpelling`). An emptied list is written `tags: []`. Without a
+ * `tags:` field, `tags: [...]` goes after the first line. A `tags:` this cannot read as a list
+ * (a scalar, an unindented `- a` sequence) is left alone and `yaml` is returned unchanged:
+ * writing a list beside it would repeat the key, and over its first line would strand the rest.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function updateFrontmatterTags(yaml: string, tags: string[]): string {
-  const format = detectTagsFormat(yaml);
-
-  if (format === "inline") {
-    const inlineValue = `[${tags.join(", ")}]`;
-    return yaml.replace(/^tags:\s*\[[^\]]*\]/m, `tags: ${inlineValue}`);
+  const list = readFrontmatterList(yaml, "tags");
+  if (!list) {
+    if (/^tags[ \t]*:/m.test(yaml)) return yaml;
+    const lines = yaml.split("\n");
+    lines.splice(1, 0, `tags: ${flowList(tags)}`);
+    return lines.join("\n");
   }
 
-  if (format === "block") {
-    const blockValue = "\n" + tags.map((t) => `  - ${t}`).join("\n");
-    return yaml.replace(
-      /^tags:\s*\n((?:[ \t]+-[ \t]+\S[^\n]*\n?)+)/m,
-      `tags:${blockValue}\n`,
-    );
+  const wanted = new Set(tags);
+  const kept = list.items.filter((i) => wanted.has(tagName(i.value)));
+  const present = new Set(kept.map((i) => tagName(i.value)));
+  const added = tags.filter((t) => !present.has(t));
+
+  let field: string;
+  if (list.form === "inline" || kept.length + added.length === 0) {
+    field = `tags: ${flowList([...kept, ...added])}`;
+  } else {
+    const lead = list.items[0]?.lead ?? "  - ";
+    field = [
+      "tags:",
+      ...kept.map((i) => `${i.lead ?? lead}${listItemSpelling(i, false)}`),
+      ...added.map((t) => `${lead}${listItemSpelling(t, false)}`),
+    ].join("\n");
   }
-
-  // No tags field — append after first line
-  const lines = yaml.split("\n");
-  lines.splice(1, 0, `tags: [${tags.join(", ")}]`);
-  return lines.join("\n");
-}
-
-// --- NodeView component ---
-
-function detectTagsFormat(yaml: string): TagsFormat {
-  if (/^tags:\s*\[/m.test(yaml)) return "inline";
-  if (/^tags:\s*\n(?:[ \t]+-[ \t]+\S)/m.test(yaml)) return "block";
-  return "none";
+  return yaml.slice(0, list.start) + field + yaml.slice(list.end);
 }
