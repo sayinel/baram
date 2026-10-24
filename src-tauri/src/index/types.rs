@@ -27,7 +27,9 @@ pub struct LinkEntry {
     /// names no file, and neither file rename pass gives its blank target a
     /// name. The read-back gate (`index_reads_the_rename_back`) reads it by
     /// this, not by `target` — a note sharing the renamed file's stem would
-    /// otherwise look like it refers to the renamed file. Not on the wire.
+    /// otherwise look like it refers to the renamed file — and so does the
+    /// graph's resolver (`resolve_entry`), which resolves it to `source_path`
+    /// where the maps would answer another note of that stem. Not on the wire.
     #[serde(skip)]
     pub(crate) self_reference: bool,
 }
@@ -71,16 +73,17 @@ pub struct IndexStats {
 }
 
 /// §387 How `baram links` reports one outgoing link: resolved by the graph's resolver
-/// (`resolve_link`), except a cross-vault link, which is reported by alias.
+/// (`resolve_entry`), except a cross-vault link, which is reported by alias.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum LinkResolution {
-    /// A file under this index's root, the one `resolve_link` answers.
+    /// A file under this index's root, the one `resolve_entry` answers — for a
+    /// self-reference, `((#^id))`, the note that holds it.
     Resolved(String),
     /// `[[alias::note]]` — the link names another vault (§87). Not looked up here;
     /// `get_link_graph` does look it up, and draws it to a local note of that name, or to
     /// a placeholder path when there is none.
     OtherVault(String),
-    /// `resolve_link` finds no file. `get_link_graph` draws such a link to the
+    /// `resolve_entry` finds no file. `get_link_graph` draws such a link to the
     /// placeholder path `resolve_target` builds.
     Unresolved,
 }
