@@ -167,6 +167,45 @@ fn main() {
         "write_binary_file",
         "write_file",
     ]);
-    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(app_manifest))
-        .expect("failed to run tauri-build");
+    let mut attributes = tauri_build::Attributes::new().app_manifest(app_manifest);
+    if targets_windows_msvc() {
+        // The Windows manifest goes in below instead, for every target — and the app
+        // must carry exactly one, so tauri-build's own copy is left out.
+        attributes = attributes
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+        embed_the_windows_manifest_in_every_target();
+    }
+    tauri_build::try_build(attributes).expect("failed to run tauri-build");
+}
+
+/// Whether this build produces Windows MSVC binaries. A build script runs on the HOST,
+/// so `cfg!(windows)` here would describe the machine running it; cargo passes the
+/// target's configuration in these variables instead.
+fn targets_windows_msvc() -> bool {
+    std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+}
+
+/// Links `windows-app-manifest.xml` — a copy of tauri-build's default manifest (byte for
+/// byte as of tauri-build 2.7.2) — into every target the package links: the app, and
+/// also the test harnesses.
+///
+/// ‼️ Without it no test that links the library starts on Windows. tauri-build compiles
+/// its manifest into a resource that `embed-resource` passes with
+/// `cargo:rustc-link-arg-bins`, so only binaries get it. The library's test harness and
+/// the `tests/*.rs` that call into the library then load the system's default comctl32,
+/// which lacks `TaskDialogIndirect` — imported by tauri-runtime-wry, muda and rfd — and
+/// exit with 0xC0000139 (STATUS_ENTRYPOINT_NOT_FOUND) before running a test. The suffix-free
+/// `rustc-link-arg` is deliberate: `rustc-link-arg-tests` reaches `tests/*.rs` but not
+/// the library's own harness (rust-lang/cargo#10937). `/MANIFESTUAC:NO` stops the linker
+/// from adding a `trustInfo` block that tauri's manifest does not have.
+fn embed_the_windows_manifest_in_every_target() {
+    let manifest = std::path::Path::new(
+        &std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"),
+    )
+    .join("windows-app-manifest.xml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+    println!("cargo:rustc-link-arg=/MANIFESTUAC:NO");
 }
