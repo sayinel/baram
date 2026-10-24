@@ -1012,19 +1012,35 @@ mod tests {
         assert!(validate_path("./file.md").is_err());
     }
 
+    /// `/vault{rest}` made absolute on the platform running the test. A driveless `/vault/…`
+    /// is not absolute on Windows, so `validate_path` would refuse it at the absolute check and
+    /// never reach the one under test.
+    fn absolute(rest: &str) -> String {
+        if cfg!(windows) {
+            format!(r"C:\vault{}", rest.replace('/', r"\"))
+        } else {
+            format!("/vault{rest}")
+        }
+    }
+
     // §backlog #7 — defense-in-depth: reject `..` traversal segments.
     #[test]
     fn validate_path_rejects_traversal() {
-        assert!(validate_path("/vault/../etc/passwd").is_err());
-        assert!(validate_path("/vault/notes/../../etc").is_err());
-        assert!(validate_path("/vault/..").is_err());
+        for path in ["/../etc/passwd", "/notes/../../etc", "/.."] {
+            let err = validate_path(&absolute(path)).unwrap_err().to_string();
+            // The traversal check itself, not the absolute check before it.
+            assert!(
+                err.contains("Path traversal is not allowed"),
+                "{path}: {err}"
+            );
+        }
     }
 
     #[test]
     fn validate_path_accepts_clean_absolute() {
-        assert!(validate_path("/vault/notes/file.md").is_ok());
+        assert!(validate_path(&absolute("/notes/file.md")).is_ok());
         // A filename that merely contains dots (not a `..` segment) is fine.
-        assert!(validate_path("/vault/a..b.md").is_ok());
+        assert!(validate_path(&absolute("/a..b.md")).is_ok());
     }
 
     /// delete_file은 영구 삭제가 아니라 휴지통 이동이어야 한다.
