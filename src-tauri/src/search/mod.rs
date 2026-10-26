@@ -147,13 +147,16 @@ pub(crate) fn lines_with_endings(content: &str) -> impl Iterator<Item = (&str, &
 /// the nearest character boundary.
 const SNIPPET_CONTEXT: usize = 100;
 
-/// The most characters of the line a snippet holds, the `…` marks aside. The context before
-/// a match is at most `SNIPPET_CONTEXT` bytes, so the cap never cuts into the context before
-/// it or the match's start: what it cuts is a long match and what follows it. With the
-/// context on both sides, a match up to 100 characters long is never cut. The number is in
-/// the contracts that describe a snippet: `cli::ops_search::SearchRow::snippet`, the MCP
-/// `search` tool's description (`cli::mcp::catalog`), the plugin API's
-/// `IndexSearchMatch.snippet` (`src/plugins/types.ts`) and the `context-index` page.
+/// The most characters of the line a snippet holds; a `…` at each end the line is cut at
+/// comes on top, so a snippet is at most 302 characters. The context before a match is at
+/// most `SNIPPET_CONTEXT` bytes widened back to a character boundary — at most 100
+/// characters — so the cap never cuts into it or the match's start: what it cuts is a long
+/// match and what follows it. The context after a match is at most 100 characters the same
+/// way, so a match up to 100 characters long is never cut. The numbers are in the contracts
+/// that describe a snippet: `cli::ops_search::SearchRow::snippet`, the MCP `search` tool's
+/// description (`cli::mcp::catalog`), the plugin API's `IndexSearchMatch.snippet`
+/// (`src/plugins/types.ts`, and the `examples/plugins/types.d.ts` generated from it) and the
+/// en and ko `plugin-dev/context-index` pages.
 const SNIPPET_CHARS: usize = 300;
 
 /// The line around a match for a result row: up to `SNIPPET_CONTEXT` bytes either side of
@@ -361,8 +364,8 @@ pub(crate) async fn search_page(
 
                 results.push(SearchResult {
                     file_path: file_path.clone(),
-                    line: line_idx + 1,      // 1-based
-                    column: mat.start() + 1, // 1-based
+                    line: line_idx.saturating_add(1),      // 1-based
+                    column: mat.start().saturating_add(1), // 1-based
                     snippet: build_snippet(line_text, mat.start(), mat.end()),
                 });
             }
@@ -586,6 +589,8 @@ mod tests {
             snippet,
             format!("…{}{}…", "a".repeat(100), "b".repeat(SNIPPET_CHARS - 100))
         );
+        // Cut at both ends: the longest a snippet is.
+        assert_eq!(snippet.chars().count(), SNIPPET_CHARS + 2);
         let line = format!("{}needle{}", "a".repeat(150), "c".repeat(150));
         assert_eq!(
             build_snippet(&line, 150, 156),

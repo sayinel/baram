@@ -27,8 +27,9 @@ pub(crate) struct SearchQuery<'a> {
 pub(crate) struct SearchRow {
     pub path: String,
     pub line: usize,
-    /// The line around the match: up to 100 bytes either side of it and at most 300
-    /// characters in all, so a long match is cut too; `…` marks where the line is cut.
+    /// The line around the match: about 100 bytes either side of it and at most 300 of its
+    /// characters, so a long match is cut too, with a `…` at each end where the line is cut —
+    /// 302 characters at most.
     pub snippet: String,
 }
 

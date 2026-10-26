@@ -198,7 +198,8 @@ impl ToolName {
                 title: "Search notes",
                 description: "Full-text search of the vault's .md files, as the app's search \
                               runs it: each match's path, line (from 1) and a snippet of the \
-                              line around the match, at most 300 characters. Each page is cut from the matches in the \
+                              line around the match, at most 300 of its characters plus a … \
+                              at each cut end. Each page is cut from the matches in the \
                               order the search finds them, then sorted by path and line. \
                               Hidden .md files inside ordinary folders are searched too; \
                               read_note does not open those. read_note with offset = line - 1 \
