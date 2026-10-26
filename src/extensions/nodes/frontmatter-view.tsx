@@ -14,7 +14,7 @@ import {
   frontmatterListItems,
   writeFrontmatterList,
 } from "../../utils/markdown/frontmatter-list";
-import { tagName } from "../../utils/tags/tag-name";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 import {
   canUseEditorChrome,
   withVimExternalEdit,
@@ -81,7 +81,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const addTag = useCallback(
     (raw: string) => {
       const tag = tagName(raw.trim());
-      if (!tag || tags.includes(tag)) return;
+      if (!isBodyTagName(tag) || tags.includes(tag)) return;
       // The typed text stays when nothing was written, rather than vanish as if it had been.
       if (applyTags([...tags, tag], "island")) setInputValue("");
     },

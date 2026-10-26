@@ -1,7 +1,7 @@
 // §56m A tag's name and the vault tag list merged by name.
 import { describe, expect, it } from "vitest";
 
-import { tagEntriesByName, tagName } from "../tag-name";
+import { isBodyTagName, tagEntriesByName, tagName } from "../tag-name";
 
 describe("tagName", () => {
   it("removes every leading #", () => {
@@ -56,5 +56,43 @@ describe("tagEntriesByName", () => {
         { count: 2, tag: "x" },
       ]),
     ).toEqual([{ count: 2, tag: "x" }]);
+  });
+});
+
+describe("isBodyTagName", () => {
+  // The backend's tag letters (`md::is_tag_char`): what a tag written `#name` in a note's body
+  // holds. A name with anything else is not a tag the body can spell — `#a b` is the tag `a`.
+  it("accepts letters, digits, _, - and /", () => {
+    for (const name of [
+      "solo",
+      "a/b",
+      "일기",
+      "baram-dev",
+      "x_1",
+      "café",
+      "Ⅻ",
+      "2024",
+    ]) {
+      expect(isBodyTagName(name)).toBe(true);
+    }
+  });
+
+  it("refuses anything else, and the empty name", () => {
+    for (const name of [
+      "a b",
+      'a"b',
+      "'a",
+      "a'",
+      "[a]",
+      "a,b",
+      "a.b",
+      "a:b",
+      "#a",
+      "🔥",
+      "a\tb",
+      "",
+    ]) {
+      expect(isBodyTagName(name)).toBe(false);
+    }
   });
 });

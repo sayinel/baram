@@ -267,6 +267,7 @@
   "journal.capture.error.save": "Save failed: {message}",
   "journal.capture.error.scanFailed": "Could not read the notes folder, so there is no way to tell where these tags point. Try again, or remove the tags to save to the inbox.",
   "journal.capture.error.scanning": "Still reading the notes your tags point to. Try again in a moment.",
+  "journal.capture.error.tagName": "#{tag} cannot be a tag: a tag holds only letters, digits, _, - and /.",
   "journal.capture.error.taskDirtyTab": "The capture file has unsaved changes. Save that tab and try again.",
   "journal.capture.error.taskNoHome": "Set a tasks home first — captured tasks land in a file inside it. Settings › Tasks.",
   "journal.capture.error.taskNotMarkdown": "The capture file must be a .md or .markdown file, or its tasks never appear in the agenda. Change it in Settings.",

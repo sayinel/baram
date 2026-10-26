@@ -74,6 +74,18 @@ describe("tag autocomplete (§56m)", () => {
     expect(prosemirrorToMarkdown(editor.state.doc).trim()).toBe("#solo");
   });
 
+  // What turns this red: offering every index row — a front-matter tag `"my tag"` is a tag
+  // the index counts, and inserting it wrote `#my tag`, which reads back as the tag `my`.
+  it("offers only names a tag in the body can spell", async () => {
+    getVaultTags.mockResolvedValue([
+      { count: 3, tag: "my tag" },
+      { count: 2, tag: "a.b" },
+      { count: 1, tag: "solo" },
+    ]);
+    const { props } = await openTagMenu();
+    expect(props.items).toEqual([{ count: 1, id: "0", tag: "solo" }]);
+  });
+
   it("inserts a bare row as it is", async () => {
     getVaultTags.mockResolvedValue([{ count: 1, tag: "solo" }]);
     const { editor, props } = await openTagMenu();

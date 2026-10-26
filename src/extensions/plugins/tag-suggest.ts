@@ -11,7 +11,7 @@ import { getVaultTags } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file/file";
 import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
-import { tagName } from "../../utils/tags/tag-name";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 import { tagSuggestPluginKey } from "./suggestion-keys";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 
@@ -45,8 +45,9 @@ async function getTagIndex(
 
     const entries = await getVaultTags(rootPath);
     const index = new Map<string, number>();
+    // Only names the body can spell: inserting `my tag` (a front-matter tag) writes `#my tag`.
     for (const entry of entries) {
-      index.set(entry.tag, entry.count);
+      if (isBodyTagName(tagName(entry.tag))) index.set(entry.tag, entry.count);
     }
 
     _tagCacheByEditor.set(editor, { index, timestamp: now });

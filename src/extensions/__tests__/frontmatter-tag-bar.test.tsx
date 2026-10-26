@@ -73,6 +73,22 @@ describe("front-matter tag bar (§56m)", () => {
     expect(input.value).toBe("");
   });
 
+  // What turns this red: writing whatever was typed — `a b` is a front-matter tag the body
+  // cannot spell, and `a"b` one the readers read back as another name.
+  it("refuses a name a tag in the body could not spell, and keeps what was typed", async () => {
+    const { editor, view } = await mount("tags: [a]");
+    let transactions = 0;
+    editor.on("transaction", () => {
+      transactions += 1;
+    });
+    for (const typed of ["a b", 'a"b', "[x]"]) {
+      const input = typeTag(view, typed);
+      expect(input.value).toBe(typed);
+    }
+    expect(frontmatterText(editor)).toBe("tags: [a]");
+    expect(transactions).toBe(0);
+  });
+
   // What turns this red: writing a `tags: [...]` line beside a `tags:` the bar cannot read —
   // a duplicate key, which YAML rejects — and clearing the input as if it had been added.
   it("leaves a tags field it cannot rewrite alone, and keeps what was typed", async () => {

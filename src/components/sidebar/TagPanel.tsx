@@ -19,7 +19,7 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
-import { tagName } from "../../utils/tags/tag-name";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 
 const TAG_COLOR_PRESETS = [
   "#ef4444", // red
@@ -177,6 +177,8 @@ export function TagPanel() {
           setRenaming(null);
           return;
         }
+        // A name the body's `#` cannot spell is refused; the box stays open with it.
+        if (!isBodyTagName(newTag)) return;
         if (!rootPath) return;
         try {
           const result = await renameTag(rootPath, tag, newTag);

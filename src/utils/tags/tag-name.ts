@@ -3,6 +3,17 @@
 import type { TagEntry } from "../../ipc/types";
 
 /**
+ * Whether `name` is a tag a note's body can spell as `#name`: every character a letter, a digit,
+ * `_`, `-` or `/` — the backend's tag letters (`md::is_tag_char`: Rust's `char::is_alphanumeric`,
+ * which is Unicode `Alphabetic` or a number, `Nd`·`Nl`·`No`). The app's tag-name inputs take
+ * only such names: anything else is a tag only in front matter, which the body's `#` cannot
+ * reach, and a quote or a bracket there is read back as another name.
+ */
+export function isBodyTagName(name: string): boolean {
+  return /^[\p{Alphabetic}\p{N}_/-]+$/u.test(name);
+}
+
+/**
  * Rows whose names agree once {@link tagName} has read them are one tag: their counts are
  * added, rows left without a name are dropped, and the result is sorted by count, then by
  * name — the order `get_vault_tags` returns.

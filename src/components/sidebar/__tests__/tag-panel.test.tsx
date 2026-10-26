@@ -45,6 +45,20 @@ describe("TagPanel (§56m)", () => {
     expect(screen.queryByTitle("#solo (3)")).not.toBeNull();
   });
 
+  // What turns this red: renaming to a name a body tag cannot spell — `rename_tag` would
+  // write `#my tag` into every note, which reads back as the tag `my`.
+  it("refuses a new name a body tag could not spell, and keeps the box open", async () => {
+    render(<TagPanel />);
+    fireEvent.contextMenu(await screen.findByTitle("#solo (3)"));
+    fireEvent.click(screen.getByText("Rename tag..."));
+    const input = screen.getByDisplayValue("solo");
+    fireEvent.change(input, { target: { value: "my tag" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await Promise.resolve();
+    expect(screen.getByDisplayValue("my tag")).toBeTruthy();
+    expect(invoke).not.toHaveBeenCalledWith("rename_tag", expect.anything());
+  });
+
   // What turns this red: stripping one `#` from the new name — `##focus` became `#focus`,
   // which the rename writes into the body as `##focus`, not a tag.
   it("renames to the typed name without its leading #s", async () => {

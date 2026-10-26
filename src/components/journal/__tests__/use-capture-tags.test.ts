@@ -186,6 +186,21 @@ describe("§324-b useCaptureTags", () => {
     expect(result.current.list).toEqual(["solo", "idea", "plain"]);
   });
 
+  // §56m What turns this red: suggesting every index row — choosing `my tag` put `#my tag`
+  // in the field, which the capture reads as two tags, `my` and `tag`.
+  it("suggests only names a tag in the body can spell", async () => {
+    getVaultTags.mockResolvedValue([
+      { count: 5, tag: "my tag" },
+      { count: 1, tag: "solo" },
+    ]);
+    const { result } = renderHook(() =>
+      useCaptureTags(true, EMPTY_ADDRESSABLE_NAMES),
+    );
+    await waitFor(() => expect(result.current.index.size).toBe(1));
+    act(() => result.current.onChange(changeEvent("#")));
+    expect(result.current.suggestions.map((s) => s.name)).toEqual(["solo"]);
+  });
+
   it("logs and keeps an empty index when the IPC fails", async () => {
     const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
     getVaultTags.mockRejectedValue(new Error("nope"));

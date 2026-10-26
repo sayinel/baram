@@ -12,7 +12,7 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
-import { tagName } from "../../utils/tags/tag-name";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 
 export interface CaptureTags {
@@ -82,7 +82,15 @@ export function useCaptureTags(
         if (!scanDir) return;
 
         const entries = await getVaultTags(scanDir);
-        setIndex(new Map(entries.map((e) => [e.tag, e.count])));
+        // §56m 본문이 `#`으로 쓸 수 있는 이름만 제안한다 — `my tag`를 고르면 칸에 `#my tag`가
+        // 들어가 태그 둘(`my`·`tag`)로 읽힌다.
+        setIndex(
+          new Map(
+            entries
+              .filter((e) => isBodyTagName(tagName(e.tag)))
+              .map((e) => [e.tag, e.count]),
+          ),
+        );
       } catch (err) {
         logger.error("[QuickCapture] Tag index build failed:", err);
       }
