@@ -178,12 +178,12 @@ pub struct LinkIndex {
     /// path components compared without ASCII case (`same_component`) — by
     /// the keys this index's methods build: a link's (`file_incoming`), a
     /// file's (`filing_keys_of`, `backlink_keys`, the path-key counts) and
-    /// the resolver's maps (`register_file_path`, `register_link_target`,
-    /// `resolve_link`). Not by `extract_links`, whose self-reference target
-    /// is the stem `std::path` reads on this host. This host's rule
-    /// (`cfg!(windows)`) except in the tests that pass `true` to
-    /// `with_windows` (issue 595: the Windows shape is tested by passing
-    /// `windows = true`, never behind `cfg(windows)`).
+    /// the resolver's maps and the link text it reads them with
+    /// (`register_file_path`, `register_link_target`, `link_text`). Not by
+    /// `extract_links`, whose self-reference target is the stem `std::path`
+    /// reads on this host. This host's rule (`cfg!(windows)`) except in the
+    /// tests that pass `true` to `with_windows` (issue 595: the Windows shape
+    /// is tested by passing `windows = true`, never behind `cfg(windows)`).
     windows: bool,
 }
 

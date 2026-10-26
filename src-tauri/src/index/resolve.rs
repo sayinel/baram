@@ -1,6 +1,6 @@
 //! The maps a `[[name]]` is resolved through and the graph built on them (§29).
 
-use super::filing::{file_name, is_relative, root_relative_key, root_relative_path};
+use super::filing::{file_name, root_relative_key, root_relative_path};
 use super::normalizer::{
     extract_id_from_stem, fold_name, is_id_target, normalize_file_path, normalize_target,
     resolve_target,
@@ -184,22 +184,30 @@ impl LinkIndex {
     /// note extension before the normalized map lookup. Reached only through
     /// `resolve_entry`, for an entry that is not a self-reference.
     ///
-    /// The maps' path keys are joined with `/` (`register_file_path`), so a
-    /// target that is not relative has its `\` read as `/` when the index
-    /// reads paths the Windows way, as `filing_key` files it: `[[notes\x]]`
-    /// and `[[notes/x]]` name one note. A relative target keeps its text —
-    /// the resolver has no relative step.
+    /// The target as `link_text` spells it.
     fn resolve_link(&self, raw_target: &str) -> Option<String> {
-        let raw = raw_target.trim();
-        let raw = if self.windows && !is_relative(raw, true) {
-            Cow::Owned(raw.replace('\\', "/"))
-        } else {
-            Cow::Borrowed(raw)
-        };
+        let raw = self.link_text(raw_target);
         let normalized = normalize_target(&raw);
         let full = fold_name(&raw);
         self.spelled_note_name(&full, &normalized)
             .or_else(|| self.resolve_target_from_map(&normalized))
+    }
+
+    /// `raw_target` trimmed, and with its `\` read as `/` when the index
+    /// reads paths the Windows way: the maps' path keys are joined with `/`
+    /// (`register_file_path`), so `[[notes\x]]` and `[[notes/x]]` name one
+    /// note, as `filing_key` files them under one key, and `[[.\x]]` reads as
+    /// `[[./x]]` — the resolver has no relative step, so both go by the stem.
+    /// `resolve_link` resolves this text, and `get_link_graph` builds the
+    /// placeholder of a target nothing answers from it, so the two
+    /// spellings of an unresolved path meet at one node.
+    fn link_text<'a>(&self, raw_target: &'a str) -> Cow<'a, str> {
+        let raw = raw_target.trim();
+        if self.windows {
+            Cow::Owned(raw.replace('\\', "/"))
+        } else {
+            Cow::Borrowed(raw)
+        }
     }
 
     /// The file `entry` names: for a self-reference, `((#^id))`, the note
@@ -227,7 +235,7 @@ impl LinkIndex {
         for (source, entries) in &self.outgoing {
             nodes_set.insert(source.clone());
             for entry in entries {
-                let target_normalized = normalize_target(&entry.target);
+                let target_normalized = normalize_target(&self.link_text(&entry.target));
                 if let Some(root) = &self.root_path {
                     // Use file maps for accurate resolution, fall back to simple path construction
                     let target_path = self
@@ -700,7 +708,7 @@ mod tests {
         // to `other\x.md`; `register_link_target` so — `[[papers/Paper.pdf]]`
         // is unresolved; `relative_of` in `spelled_note_name` so —
         // `[[d/x.md]]` goes to `d\x.markdown`, registered last under `d/x`;
-        // dropping the `\` fold from `resolve_link` — `[[notes\x]]` is
+        // dropping the `\` fold from `link_text` — `[[notes\x]]` is
         // unresolved; `register_file_path` reading the stem from the whole
         // path — `[[x]]` is unresolved where `\` is no separator to the host;
         // `file_incoming` filing with `cfg!(windows)` — `[[notes\x]]` is not
@@ -752,6 +760,53 @@ mod tests {
             .map(|b| b.line)
             .collect();
         assert_eq!(lines, vec![1, 2, 7]);
+    }
+
+    #[test]
+    fn a_windows_backslash_reads_as_a_slash_in_a_relative_target_and_a_placeholder() {
+        // On Windows `[[.\x]]` is `[[./x]]`, and `filing_key` files both under
+        // one key; the resolver, which has no relative step, sends both to
+        // the note of the stem. An unresolved `[[notes\y]]` and `[[notes/y]]`
+        // meet at one placeholder node.
+        // What fails this: reading `\` as `/` only in a target that is not
+        // relative (`link_text`) — `[[.\x]]` is unresolved; building the
+        // placeholder from the target as written (`get_link_graph`) — two
+        // placeholder nodes.
+        let mut index = LinkIndex::with_windows(true);
+        index.root_path = Some(r"C:\v".to_string());
+        index.register_file_path(r"C:\v\d\x.md", r"C:\v");
+        index.update_file_from_content(
+            r"C:\v\r.md",
+            "[[./x]]\n[[.\\x]]\n[[notes/y]]\n[[notes\\y]]\n",
+        );
+        let x = LinkResolution::Resolved(r"C:\v\d\x.md".to_string());
+        let outgoing: Vec<LinkResolution> = index
+            .outgoing_resolved(r"C:\v\r.md")
+            .expect("r.md is indexed")
+            .into_iter()
+            .map(|(_, resolution)| resolution)
+            .collect();
+        assert_eq!(
+            outgoing,
+            vec![
+                x.clone(),
+                x,
+                LinkResolution::Unresolved,
+                LinkResolution::Unresolved
+            ]
+        );
+        let graph = index.get_link_graph();
+        let ends: Vec<&str> = graph
+            .edges
+            .iter()
+            .filter(|e| e.from == r"C:\v\r.md")
+            .map(|e| e.to.as_str())
+            .collect();
+        assert_eq!(ends.len(), 4);
+        assert_eq!(ends[0], r"C:\v\d\x.md");
+        assert_eq!(ends[1], ends[0]);
+        assert_eq!(ends[3], ends[2]);
+        assert_eq!(graph.nodes.len(), 3, "{:?}", graph.nodes);
     }
 
     #[test]
