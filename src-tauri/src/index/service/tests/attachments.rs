@@ -315,3 +315,58 @@ async fn a_whole_name_that_is_also_a_notes_stem_is_left_and_reported() {
         ("[[y.txt]]\n".to_string(), false)
     );
 }
+
+#[tokio::test]
+async fn a_saved_file_that_is_no_note_stays_a_link_target_as_a_build_files_it() {
+    // The editor opens `.mdx`, `.MD` and names without an extension as
+    // markdown and saves them through `update_file_index_inner`; a build
+    // reads no link in them (`crate::fs::is_note_name`). A save files each
+    // as the build does: its `[[b]]` is no backlink of `b.md`, it has no
+    // links of its own, `[[Notes]]` and `[[Plan]]` name no file and the
+    // whole names do — as after a build.
+    // What fails this: reading a saved file as a note whatever its name
+    // (`Mutation::update` in `update_file_index_inner`) — the live index
+    // reads the saved file's links, where a build reads none.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-saved", true).await;
+    std::fs::create_dir_all(dir.path().join("d")).unwrap();
+    for name in ["Notes.mdx", "Plan.MD", "README"] {
+        std::fs::write(dir.path().join("d").join(name), "[[b]]\n").unwrap();
+    }
+    std::fs::write(
+        dir.path().join("d/r.md"),
+        "[[Notes]]\n[[Notes.mdx]]\n[[Plan]]\n[[Plan.MD]]\n[[README]]\n",
+    )
+    .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    for name in ["Notes.mdx", "Plan.MD", "README"] {
+        update_file_index_inner(&state, &ctx, &at(&root, &["d", name]))
+            .await
+            .unwrap();
+        assert_eq!(
+            links_as_built(&state, &root, &at(&root, &["d", name])).await,
+            None,
+            "{name}"
+        );
+    }
+    assert_eq!(
+        sources(
+            &get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
+                .await
+                .unwrap()
+        ),
+        vec![at(&root, &["a.md"])]
+    );
+    let resolved = |name: &str| LinkResolution::Resolved(at(&root, &["d", name]));
+    assert_eq!(
+        links_as_built(&state, &root, &at(&root, &["d", "r.md"])).await,
+        Some(vec![
+            LinkResolution::Unresolved,
+            resolved("Notes.mdx"),
+            LinkResolution::Unresolved,
+            resolved("Plan.MD"),
+            resolved("README"),
+        ])
+    );
+}

@@ -1,4 +1,5 @@
 use crate::context::ContextManager;
+use crate::index::filing::is_note;
 use crate::index::{BacklinkResult, LinkGraph, LinkIndex};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -115,27 +116,51 @@ pub(crate) async fn update_file_index_inner(
     if keys.is_empty() {
         return Ok(());
     }
-    // Read outside the lock. With no index yet this only bumps the epoch, so
-    // the initial build that is still reading cannot publish a state older
-    // than this save; it will read again. A file that cannot be read (deleted
+    // The build's note rule (`filing::is_note`, `crate::fs::is_note_name`): a
+    // saved file whose name is no note's — an `.mdx`, a `.MD`, a name with no
+    // extension, which the editor opens as markdown (`isMarkdownFile`) — is
+    // filed as a build files it, a link target whose links are not read
+    // (`Mutation::Target`). Filed as a note, its links would count as
+    // backlinks and graph edges until the next build dropped them, and a
+    // rename, which reads notes by this same rule, would neither rewrite
+    // them nor report them.
+    //
+    // A note is read outside the lock. With no index yet this only bumps the
+    // epoch, so the initial build that is still reading cannot publish a
+    // state older than this save; it will read again. A file that cannot be read (deleted
     // between the save and this call, unreadable) leaves the index instead of
     // being recorded as a file without links; the next save brings it back.
     // One canonical identity either way; each slot projects it into its own
     // live and pending root spelling while holding the map lock.
-    let mutation = match tokio::fs::read_to_string(file_path).await {
-        Ok(content) => Mutation::update(file_path, content)?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            log::warn!("§29 update_file_index: {file_path} is gone, removing it from the index");
-            Mutation::remove(file_path)?
+    let mutation = if !is_note(file_path, cfg!(windows)) {
+        match tokio::fs::metadata(file_path).await {
+            Ok(_) => Mutation::target(file_path)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Mutation::remove(file_path)?,
+            Err(e) => {
+                log::warn!(
+                    "§29 update_file_index: {file_path} could not be checked, index left unchanged: {e}"
+                );
+                return Ok(());
+            }
         }
-        Err(e) => {
-            // Present but unreadable right now (permissions, a transient I/O
-            // error, invalid UTF-8): the index keeps what it knew — neither an
-            // empty file nor a removal is the truth — and the next save retries.
-            log::warn!(
+    } else {
+        match tokio::fs::read_to_string(file_path).await {
+            Ok(content) => Mutation::update(file_path, content)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                log::warn!(
+                    "§29 update_file_index: {file_path} is gone, removing it from the index"
+                );
+                Mutation::remove(file_path)?
+            }
+            Err(e) => {
+                // Present but unreadable right now (permissions, a transient I/O
+                // error, invalid UTF-8): the index keeps what it knew — neither an
+                // empty file nor a removal is the truth — and the next save retries.
+                log::warn!(
                 "§29 update_file_index: {file_path} could not be read, index left unchanged: {e}"
             );
-            return Ok(());
+                return Ok(());
+            }
         }
     };
     for key in &keys {
