@@ -12,6 +12,7 @@ use super::super::mutation::Mutation;
 use super::super::state::LinkIndexState;
 use super::destination::{another_entry_at, check_destination, confined_both_ways};
 use super::passes::{rewrite_renamed_note, LinkPasses};
+use super::pdf_highlights::carry_pdf_highlights;
 use super::referrers::{
     apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers, Unchanged,
 };
@@ -250,9 +251,25 @@ pub(crate) async fn rename_file_with_links_inner(
     }
     apply_queued(state, per_key).await;
 
+    // 5. A PDF's highlight files follow it (`carry_pdf_highlights`): its companion note is
+    //    renamed as any note is, and what that rename rewrote or left is this rename's too.
+    let carried =
+        carry_pdf_highlights(state, ctx_mgr, &scope.dirs, old_path, new_path, windows).await;
+    let mut updated_files = rewritten.updated;
+    let mut skipped_files = rewritten.skipped;
+    for (all, more) in [
+        (&mut updated_files, carried.updated),
+        (&mut skipped_files, carried.skipped),
+    ] {
+        for file in more {
+            if !all.contains(&file) {
+                all.push(file);
+            }
+        }
+    }
     Ok(RenameResult {
-        updated_files: rewritten.updated,
-        skipped_files: rewritten.skipped,
+        updated_files,
+        skipped_files,
     })
 }
 

@@ -5,6 +5,7 @@ mod destination;
 mod file;
 mod namespace;
 mod passes;
+mod pdf_highlights;
 mod referrers;
 mod scope;
 

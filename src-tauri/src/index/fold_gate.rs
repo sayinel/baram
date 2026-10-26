@@ -90,6 +90,12 @@ const ALLOWED: &[(&str, &str, &str)] = &[
          (D8); non-ASCII case stays two names",
     ),
     (
+        "service/rename/pdf_highlights.rs",
+        r#"if !rel.get(cut..)?.eq_ignore_ascii_case(".pdf") {"#,
+        "highlight_paths: the extension `.pdf` in any ASCII case, as the \
+         frontend's `/\\.pdf$/i` matches it — an extension, not a name",
+    ),
+    (
         "extractor.rs",
         r#"let pattern = format!(r"(?i)\b{}\b", escaped);"#,
         "find_unlinked_mentions: the note's name in prose in any case, as \
