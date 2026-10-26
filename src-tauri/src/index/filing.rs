@@ -460,6 +460,24 @@ mod tests {
     }
 
     #[test]
+    fn keys_for_names_a_file_that_is_no_note_by_its_whole_name() {
+        // A PDF's bare-name key is its whole name, bare and behind each local
+        // alias; its path key keeps the extension, which only a note drops.
+        // What fails this: keying the file by its stem (`Path::file_stem`) in
+        // `name_key` — `paper` where `paper.pdf` is expected, twice.
+        let aliases = vec![local("work", "/v")];
+        assert_eq!(
+            keys_for("/v/papers/Paper.pdf", Some("/v"), &aliases, false),
+            vec![
+                stem("paper.pdf"),
+                path("papers/paper.pdf"),
+                foreign("work", "paper.pdf"),
+                foreign("work", "papers/paper.pdf"),
+            ]
+        );
+    }
+
+    #[test]
     fn keys_for_names_the_stem_the_path_and_each_local_alias() {
         // What fails this: dropping the `Foreign` loop over `local_aliases`.
         let aliases = vec![local("work", "/v")];

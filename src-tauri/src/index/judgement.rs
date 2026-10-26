@@ -658,6 +658,44 @@ mod tests {
     }
 
     #[test]
+    fn a_link_behind_a_local_alias_names_a_file_that_is_no_note_by_its_whole_name() {
+        // `[[work::Paper.pdf]]` is filed as `Foreign { work, paper.pdf }`,
+        // the key `keys_for` gives the PDF behind its vault's alias, and
+        // `[[work::papers/Paper.pdf]]` under the path; `[[work::Paper]]`
+        // names a note. The alias judgement reads each the same way, and the
+        // whole name is what the new text spells.
+        // What fails this: judging the old name by its stem in
+        // `refers_behind_alias` — `work::Paper.pdf` is `NotOurs` and
+        // `work::Paper` is `Ours`.
+        let aliases = [LocalAlias {
+            alias: "work".to_string(),
+            root: "/v".to_string(),
+        }];
+        let target = RenameTarget {
+            old_path: "/v/papers/Paper.pdf",
+            new_path: "/v/papers/Survey.pdf",
+            local_aliases: &aliases,
+            known_paths: KnownPaths::default(),
+            windows: false,
+        };
+        let roots = vec!["/v".to_string()];
+        let judge = |raw: &str| target.judge("/v/r.md", &roots, "work::", raw);
+        assert_eq!(judge("Paper.pdf"), Judgement::Ours(Match::Stem));
+        assert_eq!(
+            judge("papers/Paper.pdf"),
+            Judgement::Ours(Match::Path {
+                root: "/v".to_string(),
+                relative: false,
+            })
+        );
+        assert_eq!(judge("Paper"), Judgement::NotOurs);
+        assert_eq!(
+            target.respell("/v/r.md", &Match::Stem, "Paper.pdf"),
+            "Survey.pdf"
+        );
+    }
+
+    #[test]
     fn the_new_stem_is_the_new_name_in_nfc() {
         // §390 (spec 0069 D7) The spellability predicates judge `new_stem()`
         // and the rename writes the stem in NFC: one string, so they judge

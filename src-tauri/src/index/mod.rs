@@ -1080,6 +1080,26 @@ mod tests {
     }
 
     #[test]
+    fn removing_a_windows_path_drops_it_from_its_stem() {
+        // `remove_file` finds the stem bucket `register_file_path` filed the
+        // note in from the path's components, so a Windows path is dropped
+        // on any host.
+        // What fails this: reading the stem from the whole path
+        // (`normalize_file_path(file_path)`) — where `\` is no separator to
+        // the host that is `c:\v\d\x`, the bucket `x` keeps the path, and
+        // `[[x]]` still resolves to the removed note.
+        let mut index = LinkIndex::with_windows(true);
+        index.root_path = Some(r"C:\v".to_string());
+        index.register_file_path(r"C:\v\d\x.md", r"C:\v");
+        assert_eq!(
+            index.resolve_target_from_map("x"),
+            Some(r"C:\v\d\x.md".to_string())
+        );
+        index.remove_file(r"C:\v\d\x.md");
+        assert_eq!(index.resolve_target_from_map("x"), None);
+    }
+
+    #[test]
     fn test_file_map_updated_on_remove() {
         let mut index = LinkIndex::new();
         index.root_path = Some("/vault".to_string());
