@@ -1,9 +1,11 @@
 /** Zettelkasten note + frontmatter builders (pure; caller supplies id + created). */
 import {
   flowList,
-  type FrontmatterListItem,
-  readFrontmatterList,
+  frontmatterListItems,
+  readFrontmatterLists,
+  writeFrontmatterList,
 } from "../markdown/frontmatter-list";
+import { tagName } from "../tags/tag-name";
 
 const RESERVED_CHARS = ["/", "\\", ":", "*", "?", '"', "<", ">", "|", "#"];
 const RESERVED = new RegExp(
@@ -50,14 +52,24 @@ export function buildPermanentNote(input: {
 }
 
 /**
- * The `tags:` field of a note's YAML frontmatter — inline (`tags: [a, b]`) or block-list
- * (`tags:\n  - a`) form — as the flow list `[…]` a promoted permanent note carries forward;
- * `[]` when the note has no frontmatter or no tags field. Each item keeps its spelling (quotes,
- * `#`) unless YAML would not read it back, and then it is quoted (`flowList`): carrying the
- * bare values wrote `tags: [#idea]`, which YAML cannot parse.
+ * §96 The `tags:` field of a note's YAML frontmatter, as the promoted permanent note carries it
+ * forward: one list read to its end (`complete`) is carried as written, in its own form — only
+ * an item YAML cannot read is respelled (`writeFrontmatterList`), and line breaks become `\n`.
+ * Anything else — no field, a field not read to its end, two `tags` keys — carries the values
+ * as a new flow list (`tags: []` when there are none). Carrying the bare values wrote
+ * `tags: [#idea]`, which YAML cannot parse.
  */
-export function carriedTagList(md: string): string {
-  return flowList(frontmatterListItems(md, "tags"));
+export function carriedTagField(md: string): string {
+  const yaml = frontmatterOf(md);
+  const lists = readFrontmatterLists(yaml, "tags");
+  if (lists.length === 1 && lists[0].complete) {
+    const names = lists[0].items.map((i) => tagName(i.value)).filter(Boolean);
+    const respelled = writeFrontmatterList(yaml, "tags", names, tagName);
+    const [list] = readFrontmatterLists(respelled, "tags");
+    return respelled.slice(list.start, list.end).replace(/\r\n/g, "\n");
+  }
+  const values = lists.flatMap((l) => l.items).map((i) => i.value);
+  return `tags: ${flowList(values)}`;
 }
 
 /**
@@ -68,7 +80,7 @@ export function carriedTagList(md: string): string {
  * 태그가 아닌 입력(위키링크 대상 등)은 이 제약을 받지 않는다.
  */
 export function parseFrontmatterAliases(md: string): string[] {
-  return frontmatterListItems(md, "aliases").map((i) => i.value);
+  return frontmatterListItems(frontmatterOf(md), "aliases").map((i) => i.value);
 }
 
 export function sanitizeZettelTitle(title: string): string {
@@ -77,18 +89,12 @@ export function sanitizeZettelTitle(title: string): string {
 }
 
 /**
- * 프론트매터의 문자열 배열 필드 하나. 두 형태(인라인 `[a, b]`·블록 리스트)를 모두
- * 읽는다.
+ * 노트의 YAML 프론트매터(`---` 사이, 닫는 `---` 앞의 줄바꿈 제외), 없으면 빈 문자열.
  *
- * `tags:`와 `aliases:`가 **같은 코어**를 쓰는 이유는 한쪽만 형태를 지원하게 되는
- * 날을 막기 위해서다 — 블록 리스트로 적은 `aliases:`가 조용히 빈 배열이 되면
+ * `tags:`와 `aliases:`가 **같은 코어**(`frontmatterListItems`)를 쓰는 이유는 한쪽만 형태를
+ * 지원하게 되는 날을 막기 위해서다 — 블록 리스트로 적은 `aliases:`가 조용히 빈 배열이 되면
  * §320의 매칭이 실패하고, 캡처는 `inbox/`로 낙오한다. 조용히 실패하는 종류다.
  */
-function frontmatterListItems(
-  md: string,
-  field: "aliases" | "tags",
-): FrontmatterListItem[] {
-  const fmMatch = md.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!fmMatch) return [];
-  return readFrontmatterList(fmMatch[1], field)?.items ?? [];
+function frontmatterOf(md: string): string {
+  return md.match(/^---\s*\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
 }

@@ -11,9 +11,8 @@ import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
-  flowList,
-  listItemSpelling,
-  readFrontmatterList,
+  frontmatterListItems,
+  writeFrontmatterList,
 } from "../../utils/markdown/frontmatter-list";
 import { tagName } from "../../utils/tags/tag-name";
 import {
@@ -184,54 +183,25 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
 }
 
 /**
- * The tag names in the `tags:` field of a YAML frontmatter string (without its `---` fences),
- * once each — a pill per tag. A name is the item's value without quotes and without its leading
- * `#`s (`tagName`), so `"#solo"` and `solo` are the one pill `#solo`.
- * Supports, as `readFrontmatterList` reads them:
+ * The tag names in the `tags:` lists of a YAML frontmatter string (without its `---` fences),
+ * once each — a pill per tag. A name is the item's value without its leading `#`s (`tagName`),
+ * so `"#solo"` and `solo` are the one pill `#solo`. The lists are read as the tag index reads
+ * them (`frontmatterListItems`):
  *   tags: [tag1, tag2]       (inline array)
  *   tags:\n  - tag1\n  - tag2  (block list, indented or not)
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function parseFrontmatterTags(yaml: string): string[] {
-  const items = readFrontmatterList(yaml, "tags")?.items ?? [];
-  return [...new Set(items.map((i) => tagName(i.value)).filter(Boolean))];
+  const names = frontmatterListItems(yaml, "tags").map((i) => tagName(i.value));
+  return [...new Set(names.filter(Boolean))];
 }
 
 /**
- * Rewrites the `tags:` field to hold the tag names `tags`, in its own form (inline or block)
- * and under its own key spelling. The items of a name that stays are kept as written — quotes,
- * `#` and block indentation — and quoted only when YAML could not read them; a new name is
- * quoted when YAML would not read it back as written (`listItemSpelling`). An emptied list is
- * written `tags: []`. Without a `tags:` field, `tags: [...]` goes after the first line. A
- * `tags:` this cannot read as a list (a scalar, a flow list over several lines) is left alone
- * and `yaml` is returned unchanged: writing a list beside it would repeat the key, and over its
- * first line would strand the rest.
+ * Rewrites the `tags:` list to hold the tag names `tags` (`writeFrontmatterList`): only the
+ * items and lines an edit touches change; without a `tags:` key, `tags: [...]` is appended at
+ * the end; a `tags:` field the writer cannot rewrite in place comes back unchanged.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function updateFrontmatterTags(yaml: string, tags: string[]): string {
-  const list = readFrontmatterList(yaml, "tags");
-  if (!list) {
-    if (/^tags[ \t]*:/im.test(yaml)) return yaml;
-    const lines = yaml.split("\n");
-    lines.splice(1, 0, `tags: ${flowList(tags)}`);
-    return lines.join("\n");
-  }
-
-  const wanted = new Set(tags);
-  const kept = list.items.filter((i) => wanted.has(tagName(i.value)));
-  const present = new Set(kept.map((i) => tagName(i.value)));
-  const added = tags.filter((t) => !present.has(t));
-
-  let field: string;
-  if (list.form === "inline" || kept.length + added.length === 0) {
-    field = `${list.key} ${flowList([...kept, ...added])}`;
-  } else {
-    const lead = list.items[0]?.lead ?? "  - ";
-    field = [
-      list.key,
-      ...kept.map((i) => `${i.lead ?? lead}${listItemSpelling(i, false)}`),
-      ...added.map((t) => `${lead}${listItemSpelling(t, false)}`),
-    ].join("\n");
-  }
-  return yaml.slice(0, list.start) + field + yaml.slice(list.end);
+  return writeFrontmatterList(yaml, "tags", tags, tagName);
 }

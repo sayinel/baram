@@ -46,8 +46,6 @@ describe("tag bar writes front matter YAML still reads (§56m)", () => {
     expect(parse(out).tags).toEqual(["#solo", "plain", "x"]);
   });
 
-  // An unquoted `#` item is already unreadable; the bar's next write quotes it rather than
-  // carrying the broken spelling forward.
   it("an unindented block list stays unindented", () => {
     const out = addPill("title: t\ntags:\n- a\n- b\ndate: d", "x");
     expect(out).toBe("title: t\ntags:\n- a\n- b\n- x\ndate: d");
@@ -59,6 +57,8 @@ describe("tag bar writes front matter YAML still reads (§56m)", () => {
     expect(removePill("tags :\n  - a\n  - x", "x")).toBe("tags :\n  - a");
   });
 
+  // An unquoted `#` item is already unreadable; the bar's next write quotes it rather than
+  // carrying the broken spelling forward.
   it("quotes an item whose spelling YAML cannot read", () => {
     const out = addPill("tags: [#unq]", "x");
     expect(out).toBe(`tags: ["#unq", x]`);
@@ -70,8 +70,6 @@ describe("tag bar writes front matter YAML still reads (§56m)", () => {
     expect(parse(out)).toEqual({ tags: ["a", "key: v"] });
   });
 
-  // What turns this red: an emptied block list written as a bare `tags:`, which the next add
-  // did not recognise — it inserted a second `tags:` key, and YAML rejects duplicate keys.
   // What turns this red: writing the emptied block as a bare `tags:` — YAML reads that as
   // null, not as an empty list.
   it("an emptied block list is an empty list", () => {
@@ -80,6 +78,8 @@ describe("tag bar writes front matter YAML still reads (§56m)", () => {
     expect(parse(out)).toEqual({ date: "d", tags: [], title: "t" });
   });
 
+  // What turns this red: an emptied block list written as a bare `tags:`, which the next add
+  // did not recognise — it inserted a second `tags:` key, and YAML rejects duplicate keys.
   it("emptying a block list and adding again keeps one tags key", () => {
     const emptied = removePill("title: t\ntags:\n  - a", "a");
     const out = addPill(emptied, "b");
@@ -195,10 +195,12 @@ describe("updateFrontmatterTags", () => {
     );
   });
 
+  // §56m The new field goes at the end, at column 0 — after the first line it could land
+  // inside that line's value (`writeFrontmatterList`).
   it("adds tags field when none exists", () => {
     const yaml = "title: Test\ndate: 2026-03-01";
     const result = updateFrontmatterTags(yaml, ["rust", "coding"]);
-    expect(result).toBe("title: Test\ntags: [rust, coding]\ndate: 2026-03-01");
+    expect(result).toBe("title: Test\ndate: 2026-03-01\ntags: [rust, coding]");
   });
 
   it("clears inline array to empty", () => {

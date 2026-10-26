@@ -1,43 +1,42 @@
 // §56m The app's front-matter tag readers name the same tags as the backend's.
 //
-// Each row is front matter and the names the backend's front-matter tag reader
-// (`extract_frontmatter_tags`, §56m) gives it; most rows are that reader's own test inputs.
-// Every reader in the app that reads front-matter tags must name the same tags from the same
-// front matter — the tag bar's pills, the journal tag index and the Zettel inbox
-// (`extractTagsFromContent`, which lowercases as the backend's index does), and the journal
-// search filter. A row changed here changes there too.
+// The cases live in `fixtures/frontmatter-tags.json` — front matter and the names the backend's
+// front-matter tag reader (`extract_frontmatter_tags`) gives it. Every reader in the app that
+// reads front-matter tags must name the same tags from the same front matter: the tag bar's
+// pills, the journal search filter, and the journal tag index and the Zettel inbox
+// (`extractTagsFromContent`, which lowercases as the backend's index does).
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseFrontmatterTags } from "../../extensions/nodes/frontmatter-view";
 import { extractFrontmatterFields } from "../journal/journal-search";
 import { extractTagsFromContent } from "../journal/journal-tags";
+import { frontmatterListItems } from "../markdown/frontmatter-list";
+import { tagName } from "../tags/tag-name";
 
-const ROWS: [frontmatter: string, names: string[]][] = [
-  [`tags: ["#solo"]`, ["solo"]],
-  [`tags: ["#Solo"]`, ["Solo"]],
-  [`tags: ['#sq']`, ["sq"]],
-  [`tags:\n  - "#blockq"\n  - '#blockq2'`, ["blockq", "blockq2"]],
-  [`tags: ["#a/b"]`, ["a/b"]],
-  [`tags: ["##double"]`, ["double"]],
-  [`tags: [solo, "plain"]`, ["solo", "plain"]],
-  [`tags:\n  - solo\n  - 'plain'`, ["solo", "plain"]],
-  // Not YAML (`#` cannot begin a plain scalar; in a block item it begins a comment), and
-  // read as tags all the same: the app's own writers wrote them.
-  [`tags: [#unq]`, ["unq"]],
-  [`tags: [plain, #unq2]`, ["plain", "unq2"]],
-  [`tags:\n  - #blockunq`, ["blockunq"]],
-  // An entry of only `#`s, or of nothing, names no tag.
-  [`tags: ["#", ##, '', , "#""", a]`, ["a"]],
-  [`tags:\n  - "#"\n  - ##\n  - a`, ["a"]],
-  // A block list need not be indented under its key; the key is read in any case.
-  [`tags:\n- a\n- "#b"`, ["a", "b"]],
-  [`Tags: [x]`, ["x"]],
-  [`tags : [y]`, ["y"]],
-];
+interface Case {
+  frontmatter: string;
+  names: string[];
+  why: string;
+}
+
+const { cases } = JSON.parse(
+  readFileSync(
+    join(process.cwd(), "src/utils/__tests__/fixtures/frontmatter-tags.json"),
+    "utf8",
+  ),
+) as { cases: Case[] };
+
+const ROWS = cases.map((c) => [c.frontmatter, c.names] as const);
 
 describe("front-matter tag readers agree with the backend's (§56m)", () => {
+  it("has cases to agree on", () => {
+    expect(cases.length).toBeGreaterThan(30);
+  });
+
   it.each(ROWS)("the tag bar reads %j", (frontmatter, names) => {
-    expect(parseFrontmatterTags(frontmatter)).toEqual(names);
+    expect(parseFrontmatterTags(frontmatter)).toEqual([...new Set(names)]);
   });
 
   it.each(ROWS)("the journal search reads %j", (frontmatter, names) => {
@@ -49,5 +48,14 @@ describe("front-matter tag readers agree with the backend's (§56m)", () => {
     const content = `---\n${frontmatter}\n---\nbody`;
     const lowered = [...new Set(names.map((n) => n.toLowerCase()))].sort();
     expect(extractTagsFromContent(content)).toEqual(lowered);
+  });
+
+  // The one reading that differs on purpose: a comma inside a quoted inline item does not
+  // split it here (the backend reads `a` and `b`), so a rewrite keeps the item whole.
+  it("keeps a quoted inline item whole at its comma", () => {
+    const names = (fm: string) =>
+      frontmatterListItems(fm, "tags").map((i) => tagName(i.value));
+    expect(names(`tags: ["a, b", c]`)).toEqual(["a, b", "c"]);
+    expect(names(`tags: ['a, b']`)).toEqual(["a, b"]);
   });
 });

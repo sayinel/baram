@@ -1,7 +1,7 @@
 /**
  * §56l — Tag index and autocomplete utilities for journal captures
  */
-import { readFrontmatterList } from "../markdown/frontmatter-list";
+import { frontmatterListItems } from "../markdown/frontmatter-list";
 import { tagName } from "../tags/tag-name";
 
 /** Pattern matching #tag with word chars, Korean characters, and nested paths (#parent/child) */
@@ -40,8 +40,7 @@ export function extractTagsFromContent(content: string): string[] {
   // item spelled `"#solo"` is the tag `solo`.
   const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
   if (frontmatterMatch) {
-    for (const { value } of readFrontmatterList(frontmatterMatch[1], "tags")
-      ?.items ?? []) {
+    for (const { value } of frontmatterListItems(frontmatterMatch[1], "tags")) {
       const name = tagName(value).toLowerCase();
       if (name) tags.add(name);
     }

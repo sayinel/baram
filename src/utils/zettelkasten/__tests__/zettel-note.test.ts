@@ -4,7 +4,7 @@ import { parse } from "yaml";
 import {
   buildFleetingNote,
   buildPermanentNote,
-  carriedTagList,
+  carriedTagField,
   parseFrontmatterAliases,
   sanitizeZettelTitle,
 } from "../zettel-note";
@@ -91,53 +91,64 @@ describe("buildFleetingNote", () => {
   });
 });
 
-describe("carriedTagList", () => {
-  it("reads an inline tags array", () => {
-    expect(carriedTagList("---\ntags: [a, b/c]\n---\n\nx")).toBe("[a, b/c]");
-  });
-
-  it("reads a block-list tags field", () => {
-    expect(carriedTagList("---\ntags:\n  - one\n  - two\n---\n\nx")).toBe(
-      "[one, two]",
+describe("carriedTagField", () => {
+  it("carries an inline tags array", () => {
+    expect(carriedTagField("---\ntags: [a, b/c]\n---\n\nx")).toBe(
+      "tags: [a, b/c]",
     );
   });
 
-  it("is [] when there is no frontmatter or no tags field", () => {
-    expect(carriedTagList("no frontmatter")).toBe("[]");
-    expect(carriedTagList("---\nid: 1\n---\n")).toBe("[]");
+  // §56m What turns this red: carrying the values instead of the field — a block list became
+  // a flow list, and its items lost their quotes and comments.
+  it("carries a block list in its own form, its lines as written", () => {
+    const md = `---\ntags:\n  - "#solo" # first\n  - idea\n---\n`;
+    const field = carriedTagField(md);
+    expect(field).toBe(`tags:\n  - "#solo" # first\n  - idea`);
+    expect(parse(field)).toEqual({ tags: ["#solo", "idea"] });
+  });
+
+  it("is an empty list when there is no frontmatter or no tags field", () => {
+    expect(carriedTagField("no frontmatter")).toBe("tags: []");
+    expect(carriedTagField("---\nid: 1\n---\n")).toBe("tags: []");
   });
 
   // ‼️ 반대 방향 핀: `aliases:`를 읽지 않는 것. 공용 코어를 쓰므로 필드 이름 파라미터가
   // 없어지면 이 테스트만 잡는다.
   it("does not read the aliases field", () => {
     const md = `---\ntags: []\naliases: [Note, 영감노트]\n---\n`;
-    expect(carriedTagList(md)).toBe("[]");
+    expect(carriedTagField(md)).toBe("tags: []");
   });
 
   // §56m What turns these red: carrying the values instead of the items — `"#solo"` lost its
   // quotes and `tags: [#solo]` stopped parsing.
   it("keeps each item as written", () => {
-    expect(carriedTagList(`---\ntags: ["#solo", 'sq', plain]\n---\n`)).toBe(
-      `["#solo", 'sq', plain]`,
+    expect(carriedTagField(`---\ntags: ["#solo", 'sq', plain]\n---\n`)).toBe(
+      `tags: ["#solo", 'sq', plain]`,
     );
   });
 
-  it("carries a block list's quoted items into a list YAML reads", () => {
-    const list = carriedTagList(`---\ntags:\n  - "#solo"\n  - idea\n---\n`);
-    expect(list).toBe(`["#solo", idea]`);
-    expect(parse(`tags: ${list}`)).toEqual({ tags: ["#solo", "idea"] });
-  });
-
   it("quotes an item whose spelling YAML cannot read", () => {
-    expect(carriedTagList("---\ntags: [#unq]\n---\n")).toBe(`["#unq"]`);
+    expect(carriedTagField("---\ntags: [#unq]\n---\n")).toBe(`tags: ["#unq"]`);
+    expect(carriedTagField("---\ntags:\n  - #unq\n---\n")).toBe(
+      `tags:\n  - "#unq"`,
+    );
   });
 
-  // What turns this red: carrying a block item of blanks as an empty flow item — `[, a]`,
-  // which YAML cannot parse.
-  it("leaves out a block item that names nothing", () => {
-    const list = carriedTagList("---\ntags:\n  -  \n  - a\n---\n");
-    expect(list).toBe("[a]");
-    expect(parse(`tags: ${list}`)).toEqual({ tags: ["a"] });
+  it("carries a CRLF block list with \\n line breaks", () => {
+    expect(carriedTagField("---\ntags:\r\n  - a\r\n  - b\r\n---\n")).toBe(
+      "tags:\n  - a\n  - b",
+    );
+  });
+
+  // A field the writer cannot carry as written — two `tags` keys, a list not read to its end —
+  // is carried as a new flow list of the values read.
+  it("carries the values read when the field cannot be carried as written", () => {
+    expect(carriedTagField("---\ntags: [a]\ntags: [b]\n---\n")).toBe(
+      "tags: [a, b]",
+    );
+    expect(carriedTagField("---\ntags:\n  - a long\n    tag\n---\n")).toBe(
+      "tags: [a long]",
+    );
   });
 });
 

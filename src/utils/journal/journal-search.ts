@@ -1,6 +1,6 @@
 // §56k Journal Search utilities — categorize, group, and highlight journal search results
 import { extractFrontmatter } from "../markdown/frontmatter";
-import { readFrontmatterList } from "../markdown/frontmatter-list";
+import { frontmatterListItems } from "../markdown/frontmatter-list";
 import { tagName } from "../tags/tag-name";
 import { JOURNAL_FILENAME_COMPACT_RE, JOURNAL_FILENAME_RE } from "./journal";
 
@@ -99,7 +99,7 @@ export function extractFrontmatterFields(content: string): {
   const date = yaml.match(/^date:\s*(\d{4}-\d{2}-\d{2})/m)?.[1];
 
   // `tags: [a, b]` or `tags:\n  - a`, each by its name — `"#여행"` is the tag `여행`.
-  const tags = (readFrontmatterList(yaml, "tags")?.items ?? [])
+  const tags = frontmatterListItems(yaml, "tags")
     .map((i) => tagName(i.value))
     .filter(Boolean);
 
