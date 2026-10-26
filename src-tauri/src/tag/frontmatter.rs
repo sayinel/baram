@@ -209,4 +209,37 @@ mod tests {
             ["a"]
         );
     }
+
+    /// One case of `tag/fixtures/frontmatter-tags.json`.
+    #[derive(serde::Deserialize)]
+    struct FixtureCase {
+        frontmatter: String,
+        tags: Vec<String>,
+        why: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Fixture {
+        cases: Vec<FixtureCase>,
+    }
+
+    /// The shared fixture: every row of the reader tests above, the key's spellings and the
+    /// other cases its `why`s give, in one file another reader of front-matter tags can read
+    /// too. What fails this: a change to what the reader names for any of them — for one, a
+    /// key matched with case (`Tags: [a]`, `TAGS:`), which only this test has.
+    #[test]
+    fn the_reader_agrees_with_the_shared_fixture() {
+        let fixture: Fixture =
+            serde_json::from_str(include_str!("fixtures/frontmatter-tags.json")).unwrap();
+        assert!(!fixture.cases.is_empty());
+        for case in &fixture.cases {
+            assert_eq!(
+                extract_frontmatter_tags(&case.frontmatter),
+                case.tags,
+                "{:?}: {}",
+                case.frontmatter,
+                case.why
+            );
+        }
+    }
 }

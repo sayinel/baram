@@ -1,0 +1,195 @@
+{
+  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; each entry trimmed, then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. Every character outside ASCII is written as a JSON unicode escape.",
+  "cases": [
+    {
+      "frontmatter": "tags: [\"#solo\"]",
+      "tags": [
+        "solo"
+      ],
+      "why": "a double-quoted entry loses its quotes, then every leading # (tag::bare_tag): the body's #solo is the same tag"
+    },
+    {
+      "frontmatter": "tags: [\"#Solo\"]",
+      "tags": [
+        "Solo"
+      ],
+      "why": "case is kept as written; the tag index lowercases after reading, the graph does not"
+    },
+    {
+      "frontmatter": "tags: ['#sq']",
+      "tags": [
+        "sq"
+      ],
+      "why": "a single-quoted entry, likewise"
+    },
+    {
+      "frontmatter": "tags: [#unq]",
+      "tags": [
+        "unq"
+      ],
+      "why": "not YAML (# cannot begin a plain scalar), but read as written: the app's own tag writers have written such lines (they joined tags unquoted), and notes written that way keep them"
+    },
+    {
+      "frontmatter": "tags: [plain, #unq2]",
+      "tags": [
+        "plain",
+        "unq2"
+      ],
+      "why": "an unquoted # after a comma, likewise: not YAML either"
+    },
+    {
+      "frontmatter": "tags:   [ a ,  \"#b\" ]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "whitespace around the brackets and the commas is not part of a name"
+    },
+    {
+      "frontmatter": "tags: [solo, \"plain\"]",
+      "tags": [
+        "solo",
+        "plain"
+      ],
+      "why": "a name without # is read as it is"
+    },
+    {
+      "frontmatter": "tags: [\"##double\"]",
+      "tags": [
+        "double"
+      ],
+      "why": "every leading # goes, not one"
+    },
+    {
+      "frontmatter": "tags: [\"#a/b\"]",
+      "tags": [
+        "a/b"
+      ],
+      "why": "a nested tag keeps its /: the body's #a/b is the same tag"
+    },
+    {
+      "frontmatter": "tags: [solo.x, my solo, \"#solo\"]",
+      "tags": [
+        "solo.x",
+        "my solo",
+        "solo"
+      ],
+      "why": "an entry is one name, whatever it holds: solo.x and my solo are not solo"
+    },
+    {
+      "frontmatter": "tags: [\"#\", ##, '', , \"#\"\"\", a]",
+      "tags": [
+        "a"
+      ],
+      "why": "an entry of only #s, or of nothing, names no tag and is left out (not YAML: the unquoted ## begins a comment)"
+    },
+    {
+      "frontmatter": "tags:\n  - \"#blockq\"\n  - '#blockq2'",
+      "tags": [
+        "blockq",
+        "blockq2"
+      ],
+      "why": "block-list items, quoted"
+    },
+    {
+      "frontmatter": "tags:\n  - solo\n  - 'plain'",
+      "tags": [
+        "solo",
+        "plain"
+      ],
+      "why": "block-list items without #"
+    },
+    {
+      "frontmatter": "tags:\n  - #blockunq",
+      "tags": [
+        "blockunq"
+      ],
+      "why": "a YAML comment (the item is null), read as written for the same reason as [#unq]"
+    },
+    {
+      "frontmatter": "tags:\n  - project/baram",
+      "tags": [
+        "project/baram"
+      ],
+      "why": "a nested tag in a block list"
+    },
+    {
+      "frontmatter": "tags:\n  - \"#\"\n  - ##\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "block items of only #s name no tag (to YAML the ## item is a comment, so null)"
+    },
+    {
+      "frontmatter": "tags:\n- solo\n- \"#b\"",
+      "tags": [
+        "solo",
+        "b"
+      ],
+      "why": "a block list at its key's own indentation, as YAML reads tags: followed by - solo"
+    },
+    {
+      "frontmatter": "tags:\n- '#solo'\r\n- c\r",
+      "tags": [
+        "solo",
+        "c"
+      ],
+      "why": "unindented items with CRLF line endings"
+    },
+    {
+      "frontmatter": "aliases:\n- x\ntags:\n- a\n- b\nrelated:\n- x\n- y",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a list ends at the first line that is not an item: the next key's - x items, and those of a key before tags:, are not tags"
+    },
+    {
+      "frontmatter": "related:\n- x\ntitle: t",
+      "tags": [],
+      "why": "a list under another key is not tags"
+    },
+    {
+      "frontmatter": "tags:\r\n  - '#solo'\r\n  - c\r",
+      "tags": [
+        "solo",
+        "c"
+      ],
+      "why": "CRLF: a line is read without its line ending, and the last line keeps the \\r before the closing ---, which is not part of the name (yaml 2.9.1 keeps it in the value: c\\r)"
+    },
+    {
+      "frontmatter": "Tags: [a]",
+      "tags": [
+        "a"
+      ],
+      "why": "the key is matched without case (to YAML this is the key Tags, which a lookup of tags would not find)"
+    },
+    {
+      "frontmatter": "tags : [b]",
+      "tags": [
+        "b"
+      ],
+      "why": "space before the colon"
+    },
+    {
+      "frontmatter": "TAGS:\n  - c",
+      "tags": [
+        "c"
+      ],
+      "why": "a block list under an upper-case key"
+    },
+    {
+      "frontmatter": "tags: [\"#\ud55c\uae00\", '\ud560-\uc77c']",
+      "tags": [
+        "\ud55c\uae00",
+        "\ud560-\uc77c"
+      ],
+      "why": "Korean names, a hyphen inside one"
+    },
+    {
+      "frontmatter": "title: about #solo\nkeywords: [a]",
+      "tags": [],
+      "why": "a # in another field and a list under another key are not tags (to YAML the # begins a comment)"
+    }
+  ]
+}
