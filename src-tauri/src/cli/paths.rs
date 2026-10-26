@@ -43,18 +43,31 @@ pub(crate) fn fold(path: &Path) -> Option<PathBuf> {
 /// §3.2). What follows the spelling is put onto the canonical root as written, and is then
 /// resolved and checked as on the command line.
 pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
-    let outside = || {
-        CliError::new(
-            ErrorCode::PathOutsideVault,
-            format!("{input} is outside the vault at {}", vault.root.display()),
-        )
-    };
+    let written = written_path(vault, input)?;
+    resolved_path(vault, input, &written)
+}
+
+/// PATH_OUTSIDE_VAULT for `input`.
+fn outside(vault: &Vault, input: &str) -> CliError {
+    CliError::new(
+        ErrorCode::PathOutsideVault,
+        format!("{input} is outside the vault at {}", vault.root.display()),
+    )
+}
+
+/// The path `input` names by its letters alone, before the disk is asked: a relative input
+/// pushed onto the root part by part, or for `baram mcp` an absolute one put onto the root
+/// after the spelling it starts with — under the root either way — and `.` and `..` folded.
+/// With no `Vault::spellings` an absolute input is taken as written, and may lie outside the
+/// root by its letters while it resolves into it.
+fn written_path(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let windows = cfg!(windows);
     let candidate = if Path::new(input).is_absolute() {
         match &vault.spellings {
             None => PathBuf::from(input),
             Some(spellings) => {
-                let rest = below_a_spelling(input, spellings, windows).ok_or_else(outside)?;
+                let rest = below_a_spelling(input, spellings, windows)
+                    .ok_or_else(|| outside(vault, input))?;
                 pushed(&vault.root, input, rest.iter().map(String::as_str), windows)?
             }
         }
@@ -66,15 +79,19 @@ pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
         pushed(&vault.root, input, parts, windows)?
     };
     // `..` is folded BEFORE the filesystem is asked: `resolve_canonical` climbs to an
-    // existing ancestor by file name, and a path that ends in `..` has none. Only `folded`
-    // reaches the disk — neither `input` nor `candidate` is handed to it — so a `..` is
-    // applied to the letters even after a symbolic link (`only_the_folded_path_reaches_the_disk`).
-    let folded = fold(&candidate).ok_or_else(outside)?;
-    let resolved = resolve_canonical(&folded.to_string_lossy())
+    // existing ancestor by file name, and a path that ends in `..` has none.
+    fold(&candidate).ok_or_else(|| outside(vault, input))
+}
+
+/// `written` as the disk resolves it, checked to lie in the vault. Only `written` — the
+/// folded path — reaches the disk, never `input`, so a `..` is applied to the letters even
+/// after a symbolic link (`only_the_folded_path_reaches_the_disk`).
+fn resolved_path(vault: &Vault, input: &str, written: &Path) -> Result<PathBuf, CliError> {
+    let resolved = resolve_canonical(&written.to_string_lossy())
         .map_err(|e| CliError::new(ErrorCode::Io, format!("cannot resolve {input}: {e}")))?;
     // After canonicalization, so a symlink inside the vault that points out is caught.
     if !resolved.starts_with(&vault.root) {
-        return Err(outside());
+        return Err(outside(vault, input));
     }
     Ok(resolved)
 }
@@ -224,22 +241,39 @@ pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> 
 
 /// `note_arg` for the MCP server's tools that read a note — `read_note`, `list_tasks` with
 /// `file`, `outgoing_links` (spec 0068 D6): the note rules are asked after `locate` and
-/// before the file is, so a path they refuse gets one answer whether a file is there or
-/// not, and a tool does not tell whether a file it would never read exists. The rules are
-/// asked of `locate`'s result, not of the letters given: on a volume that ignores case
-/// (measured on macOS APFS), `X.MD` resolves to a note stored as `x.md` and is read, as it
-/// is on the command line. Where `locate` resolves a path to other letters, the one answer
-/// ends: a `link.md` that links to a file that is no note, and on such a volume
-/// `NODE_MODULES/m.md`, are refused when they resolve and FILE_NOT_FOUND when nothing is
-/// there.
+/// before the file is, so their refusal is the same whether a file is there or not.
+///
+/// The rules are asked of the path `locate` resolved: on a volume that ignores case
+/// (measured on macOS APFS) `X.MD` resolves to a note stored as `x.md` and is read, as on
+/// the command line. When the resolved path has other letters than the path as written — a
+/// case, a link — and the rules refuse it, the answer is the one the written letters get
+/// with nothing there: their own refusal if the rules refuse them too, else FILE_NOT_FOUND
+/// `no file at <input>` — the walk lists no note by that name. So `b.md` beside a `b.MD`,
+/// `NODE_MODULES/m.md` beside a `node_modules/` folder, and a `link.md` that links to
+/// `.env` answer as they do in a vault without those files. Answers that still differ with
+/// what is there include a link that leads out of the vault (PATH_OUTSIDE_VAULT, `locate`'s),
+/// a folder on the way that cannot be entered (IO, `existing_file`'s), and a written name
+/// that resolves to a note, which is read.
 pub(crate) fn note_names_first(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
-    let file = locate(vault, input)?;
-    note_rules(vault, input, &file)?;
+    let written = written_path(vault, input)?;
+    let file = resolved_path(vault, input, &written)?;
+    if note_rules(vault, input, &file).is_err() {
+        // `written` lies under the root for every vault `baram mcp` hands out (it has
+        // spellings); for one without, an absolute input may not, and is not asked here.
+        let as_written = if written.starts_with(&vault.root) {
+            note_rules(vault, input, &written)
+        } else {
+            Ok(())
+        };
+        return Err(match as_written {
+            Err(refusal) => refusal,
+            Ok(()) => CliError::new(ErrorCode::FileNotFound, format!("no file at {input}")),
+        });
+    }
     existing_file(input, file)
 }
 
-/// The two rules a note path meets, both asked of the path `locate` returned — neither reads
-/// the disk.
+/// The two rules a note path meets — neither reads the disk.
 fn note_rules(vault: &Vault, input: &str, file: &Path) -> Result<(), CliError> {
     let name = file
         .file_name()
@@ -864,6 +898,77 @@ mod tests {
             note_names_first(&empty, "a.md").unwrap_err().code,
             ErrorCode::FileNotFound
         );
+    }
+
+    /// For `baram mcp`, a path the note rules take as written but refuse once `locate` has
+    /// resolved it to other letters — another case on a volume that ignores case, or a link —
+    /// answers as its letters answer with nothing there: FILE_NOT_FOUND `no file at <input>`.
+    /// The walk lists no note by that name either way. Letters the rules refuse as written keep
+    /// that refusal, file or none, and `X.MD`, which resolves to the note `x.md`, is read.
+    /// Asked of a vault holding each file, of one holding only `node_modules/`, and of an empty
+    /// one. A volume that keeps case resolves `b.md` to nothing, so there the link (Unix) is
+    /// what reaches other letters; `folds_case` gates the positive halves for the rest.
+    ///
+    /// What fails this: the resolved path's refusal returned as it is (`b.md` is then "not a
+    /// markdown note" while `b.MD` is there, `NODE_MODULES/m.md` "where the vault walk does not
+    /// go" while `node_modules/` is there, `link.md` "not a markdown note" while it links to
+    /// `.env`); the written letters' refusal dropped (`.ENV` is then FILE_NOT_FOUND).
+    #[test]
+    fn for_the_mcp_server_a_path_resolved_to_other_letters_answers_as_if_nothing_were_there() {
+        let (_t, base) = tree(&["full/node_modules", "folder_only/node_modules", "empty"]);
+        let full = base.join("full");
+        for file in ["b.MD", "node_modules/m.md", ".env", "x.md"] {
+            std::fs::write(full.join(file), "x").unwrap();
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(full.join(".env"), full.join("link.md")).unwrap();
+        let folds_case = std::fs::metadata(full.join("B.MD")).is_ok();
+        let vaults = [
+            vault_at(&full),
+            vault_at(&base.join("folder_only")),
+            vault_at(&base.join("empty")),
+        ];
+        let mut cases = vec![
+            ("b.md", ErrorCode::FileNotFound, "no file at b.md"),
+            (
+                "NODE_MODULES/m.md",
+                ErrorCode::FileNotFound,
+                "no file at NODE_MODULES/m.md",
+            ),
+            (
+                ".ENV",
+                ErrorCode::InvalidArgument,
+                ".ENV is not a markdown note",
+            ),
+        ];
+        if cfg!(unix) {
+            cases.push(("link.md", ErrorCode::FileNotFound, "no file at link.md"));
+        }
+        for (input, code, message) in cases {
+            for vault in &vaults {
+                let error = note_names_first(vault, input).unwrap_err();
+                assert_eq!(
+                    (error.code, error.message.as_str()),
+                    (code, message),
+                    "{input} in {}",
+                    vault.root.display()
+                );
+            }
+        }
+        // The mechanism: these did resolve to other letters.
+        #[cfg(unix)]
+        assert_eq!(locate(&vaults[0], "link.md").unwrap(), full.join(".env"));
+        if folds_case {
+            assert_eq!(locate(&vaults[0], "b.md").unwrap(), full.join("b.MD"));
+            assert_eq!(
+                locate(&vaults[1], "NODE_MODULES/m.md").unwrap(),
+                base.join("folder_only/node_modules/m.md")
+            );
+            assert_eq!(
+                note_names_first(&vaults[0], "X.MD").unwrap(),
+                full.join("x.md")
+            );
+        }
     }
 
     /// The file questions come first: a name that would fail the note check is still

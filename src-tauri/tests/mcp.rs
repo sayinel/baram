@@ -1159,10 +1159,14 @@ fn a_path_no_file_system_takes_is_an_invalid_argument() {
 /// each file below, and of an empty vault, `read_note`, `list_tasks` with `file` and
 /// `outgoing_links` give the same text. The note both vaults lack is FILE_NOT_FOUND in
 /// both, and `a.md`, which only the sandbox vault holds, is read there — the vaults are
-/// the ones asked.
+/// the ones asked. A note name the disk resolves to other letters the rules refuse —
+/// `link.md`, a link to `.env`, and `b.md` beside a `b.MD` on a volume that ignores case —
+/// is FILE_NOT_FOUND in both, as a note that is not there.
 ///
 /// What fails this: any of the three asking for the file before the note rules — the
-/// empty vault then answers FILE_NOT_FOUND where the full one says why it refuses.
+/// empty vault then answers FILE_NOT_FOUND where the full one says why it refuses; the
+/// rules' refusal of the resolved path returned as it is (`link.md` is then "not a
+/// markdown note" in the sandbox vault).
 #[test]
 fn the_note_tools_answer_a_name_they_refuse_alike_whether_a_file_is_there() {
     let sb = sandbox();
@@ -1172,9 +1176,11 @@ fn the_note_tools_answer_a_name_they_refuse_alike_whether_a_file_is_there() {
         "x.txt",
         "notes/.draft.md",
         "node_modules/m.md",
+        "b.MD",
     ] {
         write(&sb.vault, file, "- [ ] a task\n");
     }
+    std::os::unix::fs::symlink(sb.vault.join(".env"), sb.vault.join("link.md")).expect("link");
     write(&sb.vault, "a.md", "- [ ] a task\n");
     let empty = sb.base.join("empty");
     std::fs::create_dir_all(&empty).expect("mkdir");
@@ -1205,6 +1211,8 @@ fn the_note_tools_answer_a_name_they_refuse_alike_whether_a_file_is_there() {
             "error[INVALID_ARGUMENT]: node_modules/m.md is where the vault walk does not go",
         ),
         ("nope.md", "error[FILE_NOT_FOUND]: no file at nope.md"),
+        ("link.md", "error[FILE_NOT_FOUND]: no file at link.md"),
+        ("b.md", "error[FILE_NOT_FOUND]: no file at b.md"),
     ] {
         for (tool, key) in [
             ("read_note", "path"),
