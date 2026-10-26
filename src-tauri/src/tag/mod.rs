@@ -8,9 +8,11 @@ use crate::md::{
     cut_frontmatter, extract_inline_tags, is_fence_delimiter, is_tag_char, split_frontmatter,
     strip_code_blocks,
 };
+use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -230,10 +232,21 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
-/// §56m Whether `name` is one tag the body can spell — the rule on `rename_tag`: the body's
-/// reader reads `#name` back as the whole name.
-fn spells_a_body_tag(name: &str) -> bool {
-    extract_inline_tags(&format!("#{name}")) == [name]
+/// Default-ignorable code points: drawn as nothing, Hangul fillers and ZWNJ among them.
+static INVISIBLE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\A\p{Default_Ignorable_Code_Point}*\z").unwrap());
+
+/// §56m Why `name` cannot be a new tag name, by the rule on `rename_tag`, or `None`.
+fn refusal(name: &str) -> Option<String> {
+    if extract_inline_tags(&format!("#{name}")) != [name] {
+        Some(format!("\"{name}\" is not a tag a note's body can spell"))
+    } else if name == "-" {
+        Some("\"-\" alone is not a tag name".to_string())
+    } else if INVISIBLE_RE.is_match(name) {
+        Some(format!("{name:?} has no visible character"))
+    } else {
+        None
+    }
 }
 
 /// §56m One note's rename, cut where the readers cut it (`md::cut_frontmatter`): the front
@@ -273,12 +286,21 @@ fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
 ///    connector punctuation (`_`, `‿`) or a join control (ZWNJ, ZWJ) — a Hangul-script
 ///    character, `-` or `/`. Not a space, quote, comma, bracket, colon, `#`, `.`, nor a number
 ///    that is not a decimal digit (`²`, `½`);
-/// 3. `/` only joins two non-empty parts — never first, never last, never two in a row.
+/// 3. `/` only joins two non-empty parts — never first, never last, never two in a row;
+/// 4. it is not `-` alone — an unquoted `-` is a list marker to YAML (`tags: [-]` is rejected,
+///    `  - -` is a nested list), so lists written by hand with it break;
+/// 5. at least one character is not default-ignorable — a name of only Hangul fillers
+///    (U+115F, U+1160, U+3164, U+FFA0), ZWNJ, ZWJ or variation selectors shows as a blank
+///    tag. ZWNJ and ZWJ inside a word with visible letters are fine.
 ///
-/// The check is one question to the reader, which holds all three: does it read `#new` back
-/// as the whole name (`md::extract_inline_tags`)? The class is the `regex` crate's Unicode
-/// tables, so a copy outside Rust agrees where its own tables do; a character the standard
-/// library knows and those tables do not yet (U+A7CE on this toolchain) is refused.
+/// Rules 1–3 are one question to the reader: does it read `#new` back as the whole name
+/// (`md::extract_inline_tags`)? The class is the `regex` crate's Unicode tables, so a copy
+/// outside Rust agrees where its own tables do; a character the standard library knows and
+/// those tables do not yet (U+A7CE on this toolchain) is refused.
+///
+/// Into a bare front-matter entry (no quotes, no `#`) the name is written as the frontend's
+/// `yamlString` spells it (`frontmatter::yaml_string`): quoted when YAML would read the plain
+/// spelling as something else, such as `null`, `true` or `123`.
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
@@ -292,10 +314,8 @@ pub async fn rename_tag(
     if old_tag.is_empty() || new_tag.is_empty() {
         return Err(TagError::Custom("Tag names must not be empty".into()));
     }
-    if !spells_a_body_tag(new_tag) {
-        return Err(TagError::Custom(format!(
-            "\"{new_tag}\" is not a tag a note's body can spell"
-        )));
+    if let Some(why) = refusal(new_tag) {
+        return Err(TagError::Custom(why));
     }
     if old_tag == new_tag {
         return Ok(RenameTagResult {
@@ -832,25 +852,84 @@ mod tests {
     /// its script: a virama (`हिन्दी`), a Thai tone mark (`น้ำ`), a decomposed accent or sound
     /// mark (NFD `cafe\u{301}`, `は\u{309a}`) and a zero-width non-joiner inside a Persian word.
     /// What fails this: checking the name against a narrower alphabet than the reader's (all
-    /// five were refused while the check used `char::is_alphanumeric`).
+    /// five were refused while the check used `char::is_alphanumeric`). The ZWNJ word is quoted
+    /// in the bare entry: `yaml_string` keeps plain only letters, marks, digits and `_-./`.
     #[tokio::test]
     async fn a_rename_writes_a_word_the_reader_reads_as_one_tag_in_any_script() {
-        for name in [
-            "हिन्दी",
-            "น้ำ",
-            "cafe\u{301}",
-            "は\u{309a}",
-            "می\u{200c}خواهم",
+        for (name, entry) in [
+            ("हिन्दी", "हिन्दी"),
+            ("น้ำ", "น้ำ"),
+            ("cafe\u{301}", "cafe\u{301}"),
+            ("は\u{309a}", "は\u{309a}"),
+            ("می\u{200c}خواهم", "\"می\u{200c}خواهم\""),
         ] {
             let (d, root) = vault("---\ntags: [solo]\n---\n본문 #solo\n").await;
             let r = rename_tag(&root, "solo", name).await;
             assert_eq!(r.map(|r| r.occurrences_replaced).ok(), Some(2), "{name:?}");
             assert_eq!(
                 read(&d).await,
-                format!("---\ntags: [{name}]\n---\n본문 #{name}\n"),
+                format!("---\ntags: [{entry}]\n---\n본문 #{name}\n"),
                 "{name:?}"
             );
             assert_eq!(extract_inline_tags(&format!("#{name}")), [name], "{name:?}");
+        }
+    }
+
+    /// §56m Two names the body's reader reads are still refused. `-` alone: written into a bare
+    /// entry YAML reads it as a list marker — `tags: [-]` is rejected and `  - -` is a nested
+    /// list (yaml 2.9.1, js-yaml 4.3.2). A name with no visible character — only Hangul fillers
+    /// (U+3164, U+FFA0, U+115F, U+1160) or other default-ignorable code points such as ZWNJ,
+    /// ZWJ or a variation selector — shows as a blank tag. What fails this: the read-back check
+    /// alone, which takes all of them. The pair: a ZWNJ or a filler next to a visible character
+    /// is fine.
+    #[tokio::test]
+    async fn a_rename_to_a_dash_or_to_nothing_visible_is_refused() {
+        let note = "---\ntags: [solo]\n---\n본문 #solo\n";
+        for bad in [
+            "-",
+            "\u{3164}",
+            "\u{FFA0}",
+            "\u{115F}\u{1160}",
+            "\u{200C}",
+            "\u{200D}",
+            "\u{FE0F}",
+        ] {
+            assert_eq!(extract_inline_tags(&format!("#{bad}")), [bad], "{bad:?}");
+            let (d, root) = vault(note).await;
+            assert!(rename_tag(&root, "solo", bad).await.is_err(), "{bad:?}");
+            assert_eq!(read(&d).await, note, "{bad:?}");
+        }
+        for good in ["a\u{200C}b", "\u{3164}a", "-x"] {
+            let (_d, root) = vault(note).await;
+            assert!(rename_tag(&root, "solo", good).await.is_ok(), "{good:?}");
+        }
+    }
+
+    /// §56m A name YAML would read as something other than text — `null`, `true`, a number —
+    /// is written double-quoted into a bare entry, so YAML still reads the string (the
+    /// frontend's `yamlString` rule, `frontmatter::yaml_string`); an entry the user quoted, or
+    /// spelled with `#`, keeps its spelling. What fails this: writing the name bare (`tags:
+    /// [null]` is null to YAML, and `- 123` a number).
+    #[tokio::test]
+    async fn a_name_yaml_would_retype_is_quoted_in_a_bare_entry() {
+        for (name, bare, child) in [
+            ("null", "\"null\"", "null/x"),
+            ("True", "\"True\"", "True/x"),
+            ("123", "\"123\"", "123/x"),
+            ("0x1F", "\"0x1F\"", "0x1F/x"),
+            ("-x", "\"-x\"", "\"-x/x\""),
+            ("focus", "focus", "focus/x"),
+        ] {
+            let note = "---\ntags: [solo, 'solo', \"#solo\"]\ntags:\n  - solo\n- solo\n  - #solo\n  - solo/x\n---\n";
+            let (d, root) = vault(note).await;
+            rename_tag(&root, "solo", name).await.unwrap();
+            assert_eq!(
+                read(&d).await,
+                format!(
+                    "---\ntags: [{bare}, '{name}', \"#{name}\"]\ntags:\n  - {bare}\n- {bare}\n  - #{name}\n  - {child}\n---\n"
+                ),
+                "{name:?}"
+            );
         }
     }
 

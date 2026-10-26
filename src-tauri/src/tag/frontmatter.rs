@@ -28,6 +28,45 @@ static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
 static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*-\s+(.+)$").unwrap());
 
+/// A plain spelling YAML reads as one string holding exactly this text: letters, digits and
+/// `_-./`, single spaces between, no indicator first. The frontend's `SAFE_PLAIN`
+/// (`src/utils/markdown/yaml-scalar.ts`) written without its lookarounds, which this regex
+/// crate does not have; `tag/fixtures/frontmatter-tags.json`'s `names` pins the two together.
+static SAFE_PLAIN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\A[\p{L}\p{N}_][\p{L}\p{M}\p{N}_./-]*(?: [\p{L}\p{M}\p{N}_./-]+)*\z").unwrap()
+});
+
+/// Plain spellings some YAML reader resolves to something other than a string: booleans and
+/// null (`yes` · `no` · `on` · `off` · `y` · `n` too, as YAML 1.1 readers do) and anything that
+/// starts with a digit and could be a number or a date. The frontend's `READS_AS_NON_STRING`.
+static READS_AS_NON_STRING_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\A(?:true|false|yes|no|on|off|y|n|null|[0-9][0-9a-fA-FxXoO_.:+-]*)\z").unwrap()
+});
+
+/// `value` quoted so YAML reads it back as that text and the quote-stripping readers here and in
+/// the app do too: double quotes when nothing in it needs an escape, else single quotes when it
+/// holds no `'` and no line break, else a JSON string. The frontend's `quotedScalar`.
+fn quoted_scalar(value: &str) -> String {
+    let needs_escape = |c: char| c == '"' || c == '\\' || c < ' ';
+    if !value.contains(needs_escape) {
+        format!("\"{value}\"")
+    } else if !value.contains(['\'', '\n', '\r']) {
+        format!("'{value}'")
+    } else {
+        serde_json::to_string(value).unwrap_or_else(|_| format!("\"{value}\""))
+    }
+}
+
+/// A tag name as a bare (unquoted) list entry spells it: plain when every YAML reader reads that
+/// spelling as this string, quoted otherwise. The frontend's `yamlString`.
+pub(super) fn yaml_string(value: &str) -> String {
+    if SAFE_PLAIN_RE.is_match(value) && !READS_AS_NON_STRING_RE.is_match(value) {
+        value.to_string()
+    } else {
+        quoted_scalar(value)
+    }
+}
+
 /// Every entry of the front matter's tag lists, in order, as byte ranges of `frontmatter`:
 /// each comma-separated part of a `tags: [a, b]` line, and the value of each `- item` line
 /// after a `tags:` line, indented or not, up to the first line that is not one — so the next
@@ -92,7 +131,9 @@ pub(crate) fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 /// Renames the tag `old` to `new` in the front matter's tag lists and says in how many
 /// entries. An entry is renamed when it names `old` or a child of it (`project/baram`
 /// follows `project`, as in the body); only the name is replaced, so the quotes and the `#`s
-/// written around it stay. Both names are bare (`bare_tag`).
+/// written around it stay. A bare entry — no quotes, no `#` — gets the renamed name as
+/// `yaml_string` spells it, so `null` or `123` is written quoted and YAML still reads text.
+/// Both names are bare (`bare_tag`).
 pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -> (String, usize) {
     let mut out = String::with_capacity(frontmatter.len());
     let mut count = 0usize;
@@ -111,9 +152,11 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
         // `entry_name` only shortens `text` at its ends, so `name` is a slice of it and
         // begins where its pointer does.
         let start = entry.start + (name.as_ptr() as usize - text.as_ptr() as usize);
+        let renamed = format!("{new}{}", &name[old.len()..]);
+        let bare = !text.trim_start().starts_with(['"', '\'', '#']);
         out.push_str(&frontmatter[copied..start]);
-        out.push_str(new);
-        copied = start + old.len();
+        out.push_str(&if bare { yaml_string(&renamed) } else { renamed });
+        copied = start + name.len();
         count += 1;
     }
     out.push_str(&frontmatter[copied..]);
