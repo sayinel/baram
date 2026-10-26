@@ -91,7 +91,8 @@ pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> 
 /// §393 A tag name as the index keeps it: without the `#`s in front — every leading one, the
 /// rule `baram tag` has always applied to the name typed. §56m The front-matter reader keeps a
 /// `tags:` entry the same way (`frontmatter::entry_name`), so `"#solo"` there and a body `#solo`
-/// are one tag `solo`. Case is left alone; the walks compare lowercased.
+/// are one tag `solo`. Case is left alone: the reading walks (`get_vault_tags`,
+/// `get_files_by_tag`) compare lowercased, and `rename_tag` compares as given.
 pub fn bare_tag(name: &str) -> &str {
     name.trim_start_matches('#')
 }
@@ -485,7 +486,8 @@ mod tests {
     }
 
     /// §56m Every front-matter spelling the reader names `solo` is renamed, and only the
-    /// name changes: the user's quotes and `#` stay. What fails this: the block-item writer
+    /// name changes: the user's quotes and `#` stay. Names are compared as written — the
+    /// reader names `"#Solo"` `Solo`, which this rename leaves. What fails this: the block-item writer
     /// matching only a bare value that fills the line (the old `fm_block_re` — the three
     /// quoted block rows stay `solo`).
     #[tokio::test]
@@ -530,7 +532,7 @@ mod tests {
         );
     }
 
-    /// The rename rewrites what the readers count and nothing else (the code-fence rule
+    /// The rename rewrites only what the readers count (the code-fence rule
     /// above, applied to the front matter): an indented `- solo` in the body, a `- solo`
     /// under another key, a `tags: [solo]` line in the body, `#solo` in another front-matter
     /// field, and an entry the reader names something else (`solo.x`, `my solo`) are left
@@ -660,7 +662,7 @@ mod tests {
         found
     }
 
-    /// §56m Normalized at storage (maintainer's decision, 2026-10-24): a front-matter
+    /// §56m Normalized at storage (decided in wiki `CLI-Decisions-and-history`): a front-matter
     /// `"#solo"`, a front-matter `"#Solo"` and a body `#solo` are one tag `solo`, counted
     /// together and found by its name. What fails this: the front-matter reader keeping the
     /// `#` (rows `#solo 2` and `solo 1`, and `solo` finds only `body.md`).

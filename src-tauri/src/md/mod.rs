@@ -19,12 +19,15 @@ pub static INLINE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}-]+(?:/[\w\p{Script=Hangul}-]+)*)").unwrap()
 });
 
-/// 태그 이름에 쓸 수 있는 글자 — **경계 판정의 어휘**다. 태그를 *찾아 고치는* 쪽은
-/// 전부 이것을 쓴다: `task::tag::find_tag`(태스크 줄의 태그 토글)와 `tag::rename_tag`
-/// (vault 전역 이름 바꾸기).
+/// 태그 이름에 쓸 수 있는 글자 — **경계 판정의 어휘**다. 본문에서 태그를 *찾아 고치는*
+/// 쪽은 이것을 쓴다: `task::tag::find_tag`(태스크 줄의 태그 토글)와 `tag::rename_tag`의
+/// 본문 쪽(`tag::ends_tag`, vault 전역 이름 바꾸기). 프론트매터 항목은 이것이 아니라 항목의
+/// 경계와 `/`로 가른다(`tag::frontmatter`). `tag::rename_tag`는 새 이름도 이것으로 거른다.
 ///
 /// `INLINE_TAG_RE`(읽는 쪽)와 같은 집합을 뜻하되 표현이 다르다 — 하나는 정규식,
-/// 하나는 술어다. 둘이 갈리면 패널이 보여준 이름으로 아무것도 고칠 수 없게 되므로
+/// 하나는 술어다. 가장자리에서는 갈린다: 술어만 받는 것은 숫자 범주 No(`²`)와 표준
+/// 라이브러리의 더 새 유니코드 표에만 있는 글자, 정규식만 받는 것은 결합 부호(U+0301)
+/// 같은 `\w`의 나머지다(`tag::rename_tag`는 새 이름에서 둘 다 거른다). 둘이 갈리면 패널이 보여준 이름으로 아무것도 고칠 수 없게 되므로
 /// `a_hyphen_is_part_of_the_tag_name`과 `the_predicate_agrees_with_the_reader`가
 /// 같은 표를 양쪽에 대고 검사한다.
 pub fn is_tag_char(c: char) -> bool {
@@ -150,7 +153,7 @@ mod tests {
     }
 
     /// `tag::rename_tag` puts a note back together from these parts, so they must be the note
-    /// byte for byte — CRLF included — and the two middle ones what `split_frontmatter` gives
+    /// byte for byte — CRLF included — and `matter` and `body` what `split_frontmatter` gives
     /// the readers. What fails this: dropping the `\r` of the opening line from `open`, or
     /// cutting `close` at a length other than that of `\n---`.
     #[test]

@@ -1,10 +1,14 @@
 // §56m The front matter's tag lists — `tags: [a, b]` and a `tags:` block list.
 //
 // One walk (`tag_entries`) finds their entries. The reader (`extract_frontmatter_tags`) names
-// them; the tag index (`get_vault_tags` · `get_files_by_tag`) and the link index's graph
-// (`index::extractor::extract_file_tags`) both read through it — they were two verbatim
-// copies. The writer (`rename_frontmatter_tags`, for `rename_tag`) rewrites the names it
-// matches, so a rename touches exactly the entries a reader counts.
+// them and is the backend's one reader of them: the tag index (`get_vault_tags` ·
+// `get_files_by_tag`) and the link index's graph (`index::extractor::extract_file_tags`) both
+// read through it, where each had its own copy of the same patterns and loop. The app reads
+// these lists in TypeScript too (the editor's tag pills, the journal and the zettel code).
+// The writer (`rename_frontmatter_tags`, for `rename_tag`) rewrites the entries whose name is
+// `old` or under it, compared byte for byte, so a rename touches only entries a reader counts.
+// The tag index also counts `"#Solo"` under `solo`; renaming `solo` leaves it, as the body's
+// writer leaves `#Solo`.
 
 use super::bare_tag;
 use regex::Regex;
@@ -120,8 +124,7 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
 mod tests {
     use super::*;
 
-    /// The rows of the investigation's table (2026-10-24): an entry names what `bare_tag`
-    /// leaves of it once its quotes are off, so `"#solo"` and a body `#solo` are one tag. Case
+    /// Each spelling of an entry: it names what `bare_tag` leaves of it once its quotes are off, so `"#solo"` and a body `#solo` are one tag. Case
     /// is the caller's. What fails this: reading an entry without `bare_tag` (every `#` row
     /// keeps its `#`), or stripping one `#` only (`##double` stays `#double`). The last two
     /// rows are the partner: a name without `#` is read as it is.
@@ -151,10 +154,10 @@ mod tests {
     /// `[#unq]` is not YAML — `#` cannot begin a plain scalar, so a YAML parser rejects the
     /// whole front matter — and in `- #blockunq` the `#` begins a comment, so the item is
     /// `null`. Both are tags here all the same: this reader reads the line as written, not its
-    /// YAML value; the property pills in the editor (`updateFrontmatterTags` in
-    /// `frontmatter-view.tsx`) join the tags they parsed unquoted, so they write
-    /// `tags: [#solo]` themselves; and `rename_tag` rewrites `- #x`. Skipping them would hide
-    /// tags the app wrote. What fails this: a reader that drops an entry spelled with an
+    /// YAML value; the app's own tag writers have written such lines (the editor's property
+    /// pills, `updateFrontmatterTags` in `frontmatter-view.tsx`, joined the tags they parsed
+    /// unquoted), and notes written that way keep them; and `rename_tag` rewrites `- #x`.
+    /// Skipping them would hide tags the app wrote. What fails this: a reader that drops an entry spelled with an
     /// unquoted `#`.
     #[test]
     fn an_unquoted_hash_entry_is_a_tag_though_yaml_would_not_read_one() {
