@@ -80,9 +80,10 @@ interface IndexSearchResult { items: { line: number; path: string; snippet: stri
   not exist yet; a folder is refused.
 - **`links(path)`** — the note must exist, be a note (`.md`, `.markdown`) and sit where the
   vault walk goes — not in a hidden folder or `node_modules`.
-- **`tags()`** and **`notesWithTag(tag)`** — tags are compared lowercased, and leading `#` characters are
+- **`tags()`** and **`notesWithTag(tag)`** — tags are compared lowercased, and every leading `#` is
   dropped — from the tag you pass and from a front-matter entry such as `tags: ["#work"]` alike — so
-  `#Work` finds `work`, and that entry is the tag `work`. An empty tag is refused.
+  that entry is the tag `work`: `tags()` counts it with `#work` in the text, and
+  `notesWithTag("#Work")` finds both. An empty tag is refused.
 - **`tasks(opts)`** — `status` defaults to `"open"` (todo and doing). The folders in
   **Settings → Tasks → Exclude folders** are left out here too. `file` limits the answer to one
   note.
