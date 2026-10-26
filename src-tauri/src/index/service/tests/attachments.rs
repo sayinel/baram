@@ -2,36 +2,54 @@
 //! renamed out of (or into) the note extensions.
 
 use super::*;
+use crate::index::LinkResolution;
 
-/// The link graph of the index `state` holds for `root`, as sorted edges and
-/// sorted nodes — beside `fresh_graph`, what a build of the vault as it is
-/// on disk now would hold.
-async fn live_graph(
+/// `root` with `parts` pushed on, as the walk joins a path (`Path::join`): an
+/// expected path is spelled the way the index spells one, with this host's
+/// separator.
+pub(super) fn at(root: &str, parts: &[&str]) -> String {
+    let mut path = std::path::PathBuf::from(root);
+    for part in parts {
+        path.push(part);
+    }
+    path.to_string_lossy().into_owned()
+}
+
+/// What each link of `file` resolves to (`LinkIndex::outgoing_resolved`,
+/// what `baram links` reports) in the live index under `root`, and in a new
+/// build of `root` — `None` for a file the index reads no link in. A rename
+/// leaves the index as a build of the vault would read it, so the tests
+/// compare the two, and pin the live one to explicit paths. Each link,
+/// rather than the graph: a graph draws a target nothing answers to a
+/// placeholder path, which can equal a real file's path, and shows no file
+/// that no link names.
+async fn links_live_and_built(
     state: &LinkIndexState,
-    ctx: &ContextManager,
     root: &str,
-) -> (Vec<(String, String)>, Vec<String>) {
-    sorted(
-        get_link_index_inner(state, ctx, Some(root.to_string()))
-            .await
-            .unwrap(),
-    )
+    file: &str,
+) -> (Option<Vec<LinkResolution>>, Option<Vec<LinkResolution>>) {
+    let read = |index: &LinkIndex| {
+        index
+            .outgoing_resolved(file)
+            .map(|links| links.into_iter().map(|(_, r)| r).collect())
+    };
+    let live = state
+        .with_index(root, |index| read(index.expect("the index is built")))
+        .await;
+    let mut built = LinkIndex::new();
+    built.build(root).await.unwrap();
+    (live, read(&built))
 }
 
-/// The link graph of a new build of `root`, sorted as `live_graph` sorts.
-async fn fresh_graph(root: &str) -> (Vec<(String, String)>, Vec<String>) {
-    let mut index = LinkIndex::new();
-    index.build(root).await.unwrap();
-    sorted(index.get_link_graph())
-}
-
-fn sorted(graph: LinkGraph) -> (Vec<(String, String)>, Vec<String>) {
-    let mut edges: Vec<(String, String)> =
-        graph.edges.into_iter().map(|e| (e.from, e.to)).collect();
-    edges.sort();
-    let mut nodes = graph.nodes;
-    nodes.sort();
-    (edges, nodes)
+/// `links_live_and_built` when the two agree, which every caller asserts.
+pub(super) async fn links_as_built(
+    state: &LinkIndexState,
+    root: &str,
+    file: &str,
+) -> Option<Vec<LinkResolution>> {
+    let (live, built) = links_live_and_built(state, root, file).await;
+    assert_eq!(live, built, "{file}: the live index and a new build differ");
+    live
 }
 
 #[tokio::test]
@@ -40,19 +58,19 @@ async fn a_file_that_is_no_note_moves_unread_and_its_referrers_follow() {
     // the links in it, so a PDF that is not UTF-8 failed with "could not be
     // read" and nothing moved. A file that is no note has no links the
     // index reads: it moves as it is, its referrers are respelled with its
-    // whole new name, and the index reads as a new build would.
+    // whole new name, and the index reads them as a new build would.
     // What fails this: reading the renamed file as text whatever its name
     // in `rename_file_with_links_inner` — the rename is an `Err` and the
     // PDF stays where it was.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-pdf", true).await;
     let bytes: &[u8] = b"%PDF-1.4\n\xff\xfe\x00\x80\n";
-    std::fs::create_dir_all(dir.path().join("papers")).unwrap();
-    std::fs::write(dir.path().join("papers/Paper.pdf"), bytes).unwrap();
-    assert!(std::fs::read_to_string(dir.path().join("papers/Paper.pdf")).is_err());
+    std::fs::create_dir_all(dir.path().join("d/papers")).unwrap();
+    std::fs::write(dir.path().join("d/papers/Paper.pdf"), bytes).unwrap();
+    assert!(std::fs::read_to_string(dir.path().join("d/papers/Paper.pdf")).is_err());
     std::fs::write(
-        dir.path().join("r.md"),
-        "[[Paper.pdf]]\n[[papers/Paper.pdf|shown]]\n[[Paper]]\n",
+        dir.path().join("d/r.md"),
+        "[[Paper.pdf]]\n[[d/papers/Paper.pdf|shown]]\n[[Paper]]\n",
     )
     .unwrap();
     let state = LinkIndexState::new();
@@ -61,17 +79,18 @@ async fn a_file_that_is_no_note_moves_unread_and_its_referrers_follow() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/papers/Paper.pdf"),
-        &format!("{root}/papers/Survey.pdf"),
+        &at(&root, &["d", "papers", "Paper.pdf"]),
+        &at(&root, &["d", "papers", "Survey.pdf"]),
     )
     .await
     .unwrap();
-    assert!(!dir.path().join("papers/Paper.pdf").exists());
+    assert!(!dir.path().join("d/papers/Paper.pdf").exists());
     assert_eq!(
-        std::fs::read(dir.path().join("papers/Survey.pdf")).unwrap(),
+        std::fs::read(dir.path().join("d/papers/Survey.pdf")).unwrap(),
         bytes
     );
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    let r = at(&root, &["d", "r.md"]);
+    assert_eq!(result.updated_files, vec![r.clone()]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -79,22 +98,18 @@ async fn a_file_that_is_no_note_moves_unread_and_its_referrers_follow() {
     );
     // `[[Paper]]` names a note called `Paper`, not the PDF, and stays.
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
-        "[[Survey.pdf]]\n[[papers/Survey.pdf|shown]]\n[[Paper]]\n"
+        std::fs::read_to_string(dir.path().join("d/r.md")).unwrap(),
+        "[[Survey.pdf]]\n[[d/papers/Survey.pdf|shown]]\n[[Paper]]\n"
     );
+    let survey = at(&root, &["d", "papers", "Survey.pdf"]);
+    assert_eq!(backlink_lines(&state, &ctx, &survey, &r).await, vec![1, 2]);
     assert_eq!(
-        backlink_lines(
-            &state,
-            &ctx,
-            &format!("{root}/papers/Survey.pdf"),
-            &format!("{root}/r.md")
-        )
-        .await,
-        vec![1, 2]
-    );
-    assert_eq!(
-        live_graph(&state, &ctx, &root).await,
-        fresh_graph(&root).await
+        links_as_built(&state, &root, &r).await,
+        Some(vec![
+            LinkResolution::Resolved(survey.clone()),
+            LinkResolution::Resolved(survey),
+            LinkResolution::Unresolved,
+        ])
     );
 }
 
@@ -106,52 +121,48 @@ async fn a_note_renamed_to_a_name_that_is_no_note_leaves_the_notes_of_the_index(
     // links (`[[b]]`) are no backlinks and no graph edges any more.
     // What fails this: filing the renamed file as a note whatever its new
     // name (`Mutation::Update` → `write_note`) — `old.txt` stays a source
-    // of `[[b]]`, in the backlinks of `b.md` and in the graph.
+    // of `[[b]]`, in the backlinks of `b.md`, and has links of its own.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-txt", true).await;
-    std::fs::write(dir.path().join("old.md"), "[[b]]\n[[old]]\n").unwrap();
-    std::fs::write(dir.path().join("r.md"), "[[old]]\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("d")).unwrap();
+    std::fs::write(dir.path().join("d/old.md"), "[[b]]\n[[old]]\n").unwrap();
+    std::fs::write(dir.path().join("d/r.md"), "[[old]]\n").unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/old.txt"),
-    )
-    .await
-    .unwrap();
+    let txt = at(&root, &["d", "old.txt"]);
+    let r = at(&root, &["d", "r.md"]);
+    let result = rename_file_with_links_inner(&state, &ctx, &at(&root, &["d", "old.md"]), &txt)
+        .await
+        .unwrap();
     let mut updated = result.updated_files.clone();
     updated.sort();
-    assert_eq!(
-        updated,
-        vec![format!("{root}/old.txt"), format!("{root}/r.md")]
-    );
+    assert_eq!(updated, vec![txt.clone(), r.clone()]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
         result.skipped_files
     );
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("old.txt")).unwrap(),
+        std::fs::read_to_string(dir.path().join("d/old.txt")).unwrap(),
         "[[b]]\n[[old.txt]]\n"
     );
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        std::fs::read_to_string(dir.path().join("d/r.md")).unwrap(),
         "[[old.txt]]\n"
     );
     assert_eq!(
         sources(
-            &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+            &get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
                 .await
                 .unwrap()
         ),
-        vec![format!("{root}/a.md")]
+        vec![at(&root, &["a.md"])]
     );
+    assert_eq!(links_as_built(&state, &root, &txt).await, None);
     assert_eq!(
-        live_graph(&state, &ctx, &root).await,
-        fresh_graph(&root).await
+        links_as_built(&state, &root, &r).await,
+        Some(vec![LinkResolution::Resolved(txt)])
     );
 }
 
@@ -168,35 +179,33 @@ async fn a_file_renamed_to_a_note_name_joins_the_notes_of_the_index() {
     // `updated_files`.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-md", true).await;
-    std::fs::write(dir.path().join("x.txt"), "[[b]]\n[[x.txt]]\n").unwrap();
-    std::fs::write(dir.path().join("r.md"), "[[x.txt]]\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("d")).unwrap();
+    std::fs::write(dir.path().join("d/x.txt"), "[[b]]\n[[x.txt]]\n").unwrap();
+    std::fs::write(dir.path().join("d/r.md"), "[[x.txt]]\n").unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/x.txt"),
-        &format!("{root}/x.md"),
-    )
-    .await
-    .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    let md = at(&root, &["d", "x.md"]);
+    let r = at(&root, &["d", "r.md"]);
+    let result = rename_file_with_links_inner(&state, &ctx, &at(&root, &["d", "x.txt"]), &md)
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![r.clone()]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
         result.skipped_files
     );
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("x.md")).unwrap(),
+        std::fs::read_to_string(dir.path().join("d/x.md")).unwrap(),
         "[[b]]\n[[x.txt]]\n"
     );
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        std::fs::read_to_string(dir.path().join("d/r.md")).unwrap(),
         "[[x]]\n"
     );
     let mut from = sources(
-        &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+        &get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
             .await
             .unwrap(),
     )
@@ -204,9 +213,105 @@ async fn a_file_renamed_to_a_note_name_joins_the_notes_of_the_index() {
     .map(str::to_string)
     .collect::<Vec<_>>();
     from.sort();
-    assert_eq!(from, vec![format!("{root}/a.md"), format!("{root}/x.md")]);
+    let mut expected = vec![at(&root, &["a.md"]), md.clone()];
+    expected.sort();
+    assert_eq!(from, expected);
     assert_eq!(
-        live_graph(&state, &ctx, &root).await,
-        fresh_graph(&root).await
+        links_as_built(&state, &root, &md).await,
+        Some(vec![
+            LinkResolution::Resolved(at(&root, &["b.md"])),
+            LinkResolution::Unresolved
+        ])
+    );
+}
+
+#[tokio::test]
+async fn a_file_renamed_to_a_note_name_that_is_not_text_is_a_note_with_no_links() {
+    // `x.txt` → `x.md` where the file is not UTF-8: its content cannot be
+    // read as a note's, and a build files such a note under its stem and
+    // path with no links. So does the rename: the respelled `[[x]]` and
+    // `[[d/x]]` resolve to it, and it has no links of its own.
+    // What fails this: registering it as a link target alone in
+    // `LinkIndex::add_link_target` — neither link resolves, where a build
+    // resolves both.
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-md-bytes", true).await;
+    std::fs::create_dir_all(dir.path().join("d")).unwrap();
+    std::fs::write(dir.path().join("d/x.txt"), b"\xff\xfe\x00[[b]]\n").unwrap();
+    std::fs::write(dir.path().join("d/r.md"), "[[x.txt]]\n[[d/x.txt]]\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+
+    let md = at(&root, &["d", "x.md"]);
+    let r = at(&root, &["d", "r.md"]);
+    let result = rename_file_with_links_inner(&state, &ctx, &at(&root, &["d", "x.txt"]), &md)
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![r.clone()]);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("d/r.md")).unwrap(),
+        "[[x]]\n[[d/x]]\n"
+    );
+    assert_eq!(links_as_built(&state, &root, &md).await, None);
+    assert_eq!(
+        links_as_built(&state, &root, &r).await,
+        Some(vec![
+            LinkResolution::Resolved(md.clone()),
+            LinkResolution::Resolved(md)
+        ])
+    );
+}
+
+/// `files` in the folder `d` beside `d/r.md` holding `link`, then `d/old`
+/// renamed to `d/new`: what `r.md` says after, and whether the rename
+/// reported it.
+async fn rename_beside(files: &[&str], old: &str, new: &str, link: &str) -> (String, bool) {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-stem", true).await;
+    std::fs::create_dir_all(dir.path().join("d")).unwrap();
+    for file in files {
+        std::fs::write(dir.path().join("d").join(file), "text\n").unwrap();
+    }
+    std::fs::write(dir.path().join("d/r.md"), link).unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &at(&root, &["d", old]),
+        &at(&root, &["d", new]),
+    )
+    .await
+    .unwrap();
+    let r = at(&root, &["d", "r.md"]);
+    assert!(result.skipped_files.iter().all(|f| *f == r), "{result:?}");
+    (
+        std::fs::read_to_string(dir.path().join("d/r.md")).unwrap(),
+        result.skipped_files.contains(&r),
+    )
+}
+
+#[tokio::test]
+async fn a_whole_name_that_is_also_a_notes_stem_is_left_and_reported() {
+    // `[[x.txt]]` beside the note `x.txt.md` names both: the index files it
+    // under `x.txt`, the text file's whole name and the note's stem, and the
+    // resolver answers it with the note. Renaming the text file must not
+    // move the link off the note, nor may renaming `z.txt` to `y.txt` move a
+    // link onto the note `y.txt.md`: each is left and its file reported.
+    // The positive partner: with no such note the link is respelled.
+    // What fails this: dropping `whole_name_is_a_note_stem` from
+    // `RenameTarget::judge` — both links are respelled and nothing is
+    // reported.
+    assert_eq!(
+        rename_beside(&["x.txt", "x.txt.md"], "x.txt", "y.txt", "[[x.txt]]\n").await,
+        ("[[x.txt]]\n".to_string(), true)
+    );
+    assert_eq!(
+        rename_beside(&["z.txt", "y.txt.md"], "z.txt", "y.txt", "[[z.txt]]\n").await,
+        ("[[z.txt]]\n".to_string(), true)
+    );
+    assert_eq!(
+        rename_beside(&["x.txt"], "x.txt", "y.txt", "[[x.txt]]\n").await,
+        ("[[y.txt]]\n".to_string(), false)
     );
 }

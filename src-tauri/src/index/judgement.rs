@@ -39,6 +39,14 @@ pub struct KnownPaths {
     /// `Path` reading in such a referrer is ambiguous: left and reported,
     /// never rewritten.
     pub unplaced: HashSet<String>,
+    /// The renamed file's whole-name keys (`name_key` of a name that is no
+    /// note, old or new) that are also the stem of a note in a holding root
+    /// — or may be, when a holding root's index could not be built. A bare
+    /// link filed under such a key names that note as much as the file: the
+    /// resolver answers it with the note (`file_map` before `name_map`), and
+    /// the index counts it for both. So a `Stem` match under it is
+    /// ambiguous (`RenameTarget::judge`): left and reported, never rewritten.
+    pub note_stems: HashSet<String>,
 }
 
 impl<const N: usize> From<[(String, RootNotes); N]> for KnownPaths {
@@ -84,9 +92,10 @@ pub enum RootNotes {
 /// renamed file by its path under one covering root while a root that holds
 /// the referrer reads the same text as a different note that exists: another
 /// root's note under that path, or a second note of one root that folds to
-/// the same path key (`read_as_another_note`). An ambiguous reference is
-/// left as written and its file is reported: rewriting it would break the
-/// other reading.
+/// the same path key (`read_as_another_note`); or a file rename's bare
+/// reference spells a whole name that is also a note's stem
+/// (`KnownPaths::note_stems`). An ambiguous reference is left as written and
+/// its file is reported: rewriting it would break the other reading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Judgement<M> {
     Ours(M),
@@ -362,6 +371,7 @@ impl RenameTarget<'_> {
                 Some(Match::Path { ref root, .. }) if self.alias_root_reads_another_note(root) => {
                     Judgement::Ambiguous
                 }
+                Some(Match::Stem) if self.whole_name_is_a_note_stem() => Judgement::Ambiguous,
                 Some(m) => Judgement::Ours(m),
                 None => Judgement::NotOurs,
             };
@@ -395,6 +405,7 @@ impl RenameTarget<'_> {
         };
         match matched {
             None => Judgement::NotOurs,
+            Some(Match::Stem) if self.whole_name_is_a_note_stem() => Judgement::Ambiguous,
             Some(m @ Match::Path { .. })
                 if other_note(raw_target)
                     || other_note(&self.respell(ref_path, &m, raw_target)) =>
@@ -403,6 +414,22 @@ impl RenameTarget<'_> {
             }
             Some(m) => Judgement::Ours(m),
         }
+    }
+
+    /// Whether a bare link to the renamed file reads as a note too, before
+    /// or after the rename: its old or new name is no note and that whole
+    /// name is a note's stem (`KnownPaths::note_stems`) — `[[x.txt]]` beside
+    /// the note `x.txt.md`, for `x.txt` → `y.txt` or for `z.txt` → `x.txt`.
+    /// Rewriting such a link would move it off the note, or onto one.
+    fn whole_name_is_a_note_stem(&self) -> bool {
+        [self.old_path, self.new_path]
+            .into_iter()
+            .filter(|path| !is_note(path, self.windows))
+            .any(|path| {
+                self.known_paths
+                    .note_stems
+                    .contains(&name_key(path, self.windows))
+            })
     }
 
     /// `refers` for a link behind `alias`: judged as the index files it —

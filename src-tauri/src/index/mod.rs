@@ -344,6 +344,13 @@ impl LinkIndex {
         self.path_keys_of(self.file_map.values().flatten())
     }
 
+    /// Whether a note this index holds has the stem `key` (`file_map`'s
+    /// key, `normalize_file_path`) — what a file rename asks of a whole name
+    /// that is also a note's stem (`judgement::KnownPaths::note_stems`).
+    pub fn has_note_stem(&self, key: &str) -> bool {
+        self.file_map.contains_key(key)
+    }
+
     /// The `Path` keys two or more of this index's notes fold to, with how
     /// many — `registered_path_keys` without the keys one note alone has,
     /// for a rename whose only holding root this is (`judgement::RootNotes::Sole`).

@@ -106,7 +106,8 @@ pub(crate) async fn rename_file_with_links_inner(
     // here means nothing has changed yet, so this is an honest `Err` (not a
     // file that vanishes from the index). A file that only becomes a note
     // (`x.txt` → `x.md`) and cannot be read as text still moves, and is
-    // filed as a link target (below).
+    // filed as a build files a note it cannot read: under its stem and path,
+    // with no links (`Mutation::Target`, below).
     let was_note = is_note(old_path, windows);
     let becomes_note = is_note(new_path, windows);
     let renamed_content = if was_note {
@@ -120,7 +121,7 @@ pub(crate) async fn rename_file_with_links_inner(
             Ok(content) => Some(content),
             Err(e) => {
                 log::warn!(
-                    "rename: {old_path} could not be read as a note, so {new_path} is filed as a link target only: {e}"
+                    "rename: {old_path} could not be read as a note, so {new_path} is filed with no links: {e}"
                 );
                 None
             }
@@ -227,11 +228,12 @@ pub(crate) async fn rename_file_with_links_inner(
     //    for the judgement. Each index spells paths its own way (Mutation::apply_to).
     //    The renamed file is filed under what its new path resolves to now,
     //    after the move and its own rewrite — the identity a save would file
-    //    it under (see `remove_old`): as a note when its new name is one and
-    //    its content was read, otherwise as a link target only (§278), as a
-    //    build files a file that is no note — `old.md` → `old.txt` leaves the
-    //    notes. A file that no longer resolves (a link whose target went
-    //    since) is not filed. Reading it after the note's own rewrite, not
+    //    it under (see `remove_old`): as a note with its links when its new
+    //    name is one and its content was read; otherwise as a build files a
+    //    file it reads no link in (`Mutation::Target`) — a link target, and
+    //    a note with no links under a note's name — so `old.md` → `old.txt`
+    //    leaves the notes. A file that no longer resolves (a link whose
+    //    target went since) is not filed. Reading it after the note's own rewrite, not
     //    right after the move, matters only when that write turns a
     //    symlinked note into a regular file (the atomic-write followup): the
     //    note is then its own path.

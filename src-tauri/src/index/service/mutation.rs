@@ -14,9 +14,11 @@ pub(super) enum Mutation {
     Update { path: PathBuf, content: String },
     /// A file is gone under this path (renamed away).
     Remove { path: PathBuf },
-    /// §393 A non-markdown file to register as a link target (§278) — the build registers
-    /// every file it finds; this is one that appeared since, or a file a rename moved whose
-    /// new name is no note (`rename/file.rs`).
+    /// §393 A file to register as the build registers one before it reads any
+    /// (`LinkIndex::add_link_target`): a link target (§278), and a note's stem and path too,
+    /// with no links. One that appeared since that is no note (`sync`), one the app saved that
+    /// is no note (`update_file_index_inner`), or a file a rename moved whose content the
+    /// index does not read — no note, or a note that is not text (`rename/file.rs`).
     Target { path: PathBuf },
     /// §393 Everything at or under each of these paths is gone — removed or replaced
     /// folders and files, as one change (one scan of the index however many paths).

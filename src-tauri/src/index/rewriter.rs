@@ -47,8 +47,12 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// note's stem, `[[Paper.pdf]]` for another file's whole name), and for a
 /// path-qualified `[[a/old]]` or a relative `[[./old]]` the file's path
 /// under a covering root. A file that is no note (`diagram.md.txt`) never
-/// claims the note `diagram.md`'s links, and a link behind an alias that is
-/// not local (`[[work::old]]` naming another vault) is that vault's and stays.
+/// claims the note `diagram.md`'s links, which are filed under that note's
+/// stem; a bare link spelling the file's whole name that is also a note's
+/// stem (`[[x.txt]]` beside the note `x.txt.md`) names both, and is left and
+/// counted as ambiguous (`KnownPaths::note_stems`). A link behind an alias
+/// that is not local (`[[work::old]]` naming another vault) is that vault's
+/// and stays.
 /// A path link that a root holding the referrer reads as a different note
 /// that exists is ambiguous (`RenameTarget::judge`) and stays too; the pass
 /// counts those (`PassReport::ambiguous`) and the file rename reports the

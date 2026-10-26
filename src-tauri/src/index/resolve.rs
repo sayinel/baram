@@ -14,10 +14,12 @@ impl LinkIndex {
     /// the stem from its file name, the relative path from those under the
     /// root joined with `/` — the `Path` key `keys_for` gives the file, so a
     /// Windows path is keyed `notes/architecture`, as its link is written.
-    pub(super) fn register_file_path(&mut self, file_path: &str, root_path: &str) {
+    /// Returns whether `file_map` newly gained the path.
+    pub(super) fn register_file_path(&mut self, file_path: &str, root_path: &str) -> bool {
         let stem = normalize_file_path(file_name(file_path, self.windows));
         let paths = self.file_map.entry(stem.clone()).or_default();
-        if !paths.contains(&file_path.to_string()) {
+        let gained = !paths.contains(&file_path.to_string());
+        if gained {
             paths.push(file_path.to_string());
         }
 
@@ -30,6 +32,7 @@ impl LinkIndex {
         if let Some(id) = extract_id_from_stem(&stem) {
             self.id_map.insert(id, file_path.to_string());
         }
+        gained
     }
 
     /// §278 Register a file as a wikilink TARGET only — `name_map` and nothing else.

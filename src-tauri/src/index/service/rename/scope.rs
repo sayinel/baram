@@ -5,6 +5,7 @@
 use crate::context::manager::resolve_canonical;
 use crate::context::manager::Registered;
 use crate::context::ContextManager;
+use crate::index::filing::{is_note, name_key};
 use crate::index::{root_places, root_relative_key, KnownPaths, LinkIndex, RootNotes};
 use std::collections::HashMap;
 
@@ -86,7 +87,7 @@ impl RenameScope {
     ) -> Result<Referrers, String> {
         let (named_lines, files) = named_referrers(read_indexes(state, &self.dirs, read).await?);
         let holding = holding_contexts(state, ctx_mgr, &self.dirs, &files).await;
-        let mut known_paths = known_paths_of(state, &holding, new_path).await;
+        let mut known_paths = known_paths_of(state, &holding, target, new_path).await;
         spell_under_each_root(&mut known_paths, ctx_mgr, &holding, &files, target).await;
         Ok(Referrers {
             named_lines,
@@ -217,21 +218,33 @@ fn spelled_from(
 /// of a key per note. With `new_path`, the `Sole` map also holds the new
 /// name's key with how many notes fold to it now (`path_key_notes`), even
 /// one or none: the respelled text is read under that key.
+///
+/// And `KnownPaths::note_stems`: of the whole-name keys of `target` and
+/// `new_path` that are no note's (`name_key` of a name `is_note` refuses),
+/// those a holding root's notes have as a stem (`LinkIndex::has_note_stem`)
+/// — every one of them, for a root whose index is not built.
 async fn known_paths_of(
     state: &LinkIndexState,
     holding: &[Registered],
+    target: &str,
     new_path: Option<&str>,
 ) -> KnownPaths {
+    let windows = cfg!(windows);
+    let whole_names: Vec<String> = std::iter::once(target)
+        .chain(new_path)
+        .filter(|path| !is_note(path, windows))
+        .map(|path| name_key(path, windows))
+        .collect();
     let sole = holding.len() == 1;
     let mut known = KnownPaths::default();
     for c in holding {
-        let notes = state
+        let read = state
             .with_index_for(&c.info.path, c.incarnation, |idx| {
                 idx.map(|idx| {
-                    if sole {
+                    let notes = if sole {
                         let mut keys = idx.colliding_path_keys();
-                        let new_key = new_path
-                            .and_then(|new| root_relative_key(&c.info.path, new, cfg!(windows)));
+                        let new_key =
+                            new_path.and_then(|new| root_relative_key(&c.info.path, new, windows));
                         if let Some(key) = new_key {
                             let notes = idx.path_key_notes(&key);
                             keys.insert(key, notes);
@@ -239,13 +252,19 @@ async fn known_paths_of(
                         RootNotes::Sole(keys)
                     } else {
                         RootNotes::Known(idx.registered_path_keys())
-                    }
+                    };
+                    let stems: Vec<String> = whole_names
+                        .iter()
+                        .filter(|key| idx.has_note_stem(key))
+                        .cloned()
+                        .collect();
+                    (notes, stems)
                 })
             })
             .await;
-        known
-            .roots
-            .insert(c.info.path.clone(), notes.unwrap_or(RootNotes::Unknown));
+        let (notes, stems) = read.unwrap_or_else(|| (RootNotes::Unknown, whole_names.clone()));
+        known.note_stems.extend(stems);
+        known.roots.insert(c.info.path.clone(), notes);
     }
     known
 }
