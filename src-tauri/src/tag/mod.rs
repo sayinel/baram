@@ -97,11 +97,14 @@ pub fn bare_tag(name: &str) -> &str {
 }
 
 /// Returns relative paths of .md files that contain the given tag (inline or frontmatter).
+/// §56m The tag is named as the index keeps it — every leading `#` off (`bare_tag`), whatever
+/// the caller passed — and compared lowercased; a name of only `#`s is empty and refused.
 pub async fn get_files_by_tag(root_path: &str, tag: &str) -> Result<Vec<String>, TagError> {
     let root = PathBuf::from(root_path);
     if !root.exists() {
         return Err(TagError::Custom("Root path does not exist".into()));
     }
+    let tag = bare_tag(tag);
     if tag.is_empty() {
         return Err(TagError::Custom("Tag must not be empty".into()));
     }
@@ -250,7 +253,9 @@ fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
 ///   - Frontmatter tags: block list `tags:\n  - tag1`
 ///
 /// Prefix rename: renaming `project` also renames `project/baram` → `new/baram`.
-/// Both names are bare (`bare_tag`) — `tag_cmd::rename_tag` strips what the app passes.
+///
+/// §56m Both names lose every leading `#` first (`bare_tag`), whatever the caller passed; a
+/// name of only `#`s is then empty and refused. Names are compared as written (case counts).
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
@@ -260,6 +265,7 @@ pub async fn rename_tag(
     if !root.exists() {
         return Err(TagError::Custom("Root path does not exist".into()));
     }
+    let (old_tag, new_tag) = (bare_tag(old_tag), bare_tag(new_tag));
     if old_tag.is_empty() || new_tag.is_empty() {
         return Err(TagError::Custom("Tag names must not be empty".into()));
     }
@@ -668,6 +674,59 @@ mod tests {
         assert_eq!(rows(&root).await, [("solo".to_string(), 2)]);
         assert_eq!(files_with(&root, "solo").await, ["u.md"]);
         assert!(files_with(&root, "notatag").await.is_empty());
+    }
+
+    /// The app may hand over a name with `#`s: the tag panel's old name is its row's name (a
+    /// front-matter row was `#solo` while the reader kept the `#`), and its new name loses one
+    /// `#` only (`TagPanel.tsx`, `replace(/^#/, "")`). `rename_tag` strips both itself
+    /// (`bare_tag`), so `#solo` → `#focus` renames the tag `solo` in the body and in the front
+    /// matter alike and writes no `##focus`. What fails this: `rename_tag` using the names as
+    /// given (the body's `#solo` is looked for as `##solo` and stays, and a `solo` → `#focus`
+    /// rename writes `##focus`).
+    #[tokio::test]
+    async fn a_rename_takes_either_name_with_or_without_its_hash() {
+        for (old, new) in [("#solo", "#focus"), ("solo", "#focus"), ("##solo", "focus")] {
+            let (d, root) = vault("---\ntags: [\"#solo\", solo]\n---\n본문 #solo\n").await;
+            let r = rename_tag(&root, old, new).await.unwrap();
+            assert_eq!(r.occurrences_replaced, 3, "{old} → {new}");
+            assert_eq!(
+                read(&d).await,
+                "---\ntags: [\"#focus\", focus]\n---\n본문 #focus\n",
+                "{old} → {new}"
+            );
+        }
+    }
+
+    /// A name that is only `#`s is empty once bare, and refused — as `baram tag '#'` is.
+    /// What fails this: checking emptiness before stripping (`#` passes and the walk runs).
+    /// The pair: the same rename by a real name succeeds.
+    #[tokio::test]
+    async fn a_rename_to_or_from_only_hashes_is_refused() {
+        let (_d, root) = vault("본문 #solo\n").await;
+        assert!(rename_tag(&root, "#", "focus").await.is_err());
+        assert!(rename_tag(&root, "solo", "##").await.is_err());
+        assert!(rename_tag(&root, "solo", "focus").await.is_ok());
+    }
+
+    /// A query names a tag as `baram tag '#Solo'` does: every leading `#` off, case not
+    /// compared — inside `get_files_by_tag`, whoever calls it. What fails this: comparing the
+    /// name as given (`#solo` matches no stored tag, since none keeps its `#`).
+    #[tokio::test]
+    async fn files_by_tag_take_the_name_with_or_without_its_hash() {
+        let (_d, root) = vault_of(&[
+            ("fm.md", "---\ntags: [\"#solo\"]\n---\n"),
+            ("body.md", "본문 #solo\n"),
+            ("other.md", "본문 #other\n"),
+        ])
+        .await;
+        for name in ["#Solo", "solo", "##solo"] {
+            assert_eq!(
+                files_with(&root, name).await,
+                ["body.md", "fm.md"],
+                "{name}"
+            );
+        }
+        assert!(get_files_by_tag(&root, "#").await.is_err());
     }
 
     /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match

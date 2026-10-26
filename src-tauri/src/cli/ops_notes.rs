@@ -46,8 +46,9 @@ pub(crate) async fn tags(vault: &Vault) -> Result<Envelope<TagRow>, CliError> {
 }
 
 /// `baram tag <name>` — the files that carry the tag. Every leading `#` is dropped
-/// (`tag::bare_tag`): the index keeps no tag that begins with `#` — a body `#work` and a
-/// front-matter `"#work"` are both `work` — so `#work` as typed would match nothing.
+/// (`tag::bare_tag`), as the index drops it from every tag it keeps — a body `#work` and a
+/// front-matter `"#work"` are both `work`. `get_files_by_tag` drops them too; dropping them
+/// here first is what refuses a name of only `#`s as an invalid argument before the walk.
 pub(crate) async fn tag(vault: &Vault, name: &str) -> Result<Envelope<PathRow>, CliError> {
     let name = crate::tag::bare_tag(name);
     if name.is_empty() {
