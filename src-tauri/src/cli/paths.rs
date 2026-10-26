@@ -41,7 +41,8 @@ pub(crate) fn fold(path: &Path) -> Option<PathBuf> {
 /// the root that the server was not given — a link to it, another case on a volume that
 /// ignores case — is outside, whether or not it would resolve into the vault (spec 0068
 /// §3.2). What follows the spelling is put onto the canonical root as written, and is then
-/// resolved and checked as on the command line.
+/// resolved and checked as on the command line. A relative input whose `..` climbs out of
+/// the root is outside by its letters too (`written_path`).
 pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let written = written_path(vault, input)?;
     resolved_path(vault, input, &written)
@@ -57,9 +58,12 @@ fn outside(vault: &Vault, input: &str) -> CliError {
 
 /// The path `input` names by its letters alone, before the disk is asked: a relative input
 /// pushed onto the root part by part, or for `baram mcp` an absolute one put onto the root
-/// after the spelling it starts with — under the root either way — and `.` and `..` folded.
-/// With no `Vault::spellings` an absolute input is taken as written, and may lie outside the
-/// root by its letters while it resolves into it.
+/// after the spelling it starts with; then `.` and `..` folded. For `baram mcp` (the vault
+/// has `Vault::spellings`) the folded path must lie under the root, component by component,
+/// or it is outside — so a `..` that climbs out of the root is refused before the disk is
+/// asked where the path leads, and one that climbs out and back in is not. Without
+/// spellings — the command line's vaults — a relative `..` or an absolute input may lie
+/// outside the root by its letters while it resolves into it, and `resolved_path` decides.
 fn written_path(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let windows = cfg!(windows);
     let candidate = if Path::new(input).is_absolute() {
@@ -80,7 +84,11 @@ fn written_path(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     };
     // `..` is folded BEFORE the filesystem is asked: `resolve_canonical` climbs to an
     // existing ancestor by file name, and a path that ends in `..` has none.
-    fold(&candidate).ok_or_else(|| outside(vault, input))
+    let written = fold(&candidate).ok_or_else(|| outside(vault, input))?;
+    if vault.spellings.is_some() && !written.starts_with(&vault.root) {
+        return Err(outside(vault, input));
+    }
+    Ok(written)
 }
 
 /// `written` as the disk resolves it, checked to lie in the vault. Only `written` — the
@@ -258,8 +266,9 @@ pub(crate) fn note_names_first(vault: &Vault, input: &str) -> Result<PathBuf, Cl
     let written = written_path(vault, input)?;
     let file = resolved_path(vault, input, &written)?;
     if note_rules(vault, input, &file).is_err() {
-        // `written` lies under the root for every vault `baram mcp` hands out (it has
-        // spellings); for one without, an absolute input may not, and is not asked here.
+        // `written` lies under the root whenever the vault has spellings — `written_path`
+        // refuses it otherwise. Without them, a relative `..` or an absolute input may lie
+        // outside by its letters, and the letters are not asked.
         let as_written = if written.starts_with(&vault.root) {
             note_rules(vault, input, &written)
         } else {
@@ -485,6 +494,62 @@ mod tests {
                 .unwrap_err()
                 .code,
             ErrorCode::PathOutsideVault
+        );
+    }
+
+    /// For `baram mcp` a relative path whose `..` climbs out of the root is outside by its
+    /// letters, before the disk is asked — as an absolute path that spells no root is. Asking
+    /// the disk first answered three ways for three paths outside the vault: `in.md`, a link
+    /// to the vault's `a.md`, was read; `none.md` was outside; `env.md`, a link to the vault's
+    /// `.env`, was FILE_NOT_FOUND — so a model could tell, through `..`, where a link into the
+    /// vault lies. Now the three get one answer, with the message of the absolute form. A path
+    /// that climbs out and comes back in (`notes/../../vault/a.md`) lies under the root by its
+    /// letters and is read; the command line, which has no spellings, still resolves on disk
+    /// and reads the link.
+    ///
+    /// What fails this: the folded path not checked against the root (`in.md` is read, and
+    /// `env.md` is FILE_NOT_FOUND); the check made on the command line too (the CLI half);
+    /// a check on the letters as typed rather than folded (the way back in is refused).
+    #[cfg(unix)]
+    #[test]
+    fn for_the_mcp_server_a_relative_path_that_climbs_out_is_outside_by_its_letters() {
+        let (_t, base) = tree(&["vault/notes", "other"]);
+        let root = base.join("vault");
+        std::fs::write(root.join("a.md"), "x").unwrap();
+        std::fs::write(root.join(".env"), "x").unwrap();
+        std::os::unix::fs::symlink(root.join("a.md"), base.join("other/in.md")).unwrap();
+        std::os::unix::fs::symlink(root.join(".env"), base.join("other/env.md")).unwrap();
+        let mcp = Vault {
+            spellings: Some(vec![root.to_string_lossy().into_owned()]),
+            ..vault_at(&root)
+        };
+        let outside_message =
+            |input: &str| format!("{input} is outside the vault at {}", root.display());
+        for input in ["../other/in.md", "../other/none.md", "../other/env.md"] {
+            for (what, result) in [
+                ("locate", locate(&mcp, input)),
+                ("note", note_names_first(&mcp, input)),
+            ] {
+                let error = result.unwrap_err();
+                assert_eq!(
+                    (error.code, error.message),
+                    (ErrorCode::PathOutsideVault, outside_message(input)),
+                    "{what} {input}"
+                );
+            }
+        }
+        let absolute = format!("{}/../other/in.md", root.display());
+        assert_eq!(
+            locate(&mcp, &absolute).unwrap_err().code,
+            ErrorCode::PathOutsideVault
+        );
+        assert_eq!(
+            note_names_first(&mcp, "notes/../../vault/a.md").unwrap(),
+            root.join("a.md")
+        );
+        assert_eq!(
+            locate(&vault_at(&root), "../other/in.md").unwrap(),
+            root.join("a.md")
         );
     }
 

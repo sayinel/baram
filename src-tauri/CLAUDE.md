@@ -72,7 +72,7 @@ PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 �
   `a_session_writes_nothing_into_the_vault_the_config_or_the_logs` 가 CLI 와 같은 스냅샷으로 잰다.
 - **도구의 `vault` 는 허용 집합 안만 받는다**(`cli/mcp/scope.rs`) — 없는 경로와 집합 밖의 경로가 같은 메시지다. 경로 형태는 디스크에 묻지 않고 글자로
   맞춘다(`cli/spelling.rs` 의 `letters`): 루트의 표기(정규 경로 · 그 폴더를 등록한 경로 · 그 루트를 부른 경로 형태 `--vault` — `Member::spellings`)와 같을 때만
-  받고, 도구의 절대 경로 인자도 그 표기로 시작해야 한다(`Vault::spellings`. CLI 는 `None` 이라 디스크에서 푼 뒤 루트 안인지만 본다). 그 vault 안에서 도구의 파일
+  받고, 도구의 절대 경로 인자도 그 표기로 시작해야 하며, 상대 경로 인자의 `..` 가 루트 밖으로 나가면 글자만으로 밖이다(`Vault::spellings` · `paths::written_path`. CLI 는 `None` 이라 디스크에서 푼 뒤 루트 안인지만 본다). 그 vault 안에서 도구의 파일
   경계는 `paths::locate` · `note_names_first` · `folder_arg` 다 — 도구가 받는 노트 · 폴더 경로는 모두 이 셋을 거친다(`backlinks` 는 `locate` 를 직접,
   `folder` 는 `folder_arg` 로, 노트를 읽는 `read_note` · `list_tasks` 의 `file` · `outgoing_links` 는 `note_names_first` 로 — CLI 의 `note_arg` 와
   규칙은 같고, 노트 규칙을 파일이 있는지보다 먼저 묻는다. 그 답이 갈리는 경로는 `note_names_first` 의 doc). CLI 에서는 범위 규칙이지만(호출자의 셸이 그 파일을 어차피 읽을 수 있다), MCP 에서는 도구의 파일 경계다 —
