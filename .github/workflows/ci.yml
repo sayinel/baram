@@ -190,7 +190,7 @@ jobs:
           toolchain: stable
           components: clippy, rustfmt
 
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri -> target
 
@@ -292,7 +292,7 @@ jobs:
       # `shared-key` (rather than the default, which keys on the job id) is what
       # lets macos-sdk.yml's read-only restore hit this cache — mainly the cargo
       # registry and git checkouts, since that job builds the other profile.
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri -> target
           shared-key: macos

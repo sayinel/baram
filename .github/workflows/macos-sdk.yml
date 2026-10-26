@@ -76,7 +76,7 @@ jobs:
       # defines the cache PR jobs restore from, and a release-profile target dir
       # is big enough to push their entries out of the repo's cache budget.
       # Nobody is waiting on this job, so it can afford to be cold.
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri -> target
           shared-key: macos
