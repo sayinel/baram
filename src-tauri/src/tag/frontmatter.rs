@@ -264,9 +264,19 @@ mod tests {
         why: String,
     }
 
+    /// One row of the fixture's `names`.
+    #[derive(serde::Deserialize)]
+    struct NameCase {
+        name: String,
+        accepted: bool,
+        bare: Option<String>,
+        why: String,
+    }
+
     #[derive(serde::Deserialize)]
     struct Fixture {
         cases: Vec<FixtureCase>,
+        names: Vec<NameCase>,
     }
 
     /// The shared fixture: every row of the reader tests above, the key's spellings and the
@@ -285,6 +295,37 @@ mod tests {
                 "{:?}: {}",
                 case.frontmatter,
                 case.why
+            );
+        }
+    }
+
+    /// The fixture's `names`: the rule on `rename_tag` (`tag::refusal`) and, for an accepted
+    /// name, the spelling the writer gives it in a bare entry — through the writer itself, so
+    /// the row pins what lands in the file. What fails this: a change to either — dropping a
+    /// refusal (`-`, a filler, `²`) or the quoting (`null`, `-x`, the ZWNJ word).
+    #[test]
+    fn the_new_name_rule_agrees_with_the_shared_fixture() {
+        let fixture: Fixture =
+            serde_json::from_str(include_str!("fixtures/frontmatter-tags.json")).unwrap();
+        assert!(fixture.names.iter().any(|row| row.accepted));
+        assert!(fixture.names.iter().any(|row| !row.accepted));
+        for row in &fixture.names {
+            assert_eq!(
+                crate::tag::refusal(&row.name).is_none(),
+                row.accepted,
+                "{:?}: {}",
+                row.name,
+                row.why
+            );
+            let written = row
+                .accepted
+                .then(|| rename_frontmatter_tags("tags: [solo]", "solo", &row.name).0);
+            assert_eq!(
+                written,
+                row.bare.as_ref().map(|bare| format!("tags: [{bare}]")),
+                "{:?}: {}",
+                row.name,
+                row.why
             );
         }
     }

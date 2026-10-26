@@ -1,5 +1,5 @@
 {
-  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; each entry trimmed, then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. Every character outside ASCII is written as a JSON unicode escape.",
+  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; each entry trimmed, then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. `cases` are front matters to read; `names` (see `names_contract`) are names to rename to. Every character outside ASCII is written as a JSON unicode escape.",
   "cases": [
     {
       "frontmatter": "tags: [\"#solo\"]",
@@ -134,7 +134,7 @@
         "solo",
         "c"
       ],
-      "why": "unindented items with CRLF line endings"
+      "why": "unindented items with CRLF line endings (yaml 2.9.1 keeps the last \\r in the value: c\\r)"
     },
     {
       "frontmatter": "aliases:\n- x\ntags:\n- a\n- b\nrelated:\n- x\n- y",
@@ -176,7 +176,7 @@
       "tags": [
         "c"
       ],
-      "why": "a block list under an upper-case key"
+      "why": "a block list under an upper-case key (to YAML this is the key TAGS, which a lookup of tags would not find)"
     },
     {
       "frontmatter": "tags: [\"#\ud55c\uae00\", '\ud560-\uc77c']",
@@ -190,6 +190,275 @@
       "frontmatter": "title: about #solo\nkeywords: [a]",
       "tags": [],
       "why": "a # in another field and a list under another key are not tags (to YAML the # begins a comment)"
+    }
+  ],
+  "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and not every character is default-ignorable. For an accepted name, `bare` is how it is written into a bare list entry (no quotes, no `#`): `frontmatter::yaml_string`, the frontend's `yamlString`, which quotes a spelling YAML would read as something other than this text. The Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads this section; the app's tag-name input can read it to agree. Every row uses characters old enough to be in every Unicode table the two languages ship.",
+  "names": [
+    {
+      "name": "solo",
+      "accepted": true,
+      "bare": "solo",
+      "why": "letters"
+    },
+    {
+      "name": "project/baram",
+      "accepted": true,
+      "bare": "project/baram",
+      "why": "/ joins two non-empty parts"
+    },
+    {
+      "name": "\ud560-\uc77c",
+      "accepted": true,
+      "bare": "\ud560-\uc77c",
+      "why": "Korean, a hyphen inside"
+    },
+    {
+      "name": "deep_work",
+      "accepted": true,
+      "bare": "deep_work",
+      "why": "an underscore"
+    },
+    {
+      "name": "Focus2",
+      "accepted": true,
+      "bare": "Focus2",
+      "why": "case and a decimal digit"
+    },
+    {
+      "name": "\u0939\u093f\u0928\u094d\u0926\u0940",
+      "accepted": true,
+      "bare": "\u0939\u093f\u0928\u094d\u0926\u0940",
+      "why": "Hindi: the virama U+094D is a mark, and marks are tag characters"
+    },
+    {
+      "name": "\u0e19\u0e49\u0e33",
+      "accepted": true,
+      "bare": "\u0e19\u0e49\u0e33",
+      "why": "Thai: the tone mark U+0E49 is a mark"
+    },
+    {
+      "name": "cafe\u0301",
+      "accepted": true,
+      "bare": "cafe\u0301",
+      "why": "a decomposed (NFD) accent is a mark"
+    },
+    {
+      "name": "\u306f\u309a",
+      "accepted": true,
+      "bare": "\u306f\u309a",
+      "why": "a decomposed (NFD) kana sound mark"
+    },
+    {
+      "name": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645",
+      "accepted": true,
+      "bare": "\"\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645\"",
+      "why": "a ZWNJ inside a Persian word is a tag character (join control); yamlString quotes it, since its plain spelling allows only letters, marks, digits and _-./"
+    },
+    {
+      "name": "a\u203fb",
+      "accepted": true,
+      "bare": "\"a\u203fb\"",
+      "why": "connector punctuation U+203F is a tag character; quoted for the same reason"
+    },
+    {
+      "name": "\u3200",
+      "accepted": true,
+      "bare": "\"\u3200\"",
+      "why": "a Hangul-script symbol is a tag character; a plain spelling must start with a letter, digit or _"
+    },
+    {
+      "name": "\u3164a",
+      "accepted": true,
+      "bare": "\u3164a",
+      "why": "a Hangul filler next to a visible letter"
+    },
+    {
+      "name": "\u0663",
+      "accepted": true,
+      "bare": "\u0663",
+      "why": "an Arabic-Indic digit: a decimal digit, and not a number to YAML"
+    },
+    {
+      "name": "_",
+      "accepted": true,
+      "bare": "_",
+      "why": "an underscore alone"
+    },
+    {
+      "name": "2024/x",
+      "accepted": true,
+      "bare": "2024/x",
+      "why": "starts with a digit, but the / keeps YAML from reading a number"
+    },
+    {
+      "name": "null",
+      "accepted": true,
+      "bare": "\"null\"",
+      "why": "YAML reads plain null as null"
+    },
+    {
+      "name": "True",
+      "accepted": true,
+      "bare": "\"True\"",
+      "why": "YAML reads plain True as a boolean"
+    },
+    {
+      "name": "yes",
+      "accepted": true,
+      "bare": "\"yes\"",
+      "why": "a YAML 1.1 reader takes plain yes for a boolean"
+    },
+    {
+      "name": "y",
+      "accepted": true,
+      "bare": "\"y\"",
+      "why": "a YAML 1.1 reader takes plain y for a boolean"
+    },
+    {
+      "name": "123",
+      "accepted": true,
+      "bare": "\"123\"",
+      "why": "YAML reads plain 123 as a number"
+    },
+    {
+      "name": "1e3",
+      "accepted": true,
+      "bare": "\"1e3\"",
+      "why": "YAML reads plain 1e3 as a number"
+    },
+    {
+      "name": "0x1F",
+      "accepted": true,
+      "bare": "\"0x1F\"",
+      "why": "YAML reads plain 0x1F as a number"
+    },
+    {
+      "name": "2024-01-01",
+      "accepted": true,
+      "bare": "\"2024-01-01\"",
+      "why": "YAML can read a plain date as a date"
+    },
+    {
+      "name": "-x",
+      "accepted": true,
+      "bare": "\"-x\"",
+      "why": "a plain spelling must not start with -"
+    },
+    {
+      "name": "--",
+      "accepted": true,
+      "bare": "\"--\"",
+      "why": "likewise"
+    },
+    {
+      "name": "",
+      "accepted": false,
+      "why": "nothing is left once the #s are off"
+    },
+    {
+      "name": "-",
+      "accepted": false,
+      "why": "a dash alone, written bare, is a list marker to YAML: tags: [-] is rejected and - - is a nested list"
+    },
+    {
+      "name": "a\"b",
+      "accepted": false,
+      "why": "a quote is not a tag character: the body reads #a\"b as the tag a"
+    },
+    {
+      "name": "x, y",
+      "accepted": false,
+      "why": "a comma and a space are not tag characters"
+    },
+    {
+      "name": "x]",
+      "accepted": false,
+      "why": "a bracket is not a tag character"
+    },
+    {
+      "name": "a: b",
+      "accepted": false,
+      "why": "a colon is not a tag character"
+    },
+    {
+      "name": "a #b",
+      "accepted": false,
+      "why": "the body reads #a #b as two tags"
+    },
+    {
+      "name": "a b",
+      "accepted": false,
+      "why": "a space ends a tag"
+    },
+    {
+      "name": "@at",
+      "accepted": false,
+      "why": "@ is not a tag character"
+    },
+    {
+      "name": "a.b",
+      "accepted": false,
+      "why": "a dot ends a tag"
+    },
+    {
+      "name": "dad's",
+      "accepted": false,
+      "why": "an apostrophe is not a tag character"
+    },
+    {
+      "name": "/a",
+      "accepted": false,
+      "why": "/ only joins two non-empty parts"
+    },
+    {
+      "name": "a/",
+      "accepted": false,
+      "why": "likewise"
+    },
+    {
+      "name": "a//b",
+      "accepted": false,
+      "why": "likewise"
+    },
+    {
+      "name": "a\u00b2",
+      "accepted": false,
+      "why": "a superscript two is a number but not a decimal digit (category No), and the reader's class has no such numbers"
+    },
+    {
+      "name": "\u00bd",
+      "accepted": false,
+      "why": "a vulgar fraction (category No), likewise"
+    },
+    {
+      "name": "\u3164",
+      "accepted": false,
+      "why": "a Hangul filler alone shows as a blank tag (default-ignorable)"
+    },
+    {
+      "name": "\uffa0",
+      "accepted": false,
+      "why": "a half-width Hangul filler alone, likewise"
+    },
+    {
+      "name": "\u115f\u1160",
+      "accepted": false,
+      "why": "Hangul choseong and jungseong fillers, likewise"
+    },
+    {
+      "name": "\u200c",
+      "accepted": false,
+      "why": "a ZWNJ alone, likewise"
+    },
+    {
+      "name": "\u200d",
+      "accepted": false,
+      "why": "a ZWJ alone, likewise"
+    },
+    {
+      "name": "\ufe0f",
+      "accepted": false,
+      "why": "a variation selector alone, likewise"
     }
   ]
 }
