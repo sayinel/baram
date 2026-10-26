@@ -469,10 +469,14 @@ mod tests {
             error.message,
             "notes/C:x is not a valid path: `C:x` is not a name a folder can hold"
         );
-        assert_eq!(
-            pushed(root, "notes/C:x", ["notes", "C:x"], false).unwrap(),
-            root.join("notes").join("C:x")
-        );
+        // On Unix `C:x` is a name like any other. (On a Windows host `Path::join` itself
+        // reads it as a drive, so this half says nothing there.)
+        if cfg!(unix) {
+            assert_eq!(
+                pushed(root, "notes/C:x", ["notes", "C:x"], false).unwrap(),
+                root.join("notes").join("C:x")
+            );
+        }
     }
 
     #[test]

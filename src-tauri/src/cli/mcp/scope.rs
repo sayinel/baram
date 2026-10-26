@@ -494,11 +494,29 @@ mod tests {
         );
     }
 
+    /// `start` with each of `rest` after it, joined by `separator`.
+    fn spell(start: &Path, rest: &[&str], separator: char) -> String {
+        let mut spelled = arg(start);
+        for part in rest {
+            spelled.push(separator);
+            spelled.push_str(part);
+        }
+        spelled
+    }
+
+    /// The two separators a spelling is written with here. On Unix they are one. On Windows
+    /// a root is the verbatim `\\?\D:\…` that `canonicalize` gives, so the platform's `\`
+    /// exercises the plain components and `/` the rule that `/` separates after a verbatim
+    /// drive too (`spelling::letters`).
+    const SEPARATORS: [char; 2] = ['/', std::path::MAIN_SEPARATOR];
+
     /// A `..` in a `vault` path is folded before the disk is asked (spec 0068 §3.2), so a path
-    /// that climbs out of a folder answers the same whether that folder is there or not.
+    /// that climbs out of a folder answers the same whether that folder is there or not — with
+    /// either separator (`SEPARATORS`).
     ///
     /// What fails this: `by_path` resolving the path as written — `<a>/gone/..` and
-    /// `<gone>/../a` are then refused while `<a>/sub/..` and `<u>/../a` answer.
+    /// `<gone>/../a` are then refused while `<a>/sub/..` and `<u>/../a` answer; on Windows,
+    /// `/` read as part of a name after the verbatim root.
     #[test]
     fn a_dot_dot_answers_alike_whether_the_folder_it_climbs_out_of_is_there() {
         let d = disk();
@@ -507,13 +525,15 @@ mod tests {
         let only_a = fixed(&[&d.a]);
         for allowed in [&registered, &only_a] {
             let scope = Scope::new(allowed, &cfg);
-            for spelled in [
-                format!("{}/sub/..", arg(&d.a)),
-                format!("{}/gone/..", arg(&d.a)),
-                format!("{}/../a", arg(&d.u)),
-                format!("{}/../a", arg(&d.gone)),
-            ] {
-                assert_eq!(root(scope.resolve(Some(&spelled), None)), d.a, "{spelled}");
+            for separator in SEPARATORS {
+                for spelled in [
+                    spell(&d.a, &["sub", ".."], separator),
+                    spell(&d.a, &["gone", ".."], separator),
+                    spell(&d.u, &["..", "a"], separator),
+                    spell(&d.gone, &["..", "a"], separator),
+                ] {
+                    assert_eq!(root(scope.resolve(Some(&spelled), None)), d.a, "{spelled}");
+                }
             }
         }
     }
@@ -569,13 +589,15 @@ mod tests {
         );
     }
 
-    /// A spelling is matched by its letters (spec 0068 §3.2): separators that change no
-    /// component, `.`, and a name typed composed for one stored decomposed are the same
-    /// spelling (§390); a name in another case is another spelling, whatever the volume
-    /// does with it — compared with ASCII case folded on Windows only.
+    /// A spelling is matched by its letters (spec 0068 §3.2), each written with either
+    /// separator (`SEPARATORS`): a separator at the end or doubled, `.`, `..`, and a name typed
+    /// composed for one stored decomposed (§390) are the same spelling. A name in another case
+    /// is another spelling on Unix whatever the volume does with it — macOS's ignores case,
+    /// and the letters are still compared, not the volume — and the same spelling on
+    /// Windows, where the letters fold ASCII case.
     ///
-    /// What fails this: components compared as raw bytes (the NFD spelling is refused);
-    /// case folded on Unix (the upper-case spelling is accepted).
+    /// What fails this: components compared as raw bytes (the NFD spelling is refused); case
+    /// folded on Unix (`A` is accepted there), or not folded on Windows (`A` is refused there).
     #[test]
     fn a_vault_path_is_compared_by_its_letters() {
         let d = disk();
@@ -588,24 +610,27 @@ mod tests {
         ]);
         let allowed = everything(Vec::new());
         let scope = Scope::new(&allowed, &cfg);
-        for spelled in [
-            format!("{}/", arg(&d.a)),
-            format!("{}//./a", arg(&base)),
-            format!("{}/sub/./..", arg(&d.a)),
-        ] {
-            assert_eq!(root(scope.resolve(Some(&spelled), None)), d.a, "{spelled}");
+        let decomposed = "\u{1112}\u{116c}\u{110b}\u{1174}";
+        for separator in SEPARATORS {
+            for spelled in [
+                format!("{}{separator}", arg(&d.a)),
+                spell(&base, &["", ".", "a"], separator),
+                spell(&d.a, &["sub", ".", ".."], separator),
+            ] {
+                assert_eq!(root(scope.resolve(Some(&spelled), None)), d.a, "{spelled}");
+            }
+            assert_eq!(
+                root(scope.resolve(Some(&spell(&base, &[decomposed], separator)), None)),
+                resolve_canonical(&arg(&composed)).expect("canonical")
+            );
+            let upper = spell(&base, &["A"], separator);
+            let answer = scope.resolve(Some(&upper), None);
+            if cfg!(windows) {
+                assert_eq!(root(answer), d.a, "{upper}");
+            } else {
+                assert_eq!(error(answer).code, ErrorCode::VaultNotFound, "{upper}");
+            }
         }
-        let decomposed = format!("{}/\u{1112}\u{116c}\u{110b}\u{1174}", arg(&base));
-        assert_eq!(
-            root(scope.resolve(Some(&decomposed), None)),
-            resolve_canonical(&arg(&composed)).expect("canonical")
-        );
-        let upper = format!("{}/A", arg(&base));
-        assert_eq!(
-            error(scope.resolve(Some(&upper), None)).code,
-            ErrorCode::VaultNotFound,
-            "{upper}"
-        );
     }
 
     /// What fails this: an unregistered `--vault` given no member; its row left out or
