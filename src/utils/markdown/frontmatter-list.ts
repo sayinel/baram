@@ -109,9 +109,11 @@ export function listItemSpelling(
  * (`White_Space`, as Rust's `char::is_whitespace`). An item's value is its text less every `"`
  * at either end, then every `'` — no escape is read.
  *
- * The one reading that differs from the backend's: in `field: [a, b]` a comma inside a quoted
- * item does not split it — `["a, b"]` and `["a\", b"]` are one item here and two there — so
- * that writing the list back keeps the item whole.
+ * Measured against the backend's reader on 86 inputs (2026-10-26) — the rows of
+ * `src/utils/__tests__/fixtures/frontmatter-tags.json` and 52 more from a review — the one
+ * reading that differs is on purpose: in `field: [a, b]` a comma inside a quoted item does not split it —
+ * `["a, b"]` and `["a\", b"]` are one item here and two there — so that writing the list back
+ * keeps the item whole.
  */
 export function readFrontmatterLists(
   yaml: string,
@@ -193,7 +195,7 @@ export function readFrontmatterLists(
  * list's form and lead, with its line break. A block list this edit leaves with nothing is
  * written `field: []`.
  * The lines an edit does not touch stay byte for byte, so writing back the names a list already
- * has changes nothing a reader can see.
+ * has changes nothing but the respelling of items YAML cannot read.
  *
  * Without a `field` key, `field: [...]` is appended at the end (`appendFrontmatterLine`). The
  * field is left alone, and `yaml` returned unchanged, when it is there in a form this cannot
