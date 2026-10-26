@@ -331,17 +331,30 @@ impl LinkIndex {
         )
     }
 
-    /// The `Path`-key text of every note this index holds under its root,
-    /// with how many of its notes fold to it: `root_relative_key` — the
-    /// function `keys_for` spells a file's path key with, so the shapes
-    /// agree — of each path in `file_map`, which holds each path once. Not
-    /// `relative_map`, which holds one path per key. Empty with no root. The
-    /// rename reads it to tell whether a path link names an existing note
-    /// under a root that holds the referrer, and whether more than one note
-    /// there answers to it — on a file system that keeps case, `A/note.md`
-    /// and `a/note.md` both fold to `a/note` (`judgement::KnownPaths`).
+    /// The `Path`-key text of every file this index holds under its root —
+    /// note or link target (`registered_files`) — with how many of its files
+    /// fold to it: `root_relative_key`, the function `keys_for` spells a
+    /// file's path key with, so the shapes agree. Not `relative_map`, which
+    /// holds notes alone, one path per key. Empty with no root. The rename
+    /// reads it to tell whether a path link names an existing file under a
+    /// root that holds the referrer — a PDF there as much as a note — and
+    /// whether more than one file there answers to it: on a file system that
+    /// keeps case, `A/note.md` and `a/note.md` both fold to `a/note`
+    /// (`judgement::KnownPaths`).
     pub fn registered_path_keys(&self) -> HashMap<String, usize> {
-        self.path_keys_of(self.file_map.values().flatten())
+        self.path_keys_of(self.registered_files())
+    }
+
+    /// Every file this index holds, each once: the notes (`file_map`) and
+    /// the link targets (`name_map`, which a build fills with every file it
+    /// finds, notes included, and a save of a note drops the note from).
+    fn registered_files(&self) -> impl Iterator<Item = &String> + '_ {
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        self.file_map
+            .values()
+            .flatten()
+            .chain(self.name_map.values().flatten())
+            .filter(move |path| seen.insert(path.as_str()))
     }
 
     /// Whether a note this index holds has the stem `key` (`file_map`'s
@@ -351,16 +364,16 @@ impl LinkIndex {
         self.file_map.contains_key(key)
     }
 
-    /// The `Path` keys two or more of this index's notes fold to, with how
-    /// many — `registered_path_keys` without the keys one note alone has,
+    /// The `Path` keys two or more of this index's files fold to, with how
+    /// many — `registered_path_keys` without the keys one file alone has,
     /// for a rename whose only holding root this is (`judgement::RootNotes::Sole`).
-    /// Two notes share a key only when they share its last component
-    /// (`filing::path_key_name`), so the notes are grouped by that first and
+    /// Two files share a key only when they share its last component
+    /// (`filing::path_key_name`), so the files are grouped by that first and
     /// a full key is spelled only for a group of two or more — none, in a
-    /// vault whose note names are all different.
+    /// vault whose file names are all different.
     pub fn colliding_path_keys(&self) -> HashMap<String, usize> {
         let mut by_name: HashMap<String, Vec<&String>> = HashMap::new();
-        for path in self.file_map.values().flatten() {
+        for path in self.registered_files() {
             by_name
                 .entry(filing::path_key_name(path, self.windows))
                 .or_default()
@@ -376,17 +389,15 @@ impl LinkIndex {
         keys
     }
 
-    /// How many of this index's notes fold to the `Path` key `key` — the
+    /// How many of this index's files fold to the `Path` key `key` — the
     /// one entry of `registered_path_keys` a file rename needs for its new
     /// name when this is its only holding root (`judgement::RootNotes::Sole`).
-    /// Spelled only for the notes whose name is the key's last component, as
+    /// Spelled only for the files whose name is the key's last component, as
     /// `colliding_path_keys` groups them.
     pub fn path_key_notes(&self, key: &str) -> usize {
         let name = key.rsplit('/').next().unwrap_or(key);
         let same_name = self
-            .file_map
-            .values()
-            .flatten()
+            .registered_files()
             .filter(|path| filing::path_key_name(path, self.windows) == name);
         self.path_keys_of(same_name).get(key).copied().unwrap_or(0)
     }
@@ -691,35 +702,37 @@ mod tests {
     }
 
     #[test]
-    fn the_colliding_path_keys_are_every_key_two_notes_share_and_no_other() {
-        // `A/note.md` and `a/note.md` fold to `a/note`. `a/x.txt` — a save
-        // files whatever path it is given (`update_file_index_inner` →
-        // `write_note`), so a note saved as `.txt` is in `file_map` — and
-        // `a/x.txt.md` both fold to `a/x.txt` although their stems, `x` and
-        // `x.txt`, differ: the notes are grouped by the key's own last
-        // component, not by stem. `b/note.md` shares a name with the first
-        // pair but not a key.
-        // What fails this: grouping by `file_map`'s stem buckets instead of
-        // `path_key_name` — `a/x.txt` is missed; and keeping the keys only
-        // one note has — `b/note` appears.
+    fn the_colliding_path_keys_are_every_key_two_files_share_and_no_other() {
+        // `A/note.md` and `a/note.md` fold to `a/note`. The link target
+        // `a/x.txt` — registered as a build registers a file that is no note
+        // — and the note `a/x.txt.md` both fold to `a/x.txt` although only
+        // the second is a note and their stems, `x` and `x.txt`, differ: the
+        // files are grouped by the key's own last component, notes and link
+        // targets alike. `b/note.md` shares a name with the first pair but
+        // not a key.
+        // What fails this: reading the notes alone (`file_map`) instead of
+        // `registered_files` — `a/x.txt` is missed; grouping by `file_map`'s
+        // stem buckets instead of `path_key_name` — the same; and keeping the
+        // keys only one file has — `b/note` appears.
         let mut index = LinkIndex::new();
         index.root_path = Some("/v".to_string());
         for path in [
             "/v/A/note.md",
             "/v/a/note.md",
             "/v/b/note.md",
-            "/v/a/x.txt",
             "/v/a/x.txt.md",
             "/v/c/other.md",
         ] {
             index.update_file_from_content(path, "");
         }
+        index.register_link_target("/v/a/x.txt", "/v");
         let expected: HashMap<String, usize> =
             [("a/note".to_string(), 2), ("a/x.txt".to_string(), 2)].into();
         assert_eq!(index.colliding_path_keys(), expected);
         let all = index.registered_path_keys();
         assert_eq!(all.len(), 4, "{all:?}");
         assert_eq!(all.get("b/note"), Some(&1));
+        assert_eq!(index.path_key_notes("a/x.txt"), 2);
     }
 
     #[test]

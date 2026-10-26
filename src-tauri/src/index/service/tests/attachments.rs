@@ -370,3 +370,70 @@ async fn a_saved_file_that_is_no_note_stays_a_link_target_as_a_build_files_it() 
         ])
     );
 }
+
+/// A vault with the folder `sub` registered as a context of its own, both
+/// indexes built, holding `files` (a path under the vault, as written by
+/// `std::fs::write`) and `sub/r.md` holding `[[a/old.pdf]]`; then
+/// `sub/a/old.pdf` renamed to `sub/a/new.pdf`. What `sub/r.md` says after,
+/// whether the rename reported it, and the lines of it among the backlinks of
+/// the parent's `a/old.pdf` — a path key, counted whether that file exists
+/// or not.
+async fn rename_under_nested_roots(files: &[&str]) -> (String, bool, Vec<u32>) {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
+    for file in files {
+        let path = dir.path().join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"%PDF\xff\n").unwrap();
+    }
+    std::fs::write(dir.path().join("sub/r.md"), "[[a/old.pdf]]\n").unwrap();
+    let sub = at(&root, &["sub"]);
+    ctx.add(info("ctx-child", &sub, ContextType::Folder))
+        .await
+        .unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    refresh_index_inner(&state, &ctx, &sub).await.unwrap();
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &at(&root, &["sub", "a", "old.pdf"]),
+        &at(&root, &["sub", "a", "new.pdf"]),
+    )
+    .await
+    .unwrap();
+    let r = at(&root, &["sub", "r.md"]);
+    assert!(result.skipped_files.iter().all(|f| *f == r), "{result:?}");
+    let parents = backlink_lines(&state, &ctx, &at(&root, &["a", "old.pdf"]), &r).await;
+    (
+        std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
+        result.skipped_files.contains(&r),
+        parents,
+    )
+}
+
+#[tokio::test]
+async fn a_path_link_another_root_reads_as_an_attachment_there_is_left_and_reported() {
+    // Roots `/v` and `/v/sub`: `sub/r.md`'s `[[a/old.pdf]]` is
+    // `/v/sub/a/old.pdf` under the child and `/v/a/old.pdf` under the parent.
+    // With both PDFs there it names neither alone, so renaming the child's
+    // leaves it and reports the file, and the parent's PDF keeps it as a
+    // backlink. With the parent's `a/new.pdf` there, the respelled
+    // `[[a/new.pdf]]` would name that file under the parent: left and
+    // reported too. The positive partner: with neither, it is respelled.
+    // What fails this: counting the notes alone among a root's known path
+    // keys (`file_map` in place of `registered_files`) — both links are
+    // respelled and nothing is reported.
+    assert_eq!(
+        rename_under_nested_roots(&["sub/a/old.pdf", "a/old.pdf"]).await,
+        ("[[a/old.pdf]]\n".to_string(), true, vec![1])
+    );
+    assert_eq!(
+        rename_under_nested_roots(&["sub/a/old.pdf", "a/new.pdf"]).await,
+        ("[[a/old.pdf]]\n".to_string(), true, vec![1])
+    );
+    assert_eq!(
+        rename_under_nested_roots(&["sub/a/old.pdf"]).await,
+        ("[[a/new.pdf]]\n".to_string(), false, vec![])
+    );
+}

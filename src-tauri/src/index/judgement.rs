@@ -58,19 +58,21 @@ impl<const N: usize> From<[(String, RootNotes); N]> for KnownPaths {
     }
 }
 
-/// The notes one root holds, as far as the rename can tell.
+/// The files one root holds — notes and link targets, a PDF as much as a
+/// note — as far as the rename can tell. "Note" below means any of them: a
+/// path link names an attachment by its path as it names a note.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootNotes {
-    /// Its index is built: the `Path`-key text of every note in it, with
-    /// how many of its notes fold to that key
+    /// Its index is built: the `Path`-key text of every file in it, with
+    /// how many of its files fold to that key
     /// (`LinkIndex::registered_path_keys`). More than one is a collision —
     /// `A/note.md` and `a/note.md` on a file system that keeps case — and a
-    /// link filed under that key names neither note alone.
+    /// link filed under that key names neither file alone.
     Known(HashMap<String, usize>),
     /// Its index is built and it is the only root holding the renamed file
-    /// or a referrer: the `Path` keys two or more of its notes fold to, with
+    /// or a referrer: the `Path` keys two or more of its files fold to, with
     /// how many (`LinkIndex::colliding_path_keys`), and for a file rename
-    /// the new name's key with how many notes fold to it now, one or none
+    /// the new name's key with how many files fold to it now, one or none
     /// included (`LinkIndex::path_key_notes`) — and not the rest. With one
     /// holding root, a path link matched under it is read by no other root,
     /// and under it the old text reads as the renamed file's own key and the

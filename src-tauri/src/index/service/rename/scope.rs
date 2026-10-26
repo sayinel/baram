@@ -206,7 +206,8 @@ fn spelled_from(
     here.to_str().map(str::to_string)
 }
 
-/// What each of `holding` knows of its notes, by its root: `Known` with
+/// What each of `holding` knows of its files — notes and link targets — by
+/// its root: `Known` with
 /// `LinkIndex::registered_path_keys` when its index is built for that
 /// registration, `Unknown` when it is not — a build that failed, or a
 /// context removed since. An `Unknown` root never lets a path link through
