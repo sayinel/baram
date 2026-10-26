@@ -48,14 +48,6 @@ impl Prefix {
             Prefix::Disk(_) => 2,
         }
     }
-
-    /// Whether the path after the prefix is separated by `\` alone (std's `is_verbatim`).
-    fn is_verbatim(&self) -> bool {
-        matches!(
-            self,
-            Prefix::Verbatim(_) | Prefix::VerbatimUnc(..) | Prefix::VerbatimDisk(_)
-        )
-    }
 }
 
 /// The Windows prefix `input` starts with, as std reads it; `None` when it has none, and
@@ -186,10 +178,14 @@ pub(crate) fn letters(path: &str, windows: bool) -> Option<Letters> {
     let (root, rest, separators): (Root, &str, &[char]) = if windows {
         let prefix = prefix_kind(path, true)?;
         let rest = path.get(prefix.len()..).unwrap_or("");
-        let separators: &[char] = if prefix.is_verbatim() {
-            &['\\']
-        } else {
-            &['/', '\\']
+        // After a drive or a share written verbatim — what `canonicalize` gives on Windows,
+        // so a vault's `vault.path` there — `/` separates too: that is how `PathBuf::push`
+        // reads a path pushed onto such a base, and so how `paths::fold` read a path argument
+        // before these letters. Only after any other `\\?\` prefix does `\` alone separate,
+        // as std reads it.
+        let separators: &[char] = match prefix {
+            Prefix::Verbatim(_) => &['\\'],
+            _ => &['/', '\\'],
         };
         let root = match prefix {
             Prefix::Disk(drive) if rest.starts_with(['/', '\\']) => Root::Drive(drive),
@@ -342,18 +338,38 @@ mod tests {
         assert!(same("/vault/./a//", "/vault/a", false));
     }
 
-    /// In a verbatim path only `\` separates and `..` is still a component, as std reads it;
-    /// `..` past the root, and a path that is not absolute, are no place.
+    /// After a plain verbatim prefix only `\` separates and `..` is still a component, as std
+    /// reads it; `..` past the root, and a path that is not absolute, are no place.
     #[test]
     fn the_components_are_the_ones_std_reads() {
         assert!(same(r"\\?\C:\v\x\..", r"C:\v", true));
-        assert!(!same(r"\\?\C:\v\a/b", r"C:\v\a\b", true));
+        assert!(!same(r"\\?\pictures\a/b", r"\\?\pictures\a\b", true));
         for relative in ["C:x", r"\v", "v", "", r"C:\.."] {
             assert!(letters(relative, true).is_none(), "{relative}");
         }
         for relative in ["v", "", "/..", "/v/../.."] {
             assert!(letters(relative, false).is_none(), "{relative}");
         }
+    }
+
+    /// After a drive or a share written verbatim — `\\?\C:\`, `\\?\UNC\server\share\`, the form
+    /// `canonicalize` gives on Windows and so a vault's `vault.path` there — `/` separates too,
+    /// as `PathBuf::push` reads a path pushed onto such a base: before the letters,
+    /// `paths::fold` pushed each component, and a path argument built from `vault.path` with
+    /// `/` was read.
+    ///
+    /// What fails this: the rest after `\\?\C:` split on `\` alone — `Vault/notes/a.md` and
+    /// `notes/a.md` are then one name each, so neither input lies below the root.
+    #[test]
+    fn after_a_verbatim_drive_or_share_a_slash_separates_too() {
+        let root = letters(r"\\?\C:\Vault", true).unwrap();
+        let below = ["notes".to_string(), "a.md".to_string()];
+        for input in [r"\\?\C:\Vault/notes/a.md", r"\\?\C:\Vault\notes/a.md"] {
+            let path = letters(input, true).unwrap();
+            assert_eq!(path.below(&root), Some(&below[..]), "{input}");
+        }
+        assert!(same(r"\\?\UNC\s\h\v/a", r"\\s\h\v\a", true));
+        assert!(same(r"\\?\C:\v\x/..", r"C:\v", true));
     }
 
     /// A name stored decomposed is the same name typed composed (§390).
