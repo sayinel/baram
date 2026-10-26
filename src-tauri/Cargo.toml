@@ -40,7 +40,7 @@ clap = { version = "4", default-features = false, features = ["std", "derive", "
 # by hand in `cli/mcp/catalog.rs` (`definitions`) and dispatched by hand in
 # `cli/mcp/tools.rs` (`call`), because their arguments are read by hand (D12), so the
 # macros' argument extraction and schema generation would go unused.
-rmcp = { version = "~3.5", default-features = false, features = ["server", "transport-io"] }
+rmcp = { version = "~3.7", default-features = false, features = ["server", "transport-io"] }
 # The tools' output schemas (`cli/mcp/`). schemars 1 is already in the tree through
 # serde_with, without `derive`; the derive adds schemars_derive at the same version.
 schemars = "1"
