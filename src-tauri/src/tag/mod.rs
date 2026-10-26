@@ -229,6 +229,13 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
+/// §56m Whether `name` is one tag the body can spell — rules 2 and 4 of `rename_tag`, which
+/// hold the other two: every character `is_tag_char`, so the writers see the whole name, and
+/// `#name` read back whole by the body's reader, so it is a tag at all.
+fn spells_a_body_tag(name: &str) -> bool {
+    name.chars().all(is_tag_char) && extract_inline_tags(&format!("#{name}")) == [name]
+}
+
 /// §56m One note's rename, cut where the readers cut it (`md::cut_frontmatter`): the front
 /// matter's tag lists (`frontmatter::rename_frontmatter_tags`) and the body's `#tags`
 /// (`rename_inline`). Neither writer sees the other's part — as neither reader does — so a
@@ -256,6 +263,22 @@ fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
 ///
 /// §56m Both names lose every leading `#` first (`bare_tag`), whatever the caller passed; a
 /// name of only `#`s is then empty and refused. Names are compared as written (case counts).
+///
+/// The new name must be one tag the body can spell, or nothing is written — it goes into the
+/// body as `#new` and between the quotes of a front-matter entry. After the `#`s are off, it is
+/// accepted when:
+/// 1. it is not empty;
+/// 2. every character is `md::is_tag_char`: one `char::is_alphanumeric` accepts (Unicode
+///    Alphabetic or Numeric), `_`, `-` or `/` — so no space, quote, comma, bracket, colon,
+///    `#`, `.` or combining mark;
+/// 3. `/` only joins two non-empty parts — never first, never last, never two in a row;
+/// 4. the body's reader reads `#new` back as the whole name (`md::extract_inline_tags`).
+///
+/// Rule 4 holds 1 and 3, and on top of 2 it takes out what `is_tag_char` accepts and the
+/// reader's `\w` does not: numbers that are neither letters nor decimal digits (Unicode
+/// category No, such as `²` or `½`), and characters the standard library's newer Unicode
+/// tables count as alphanumeric that the `regex` crate's tables do not have yet (U+A7CE on
+/// this toolchain). A copy of the rule outside Rust can check 1–3; rule 4 is this reader's.
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
@@ -268,6 +291,11 @@ pub async fn rename_tag(
     let (old_tag, new_tag) = (bare_tag(old_tag), bare_tag(new_tag));
     if old_tag.is_empty() || new_tag.is_empty() {
         return Err(TagError::Custom("Tag names must not be empty".into()));
+    }
+    if !spells_a_body_tag(new_tag) {
+        return Err(TagError::Custom(format!(
+            "\"{new_tag}\" is not a tag name: use letters, numbers, _ and -, with / between parts"
+        )));
     }
     if old_tag == new_tag {
         return Ok(RenameTagResult {
@@ -727,6 +755,58 @@ mod tests {
             );
         }
         assert!(get_files_by_tag(&root, "#").await.is_err());
+    }
+
+    /// §56m A rename writes the new name into the body as `#new` and into front-matter entries
+    /// between the user's quotes, so a name the body cannot spell as one tag is refused before
+    /// anything is written. Each row breaks a different part of the rule on `rename_tag`: a
+    /// character that is not `md::is_tag_char` (quote, comma, bracket, colon, space, `@`, `.`,
+    /// `'`, a combining accent), a `/` at an end or doubled, and `²`, which `is_tag_char`
+    /// accepts but the body's reader does not read. What fails this: writing the name unchecked
+    /// (`- "#solo"` becomes `- "#a"b"`, which no YAML parser reads), or checking only one of
+    /// the two conditions (the `²` row passes `is_tag_char`, the accent row passes the reader).
+    #[tokio::test]
+    async fn a_rename_to_a_name_the_body_cannot_spell_is_refused_before_any_write() {
+        assert!(is_tag_char('²') && !is_tag_char('\u{301}'));
+        assert_eq!(extract_inline_tags("#cafe\u{301}"), ["cafe\u{301}"]);
+        let note = "---\ntags:\n  - \"#solo\"\n  - 'solo'\n---\n본문 #solo\n";
+        for bad in [
+            "a\"b",
+            "x, y",
+            "x]",
+            "a: b",
+            "a #b",
+            "a b",
+            "@at",
+            "a.b",
+            "dad's",
+            "cafe\u{301}",
+            "/a",
+            "a/",
+            "a//b",
+            "a²",
+        ] {
+            let (d, root) = vault(note).await;
+            let refused = rename_tag(&root, "solo", bad).await;
+            assert!(refused.is_err(), "{bad:?}");
+            assert_eq!(read(&d).await, note, "{bad:?}");
+        }
+        for (good, written) in [
+            ("focus", "focus"),
+            ("#Focus2", "Focus2"),
+            ("project/x", "project/x"),
+            ("할-일", "할-일"),
+            ("deep_work", "deep_work"),
+        ] {
+            let (d, root) = vault(note).await;
+            let r = rename_tag(&root, "solo", good).await.unwrap();
+            assert_eq!(r.occurrences_replaced, 3, "{good:?}");
+            assert_eq!(
+                read(&d).await,
+                format!("---\ntags:\n  - \"#{written}\"\n  - '{written}'\n---\n본문 #{written}\n"),
+                "{good:?}"
+            );
+        }
     }
 
     /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match
