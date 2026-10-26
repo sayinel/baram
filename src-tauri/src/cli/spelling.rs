@@ -178,11 +178,12 @@ pub(crate) fn letters(path: &str, windows: bool) -> Option<Letters> {
     let (root, rest, separators): (Root, &str, &[char]) = if windows {
         let prefix = prefix_kind(path, true)?;
         let rest = path.get(prefix.len()..).unwrap_or("");
-        // After a drive or a share written verbatim — what `canonicalize` gives on Windows,
-        // so a vault's `vault.path` there — `/` separates too: that is how `PathBuf::push`
-        // reads a path pushed onto such a base, and so how `paths::fold` read a path argument
-        // before these letters. Only after any other `\\?\` prefix does `\` alone separate,
-        // as std reads it.
+        // After a drive written verbatim, and after the `\` that ends the share of a verbatim
+        // UNC path — what `canonicalize` gives on Windows, so a vault's `vault.path` there —
+        // `/` separates too: that is how `PathBuf::push` reads a path pushed onto such a base,
+        // and so how `paths::fold` read a path argument before these letters. The prefix
+        // itself is read as std reads it, so in `\\?\UNC\server\share/x` the share is
+        // `share/x`. After any other `\\?\` prefix `\` alone separates, as std reads it.
         let separators: &[char] = match prefix {
             Prefix::Verbatim(_) => &['\\'],
             _ => &['/', '\\'],
@@ -394,11 +395,12 @@ mod tests {
         }
     }
 
-    /// After a drive or a share written verbatim — `\\?\C:\`, `\\?\UNC\server\share\`, the form
-    /// `canonicalize` gives on Windows and so a vault's `vault.path` there — `/` separates too,
-    /// as `PathBuf::push` reads a path pushed onto such a base: before the letters,
-    /// `paths::fold` pushed each component, and a path argument built from `vault.path` with
-    /// `/` was read.
+    /// After a drive written verbatim, and after the `\` that ends the share of a verbatim UNC
+    /// path — `\\?\C:\`, `\\?\UNC\server\share\`, the form `canonicalize` gives on Windows and
+    /// so a vault's `vault.path` there — `/` separates too, as `PathBuf::push` reads a path
+    /// pushed onto such a base: before the letters, `paths::fold` pushed each component, and a
+    /// path argument built from `vault.path` with `/` was read. The share itself ends at a `\`
+    /// only, as std's prefix reading has it: `\\?\UNC\s\h/v` names the share `h/v`.
     ///
     /// What fails this: the rest after `\\?\C:` split on `\` alone — `Vault/notes/a.md` and
     /// `notes/a.md` are then one name each, so neither input lies below the root.
@@ -412,6 +414,7 @@ mod tests {
         }
         assert!(same(r"\\?\UNC\s\h\v/a", r"\\s\h\v\a", true));
         assert!(same(r"\\?\C:\v\x/..", r"C:\v", true));
+        assert!(!same(r"\\?\UNC\s\h/v", r"\\s\h\v", true));
     }
 
     /// A name stored decomposed is the same name typed composed (§390).
