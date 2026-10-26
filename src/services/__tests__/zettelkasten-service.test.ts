@@ -185,6 +185,22 @@ describe("promoteFleeting", () => {
     expect(call[1]).toContain("tags: [idea, todo]");
   });
 
+  // §96 What turns this red: writing the title as typed — `title: Plan: v2` is a mapping, not
+  // a string, and `title: #1` is a comment.
+  it("writes a title YAML reads back as typed", async () => {
+    readFile.mockResolvedValueOnce(
+      "---\nid: 202607051530\ncreated: 2026-07-05T15:30\ntags: []\n---\n\nseed\n",
+    );
+    const res = await promoteFleeting(
+      "/z",
+      "/z/inbox/202607051530.md",
+      "Plan: v2 #1",
+    );
+    const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
+    const fm = /^---\n([\s\S]*?)\n---/.exec(call[1])![1];
+    expect(parse(fm)).toMatchObject({ title: "Plan: v2 #1" });
+  });
+
   // §56m What turns these red: rewriting the carried tags unquoted — `"#solo"` became
   // `tags: [#solo, idea]`, which YAML cannot parse, so the promoted note's front matter
   // (id, title, created) was unreadable too.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
+import { parseNoteTitleInfo } from "../parse-note-title";
 import {
   buildFleetingNote,
   buildPermanentNote,
@@ -47,6 +48,35 @@ describe("buildPermanentNote", () => {
     expect(content).toContain("title: TCP/IP 정리");
     expect(content).toContain("# TCP/IP 정리");
   });
+
+  // §94 What turns this red: writing the title as typed — `Plan: v2` made `title:` a mapping,
+  // `#1 idea` a comment, `- list` a sequence, and several did not parse at all.
+  it.each([
+    "Plan: v2",
+    "#1 idea",
+    "a #b",
+    "- list",
+    "[draft",
+    "{x",
+    "'quoted",
+    '"quoted"',
+    'He said "hi"',
+    "it's",
+    "2024",
+    "yes",
+    "@home",
+  ])(
+    "writes the title %j so YAML and the note-title reader read it back",
+    (title) => {
+      const { filename, content } = buildPermanentNote({
+        id: "202607051530",
+        title,
+        created: "2026-07-05T15:30",
+      });
+      expect(frontmatter(content)).toMatchObject({ title });
+      expect(parseNoteTitleInfo(filename, content).title).toBe(title);
+    },
+  );
 });
 
 describe("buildFleetingNote", () => {

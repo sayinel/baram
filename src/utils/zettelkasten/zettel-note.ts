@@ -5,6 +5,7 @@ import {
   readFrontmatterLists,
   writeFrontmatterList,
 } from "../markdown/frontmatter-list";
+import { yamlString } from "../markdown/yaml-scalar";
 import { tagName } from "../tags/tag-name";
 
 const RESERVED_CHARS = ["/", "\\", ":", "*", "?", '"', "<", ">", "|", "#"];
@@ -42,7 +43,8 @@ export function buildPermanentNote(input: {
   const content =
     `---\n` +
     `id: ${id}\n` +
-    `title: ${title}\n` +
+    // §94 Quoted when YAML would not read the title back as typed (`Plan: v2`, `#1 idea`).
+    `title: ${yamlString(title)}\n` +
     `created: ${created}\n` +
     `tags: []\n` +
     `aliases: []\n` +

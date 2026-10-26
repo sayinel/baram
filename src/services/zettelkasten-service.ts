@@ -7,6 +7,7 @@ import {
   writeFile,
 } from "../ipc/invoke";
 import { useZettelIndexStore } from "../stores/zettelkasten/zettel-index";
+import { yamlString } from "../utils/markdown/yaml-scalar";
 import { extractLeadingId } from "../utils/zettelkasten/parse-note-title";
 import {
   generateZettelId,
@@ -133,7 +134,7 @@ export async function promoteFleeting(
   const content =
     `---\n` +
     `id: ${id}\n` +
-    `title: ${title}\n` +
+    `title: ${yamlString(title)}\n` +
     `created: ${created}\n` +
     `${tags}\n` +
     `aliases: []\n` +
