@@ -313,10 +313,78 @@ jobs:
       - name: Cargo test
         run: npm run rust:_test
 
+  # ── Windows Rust (the Windows half of the crate, on every rust change) ─
+  # ‼️ WHY THIS EXISTS. Before this job no workflow compiled the crate's tests on
+  # Windows: the jobs above run on ubuntu and macOS, and release.yml's
+  # windows-2025 leg builds the release binary on a `v*` tag without running a
+  # test. The Windows half of the crate was first compiled on release day, and
+  # its tests had never run on Windows.
+  #
+  # What THIS job answers — all three depend on the diff, which is why it is
+  # gated on the rust path filter and runs per PR, like the macos job:
+  #   1. `windows-2025` — the label release.yml builds the Windows installer
+  #      on — still resolves to a runner
+  #   2. the `cfg(windows)` code (in export/pandoc_images.rs,
+  #      protocol/html_preview.rs and plugin/storage.rs today) compiles at all —
+  #      ubuntu and macOS never see it
+  #   3. the tests still mean something where the path separator is `\`, a path
+  #      starts with a drive letter, and `canonicalize` answers with a verbatim
+  #      `\\?\C:\…` path. This crate is mostly paths, and the `cfg!(windows)`
+  #      arms in the link index and the rename are taken only here.
+  #
+  # What it deliberately does NOT do:
+  #   - no `tauri build`, for the same reason the macos job has none: nothing in
+  #     a PR exercises the release profile. Clippy already compiles --all-targets.
+  #   - no rustfmt, literal parity or pandoc smoke: their answers do not depend on
+  #     the platform, and the ubuntu rust job owns them.
+  windows:
+    needs: [changes]
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: windows-2025
+    # Measured on windows-2025 (2026-10-26): 16m26s with no cache, the 2m20s cache
+    # save included; 5m08s with one. 30 is the macos job's figure and ~1.8x the
+    # cold run.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+
+      # Pin must be a master-history SHA (release-branch SHAs can be GC'd);
+      # the toolchain is selected via the input, not the ref name.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: clippy
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: windows
+
+      # ‼️ `shell: bash` on each `run:` below is load-bearing: the default shell on a
+      # Windows runner is PowerShell, which is how v0.7.3's first tag died in
+      # release.yml (.claude/docs/ci-contract.md).
+      - name: Build frontend (required for Rust compilation)
+        shell: bash
+        run: npm run build
+
+      # The `cfg(windows)` code paths, linted where they actually compile.
+      - name: Clippy
+        shell: bash
+        run: npm run rust:_clippy
+
+      # Not a duplicate of the ubuntu run, for point 3 above: a test that spells a
+      # path as `/vault/a.md`, or compares a path with a string, passes on ubuntu
+      # and macOS and asks a different question here. Clippy above already
+      # compiled --all-targets, so this is the run, not another build.
+      - name: Cargo test
+        shell: bash
+        run: npm run rust:_test
+
   # ── CI Gate ────────────────────────────────────────────────────────
   ci-pass:
     if: always()
-    needs: [changes, lint, security, deny, test, rust, macos]
+    needs: [changes, lint, security, deny, test, rust, macos, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -331,6 +399,7 @@ jobs:
           TEST: ${{ needs.test.result }}
           RUST: ${{ needs.rust.result }}
           MACOS: ${{ needs.macos.result }}
+          WINDOWS: ${{ needs.windows.result }}
         run: |
           fail() { echo "::error::$1"; exit 1; }
           # These must succeed on every event — a skip here means something
@@ -354,5 +423,12 @@ jobs:
           if [[ "$MACOS" != "success" ]]; then
             [[ "$EVENT" == "pull_request" && "$RUST_NEEDED" == "false" && "$MACOS" == "skipped" ]] \
               || fail "macos: $MACOS (event=$EVENT, rust-needed=$RUST_NEEDED)"
+          fi
+          # windows shares that filter as well, so it earns the same single exemption
+          # and no other. It is the only place the crate's tests run on Windows —
+          # release.yml builds the Windows binary but runs no test.
+          if [[ "$WINDOWS" != "success" ]]; then
+            [[ "$EVENT" == "pull_request" && "$RUST_NEEDED" == "false" && "$WINDOWS" == "skipped" ]] \
+              || fail "windows: $WINDOWS (event=$EVENT, rust-needed=$RUST_NEEDED)"
           fi
           echo "All checks passed."
