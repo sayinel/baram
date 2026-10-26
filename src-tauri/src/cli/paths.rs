@@ -479,6 +479,45 @@ mod tests {
         }
     }
 
+    /// On Windows, through `locate` itself: a relative part that starts with a drive is refused
+    /// before it is pushed, and for `baram mcp` an absolute path is put onto the verbatim root
+    /// `canonicalize` gives, whether it is written with that `\\?\` prefix and `\`, with `/`
+    /// after it — a path built from the `vault.path` a tool reports — or as the plain drive
+    /// path a user types. Runs once a Windows job runs the tests.
+    ///
+    /// What fails this: `locate` pushing a part without `pushed`'s check (`C:x` then replaces
+    /// the root and is read against drive `C:`'s current directory); the letters reading
+    /// `\\?\D:` and `D:` as two places, or `/` after it as part of a name.
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_a_drive_part_is_refused_and_a_verbatim_root_takes_each_spelling_of_it() {
+        let (_t, base) = tree(&["vault/notes"]);
+        let root = base.join("vault");
+        let error = locate(&vault_at(&root), "notes/C:x").unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument, "{}", error.message);
+        let canonical = root.to_string_lossy().into_owned();
+        let plain = canonical
+            .strip_prefix(r"\\?\")
+            .expect("canonicalize gives a verbatim path")
+            .to_string();
+        let vault = Vault {
+            spellings: Some(vec![canonical.clone()]),
+            ..vault_at(&root)
+        };
+        for input in [
+            format!(r"{canonical}\notes\a.md"),
+            format!("{canonical}/notes/a.md"),
+            format!(r"{canonical}\notes/a.md"),
+            format!(r"{plain}\notes\a.md"),
+        ] {
+            assert_eq!(
+                locate(&vault, &input).unwrap(),
+                root.join("notes").join("a.md"),
+                "{input}"
+            );
+        }
+    }
+
     #[test]
     fn printed_paths_are_relative_and_slash_separated() {
         let (_t, base) = tree(&["vault/notes"]);

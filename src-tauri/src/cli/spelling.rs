@@ -243,15 +243,12 @@ mod tests {
         Prefix::Unc(server.into(), share.into())
     }
 
-    /// The table std's `parse_prefix` gives, read from its source (Rust 1.98.1) — this runs
-    /// on every host, so the Windows reading is pinned where CI has no Windows job.
-    ///
-    /// What fails this: a branch of the port that reads differently from std's — the
-    /// verbatim form taken with `/` in it, `UNC\` looked for past the eighth byte, a UNC
-    /// prefix accepted without a share.
-    #[test]
-    fn the_prefix_is_read_as_std_reads_it_on_windows() {
-        for (input, prefix) in [
+    /// The table std's `parse_prefix` gives, read from its source (Rust 1.98.1): each input
+    /// with the prefix the port reads in it. `the_prefix_is_read_as_std_reads_it_on_windows`
+    /// pins it on every host; `the_port_reads_each_prefix_as_this_hosts_std_does` checks it
+    /// against the std that runs, on Windows.
+    fn prefix_table() -> Vec<(&'static str, Option<Prefix>)> {
+        vec![
             (
                 r"\\?\UNC\server\share\x",
                 Some(Prefix::VerbatimUnc("server".into(), "share".into())),
@@ -280,11 +277,56 @@ mod tests {
             ("/usr", None),
             ("notes", None),
             ("", None),
-        ] {
+        ]
+    }
+
+    /// `prefix_table` holds on every host, so the Windows reading is pinned where CI has no
+    /// Windows job.
+    ///
+    /// What fails this: a branch of the port that reads differently from std's — the
+    /// verbatim form taken with `/` in it, `UNC\` looked for past the eighth byte, a UNC
+    /// prefix accepted without a share.
+    #[test]
+    fn the_prefix_is_read_as_std_reads_it_on_windows() {
+        for (input, prefix) in prefix_table() {
             assert_eq!(prefix_kind(input, true), prefix, "{input}");
         }
         assert_eq!(prefix_kind(r"\\?\C:\x", false), None);
         assert_eq!(prefix_kind("C:x", false), None);
+    }
+
+    /// On Windows, the port against the std that runs: for each input of `prefix_table`, the
+    /// prefix `Path::components` reads first — kind, parts and length — is the port's. The
+    /// table was read from std's source; this asks std itself, so a std that reads a prefix
+    /// differently turns this red where the table cannot.
+    ///
+    /// What fails this: the port and this host's std disagreeing on any input of the table.
+    #[cfg(windows)]
+    #[test]
+    fn the_port_reads_each_prefix_as_this_hosts_std_does() {
+        use std::path::{Component, Path, Prefix as Std};
+        let text = |s: &std::ffi::OsStr| s.to_string_lossy().into_owned();
+        for (input, _) in prefix_table() {
+            let from_std = match Path::new(input).components().next() {
+                Some(Component::Prefix(prefix)) => Some((
+                    match prefix.kind() {
+                        Std::Verbatim(x) => Prefix::Verbatim(text(x)),
+                        Std::VerbatimUNC(x, y) => Prefix::VerbatimUnc(text(x), text(y)),
+                        Std::VerbatimDisk(drive) => Prefix::VerbatimDisk(drive),
+                        Std::DeviceNS(x) => Prefix::DeviceNs(text(x)),
+                        Std::UNC(x, y) => Prefix::Unc(text(x), text(y)),
+                        Std::Disk(drive) => Prefix::Disk(drive),
+                    },
+                    prefix.as_os_str().len(),
+                )),
+                _ => None,
+            };
+            let from_port = prefix_kind(input, true).map(|prefix| {
+                let len = prefix.len();
+                (prefix, len)
+            });
+            assert_eq!(from_port, from_std, "{input}");
+        }
     }
 
     /// The bytes a prefix takes are std's `Prefix::len`: what follows is the path's root.
