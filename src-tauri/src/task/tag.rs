@@ -281,6 +281,21 @@ mod tests {
         assert_eq!(apply_tag(line, "someday", false).unwrap(), line);
     }
 
+    /// §56m The toggle sees a tag where the indexer's reader (`md::INLINE_TAG_RE`) sees one:
+    /// a combining mark after `#someday` (U+0301) belongs to that tag, so it is another tag
+    /// and stays, while `²` (category No) is not a tag character, so `#someday²` is
+    /// `#someday` followed by text and is removed. What fails this: a predicate other than the
+    /// reader's character class — `char::is_alphanumeric`, as it was, reverses both rows.
+    #[test]
+    fn the_toggle_ends_a_tag_where_the_reader_does() {
+        let marked = "- [ ] 초안 #someday\u{301}";
+        assert_eq!(apply_tag(marked, "someday", false).unwrap(), marked);
+        assert_eq!(
+            apply_tag("- [ ] 초안 #someday² 끝", "someday", false).unwrap(),
+            "- [ ] 초안² 끝"
+        );
+    }
+
     /// 중첩 태그도 다른 태그다 — `#someday/maybe`는 `#someday`가 아니다.
     #[test]
     fn does_not_match_a_nested_tag_with_the_same_prefix() {
@@ -428,11 +443,12 @@ mod tests {
             ("- [ ] 여행 #someday-", false),
             ("- [ ] 여행 #someday/maybe", false),
             ("- [ ] 여행 #someday_maybe", false),
-            // ‼️ 읽는 쪽과 쓰는 쪽이 **지금도** 갈리는 유일한 부류. `\p{No}`(`½`)는
-            // `is_alphanumeric()`에는 들어가고 `regex`의 `\w`에는 안 들어가므로,
-            // 인덱서는 이 줄을 `["someday"]`로 읽고 여기서는 다른 태그로 본다.
-            // 그래서 아젠다가 "해제"를 비활성으로 그린다(`somedayVerdict`).
-            ("- [ ] 여행 #someday½", false),
+            // §56m `is_tag_char`를 읽는 쪽의 클래스(`md::TAG_PART_CLASS`)로 지은 뒤로
+            // 두 쪽이 같은 줄을 같게 읽는다. `\p{No}`(`½`)는 `\w`에 없어 이 줄은 태그
+            // `someday`이고, 결합 부호(U+0301)는 `\w`에 있어 `#someday\u{301}`은 다른 태그다.
+            // 한때 술어가 `is_alphanumeric()`이라 두 줄 모두 반대였다.
+            ("- [ ] 여행 #someday½", true),
+            ("- [ ] 여행 #someday\u{301}", false),
             ("- [ ] 여행 #somedaymaybe", false),
             ("- [ ] 여행 #someday언젠가", false),
             ("- [ ] 여행 #someday2", false),

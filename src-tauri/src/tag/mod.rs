@@ -230,11 +230,10 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
-/// §56m Whether `name` is one tag the body can spell — rules 2 and 4 of `rename_tag`, which
-/// hold the other two: every character `is_tag_char`, so the writers see the whole name, and
-/// `#name` read back whole by the body's reader, so it is a tag at all.
+/// §56m Whether `name` is one tag the body can spell — the rule on `rename_tag`: the body's
+/// reader reads `#name` back as the whole name.
 fn spells_a_body_tag(name: &str) -> bool {
-    name.chars().all(is_tag_char) && extract_inline_tags(&format!("#{name}")) == [name]
+    extract_inline_tags(&format!("#{name}")) == [name]
 }
 
 /// §56m One note's rename, cut where the readers cut it (`md::cut_frontmatter`): the front
@@ -269,17 +268,17 @@ fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
 /// body as `#new` and between the quotes of a front-matter entry. After the `#`s are off, it is
 /// accepted when:
 /// 1. it is not empty;
-/// 2. every character is `md::is_tag_char`: one `char::is_alphanumeric` accepts (Unicode
-///    Alphabetic or Numeric), `_`, `-` or `/` — so no space, quote, comma, bracket, colon,
-///    `#`, `.` or combining mark;
-/// 3. `/` only joins two non-empty parts — never first, never last, never two in a row;
-/// 4. the body's reader reads `#new` back as the whole name (`md::extract_inline_tags`).
+/// 2. every character is one the body's reader takes in a tag (`md::is_tag_char`, built from
+///    the reader's own class): a Unicode word character — Alphabetic, a mark, a decimal digit,
+///    connector punctuation (`_`, `‿`) or a join control (ZWNJ, ZWJ) — a Hangul-script
+///    character, `-` or `/`. Not a space, quote, comma, bracket, colon, `#`, `.`, nor a number
+///    that is not a decimal digit (`²`, `½`);
+/// 3. `/` only joins two non-empty parts — never first, never last, never two in a row.
 ///
-/// Rule 4 holds 1 and 3, and on top of 2 it takes out what `is_tag_char` accepts and the
-/// reader's `\w` does not: numbers that are neither letters nor decimal digits (Unicode
-/// category No, such as `²` or `½`), and characters the standard library's newer Unicode
-/// tables count as alphanumeric that the `regex` crate's tables do not have yet (U+A7CE on
-/// this toolchain). A copy of the rule outside Rust can check 1–3; rule 4 is this reader's.
+/// The check is one question to the reader, which holds all three: does it read `#new` back
+/// as the whole name (`md::extract_inline_tags`)? The class is the `regex` crate's Unicode
+/// tables, so a copy outside Rust agrees where its own tables do; a character the standard
+/// library knows and those tables do not yet (U+A7CE on this toolchain) is refused.
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
@@ -295,7 +294,7 @@ pub async fn rename_tag(
     }
     if !spells_a_body_tag(new_tag) {
         return Err(TagError::Custom(format!(
-            "\"{new_tag}\" is not a tag name: use letters, numbers, _ and -, with / between parts"
+            "\"{new_tag}\" is not a tag a note's body can spell"
         )));
     }
     if old_tag == new_tag {
@@ -761,32 +760,19 @@ mod tests {
 
     /// §56m A rename writes the new name into the body as `#new` and into front-matter entries
     /// between the user's quotes, so a name the body cannot spell as one tag is refused before
-    /// anything is written. Each row breaks a different part of the rule on `rename_tag`: a
-    /// character that is not `md::is_tag_char` (quote, comma, bracket, colon, space, `@`, `.`,
-    /// `'`, a combining accent), a `/` at an end or doubled, and `²`, which `is_tag_char`
-    /// accepts but the body's reader does not read. What fails this: writing the name unchecked
-    /// (`- "#solo"` becomes `- "#a"b"`, which no YAML parser reads), or checking only one of
-    /// the two conditions (the `²` row passes `is_tag_char`, the accent row passes the reader).
+    /// anything is written. The rows: characters outside the reader's alphabet (quote, comma,
+    /// bracket, colon, space, `@`, `.`, `'`), a `/` at an end or doubled, and numbers that are
+    /// not decimal digits (`²`, `½`) or that the `regex` crate's tables do not have yet
+    /// (U+A7CE), which `char::is_alphanumeric` accepts. What fails this: writing the name
+    /// unchecked (`- "#solo"` becomes `- "#a"b"`, which yaml 2.9.1 and js-yaml 4.3.2 both
+    /// reject).
     #[tokio::test]
     async fn a_rename_to_a_name_the_body_cannot_spell_is_refused_before_any_write() {
-        assert!(is_tag_char('²') && !is_tag_char('\u{301}'));
-        assert_eq!(extract_inline_tags("#cafe\u{301}"), ["cafe\u{301}"]);
+        assert!('\u{A7CE}'.is_alphanumeric() && '½'.is_alphanumeric());
         let note = "---\ntags:\n  - \"#solo\"\n  - 'solo'\n---\n본문 #solo\n";
         for bad in [
-            "a\"b",
-            "x, y",
-            "x]",
-            "a: b",
-            "a #b",
-            "a b",
-            "@at",
-            "a.b",
-            "dad's",
-            "cafe\u{301}",
-            "/a",
-            "a/",
-            "a//b",
-            "a²",
+            "a\"b", "x, y", "x]", "a: b", "a #b", "a b", "@at", "a.b", "dad's", "/a", "a/", "a//b",
+            "a²", "½", "\u{A7CE}",
         ] {
             let (d, root) = vault(note).await;
             let refused = rename_tag(&root, "solo", bad).await;
@@ -808,6 +794,63 @@ mod tests {
                 format!("---\ntags:\n  - \"#{written}\"\n  - '{written}'\n---\n본문 #{written}\n"),
                 "{good:?}"
             );
+        }
+    }
+
+    /// §56m Renaming a tag leaves a longer tag that only starts with it: `#น้ำ` is one tag to the
+    /// reader (U+0E49 is a mark, and marks are tag characters), so renaming `น` must not touch
+    /// it, nor renaming `हिन` touch `#हिन्दी` (virama U+094D). What fails this: a body writer
+    /// whose idea of a tag character is not the reader's — with `char::is_alphanumeric` it
+    /// wrote `#x้ำ #y्दी`. The pair: the same renames find `#น` and `#हिन` standing alone.
+    #[tokio::test]
+    async fn renaming_a_tag_leaves_a_longer_tag_that_starts_with_it() {
+        let body = "본문 #น้ำ #हिन्दी\n";
+        let (d, root) = vault(body).await;
+        assert_eq!(
+            rename_tag(&root, "น", "x")
+                .await
+                .unwrap()
+                .occurrences_replaced,
+            0
+        );
+        assert_eq!(
+            rename_tag(&root, "हिन", "y")
+                .await
+                .unwrap()
+                .occurrences_replaced,
+            0
+        );
+        assert_eq!(read(&d).await, body);
+
+        let (d, root) = vault("본문 #น #हिन\n").await;
+        rename_tag(&root, "น", "x").await.unwrap();
+        rename_tag(&root, "हिन", "y").await.unwrap();
+        assert_eq!(read(&d).await, "본문 #x #y\n");
+    }
+
+    /// §56m A word the body's reader reads as one tag is a name a rename may write, whatever
+    /// its script: a virama (`हिन्दी`), a Thai tone mark (`น้ำ`), a decomposed accent or sound
+    /// mark (NFD `cafe\u{301}`, `は\u{309a}`) and a zero-width non-joiner inside a Persian word.
+    /// What fails this: checking the name against a narrower alphabet than the reader's (all
+    /// five were refused while the check used `char::is_alphanumeric`).
+    #[tokio::test]
+    async fn a_rename_writes_a_word_the_reader_reads_as_one_tag_in_any_script() {
+        for name in [
+            "हिन्दी",
+            "น้ำ",
+            "cafe\u{301}",
+            "は\u{309a}",
+            "می\u{200c}خواهم",
+        ] {
+            let (d, root) = vault("---\ntags: [solo]\n---\n본문 #solo\n").await;
+            let r = rename_tag(&root, "solo", name).await;
+            assert_eq!(r.map(|r| r.occurrences_replaced).ok(), Some(2), "{name:?}");
+            assert_eq!(
+                read(&d).await,
+                format!("---\ntags: [{name}]\n---\n본문 #{name}\n"),
+                "{name:?}"
+            );
+            assert_eq!(extract_inline_tags(&format!("#{name}")), [name], "{name:?}");
         }
     }
 

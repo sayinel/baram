@@ -7,6 +7,13 @@ pub mod literal;
 use regex::Regex;
 use std::sync::LazyLock;
 
+/// §56m The characters of one part of a tag name, as a regex class: a Unicode word character
+/// (`\w`: Alphabetic, a mark, a decimal digit, connector punctuation or a join control), a
+/// Hangul-script character, or `-`. The reader (`INLINE_TAG_RE`) and the predicate
+/// (`is_tag_char`) are both built from it, so they cannot name different sets — written apart,
+/// the predicate was `char::is_alphanumeric`, and renaming `#น` rewrote the start of `#น้ำ`.
+const TAG_PART_CLASS: &str = r"[\w\p{Script=Hangul}-]";
+
 /// 인라인 #tag: #tag, #parent/child, #한국어태그, #deep-work
 ///
 /// ‼️ 하이픈은 태그 글자다. 한때 아니었고, 그것이 읽는 쪽과 쓰는 쪽을 갈랐다:
@@ -16,22 +23,27 @@ use std::sync::LazyLock;
 /// (`tag::rename_tag`도 무동작이었지만 원인은 달랐다 — 아래 `is_tag_char` 참조.)
 /// 넓히는 쪽이 Obsidian과도 같다 — 그쪽 태그 어휘가 영숫자·`_`·`-`·`/`다.
 pub static INLINE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}-]+(?:/[\w\p{Script=Hangul}-]+)*)").unwrap()
+    Regex::new(&format!(
+        r"(?:^|[\s\(])#({TAG_PART_CLASS}+(?:/{TAG_PART_CLASS}+)*)"
+    ))
+    .unwrap()
 });
+
+/// One character that `TAG_PART_CLASS` takes, or `/`.
+static TAG_CHAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"\A(?:{TAG_PART_CLASS}|/)\z")).unwrap());
 
 /// 태그 이름에 쓸 수 있는 글자 — **경계 판정의 어휘**다. 본문에서 태그를 *찾아 고치는*
 /// 쪽은 이것을 쓴다: `task::tag::find_tag`(태스크 줄의 태그 토글)와 `tag::rename_tag`의
 /// 본문 쪽(`tag::ends_tag`, vault 전역 이름 바꾸기). 프론트매터 항목은 이것이 아니라 항목의
 /// 경계와 `/`로 가른다(`tag::frontmatter`). `tag::rename_tag`는 새 이름도 이것으로 거른다.
 ///
-/// `INLINE_TAG_RE`(읽는 쪽)와 같은 집합을 뜻하되 표현이 다르다 — 하나는 정규식,
-/// 하나는 술어다. 가장자리에서는 갈린다: 술어만 받는 것은 숫자 범주 No(`²`)와 표준
-/// 라이브러리의 더 새 유니코드 표에만 있는 글자, 정규식만 받는 것은 결합 부호(U+0301)
-/// 같은 `\w`의 나머지다(`tag::rename_tag`는 새 이름에서 둘 다 거른다). 둘이 갈리면 패널이 보여준 이름으로 아무것도 고칠 수 없게 되므로
-/// `a_hyphen_is_part_of_the_tag_name`과 `the_predicate_agrees_with_the_reader`가
-/// 같은 표를 양쪽에 대고 검사한다.
+/// `INLINE_TAG_RE`(읽는 쪽)와 같은 정의(`TAG_PART_CLASS`)에서 지은 같은 글자 집합에 `/`를
+/// 더한 것이다 — 하나는 정규식, 하나는 술어다. 둘이 갈리면 패널이 보여준 이름으로 아무것도
+/// 고칠 수 없거나 남의 태그 머리를 고쳐 쓰게 되므로 `the_predicate_agrees_with_the_reader`가
+/// 모든 코드 포인트를 양쪽에 대고 검사한다.
 pub fn is_tag_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-' || c == '/'
+    TAG_CHAR_RE.is_match(c.encode_utf8(&mut [0; 4]))
 }
 
 /// 이 줄이 코드 펜스의 여닫이인가.
@@ -230,8 +242,41 @@ mod tests {
     /// ‼️ 완전히 같은 집합은 아니다: `/`는 술어에서 그냥 글자지만 정규식에서는 마디
     /// **구분자**라, `#a//b`처럼 빈 마디가 생기는 형태에서만 갈린다. 정상적으로 쓰인
     /// 이름에서는 두 자가 같은 답을 낸다는 것이 여기서 지키는 계약이다.
+    ///
+    /// §56m Over every code point but `/`, the predicate holds exactly where the reader reads
+    /// `#c` as the one-character tag `c`. What fails this: a predicate written apart from
+    /// `TAG_PART_CLASS` — `char::is_alphanumeric`, as it was, differs on marks (U+0301), on
+    /// `‿`, on ZWNJ and on `²`.
     #[test]
     fn the_predicate_agrees_with_the_reader() {
+        let mut differ = Vec::new();
+        for c in (0..=0x10FFFF_u32).filter_map(char::from_u32) {
+            if c == '/' {
+                continue;
+            }
+            let one = c.to_string();
+            let read = INLINE_TAG_RE
+                .captures(&format!("#{c}"))
+                .and_then(|caps| caps.get(1))
+                .is_some_and(|name| name.as_str() == one);
+            if read != is_tag_char(c) {
+                differ.push(format!("U+{:04X}", c as u32));
+            }
+        }
+        assert!(
+            differ.is_empty(),
+            "{} differ: {:?}",
+            differ.len(),
+            &differ[..differ.len().min(20)]
+        );
+        for c in [
+            '\u{301}', '\u{94d}', '\u{e49}', '\u{203f}', '\u{200c}', '\u{3164}',
+        ] {
+            assert!(is_tag_char(c), "U+{:04X}", c as u32);
+        }
+        for c in ['²', '½'] {
+            assert!(!is_tag_char(c), "{c}");
+        }
         for c in "aZ0_-/가".chars() {
             assert!(is_tag_char(c), "태그 글자여야 한다: {}", c);
         }
