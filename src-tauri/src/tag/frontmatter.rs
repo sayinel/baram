@@ -31,7 +31,8 @@ static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
 /// A plain spelling YAML reads as one string holding exactly this text: letters, digits and
 /// `_-./`, single spaces between, no indicator first. The frontend's `SAFE_PLAIN`
 /// (`src/utils/markdown/yaml-scalar.ts`) written without its lookarounds, which this regex
-/// crate does not have; `tag/fixtures/frontmatter-tags.json`'s `names` pins the two together.
+/// crate does not have. The `names` rows of `tag/fixtures/frontmatter-tags.json` state the
+/// spelling each name gets, and a test here checks this port against them.
 static SAFE_PLAIN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\A[\p{L}\p{N}_][\p{L}\p{M}\p{N}_./-]*(?: [\p{L}\p{M}\p{N}_./-]+)*\z").unwrap()
 });
@@ -131,8 +132,9 @@ pub(crate) fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 /// Renames the tag `old` to `new` in the front matter's tag lists and says in how many
 /// entries. An entry is renamed when it names `old` or a child of it (`project/baram`
 /// follows `project`, as in the body); only the name is replaced, so the quotes and the `#`s
-/// written around it stay. A bare entry — no quotes, no `#` — gets the renamed name as
-/// `yaml_string` spells it, so `null` or `123` is written quoted and YAML still reads text.
+/// written around it stay. A bare entry — no quote character anywhere in it, no leading `#` —
+/// gets the renamed name as `yaml_string` spells it, so `null` or `123` is written quoted and
+/// YAML still reads text.
 /// Both names are bare (`bare_tag`).
 pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -> (String, usize) {
     let mut out = String::with_capacity(frontmatter.len());
@@ -153,7 +155,7 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
         // begins where its pointer does.
         let start = entry.start + (name.as_ptr() as usize - text.as_ptr() as usize);
         let renamed = format!("{new}{}", &name[old.len()..]);
-        let bare = !text.trim_start().starts_with(['"', '\'', '#']);
+        let bare = !text.contains(['"', '\'']) && !text.trim_start().starts_with('#');
         out.push_str(&frontmatter[copied..start]);
         out.push_str(&if bare { yaml_string(&renamed) } else { renamed });
         copied = start + name.len();

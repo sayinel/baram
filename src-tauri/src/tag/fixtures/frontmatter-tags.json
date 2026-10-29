@@ -192,7 +192,7 @@
       "why": "a # in another field and a list under another key are not tags (to YAML the # begins a comment)"
     }
   ],
-  "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and not every character is default-ignorable. For an accepted name, `bare` is how it is written into a bare list entry (no quotes, no `#`): `frontmatter::yaml_string`, the frontend's `yamlString`, which quotes a spelling YAML would read as something other than this text. The Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads this section; the app's tag-name input can read it to agree. Every row uses characters old enough to be in every Unicode table the two languages ship.",
+  "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and it has a base character (not every character is default-ignorable or a combining mark). For an accepted name, `bare` is how it is written into a bare list entry (no quotes, no `#`): `frontmatter::yaml_string`, the frontend's `yamlString`, which quotes a spelling YAML would read as something other than this text. The Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads this section; the app's tag-name input can read it to agree. Every row uses characters old enough to be in every Unicode table the two languages ship.",
   "names": [
     {
       "name": "solo",
@@ -243,6 +243,12 @@
       "why": "a decomposed (NFD) accent is a mark"
     },
     {
+      "name": "e\u0301",
+      "accepted": true,
+      "bare": "e\u0301",
+      "why": "a combining mark on a letter"
+    },
+    {
       "name": "\u306f\u309a",
       "accepted": true,
       "bare": "\u306f\u309a",
@@ -283,6 +289,12 @@
       "accepted": true,
       "bare": "_",
       "why": "an underscore alone"
+    },
+    {
+      "name": "\u216b",
+      "accepted": true,
+      "bare": "\u216b",
+      "why": "a Roman numeral is a number of category Nl, which is Alphabetic: a tag character, and plain to YAML"
     },
     {
       "name": "2024/x",
@@ -358,7 +370,7 @@
     {
       "name": "-",
       "accepted": false,
-      "why": "a dash alone, written bare, is a list marker to YAML: tags: [-] is rejected and - - is a nested list"
+      "why": "refused by choice: the writer would quote it, but an unquoted dash alone is a list marker to YAML (tags: [-] is rejected, - - is a nested list), so every list written by hand that holds this tag breaks"
     },
     {
       "name": "a\"b",
@@ -423,7 +435,7 @@
     {
       "name": "a\u00b2",
       "accepted": false,
-      "why": "a superscript two is a number but not a decimal digit (category No), and the reader's class has no such numbers"
+      "why": "a superscript two is a number of category No, which the reader's class leaves out"
     },
     {
       "name": "\u00bd",
@@ -459,6 +471,16 @@
       "name": "\ufe0f",
       "accepted": false,
       "why": "a variation selector alone, likewise"
+    },
+    {
+      "name": "\u0301",
+      "accepted": false,
+      "why": "a combining mark alone has no base character to sit on"
+    },
+    {
+      "name": "\u0301\u200c",
+      "accepted": false,
+      "why": "a mark and a ZWNJ, likewise no base character"
     }
   ]
 }

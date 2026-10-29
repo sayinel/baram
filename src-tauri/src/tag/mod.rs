@@ -232,9 +232,10 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
-/// Default-ignorable code points: drawn as nothing, Hangul fillers and ZWNJ among them.
+/// A name with no base character: only default-ignorable code points (drawn as nothing — Hangul
+/// fillers, ZWNJ, ZWJ, variation selectors) and combining marks, which have nothing to sit on.
 static INVISIBLE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\A\p{Default_Ignorable_Code_Point}*\z").unwrap());
+    LazyLock::new(|| Regex::new(r"\A[\p{Default_Ignorable_Code_Point}\p{M}]*\z").unwrap());
 
 /// §56m Why `name` cannot be a new tag name, by the rule on `rename_tag`, or `None`.
 fn refusal(name: &str) -> Option<String> {
@@ -285,20 +286,22 @@ fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
 ///    the reader's own class): a Unicode word character — Alphabetic, a mark, a decimal digit,
 ///    connector punctuation (`_`, `‿`) or a join control (ZWNJ, ZWJ) — a Hangul-script
 ///    character, `-` or `/`. Not a space, quote, comma, bracket, colon, `#`, `.`, nor a number
-///    that is not a decimal digit (`²`, `½`);
+///    of category No (`²`, `½`) — numbers of category Nl (`Ⅻ`) are Alphabetic and pass;
 /// 3. `/` only joins two non-empty parts — never first, never last, never two in a row;
-/// 4. it is not `-` alone — an unquoted `-` is a list marker to YAML (`tags: [-]` is rejected,
-///    `  - -` is a nested list), so lists written by hand with it break;
-/// 5. at least one character is not default-ignorable — a name of only Hangul fillers
-///    (U+115F, U+1160, U+3164, U+FFA0), ZWNJ, ZWJ or variation selectors shows as a blank
-///    tag. ZWNJ and ZWJ inside a word with visible letters are fine.
+/// 4. it is not `-` alone. This is a choice, not a need of the writer, which would quote it:
+///    an unquoted `-` is a list marker to YAML (`tags: [-]` is rejected, `  - -` is a nested
+///    list), so a tag of that one name breaks every list written by hand that holds it;
+/// 5. it has a base character — one that is neither default-ignorable nor a combining mark. A
+///    name of only Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), ZWNJ, ZWJ, variation
+///    selectors or marks (a lone U+0301) shows as a blank or a stray mark. ZWNJ, ZWJ and marks
+///    inside a word with letters are fine.
 ///
 /// Rules 1–3 are one question to the reader: does it read `#new` back as the whole name
 /// (`md::extract_inline_tags`)? The class is the `regex` crate's Unicode tables, so a copy
 /// outside Rust agrees where its own tables do; a character the standard library knows and
 /// those tables do not yet (U+A7CE on this toolchain) is refused.
 ///
-/// Into a bare front-matter entry (no quotes, no `#`) the name is written as the frontend's
+/// Into a bare front-matter entry (no quote character, no leading `#`) the name is written as the frontend's
 /// `yamlString` spells it (`frontmatter::yaml_string`): quoted when YAML would read the plain
 /// spelling as something else, such as `null`, `true` or `123`.
 pub async fn rename_tag(
@@ -781,9 +784,9 @@ mod tests {
     /// §56m A rename writes the new name into the body as `#new` and into front-matter entries
     /// between the user's quotes, so a name the body cannot spell as one tag is refused before
     /// anything is written. The rows: characters outside the reader's alphabet (quote, comma,
-    /// bracket, colon, space, `@`, `.`, `'`), a `/` at an end or doubled, and numbers that are
-    /// not decimal digits (`²`, `½`) or that the `regex` crate's tables do not have yet
-    /// (U+A7CE), which `char::is_alphanumeric` accepts. What fails this: writing the name
+    /// bracket, colon, space, `@`, `.`, `'`), a `/` at an end or doubled, numbers of category No
+    /// (`²`, `½`), and a letter the `regex` crate's tables do not have yet (U+A7CE) — the last
+    /// three `char::is_alphanumeric` accepts. What fails this: writing the name
     /// unchecked (`- "#solo"` becomes `- "#a"b"`, which yaml 2.9.1 and js-yaml 4.3.2 both
     /// reject).
     #[tokio::test]
@@ -879,9 +882,10 @@ mod tests {
     /// entry YAML reads it as a list marker — `tags: [-]` is rejected and `  - -` is a nested
     /// list (yaml 2.9.1, js-yaml 4.3.2). A name with no visible character — only Hangul fillers
     /// (U+3164, U+FFA0, U+115F, U+1160) or other default-ignorable code points such as ZWNJ,
-    /// ZWJ or a variation selector — shows as a blank tag. What fails this: the read-back check
-    /// alone, which takes all of them. The pair: a ZWNJ or a filler next to a visible character
-    /// is fine.
+    /// ZWJ or a variation selector, or only combining marks (a lone U+0301) — has no base
+    /// character and shows as a blank tag or a stray mark. What fails this: the read-back check
+    /// alone, which takes all of them. The pair: a ZWNJ, a filler or a mark next to a letter is
+    /// fine.
     #[tokio::test]
     async fn a_rename_to_a_dash_or_to_nothing_visible_is_refused() {
         let note = "---\ntags: [solo]\n---\n본문 #solo\n";
@@ -893,13 +897,15 @@ mod tests {
             "\u{200C}",
             "\u{200D}",
             "\u{FE0F}",
+            "\u{301}",
+            "\u{301}\u{200C}",
         ] {
             assert_eq!(extract_inline_tags(&format!("#{bad}")), [bad], "{bad:?}");
             let (d, root) = vault(note).await;
             assert!(rename_tag(&root, "solo", bad).await.is_err(), "{bad:?}");
             assert_eq!(read(&d).await, note, "{bad:?}");
         }
-        for good in ["a\u{200C}b", "\u{3164}a", "-x"] {
+        for good in ["a\u{200C}b", "\u{3164}a", "-x", "e\u{301}"] {
             let (_d, root) = vault(note).await;
             assert!(rename_tag(&root, "solo", good).await.is_ok(), "{good:?}");
         }
@@ -931,6 +937,21 @@ mod tests {
                 "{name:?}"
             );
         }
+    }
+
+    /// §56m An entry with a quote anywhere in it is not bare, so the writer leaves its spelling
+    /// as the user has it rather than adding quotes around a name that already sits next to
+    /// one: a stray trailing quote (`solo"`) renamed to `null` gives `null"`, not `"null""`.
+    /// What fails this: deciding "bare" by the entry's first character only.
+    #[tokio::test]
+    async fn an_entry_with_a_stray_quote_is_not_bare() {
+        let (d, root) = vault("---\ntags: [solo\", a]\ntags:\n  - solo'\n---\n").await;
+        let r = rename_tag(&root, "solo", "null").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags: [null\", a]\ntags:\n  - null'\n---\n"
+        );
     }
 
     /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match

@@ -36,12 +36,13 @@ static TAG_CHAR_RE: LazyLock<Regex> =
 /// 태그 이름에 쓸 수 있는 글자 — **경계 판정의 어휘**다. 본문에서 태그를 *찾아 고치는*
 /// 쪽은 이것을 쓴다: `task::tag::find_tag`(태스크 줄의 태그 토글)와 `tag::rename_tag`의
 /// 본문 쪽(`tag::ends_tag`, vault 전역 이름 바꾸기). 프론트매터 항목은 이것이 아니라 항목의
-/// 경계와 `/`로 가른다(`tag::frontmatter`). `tag::rename_tag`는 새 이름도 이것으로 거른다.
+/// 경계와 `/`로 가른다(`tag::frontmatter`). `tag::rename_tag`는 새 이름을 이것이 아니라 읽는
+/// 쪽에 되읽혀 거른다 — 같은 클래스에서 지었으므로 같은 답이다.
 ///
 /// `INLINE_TAG_RE`(읽는 쪽)와 같은 정의(`TAG_PART_CLASS`)에서 지은 같은 글자 집합에 `/`를
 /// 더한 것이다 — 하나는 정규식, 하나는 술어다. 둘이 갈리면 패널이 보여준 이름으로 아무것도
 /// 고칠 수 없거나 남의 태그 머리를 고쳐 쓰게 되므로 `the_predicate_agrees_with_the_reader`가
-/// 모든 코드 포인트를 양쪽에 대고 검사한다.
+/// `/` 밖의 모든 코드 포인트를 양쪽에 대고 검사한다.
 pub fn is_tag_char(c: char) -> bool {
     TAG_CHAR_RE.is_match(c.encode_utf8(&mut [0; 4]))
 }
