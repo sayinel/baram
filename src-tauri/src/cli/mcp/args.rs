@@ -42,8 +42,8 @@ pub(super) const VAULT: Spec = Spec {
     kind: Kind::Text,
     required: false,
     doc: "The vault to read: a name or alias list_vaults shows, or the vault's path — \
-          absolute, ~ alone, or starting with ~/ (or ~\\ on Windows). Default: the default \
-          vault.",
+          absolute, ~ alone, or starting with ~/ (or ~\\ on Windows), spelled as the server \
+          knows it, not through a link. Default: the default vault.",
 };
 
 /// A list tool's `offset` (spec 0068 §3.4). No maximum: past the end is an empty page.

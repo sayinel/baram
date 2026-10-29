@@ -3,9 +3,9 @@
 // the spellings of the vaults it reads without asking the disk (spec 0068 §3.2). The prefix
 // reading is also what `paths::locate` asks of each part it pushes onto a vault root.
 //
-// Each function takes the platform as `windows`, so the Windows shape is tested on every
-// host by passing `true` — the rule issue 595 set for `index::relative_links`. Only the
-// callers pass `cfg!(windows)`.
+// Each `pub(crate)` free function — `prefix_kind`, `letters`, `not_one_name` — takes the
+// platform as `windows`, so the Windows shape is tested on every host by passing `true` —
+// the rule issue 595 set for `index::relative_links`. Only the callers pass `cfg!(windows)`.
 
 use icu_normalizer::ComposingNormalizerBorrowed;
 

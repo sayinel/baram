@@ -38,9 +38,9 @@ pub(crate) fn fold(path: &Path) -> Option<PathBuf> {
 /// disk through this function — `backlinks` calls it directly, every other tool that takes
 /// one through `folder_arg` or `note_names_first`. There an absolute input must start with
 /// one of `Vault::spellings` by its letters, which asks nothing of the disk: a spelling of
-/// the root that the server was not given — a link to it, another case on a volume that
-/// ignores case — is outside, whether or not it would resolve into the vault (spec 0068
-/// §3.2). What follows the spelling is put onto the canonical root as written, and is then
+/// the root that the server was not given — a link to it, another case on macOS's
+/// case-insensitive volume (on Windows only a non-ASCII case difference: the letters fold
+/// ASCII) — is outside, whether or not it would resolve into the vault (spec 0068 §3.2). What follows the spelling is put onto the canonical root as written, and is then
 /// resolved and checked as on the command line. A relative input whose `..` climbs out of
 /// the root is outside by its letters too (`written_path`).
 pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
@@ -76,8 +76,8 @@ fn written_path(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
             }
         }
     } else {
-        // Pushed component by component: a verbatim Windows root (`\\?\C:\…`, what
-        // canonicalize returns there) does not read `/` as a separator.
+        // Pushed part by part so that each part passes `spelling::not_one_name` before
+        // `PathBuf::push` sees it.
         let separators: &[char] = if windows { &['/', '\\'] } else { &['/'] };
         let parts = input.split(separators).filter(|part| !part.is_empty());
         pushed(&vault.root, input, parts, windows)?
