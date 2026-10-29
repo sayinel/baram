@@ -58,6 +58,20 @@ pub struct RenameResult {
     /// follow it, by its old path, with what the highlight note's own rename
     /// reported (`pdf_highlights`). A block ID rename lists referrers only.
     pub skipped_files: Vec<String>,
+    /// Every file the rename moved besides the one it was asked to rename —
+    /// a PDF's highlight note and sidecar (`pdf_highlights`) — so the caller
+    /// can move what it holds for each: an open tab left on the old path
+    /// would write the file back there on its next save. Empty for a block
+    /// ID rename.
+    pub moved: Vec<MovedFile>,
+}
+
+/// A file a rename moved from `from` to `to`, spelled as the rename spells
+/// the paths it reports.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MovedFile {
+    pub from: String,
+    pub to: String,
 }
 
 /// §61 Result of renaming a namespace (directory) with wikilink updates

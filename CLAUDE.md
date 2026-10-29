@@ -166,7 +166,9 @@ baram/
   남긴다, ③ 남긴 것은 보고한다. ③ 은 index 가 세지 않는 마크다운 문법에도 걸린다 — `[t](x)`·`![a](x)`·정의 `[id]: x` 가 rename 된 파일을 가리킨 채 남는 노트는
   고치지 않고 보고한다(`index/markdown_links.rs` 의 `markdown_link_dangles` — 에디터가 링크·이미지를 해석하는 규칙을 옮긴 것이다, `rename/markdown_referrers.rs`). 이 문법을 색인하거나
   고쳐 쓰지 말 것. PDF 를 rename 하면 그 하이라이트 사이드카와 짝 노트가 따라간다(`rename/pdf_highlights.rs` — 짝 노트는 노트 rename 으로, 경로 규칙은 프런트와
-  `index/fixtures/pdf-highlight-paths.json` 을 함께 읽는다). 따라가지 못한 조각은 옛 경로로 보고한다.
+  `index/fixtures/pdf-highlight-paths.json` 을 함께 읽는다). 따라가지 못한 조각은 옛 경로로 보고하고, 옮긴 조각은 `RenameResult::moved` 에 담는다 —
+  프런트(`use-file-tree-rename.ts`)가 rename 된 파일과 같은 방식으로 탭 · 트리 · 캐시를 옮긴다. 옛 경로에 남은 탭은 다음 저장에서 그 파일을 되살린다(`write_file` 은 없는 파일을 만든다).
+  rename 이 다른 파일을 옮기게 되면 그 파일도 `moved` 에 넣을 것.
   - ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을 `filing_key` 가 준 키 아래 담으므로 새 종류는 추출되는
     순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의 합집합이다. 그래서 종류는 문자열이 아니라 `mod.rs` 의 `LinkKind` 다 — `link_kinds!` 한 목록이 enum 과 테스트용
     `ALL` 을 함께 만들고, `LinkKind::pass()` 가 `_` 없는 `match` 로 종류마다 패스를 지정하며, `rewriter.rs` 의 후보 필터 둘은 그 `pass()` 를 읽는다. 변형을 더하면

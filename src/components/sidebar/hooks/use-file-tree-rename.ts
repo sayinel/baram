@@ -1,7 +1,11 @@
 // §33 Inline rename with wikilink auto-update
 import { useCallback, useState } from "react";
 
-import type { NamespaceRenameResult, RenameResult } from "../../../ipc/types";
+import type {
+  MovedFile,
+  NamespaceRenameResult,
+  RenameResult,
+} from "../../../ipc/types";
 import type { FileEntry } from "../../../stores/file/file";
 
 import { type Locale, t } from "../../../i18n";
@@ -106,13 +110,25 @@ export function useFileTreeRename(
       // name" would tell them to throw away the edit they are making.
       let renamedNoteHeldBack = false;
       try {
-        renameFileEntry(oldPath, newPath, newName);
         if (isNamespaceRename) {
+          renameFileEntry(oldPath, newPath, newName);
           useEditorStore.getState().renameDirInTabs(oldPath, newPath);
         } else {
-          renameTab(oldPath, newPath, newName);
+          // The renamed file, then §33 every file the rename carried along
+          // (`moved`: a PDF's highlight note and sidecar) — each followed the
+          // same way, or a tab left on the old path writes the file back there
+          // on its next save (`writeFile` creates a missing file).
+          const files: MovedFile[] = [
+            { from: oldPath, to: newPath },
+            ...("moved" in result ? result.moved : []),
+          ];
+          for (const { from, to } of files) {
+            const name = to === newPath ? newName : lastPathSegment(to);
+            renameFileEntry(from, to, name);
+            renameTab(from, to, name);
+          }
         }
-        // The renamed file's cached content is already under newPath:
+        // Each moved file's cached content is already under its new path:
         // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
         // stores/file/file-tree-ops.ts). Read the map after it.
         const { openFiles } = useFileStore.getState();

@@ -13,9 +13,9 @@ use crate::index::filing::root_relative_path;
 use std::path::PathBuf;
 
 use super::super::state::LinkIndexState;
-use super::confined_by;
 use super::destination::another_entry_at;
 use super::file::rename_file_with_links_inner;
+use super::{confined_by, MovedFile};
 
 /// The sidecar's and the companion note's paths under a root for the PDF at `rel` under it —
 /// `rel` with its last `.pdf`, matched without regard to ASCII case, replaced by `.json` and
@@ -34,12 +34,14 @@ pub(super) fn highlight_paths(rel: &str) -> Option<(String, String)> {
 }
 
 /// What carrying the highlight files along produced, to fold into the PDF rename's result:
-/// the files the companion note's rename rewrote, and the files left behind — a highlight
-/// file that did not move, or moved but still names the old PDF.
+/// the files the companion note's rename rewrote, the files left behind — a highlight file
+/// that did not move, or moved but still names the old PDF — and the files moved, the note
+/// and the sidecar (`RenameResult::moved`).
 #[derive(Default)]
 pub(super) struct Carried {
     pub(super) updated: Vec<String>,
     pub(super) skipped: Vec<String>,
+    pub(super) moved: Vec<MovedFile>,
 }
 
 /// Carry the highlight files of the PDF renamed from `old_path` to `new_path` — moved by now —
@@ -54,7 +56,8 @@ pub(super) struct Carried {
 /// destination is another entry (`another_entry_at`); the sidecar resolves outside the
 /// contexts; or the move fails. Nothing is deleted: the PDF has moved — the point of no return
 /// of the whole rename — and every piece that could not follow is still on disk under its old
-/// name, and named in the result.
+/// name, and named in the result. Every piece that moved is named in `Carried::moved`, so the
+/// frontend moves an open tab with it.
 pub(super) async fn carry_pdf_highlights(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
@@ -102,11 +105,14 @@ pub(super) async fn carry_pdf_highlights(
         };
         let sidecar_to = under(root, new_sidecar);
         let companion = (companion_now != Companion::Left).then_some(new_companion.as_str());
-        if let Some(left) =
-            carry_sidecar(&sidecar_from, &sidecar_to, dirs, new_rel, companion).await
-        {
-            carried.skipped.push(left);
+        let sidecar = carry_sidecar(&sidecar_from, &sidecar_to, dirs, new_rel, companion).await;
+        if sidecar.moved {
+            carried.moved.push(MovedFile {
+                from: sidecar_from,
+                to: sidecar_to,
+            });
         }
+        carried.skipped.extend(sidecar.left);
     }
     carried
 }
@@ -148,6 +154,11 @@ async fn carry_companion(
         Ok(result) => {
             carried.updated.extend(result.updated_files);
             carried.skipped.extend(result.skipped_files);
+            carried.moved.push(MovedFile {
+                from: from.to_owned(),
+                to: to.to_owned(),
+            });
+            carried.moved.extend(result.moved);
             Companion::Moved
         }
         Err(e) => {
@@ -157,46 +168,63 @@ async fn carry_companion(
     }
 }
 
+/// What `carry_sidecar` did: whether the sidecar moved, and the path to report — the old one
+/// when it stayed, the new one when it moved with its records unchanged; none when it
+/// followed whole.
+struct SidecarCarried {
+    moved: bool,
+    left: Option<String>,
+}
+
 /// Move the sidecar from `from` to `to` and rewrite its records (`rewrite_records`): the PDF
-/// is now `new_rel`, and the companion `companion` when that note is (or will be) there. The
-/// path to report when the sidecar is left, or moved with its records unchanged; `None` when
-/// it followed whole.
+/// is now `new_rel`, and the companion `companion` when that note is (or will be) there.
 async fn carry_sidecar(
     from: &str,
     to: &str,
     dirs: &[Registered],
     new_rel: &str,
     companion: Option<&str>,
-) -> Option<String> {
+) -> SidecarCarried {
+    let stayed = SidecarCarried {
+        moved: false,
+        left: Some(from.to_owned()),
+    };
     // The rename writes only inside the file's contexts: a sidecar that resolves elsewhere
     // (a `.baram` planted as a symlink) is not moved.
     let inside = resolve_canonical(from).is_ok_and(|canonical| confined_by(&canonical, dirs));
     if !inside {
         log::warn!("rename: the highlight sidecar {from} resolves outside the file's contexts");
-        return Some(from.to_owned());
+        return stayed;
     }
     match another_entry_at(from, to) {
         Ok(false) => {}
         Ok(true) | Err(_) => {
             log::warn!("rename: {to} is taken or unreadable, so the sidecar {from} stays");
-            return Some(from.to_owned());
+            return stayed;
         }
     }
     let text = tokio::fs::read_to_string(from).await.ok();
     if let Err(e) = tokio::fs::rename(from, to).await {
         log::warn!("rename: the highlight sidecar {from} could not be moved: {e}");
-        return Some(from.to_owned());
+        return stayed;
     }
+    let stale = SidecarCarried {
+        moved: true,
+        left: Some(to.to_owned()),
+    };
     let rewritten = text.and_then(|text| rewrite_records(&text, new_rel, companion));
     let Some(rewritten) = rewritten else {
         log::warn!("rename: the highlight sidecar {to} was moved but could not be read as one; it still names the old PDF");
-        return Some(to.to_owned());
+        return stale;
     };
     match crate::fs::write_file(to, &rewritten).await {
-        Ok(()) => None,
+        Ok(()) => SidecarCarried {
+            moved: true,
+            left: None,
+        },
         Err(e) => {
             log::warn!("rename: the highlight sidecar {to} was moved but not rewritten: {e}");
-            Some(to.to_owned())
+            stale
         }
     }
 }

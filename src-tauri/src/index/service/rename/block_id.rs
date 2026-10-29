@@ -112,6 +112,7 @@ pub(crate) async fn rename_block_id_inner(
     Ok(RenameResult {
         updated_files: rewritten.updated,
         skipped_files: rewritten.skipped,
+        moved: Vec::new(),
     })
 }
 

@@ -82,6 +82,24 @@ async fn a_pdf_rename_moves_its_sidecar_and_renames_its_highlight_note() {
         result.skipped_files
     );
     assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
+    // Each file moved besides the PDF is named, so an open tab can follow it.
+    let moved = |from: &[&str], to: &[&str]| MovedFile {
+        from: at(&root, from),
+        to: at(&root, to),
+    };
+    assert_eq!(
+        result.moved,
+        vec![
+            moved(
+                &["highlights", "papers", "Paper.md"],
+                &["highlights", "papers", "Survey.md"]
+            ),
+            moved(
+                &[".baram", "pdf-highlights", "papers", "Paper.json"],
+                &[".baram", "pdf-highlights", "papers", "Survey.json"]
+            ),
+        ]
+    );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "[[Survey]]\n((highlights/papers/Survey#^h1))\n[[Survey.pdf]]\n"
@@ -159,6 +177,7 @@ async fn a_highlight_file_whose_new_name_is_taken_stays_and_is_reported() {
     ];
     expected.sort();
     assert_eq!(skipped, expected);
+    assert!(result.moved.is_empty(), "{:?}", result.moved);
     assert_eq!(
         std::fs::read_to_string(dir.path().join(".baram/pdf-highlights/papers/Survey.json"))
             .unwrap(),
@@ -199,6 +218,16 @@ async fn a_highlight_file_whose_new_name_is_taken_stays_and_is_reported() {
     assert_eq!(
         result.skipped_files,
         vec![at(&root, &["highlights", "papers", "Paper.md"])]
+    );
+    assert_eq!(
+        result.moved,
+        vec![MovedFile {
+            from: at(&root, &[".baram", "pdf-highlights", "papers", "Paper.json"]),
+            to: at(
+                &root,
+                &[".baram", "pdf-highlights", "papers", "Survey.json"]
+            ),
+        }]
     );
     let sidecar = sidecar_at(&dir, ".baram/pdf-highlights/papers/Survey.json");
     assert_eq!(sidecar["pdf"], "papers/Survey.pdf");

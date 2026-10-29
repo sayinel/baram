@@ -278,6 +278,7 @@ pub(crate) async fn rename_file_with_links_inner(
     Ok(RenameResult {
         updated_files,
         skipped_files,
+        moved: carried.moved,
     })
 }
 
