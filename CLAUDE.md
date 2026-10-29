@@ -163,7 +163,10 @@ baram/
   링크는 링크). 프런트 `block-id-rename-markdown.ts` 와의 계약은 `src-tauri/src/md/fixtures/literal-regions.json` 이 양쪽에서 읽힌다.
   tag·task 스캐너의 느슨한 fence 규칙은 별개 계약이라 여기 얹지 말 것
 - **파일 rename 은 index 가 세는 것을 전부 고치거나, 못 고친 것을 보고한다 (#678)**: 불변식 셋이다 — ① index 가 세는 것 = rename 이 고치는 것, ② 문법이 쓸 수 없는 이름은 쓰지 말고
-  남긴다, ③ 남긴 것은 보고한다.
+  남긴다, ③ 남긴 것은 보고한다. ③ 은 index 가 세지 않는 마크다운 문법에도 걸린다 — `[t](x)`·`![a](x)`·정의 `[id]: x` 가 rename 된 파일을 가리킨 채 남는 노트는
+  고치지 않고 보고한다(`index/markdown_links.rs` 의 `markdown_link_dangles` — 에디터가 링크·이미지를 해석하는 규칙을 옮긴 것이다, `rename/markdown_referrers.rs`). 이 문법을 색인하거나
+  고쳐 쓰지 말 것. PDF 를 rename 하면 그 하이라이트 사이드카와 짝 노트가 따라간다(`rename/pdf_highlights.rs` — 짝 노트는 노트 rename 으로, 경로 규칙은 프런트와
+  `index/fixtures/pdf-highlight-paths.json` 을 함께 읽는다). 따라가지 못한 조각은 옛 경로로 보고한다.
   - ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을 `filing_key` 가 준 키 아래 담으므로 새 종류는 추출되는
     순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의 합집합이다. 그래서 종류는 문자열이 아니라 `mod.rs` 의 `LinkKind` 다 — `link_kinds!` 한 목록이 enum 과 테스트용
     `ALL` 을 함께 만들고, `LinkKind::pass()` 가 `_` 없는 `match` 로 종류마다 패스를 지정하며, `rewriter.rs` 의 후보 필터 둘은 그 `pass()` 를 읽는다. 변형을 더하면
@@ -171,11 +174,12 @@ baram/
     `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass` 가 `ALL` 로 픽스처를 짜서 개수로 비교한다(실측: `@@target@@`
     종류를 BlockReferences 에 배선하면 3 != 4. `<<target>>` 은 literal 분석이 HTML 로 읽어 색인되지 않으니 프로브로 쓰지 말 것). 손댈 곳 순서: `LinkKind` 변형 →
     컴파일러가 가리키는 `pass()`·`spelled()` → `extractor.rs`(regex + arm) → 그 패스의 regex 가 새 문법을 읽게(못 읽으면 위 테스트) → `…_can_spell` →
-    `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수) → 블록 참조 문법이면 프런트의 사본 `src/pipeline/block-id.ts` 의 `BLOCK_REF_RE`(블록을 정의한 노트 자신의 참조는 `block-id-rename-markdown.ts` 가 이것으로 고쳐 쓴다) → `src/ipc/types.ts` 의 `BacklinkEntry.linkType` 주석(wire 값 목록). ② 의 판정은 두 층이다 — stem 만 보는 `…_can_spell`(본체는 문자 열거가 아니라
+    `own_block_reference_lines`(같은 stem 예외가 새 종류의 자기 참조를 놓치면 과소 계수) → 블록 참조 문법이면 프런트의 사본 `src/pipeline/block-id.ts` 의 `BLOCK_REF_RE`(블록을 정의한 노트 자신의 참조는 `block-id-rename-markdown.ts` 가 이것으로 고쳐 쓴다) → `src/ipc/types.ts` 의 `BacklinkEntry.linkType` 주석(wire 값 목록). ② 의 판정은 두 층이다 — 이름만 보는 `…_can_spell`(노트는 stem, 다른 파일은 확장자까지 쓴 이름 — `RenameTarget::new_stem`. 본체는 문자 열거가 아니라
     `link_reads_back_as_the_file`)과, 두 패스가 낸 내용을 `extract_links` 로 **되읽는** `index_reads_the_rename_back`(`LinkPasses::rewrite`).
     술어를 통과한 stem 도 referrer 줄의 백틱과 짝을 지어 링크를 literal 로 만들 수 있고, 그건 stem 이 아니라 **줄**의 성질이라 되읽어야 보인다. ③ 의 `skipped.push` 는 한 곳이
     아니다 — `rename/referrers.rs` 에 referrer 의 원인 여섯(읽기 실패 · 덮는 context 없음 · `left_behind` · 낡은 index · vault 밖 resolve · 쓰기 실패)에 일곱 자리
-    (`left_behind` 는 고쳐 쓴 파일과 못 고친 파일에서 한 번씩)와 `rename/passes.rs`(rename 되는 노트);
+    (`left_behind` 는 고쳐 쓴 파일과 못 고친 파일에서 한 번씩)와 `rename/passes.rs`(rename 되는 노트), 그리고 `rename/file.rs` 가 결과에 합치는 둘 —
+    `rename/markdown_referrers.rs` 가 돌려주는 노트와 `rename/pdf_highlights.rs` 의 `carried.skipped`(짝 노트 rename 의 결과, 남은 짝 노트, 남은 사이드카);
     `LinkPasses` 는 `left_behind` 플래그만 세운다
     ‼️ **② 의 두 층(`…_can_spell`·`index_reads_the_rename_back`)은 파일 rename 입구에만 있다** — 디렉터리 rename 이 `relative_links.rs` 로 고쳐 쓰는
     `[[./x]]`·`[[../x]]` 는 거치지 않고(폴더를 `C# notes` 로 바꾸면 `[[./C# notes/x]]` 가 쓰여 `./C` 로 읽힌다 — 실측), block ID rename 의 새 id 는 프런트
