@@ -17,6 +17,7 @@ mod builds;
 mod context_reads;
 mod contexts;
 mod file_rename;
+mod markdown_links;
 mod namespace;
 mod nested_roots;
 mod normalization;

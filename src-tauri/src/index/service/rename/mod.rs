@@ -3,6 +3,7 @@
 mod block_id;
 mod destination;
 mod file;
+mod markdown_referrers;
 mod namespace;
 mod passes;
 mod pdf_highlights;
@@ -50,7 +51,12 @@ pub struct RenameResult {
     /// not. A referrer in the other vault is never visited, so not listed. For both renames: a file
     /// holding a path reference another root reads as a different existing
     /// note, which is left as written (`judgement::Judgement::Ambiguous`),
-    /// updated or not. A block ID rename lists referrers only.
+    /// updated or not. For a file rename, too: a note of the file's contexts
+    /// holding a markdown link, image or link definition the move leaves
+    /// pointing at the old name (`markdown_referrers`) — never rewritten,
+    /// updated or not — and, for a PDF, a highlight file that could not
+    /// follow it, by its old path, with what the highlight note's own rename
+    /// reported (`pdf_highlights`). A block ID rename lists referrers only.
     pub skipped_files: Vec<String>,
 }
 

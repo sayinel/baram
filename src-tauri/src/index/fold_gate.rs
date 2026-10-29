@@ -90,6 +90,13 @@ const ALLOWED: &[(&str, &str, &str)] = &[
          (D8); non-ASCII case stays two names",
     ),
     (
+        "markdown_links.rs",
+        ".is_some_and(|head| head.eq_ignore_ascii_case(prefix))",
+        "media_forms: an `http://`, `https://` or `data:` prefix in any ASCII \
+         case, as the frontend's `isRemoteOrData` matches it — a scheme, not a \
+         name",
+    ),
+    (
         "service/rename/pdf_highlights.rs",
         r#"if !rel.get(cut..)?.eq_ignore_ascii_case(".pdf") {"#,
         "highlight_paths: the extension `.pdf` in any ASCII case, as the \

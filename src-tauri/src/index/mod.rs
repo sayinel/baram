@@ -8,6 +8,7 @@ mod filing;
 #[cfg(test)]
 mod fold_gate;
 mod judgement;
+mod markdown_links;
 mod normalizer;
 mod read_back;
 mod relative_links;
@@ -355,6 +356,13 @@ impl LinkIndex {
             .flatten()
             .chain(self.name_map.values().flatten())
             .filter(move |path| seen.insert(path.as_str()))
+    }
+
+    /// Every note this index read links from (`outgoing`'s keys): what a
+    /// file rename reads for markdown-syntax links to the renamed file
+    /// (`markdown_links::markdown_link_dangles`), which no key files.
+    pub(crate) fn note_paths(&self) -> impl Iterator<Item = &String> + '_ {
+        self.outgoing.keys()
     }
 
     /// Whether a note this index holds has the stem `key` (`file_map`'s

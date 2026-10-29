@@ -352,8 +352,11 @@ export interface RenameResult {
    *  second note folding to the same path where case is kept, reads it as
    *  another note (for a file rename, the respelled text too) — left as
    *  written. For a file rename, also a link behind the vault's own alias
-   *  when another vault carries that alias too. A block ID rename lists
-   *  referrers only. */
+   *  when another vault carries that alias too; a note holding a markdown
+   *  link, image or link definition (`[t](x)`, `![a](x)`, `[id]: x`) the
+   *  move leaves pointing at the old name, which is never rewritten; and,
+   *  for a PDF, a highlight sidecar or highlight note that could not follow
+   *  it, under its old path. A block ID rename lists referrers only. */
   skippedFiles: string[];
   /** Files rewritten on disk; a clean open surface of each follows the disk. */
   updatedFiles: string[];

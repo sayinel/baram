@@ -11,6 +11,7 @@ use super::super::keys::{keys_of, local_aliases_of, OwnAliases};
 use super::super::mutation::Mutation;
 use super::super::state::LinkIndexState;
 use super::destination::{another_entry_at, check_destination, confined_both_ways};
+use super::markdown_referrers::markdown_referrers;
 use super::passes::{rewrite_renamed_note, LinkPasses};
 use super::pdf_highlights::carry_pdf_highlights;
 use super::referrers::{
@@ -130,6 +131,11 @@ pub(crate) async fn rename_file_with_links_inner(
     } else {
         None
     };
+
+    // Markdown-syntax links to the file — `[t](x)`, `![a](x)`, `[id]: x` — are no links
+    // the index files, so the passes do not rewrite them (invariant ③): the notes holding
+    // one the move leaves dangling are reported (`markdown_referrers`), read before it.
+    let markdown_left = markdown_referrers(state, &scope.dirs, old_path, new_path, windows).await;
 
     // `fs::rename` replaces an existing destination on Unix; a rename is not a
     // way to overwrite another note. Checked here, after every index build and
@@ -257,9 +263,11 @@ pub(crate) async fn rename_file_with_links_inner(
         carry_pdf_highlights(state, ctx_mgr, &scope.dirs, old_path, new_path, windows).await;
     let mut updated_files = rewritten.updated;
     let mut skipped_files = rewritten.skipped;
+    let mut skipped_more = carried.skipped;
+    skipped_more.extend(markdown_left);
     for (all, more) in [
         (&mut updated_files, carried.updated),
-        (&mut skipped_files, carried.skipped),
+        (&mut skipped_files, skipped_more),
     ] {
         for file in more {
             if !all.contains(&file) {
