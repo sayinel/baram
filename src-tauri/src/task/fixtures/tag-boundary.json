@@ -1,0 +1,143 @@
+{
+  "contract": "\u00a7312 \u00b7 \u00a756m Whether the task toggle finds the tag someday on a line, and whether the indexer reads it there. `found` is what `task::tag::find_tag` (Rust, through `apply_tag`) and `lineHasTag` (TypeScript, `src/utils/tasks/task-tag-token.ts`) answer: a `#someday` with a boundary before it (start of line, whitespace or `(`) and no tag character after it (`md::is_tag_char`, and `TAG_CHAR_RE` there). `read` is whether `md::extract_inline_tags` reads the tag someday on the line. A row with `read` and not `found` is a line whose task carries the tag someday while the toggle cannot remove it; the agenda's `somedayVerdict` (`src/utils/tasks/task-triage.ts`) calls such a line `locked`. The Rust test `task::tag::tests::tag_boundary_table_is_shared_with_the_front_end` reads every row for both columns, and `src/utils/tasks/__tests__/task-tag-token.test.ts` reads `found`. Every character outside ASCII is written as a JSON unicode escape.",
+  "rows": [
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday",
+      "found": true,
+      "read": true,
+      "why": "a tag ended by the end of the line"
+    },
+    {
+      "line": "- [ ] #someday \uc5ec\ud589",
+      "found": true,
+      "read": true,
+      "why": "ended by a space"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday \uc900\ube44",
+      "found": true,
+      "read": true,
+      "why": "ended by a space, text after"
+    },
+    {
+      "line": "#someday",
+      "found": true,
+      "read": true,
+      "why": "at the start of the line"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 (#someday)",
+      "found": true,
+      "read": true,
+      "why": "an opening parenthesis is a boundary before the #, as in the reader"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday.",
+      "found": true,
+      "read": true,
+      "why": "ended by punctuation"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday,",
+      "found": true,
+      "read": true,
+      "why": "ended by a comma"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday-maybe #someday",
+      "found": true,
+      "read": true,
+      "why": "a longer tag and the tag itself on one line: the tag is found"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\u00bd",
+      "found": true,
+      "read": true,
+      "why": "\u00bd is a number of category No, which the reader's class leaves out, so the tag ends before it"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\u00b2",
+      "found": true,
+      "read": true,
+      "why": "\u00b2 likewise"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday-maybe",
+      "found": false,
+      "read": false,
+      "why": "a hyphen is a tag character: this is another tag"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday-",
+      "found": false,
+      "read": false,
+      "why": "likewise, with nothing after the hyphen"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday/maybe",
+      "found": false,
+      "read": false,
+      "why": "a nested tag is another tag"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday_maybe",
+      "found": false,
+      "read": false,
+      "why": "an underscore is a tag character"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #somedaymaybe",
+      "found": false,
+      "read": false,
+      "why": "a letter continues the tag"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\uc5b8\uc820\uac00",
+      "found": false,
+      "read": false,
+      "why": "a Hangul letter continues the tag"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday2",
+      "found": false,
+      "read": false,
+      "why": "a decimal digit continues the tag"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\u0301",
+      "found": false,
+      "read": false,
+      "why": "a combining mark (U+0301) is a tag character: the reader reads someday\u0301"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\u203fx",
+      "found": false,
+      "read": false,
+      "why": "connector punctuation (U+203F) is a tag character"
+    },
+    {
+      "line": "- [ ] a#someday",
+      "found": false,
+      "read": false,
+      "why": "a # inside a word is not a tag"
+    },
+    {
+      "line": "- [ ] https://x/#someday",
+      "found": false,
+      "read": false,
+      "why": "nor is a URL fragment"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589",
+      "found": false,
+      "read": false,
+      "why": "no tag at all"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday/",
+      "found": false,
+      "read": true,
+      "why": "the one shape where the two still part: the reader stops before a / that no part follows and reads someday, while the toggle takes / as a tag character (a child may follow) and finds nothing to remove"
+    }
+  ]
+}

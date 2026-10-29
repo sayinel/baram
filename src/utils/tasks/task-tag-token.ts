@@ -6,14 +6,16 @@
 // 오므로, 라벨이 가리키는 태그를 쓰는 쪽이 못 찾으면 "해제"를 눌러도 줄이 한 바이트도
 // 바뀌지 않는다. 그래서 **라벨도 쓰는 쪽 어휘로 판정한다**.
 //
-// 가장 흔했던 갈림(하이픈 — 읽는 쪽만 `#someday-maybe`를 `someday`로 끊었다)은 닫혔다.
-// 남은 것은 유니코드 가장자리뿐이다: `\w`(Rust `regex`)는 결합 문자와 `\p{Pc}`를 포함하고
-// `is_alphanumeric()`은 `\p{Nl}`·`\p{No}`를 포함한다. 드물지만 0은 아니다.
+// 가장 흔했던 갈림(하이픈 — 읽는 쪽만 `#someday-maybe`를 `someday`로 끊었다)은 닫혔고,
+// 글자 집합의 갈림도 닫혔다: Rust는 `is_tag_char`를 읽는 쪽의 문자 클래스
+// (`md::TAG_PART_CLASS`)로 짓고, 아래 `TAG_CHAR_RE`는 그 클래스를 JavaScript로 옮긴 것이다.
+// 남은 갈림은 `#someday/` 하나다 — 읽는 쪽은 뒤에 마디가 없는 `/` 앞에서 멈추고, 쓰는 쪽은
+// `/`를 태그 글자로 본다(그 줄이 아젠다에서 "잠김"이다).
 //
-// 언어가 달라 한 벌로 만들 수는 없으므로 **같은 표를 양쪽에 둔다**: 아래
-// `task-tag-token.test.ts`의 표와 `tag.rs`의
-// `tag_boundary_table_is_shared_with_the_front_end`가 같은 줄들을 본다. 어느 쪽 어휘를
-// 고쳐도 다른 쪽이 빨간불이 된다.
+// 언어가 달라 한 벌로 만들 수는 없으므로 **같은 행을 양쪽이 읽는다**:
+// `src-tauri/src/task/fixtures/tag-boundary.json`. `task-tag-token.test.ts`와 `tag.rs`의
+// `tag_boundary_table_is_shared_with_the_front_end`가 그 파일을 읽는다 — 한쪽 어휘만 바꾸면
+// 그쪽 시험이 그 행에서 빨간불이 되고, 행을 바꾸면 따르지 않은 쪽이 빨간불이 된다.
 //
 // ‼️ 이것은 태그를 **찾는** 규칙일 뿐 쓰기 규칙이 아니다. 무엇을 어디에 끼워 넣고 어떤
 // 공백을 흡수할지는 여전히 Rust만 안다(`apply_tag`) — 그것까지 여기 옮기면 디스크 경로와
@@ -21,11 +23,14 @@
 // 쓰기 결과가 원문과 바이트가 같으면 성공이라고 말하지 않는다(`task-triage.ts`).
 
 /**
- * 태그 이름에 쓸 수 있는 글자 — `tag.rs`의 `is_tag_char`와 같은 집합이다.
- * Rust의 `char::is_alphanumeric()`은 `\p{Alphabetic} ∪ \p{N}`이므로 `\p{L}`이 아니라
- * `\p{Alphabetic}`을 쓴다(한글 자모처럼 둘이 갈리는 글자가 있다).
+ * 태그 이름에 쓸 수 있는 글자 — Rust `md::is_tag_char`와 같은 집합이다. 그쪽은 읽는 쪽의
+ * 클래스 `[\w\p{Script=Hangul}-]`에 `/`를 더한 것이고, Rust `regex`의 `\w`는 유니코드
+ * 단어 글자(`\p{Alphabetic}` · `\p{M}` · `\p{Nd}` · `\p{Pc}` · `\p{Join_Control}`)다.
+ * JavaScript의 `\w`는 `u` 플래그를 붙여도 ASCII뿐이라 그 성질들을 하나씩 적는다.
+ * 두 언어의 유니코드 표 판이 다른 글자에서는 갈릴 수 있다.
  */
-const TAG_CHAR_RE = /[\p{Alphabetic}\p{N}_/-]/u;
+const TAG_CHAR_RE =
+  /[\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\p{Join_Control}\p{Script=Hangul}/-]/u;
 
 /**
  * `line`에 `#tag`가 **경계를 갖춰** 들어 있는가 — `find_tag`가 하나라도 찾는가와 같다.

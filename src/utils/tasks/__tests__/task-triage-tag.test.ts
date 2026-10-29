@@ -285,18 +285,19 @@ describe("§312 저장 전 버퍼에서의 토글", () => {
 // 상태. 해제는 줄을 한 바이트도 바꾸지 못하므로, 메뉴가 그 사실을 숨기면 눌러도 아무
 // 일이 없는 항목이 되고 그 행은 아젠다에서 영원히 미뤄진 채 남는다.
 //
-// ‼️ 픽스처가 `#someday-maybe`에서 `#someday½`로 바뀐 이유: 하이픈은 이제 양쪽 다
-// 태그 글자라 그 줄은 `tags: ["someday-maybe"]`로 읽혀 아예 someday 행이 아니다.
-// 남은 갈림은 유니코드 가장자리다 — 읽는 쪽 `\w`(Rust `regex`)의 숫자는 `\p{Nd}`뿐인데
-// 쓰는 쪽 `is_alphanumeric()`은 `\p{No}`(`½` 등)까지 센다. 실측: 인덱서는 이 줄을
-// `["someday"]`로 읽고 `is_tag_char('½')`는 참이다. 드물지만 0이 아니고, 관문을 지우면
-// 죽은 조작이 조용히 돌아온다.
+// ‼️ 픽스처가 `#someday-maybe`에서 `#someday½`를 거쳐 `#someday/`로 바뀐 이유: 하이픈은
+// 양쪽 다 태그 글자라 `#someday-maybe`는 아예 someday 행이 아니고, `½`(No)는 두 어휘를
+// 한 정의(`md::TAG_PART_CLASS`)로 지은 뒤 양쪽 다 태그 글자가 아니라 해제할 수 있다.
+// 남은 갈림은 `#someday/`다 — 인덱서는 뒤에 마디가 없는 `/` 앞에서 멈춰 이 줄을
+// `["someday"]`로 읽고, 쓰는 쪽은 `/`를 태그 글자로 본다(`src-tauri/src/task/fixtures/
+// tag-boundary.json`의 마지막 행이 양쪽 답을 고정한다). 관문을 지우면 죽은 조작이 조용히
+// 돌아온다.
 describe("§312 해제할 수 없는 #someday", () => {
   const stuck = () =>
     task({
-      raw: "- [ ] 여행 #someday½",
+      raw: "- [ ] 여행 #someday/",
       tags: [SOMEDAY_TAG],
-      text: "여행 #someday½",
+      text: "여행 #someday/",
     });
 
   it("항목을 비활성으로 그리고 라벨이 왜인지 말한다", () => {
@@ -329,12 +330,13 @@ describe("§312 해제할 수 없는 #someday", () => {
     }
   });
 
+  // 잠긴 형태(`#someday/`) 옆에 찾을 수 있는 `#someday`가 있으면 해제가 줄을 바꾼다.
   it("같은 줄에 진짜 #someday도 있으면 해제할 수 있다", () => {
     const item = itemFor(
       task({
-        raw: "- [ ] 여행 #someday½ #someday",
+        raw: "- [ ] 여행 #someday/ #someday",
         tags: [SOMEDAY_TAG],
-        text: "여행 #someday½ #someday",
+        text: "여행 #someday/ #someday",
       }),
     );
     expect(item?.disabled).toBeFalsy();

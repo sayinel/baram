@@ -421,57 +421,60 @@ mod tests {
     /// 아젠다 메뉴가 "#someday 해제"를 보일지 말지는 `src/utils/tasks/task-tag-token.ts`의
     /// `lineHasTag`가 정하고, 그것은 위 `find_tag`/`is_tag_char`를 옮겨 적은 것이다.
     /// 둘이 갈라지면 메뉴가 할 수 없는 일을 약속하거나(제거가 줄을 안 바꾼다) 멀쩡한
-    /// 행에서 항목이 죽는다. 언어가 달라 한 벌로 만들 수는 없으므로, **같은 표**를 양쪽에
-    /// 두고 어느 쪽을 고쳐도 다른 쪽이 빨간불이 되게 한다.
+    /// 행에서 항목이 죽는다. 언어가 달라 한 벌로 만들 수는 없으므로 **같은 행**을 양쪽이
+    /// 읽는다: `task/fixtures/tag-boundary.json`. 이 시험은 `found`(이 줄에서 `find_tag`가
+    /// 찾는가)와 `read`(인덱서가 이 줄에서 `someday`를 읽는가)를 둘 다 보고,
+    /// `task-tag-token.test.ts`는 `found`를 본다. 한쪽 어휘만 바꾸면 그쪽 시험이 그 행에서
+    /// 빨간불이 되고, 행을 바꾸면 따르지 않은 쪽이 빨간불이 된다.
     ///
-    /// 표를 바꿀 일이 생기면 `task-tag-token.test.ts`의 같은 표도 함께 바꿀 것.
+    /// §56m `read`이면서 `found`가 아닌 행이 아젠다가 "잠김"으로 그리는 줄이다. 두 어휘를 한
+    /// 정의로 지은 뒤로 남은 것은 `#someday/` 하나다 — 읽는 쪽은 뒤에 마디가 없는 `/` 앞에서
+    /// 멈추고, 쓰는 쪽은 `/`를 (자식이 올 수 있는) 태그 글자로 본다.
     #[test]
     fn tag_boundary_table_is_shared_with_the_front_end() {
-        // (줄, 이 줄에 태그 `someday`가 있는가)
-        let cases: &[(&str, bool)] = &[
-            ("- [ ] 여행 #someday", true),
-            ("- [ ] #someday 여행", true),
-            ("- [ ] 여행 #someday 준비", true),
-            ("#someday", true),
-            ("- [ ] 여행 (#someday)", true),
-            ("- [ ] 여행 #someday.", true),
-            ("- [ ] 여행 #someday,", true),
-            ("- [ ] 여행 #someday-maybe #someday", true),
-            // 인덱서(`md::INLINE_TAG_RE`)도 이제 이 줄들을 `someday`로 읽지 않는다.
-            // 한때 읽었고, 그 어긋남이 MODERATE-1이었다.
-            ("- [ ] 여행 #someday-maybe", false),
-            ("- [ ] 여행 #someday-", false),
-            ("- [ ] 여행 #someday/maybe", false),
-            ("- [ ] 여행 #someday_maybe", false),
-            // §56m `is_tag_char`를 읽는 쪽의 클래스(`md::TAG_PART_CLASS`)로 지은 뒤로
-            // 두 쪽이 같은 줄을 같게 읽는다. `\p{No}`(`½`)는 `\w`에 없어 이 줄은 태그
-            // `someday`이고, 결합 부호(U+0301)는 `\w`에 있어 `#someday\u{301}`은 다른 태그다.
-            // 한때 술어가 `is_alphanumeric()`이라 두 줄 모두 반대였다.
-            ("- [ ] 여행 #someday½", true),
-            ("- [ ] 여행 #someday\u{301}", false),
-            ("- [ ] 여행 #somedaymaybe", false),
-            ("- [ ] 여행 #someday언젠가", false),
-            ("- [ ] 여행 #someday2", false),
-            ("- [ ] a#someday", false),
-            ("- [ ] https://x/#someday", false),
-            ("- [ ] 여행", false),
-        ];
-        for (line, expected) in cases {
+        #[derive(serde::Deserialize)]
+        struct Row {
+            line: String,
+            found: bool,
+            read: bool,
+            why: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct Table {
+            rows: Vec<Row>,
+        }
+        let table: Table =
+            serde_json::from_str(include_str!("fixtures/tag-boundary.json")).unwrap();
+        assert!(table.rows.iter().any(|row| row.found));
+        assert!(table.rows.iter().any(|row| !row.found));
+        for row in &table.rows {
+            let line = row.line.as_str();
             assert_eq!(
                 !find_tag(line, "someday").is_empty(),
-                *expected,
-                "find_tag disagrees on {:?}",
-                line
+                row.found,
+                "find_tag disagrees on {:?}: {}",
+                line,
+                row.why
             );
             // 그리고 그것이 곧 "해제가 줄을 바꾸는가"와 같아야 한다 — 프론트가 라벨을
             // 그 답에 걸기 때문이다.
             let removed = apply_tag(line, "someday", false).unwrap();
             assert_eq!(
                 removed != line.trim_end(),
-                *expected,
-                "apply_tag(off) disagrees on {:?} -> {:?}",
+                row.found,
+                "apply_tag(off) disagrees on {:?} -> {:?}: {}",
                 line,
-                removed
+                removed,
+                row.why
+            );
+            assert_eq!(
+                crate::md::extract_inline_tags(line)
+                    .iter()
+                    .any(|tag| tag == "someday"),
+                row.read,
+                "the reader disagrees on {:?}: {}",
+                line,
+                row.why
             );
         }
     }
