@@ -7,8 +7,8 @@ import type { TagEntry } from "../../ipc/types";
  * `md::TAG_PART_CLASS`, `[\w\p{Script=Hangul}-]`, where Rust's Unicode `\w` is Alphabetic, a
  * mark, a decimal digit, connector punctuation or a join control. JavaScript's `\w` is ASCII
  * even with the `u` flag, so the properties are written out. The agenda's tag toggle
- * (`task-tag-token.ts`) holds the same set with `/`; a test compares the two over the Basic
- * Multilingual Plane. The Unicode tables can differ: over every code point (2026-10-30), Node
+ * (`task-tag-token.ts`) holds the same set with `/`; a test compares the two over every code
+ * point but the surrogates. The Unicode tables can differ: over every code point (2026-10-30), Node
  * 24.21 (Unicode 17) takes 4699 that the backend's `regex-syntax` 0.8.11 does not, U+A7CE among
  * them — characters newer than its tables — and none the other way.
  */

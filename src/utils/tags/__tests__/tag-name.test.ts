@@ -108,14 +108,14 @@ describe("isBodyTagName", () => {
 
   // The part alphabet is the one the agenda's tag toggle ends a tag at (`task-tag-token.ts`,
   // which reads the backend's `task/fixtures/tag-boundary.json`): a character that continues a
-  // tag there is one a name may hold here. Checked over the Basic Multilingual Plane, which is
-  // what `lineHasTag` looks at one UTF-16 unit at a time.
+  // tag there is one a name may hold here. Checked over every code point but the surrogates:
+  // `lineHasTag` reads the character after a tag as a whole code point.
   it("ends a tag where the agenda's tag toggle does", () => {
     const part = new RegExp(`^(?:${TAG_PART_CLASS}|/)$`, "u");
     const differ: string[] = [];
-    for (let cp = 0; cp <= 0xffff; cp++) {
+    for (let cp = 0; cp <= 0x10ffff; cp++) {
       if (cp >= 0xd800 && cp <= 0xdfff) continue;
-      const c = String.fromCharCode(cp);
+      const c = String.fromCodePoint(cp);
       if (part.test(c) === lineHasTag(`#x${c}`, "x")) {
         differ.push(cp.toString(16));
       }
