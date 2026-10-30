@@ -244,7 +244,7 @@ fn refusal(name: &str) -> Option<String> {
     } else if name == "-" {
         Some("\"-\" alone is not a tag name".to_string())
     } else if INVISIBLE_RE.is_match(name) {
-        Some(format!("{name:?} has no visible character"))
+        Some(format!("{name:?} has no base character"))
     } else {
         None
     }
@@ -878,14 +878,14 @@ mod tests {
         }
     }
 
-    /// §56m Two names the body's reader reads are still refused. `-` alone: written into a bare
-    /// entry YAML reads it as a list marker — `tags: [-]` is rejected and `  - -` is a nested
-    /// list (yaml 2.9.1, js-yaml 4.3.2). A name with no visible character — only Hangul fillers
-    /// (U+3164, U+FFA0, U+115F, U+1160) or other default-ignorable code points such as ZWNJ,
-    /// ZWJ or a variation selector, or only combining marks (a lone U+0301) — has no base
-    /// character and shows as a blank tag or a stray mark. What fails this: the read-back check
-    /// alone, which takes all of them. The pair: a ZWNJ, a filler or a mark next to a letter is
-    /// fine.
+    /// §56m Two kinds of name the body's reader reads are still refused. `-` alone, by choice:
+    /// unquoted it is a list marker to YAML — `tags: [-]` is rejected and `  - -` is a nested
+    /// list (yaml 2.9.1, js-yaml 4.3.2) — so hand-written lists holding it break. And a name of
+    /// only Hangul fillers (U+3164, U+FFA0, U+115F, U+1160), other default-ignorable code points
+    /// such as ZWNJ, ZWJ or a variation selector, or combining marks (a lone U+0301): it has no
+    /// base character and shows as a blank tag or a stray mark. What fails this: the read-back
+    /// check alone, which takes all of them. The pair: a ZWNJ, a filler or a mark next to a
+    /// letter is fine.
     #[tokio::test]
     async fn a_rename_to_a_dash_or_to_nothing_visible_is_refused() {
         let note = "---\ntags: [solo]\n---\n본문 #solo\n";
