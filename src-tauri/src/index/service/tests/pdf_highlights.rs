@@ -375,3 +375,98 @@ async fn an_escaped_highlight_reference_is_a_backlink_of_its_note_and_follows_th
         vec![1]
     );
 }
+
+/// The PDF `papers/Paper.pdf` with its highlight note, `r.md` linking to that note
+/// four ways, and — when `literature` — the user's own `notes/Paper.md`, which shares the
+/// note's stem. Then `rename(dir, root, state, ctx)`; what `r.md` says after, whether the
+/// rename reported it, and the lines of `r.md` among the backlinks of `notes/Paper.md`.
+async fn with_a_literature_note(
+    literature: bool,
+    rename: impl AsyncFnOnce(&str, &LinkIndexState, &ContextManager) -> RenameResult,
+) -> (String, bool, Vec<u32>) {
+    let ctx = ContextManager::new();
+    let mut files = vec![
+        ("highlights/papers/Paper.md", "quote ^h1\n"),
+        (
+            "r.md",
+            "[[Paper]]\n[[notes/Paper]]\n((highlights/papers/Paper#^h1))\n[[highlights/papers/Paper]]\n",
+        ),
+    ];
+    if literature {
+        files.push(("notes/Paper.md", "my notes\n"));
+    }
+    let (dir, root, state) = vault_with_a_pdf(&ctx, &files).await;
+    let result = rename(&root, &state, &ctx).await;
+    let r = at(&root, &["r.md"]);
+    let lines = backlink_lines(&state, &ctx, &at(&root, &["notes", "Paper.md"]), &r).await;
+    (
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        result.skipped_files.contains(&r),
+        lines,
+    )
+}
+
+#[tokio::test]
+async fn a_carried_highlight_note_leaves_a_bare_link_another_note_shares() {
+    // The PDF's rename carries its highlight note along — a rename the user
+    // did not choose. With the user's `notes/Paper.md` beside it, a bare
+    // `[[Paper]]` may mean that note, so it is left and the file reported;
+    // the path link and the block reference name the highlight note alone
+    // and are rewritten. With no other `Paper` note, `[[Paper]]` follows too.
+    // What fails this: carrying the note as a rename the user asked for
+    // (`Origin::Asked` in `carry_companion`) — `[[Paper]]` becomes
+    // `[[Survey]]`, and `notes/Paper.md` loses that backlink.
+    let rename_pdf = async |root: &str, state: &LinkIndexState, ctx: &ContextManager| {
+        rename_file_with_links_inner(
+            state,
+            ctx,
+            &at(root, &["papers", "Paper.pdf"]),
+            &at(root, &["papers", "Survey.pdf"]),
+        )
+        .await
+        .unwrap()
+    };
+    assert_eq!(
+        with_a_literature_note(true, rename_pdf).await,
+        (
+            "[[Paper]]\n[[notes/Paper]]\n((highlights/papers/Survey#^h1))\n[[highlights/papers/Survey]]\n"
+                .to_string(),
+            true,
+            vec![1, 2]
+        )
+    );
+    assert_eq!(
+        with_a_literature_note(false, rename_pdf).await,
+        (
+            "[[Survey]]\n[[notes/Paper]]\n((highlights/papers/Survey#^h1))\n[[highlights/papers/Survey]]\n"
+                .to_string(),
+            false,
+            vec![2]
+        )
+    );
+}
+
+#[tokio::test]
+async fn a_highlight_note_the_user_renames_follows_the_stem_contract() {
+    // The partner of the test above: renaming the highlight note itself is
+    // the user's choice, and a bare `[[Paper]]` follows it though
+    // `notes/Paper.md` shares the stem — a bare link names every note of a
+    // stem, as for any note rename.
+    // What fails this: treating every rename as carried.
+    let rename_note = async |root: &str, state: &LinkIndexState, ctx: &ContextManager| {
+        rename_file_with_links_inner(
+            state,
+            ctx,
+            &at(root, &["highlights", "papers", "Paper.md"]),
+            &at(root, &["highlights", "papers", "Survey.md"]),
+        )
+        .await
+        .unwrap()
+    };
+    let (text, reported, _) = with_a_literature_note(true, rename_note).await;
+    assert_eq!(
+        text,
+        "[[Survey]]\n[[notes/Paper]]\n((highlights/papers/Survey#^h1))\n[[highlights/papers/Survey]]\n"
+    );
+    assert!(!reported);
+}

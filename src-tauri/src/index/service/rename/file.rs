@@ -26,6 +26,31 @@ pub(crate) async fn rename_file_with_links_inner(
     old_path: &str,
     new_path: &str,
 ) -> Result<RenameResult, String> {
+    rename_file(state, ctx_mgr, old_path, new_path, Origin::Asked).await
+}
+
+/// Whom a file rename is for: the file the user renamed, or a file another rename carries
+/// along (`pdf_highlights`: a PDF's highlight note).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Origin {
+    Asked,
+    Carried,
+}
+
+/// `rename_file_with_links_inner`, for a file of either `Origin`. A carried rename was not
+/// the user's choice of name: when another note in the file's contexts shares its stem, a bare
+/// link may mean that note — the user's literature note `notes/Paper.md` beside the highlight
+/// note `highlights/papers/Paper.md` — so a bare-name match is left and reported
+/// (`KnownPaths::bare_name_shared`), while a path link or a block reference into the note,
+/// which names it alone, is rewritten. A rename the user asked for follows the stem contract:
+/// a bare link names every note of that stem, and is rewritten.
+pub(super) async fn rename_file(
+    state: &LinkIndexState,
+    ctx_mgr: &ContextManager,
+    old_path: &str,
+    new_path: &str,
+    origin: Origin,
+) -> Result<RenameResult, String> {
     plain_absolute(old_path)?;
     plain_absolute(new_path)?;
     // The contexts and their indexes first (`RenameScope::holding`).
@@ -51,13 +76,17 @@ pub(crate) async fn rename_file_with_links_inner(
     let Referrers {
         named_lines,
         files: referring_files,
-        known_paths,
+        mut known_paths,
         holding_keys,
     } = scope
         .referrers(state, ctx_mgr, old_path, Some(new_path), |i| {
             i.referring_lines_to(old_path, &named_by)
         })
         .await?;
+    if origin == Origin::Carried {
+        known_paths.bare_name_shared =
+            another_note_shares_the_stem(state, &scope.dirs, old_path).await;
+    }
     // The keys a link behind an ambiguous own name is filed under that name
     // the old note and not the new one — `[[notes::old]]` for `old.md` →
     // `new.md`, not for `old.md` → `old.markdown`, whose name key (`name_key`)
@@ -280,6 +309,37 @@ pub(crate) async fn rename_file_with_links_inner(
         skipped_files,
         moved: carried.moved,
     })
+}
+
+/// Whether a note other than the one at `path` has its stem in one of `dirs`' indexes —
+/// compared by what each path resolves to, since nested roots may spell one note twice.
+async fn another_note_shares_the_stem(
+    state: &LinkIndexState,
+    dirs: &[crate::context::manager::Registered],
+    path: &str,
+) -> bool {
+    use crate::context::manager::resolve_canonical;
+    let key = name_key(path, cfg!(windows));
+    // A note that cannot be resolved counts as another: left and reported, never assumed.
+    let Ok(this) = resolve_canonical(path) else {
+        return true;
+    };
+    for d in dirs {
+        let notes = state
+            .with_index_for(&d.info.path, d.incarnation, |index| {
+                index
+                    .map(|index| index.notes_with_stem(&key))
+                    .unwrap_or_default()
+            })
+            .await;
+        if notes
+            .iter()
+            .any(|note| resolve_canonical(note).map_or(true, |note| note != this))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// The folder `path` is in, as spelled — not resolved.

@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use super::super::state::LinkIndexState;
 use super::destination::another_entry_at;
-use super::file::rename_file_with_links_inner;
+use super::file::{rename_file, Origin};
 use super::{confined_by, MovedFile};
 
 /// The sidecar's and the companion note's paths under a root for the PDF at `rel` under it —
@@ -48,9 +48,10 @@ pub(super) struct Carried {
 /// under each directory context in `dirs` that has them, the root they are named under being
 /// unknown to the backend (the viewer's is whichever context was active).
 ///
-/// Per root, the companion note goes first, as a note rename (`rename_file_with_links_inner`):
-/// its referrers — `[[Paper]]`, `((highlights/papers/Paper#^id))` — follow it under every rule
-/// a note rename keeps. Then the sidecar is moved and its two records rewritten
+/// Per root, the companion note goes first, as a note rename carried along (`rename_file`,
+/// `Origin::Carried`): its referrers — `[[highlights/papers/Paper]]`,
+/// `((highlights/papers/Paper#^id))`, and `[[Paper]]` unless another note shares the stem —
+/// follow it under every rule a note rename keeps. Then the sidecar is moved and its two records rewritten
 /// (`rewrite_records`). Each piece is left where it is, and its old path reported in
 /// `skipped`, when: the new name is no PDF's, so no highlight file is named after it; the
 /// destination is another entry (`another_entry_at`); the sidecar resolves outside the
@@ -150,7 +151,7 @@ async fn carry_companion(
     }
     // Boxed: a note rename never carries highlight files (`highlight_paths` reads no `.md`),
     // but the compiler sizes the future before it knows that.
-    match Box::pin(rename_file_with_links_inner(state, ctx_mgr, from, to)).await {
+    match Box::pin(rename_file(state, ctx_mgr, from, to, Origin::Carried)).await {
         Ok(result) => {
             carried.updated.extend(result.updated_files);
             carried.skipped.extend(result.skipped_files);

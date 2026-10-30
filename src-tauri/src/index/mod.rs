@@ -369,6 +369,13 @@ impl LinkIndex {
         self.outgoing.keys()
     }
 
+    /// The notes this index holds under the stem `key` (`file_map`'s key,
+    /// `normalize_file_path`) — what a carried rename asks of the note it
+    /// renames (`rename/file.rs`, `KnownPaths::bare_name_shared`).
+    pub(crate) fn notes_with_stem(&self, key: &str) -> Vec<String> {
+        self.file_map.get(key).cloned().unwrap_or_default()
+    }
+
     /// Whether a note this index holds has the stem `key` (`file_map`'s
     /// key, `normalize_file_path`) — what a file rename asks of a whole name
     /// that is also a note's stem (`judgement::KnownPaths::note_stems`).

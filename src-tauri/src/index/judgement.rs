@@ -47,6 +47,11 @@ pub struct KnownPaths {
     /// the index counts it for both. So a `Stem` match under it is
     /// ambiguous (`RenameTarget::judge`): left and reported, never rewritten.
     pub note_stems: HashSet<String>,
+    /// Set for a rename the user did not ask for — a PDF's highlight note the
+    /// PDF's rename carries along (`rename/file.rs`, `Origin::Carried`) —
+    /// when another note in the file's contexts shares its stem: a bare link
+    /// may mean that note, so a `Stem` match is ambiguous too.
+    pub bare_name_shared: bool,
 }
 
 impl<const N: usize> From<[(String, RootNotes); N]> for KnownPaths {
@@ -373,7 +378,7 @@ impl RenameTarget<'_> {
                 Some(Match::Path { ref root, .. }) if self.alias_root_reads_another_note(root) => {
                     Judgement::Ambiguous
                 }
-                Some(Match::Stem) if self.whole_name_is_a_note_stem() => Judgement::Ambiguous,
+                Some(Match::Stem) if self.bare_match_is_ambiguous() => Judgement::Ambiguous,
                 Some(m) => Judgement::Ours(m),
                 None => Judgement::NotOurs,
             };
@@ -407,7 +412,7 @@ impl RenameTarget<'_> {
         };
         match matched {
             None => Judgement::NotOurs,
-            Some(Match::Stem) if self.whole_name_is_a_note_stem() => Judgement::Ambiguous,
+            Some(Match::Stem) if self.bare_match_is_ambiguous() => Judgement::Ambiguous,
             Some(m @ Match::Path { .. })
                 if other_note(raw_target)
                     || other_note(&self.respell(ref_path, &m, raw_target)) =>
@@ -416,6 +421,14 @@ impl RenameTarget<'_> {
             }
             Some(m) => Judgement::Ours(m),
         }
+    }
+
+    /// Whether a bare link to the renamed file may name another file: its
+    /// whole name is a note's stem (`whole_name_is_a_note_stem`), or the
+    /// rename was carried and another note shares the stem
+    /// (`KnownPaths::bare_name_shared`).
+    fn bare_match_is_ambiguous(&self) -> bool {
+        self.known_paths.bare_name_shared || self.whole_name_is_a_note_stem()
     }
 
     /// Whether a bare link to the renamed file reads as a note too, before
