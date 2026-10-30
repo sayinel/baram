@@ -10,6 +10,7 @@ import { tagName } from "../tags/tag-name";
 import {
   appendFrontmatterLine,
   frontmatterListItems,
+  writableFrontmatterList,
   writeFrontmatterList,
 } from "./frontmatter-list";
 import { yamlPropertyValue, yamlString } from "./yaml-scalar";
@@ -24,7 +25,11 @@ export interface PropertyEntry {
   value: string | string[];
 }
 
-export type PropertyType = "array" | "enum" | "string";
+/**
+ * `yaml`: a one-line value in YAML's own syntax — a flow map, an anchor, an alias, a YAML tag, a
+ * flow list the list writer cannot rewrite — shown and written as its YAML text, as typed.
+ */
+export type PropertyType = "array" | "enum" | "string" | "yaml";
 
 // Keys that are always treated as arrays
 export const ARRAY_KEYS = new Set(["requires", "tags"]);
@@ -39,12 +44,22 @@ export const ENUM_VALUES: Record<string, string[]> = {
 
 /**
  * The properties of a YAML frontmatter string (without its `---` fences) the panel can show and
- * edit: each top-level key, once (the first, if a key repeats). A string or enum property is a
- * one-line value, shown without its quotes. An array property (`ARRAY_KEYS`) shows its list
- * items as the list reader reads them (`frontmatterListItems`), a `tags` item by its tag name;
- * a one-line scalar under such a key shows as its one item. A key whose value the panel cannot
- * show — a nested map, a block scalar (`|`, `>`), a flow collection under a string key, a list
- * under a string key, an anchor, an alias or a YAML tag — is left out, so no edit reaches it.
+ * edit: each top-level key, once (the first, if a key repeats).
+ *
+ * - An array key (`ARRAY_KEYS`) shows its list items as the list reader reads them
+ *   (`frontmatterListItems`), a `tags` item by its tag name; a one-line scalar under such a key
+ *   shows as its one item.
+ * - Any other key holding a list the list writer can rewrite in place
+ *   (`writableFrontmatterList`) — `aliases: [p, q]`, or `aliases:` and `- p` lines — shows its
+ *   items, and an edit goes through that writer.
+ * - A one-line value in YAML's own syntax (`{a: 1}`, `&a x`, `*a`, `!!str 5`, a flow list the
+ *   writer cannot rewrite) shows as its YAML text, type `yaml`, and is written as typed.
+ * - Any other one-line value is a string (or an enum, `ENUM_KEYS`), shown without its quotes.
+ *
+ * Left out, so no edit reaches them: a value over several lines that is not such a list (a
+ * nested map, an item over two lines) and a block scalar (`|`, `>`). Before, the panel showed
+ * a nested map's inner keys as properties of their own and a block scalar as `|`, and any edit
+ * flattened the one and emptied the other.
  */
 export function parseYamlProperties(yaml: string): PropertyEntry[] {
   const entries: PropertyEntry[] = [];
@@ -62,7 +77,7 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
           type: "array",
           value: [...new Set(items.filter(Boolean))],
         });
-      } else if (!field.continued && !NOT_SHOWN.test(field.value)) {
+      } else if (!field.continued && !BLOCK_SCALAR.test(field.value)) {
         entries.push({
           key: field.key,
           type: "array",
@@ -71,7 +86,20 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
       }
       continue;
     }
-    if (field.continued || NOT_SHOWN.test(field.value)) continue;
+    const list = writableFrontmatterList(yaml, field.key);
+    if (list && list.start === field.start) {
+      entries.push({
+        key: field.key,
+        type: "array",
+        value: list.items.map((i) => i.value),
+      });
+      continue;
+    }
+    if (field.continued || BLOCK_SCALAR.test(field.value)) continue;
+    if (YAML_SYNTAX.test(field.value)) {
+      entries.push({ key: field.key, type: "yaml", value: field.value });
+      continue;
+    }
     entries.push({
       key: field.key,
       type: ENUM_KEYS.has(field.key) ? "enum" : "string",
@@ -124,25 +152,25 @@ export function setYamlPropertyItems(
 }
 
 /**
- * Sets the string or enum property `key` to `value`, written so YAML reads back that text
- * (`yamlPropertyValue`) on the key's own line, which keeps its spelling of the key. A key not
- * there is added at the end.
+ * Sets the string, enum or `yaml` property `key` to `value` on the key's own line, which keeps
+ * its spelling of the key. A string or enum value is written so YAML reads back that text
+ * (`yamlPropertyValue`); a `yaml` value (`asYaml`) is YAML text and is written as typed, as the
+ * panel always wrote it. A key not there is added at the end.
  */
 export function setYamlPropertyValue(
   yaml: string,
   key: string,
   value: string,
+  asYaml = false,
 ): string {
+  const spelled = asYaml ? value : yamlPropertyValue(value);
   const field = topLevelFields(yaml).find((f) => f.key === key);
   if (!field) {
-    return appendFrontmatterLine(
-      yaml,
-      `${yamlString(key)}: ${yamlPropertyValue(value)}`,
-    );
+    return appendFrontmatterLine(yaml, `${yamlString(key)}: ${spelled}`);
   }
   return (
     yaml.slice(0, field.start) +
-    `${field.keyText} ${yamlPropertyValue(value)}` +
+    `${field.keyText} ${spelled}` +
     yaml.slice(field.end)
   );
 }
@@ -162,11 +190,11 @@ interface Field {
   value: string;
 }
 
-/**
- * A one-line value the panel cannot show as text: a flow collection, a block scalar, an
- * anchor, an alias or a YAML tag.
- */
-const NOT_SHOWN = /^[[{|>&*!]/;
+/** A block scalar's indicator: its text is on the lines under the key. */
+const BLOCK_SCALAR = /^[|>]/;
+
+/** A one-line value in YAML's own syntax: a flow collection, an anchor, an alias or a YAML tag. */
+const YAML_SYNTAX = /^[[{&*!]/;
 
 /**
  * A top-level key line: the key at column 0 — plain, or quoted — and its colon, followed by

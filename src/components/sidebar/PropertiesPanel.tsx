@@ -135,12 +135,14 @@ export function PropertiesPanel() {
   // Each edit rewrites only its own property's lines (`yaml-properties.ts`).
   const handleStringChange = useCallback(
     (key: string, val: string) => {
-      if (yaml !== null)
-        applyYamlDirectly(setYamlPropertyValue(yaml, key, val));
+      if (yaml === null) return;
+      // A `yaml` value is YAML text (`{a: 1}`, `&a x`) and is written as typed.
+      const asYaml = entries.find((e) => e.key === key)?.type === "yaml";
+      applyYamlDirectly(setYamlPropertyValue(yaml, key, val, asYaml));
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [yaml, content, filePath, parsed],
+    [entries, yaml, content, filePath, parsed],
   );
 
   const handleEnumChange = handleStringChange;
@@ -305,7 +307,7 @@ export function PropertiesPanel() {
                   </button>
                 </div>
 
-                {entry.type === "string" && (
+                {(entry.type === "string" || entry.type === "yaml") && (
                   <input
                     autoFocus={entry.key === lastAddedKey}
                     className="properties-input"

@@ -60,6 +60,19 @@ describe("PropertiesPanel edits (§72)", () => {
     expect(fileContent()).toBe(NOTE.replace("title: old", 'title: "Plan: v2"'));
   });
 
+  // What turns this red: writing a flow map's text as a string — main wrote it as typed, and
+  // YAML read it as the map; quoted, it would become the string `{a: 2}`.
+  it("writes a value in YAML's own syntax as typed", () => {
+    useFileStore.setState({
+      openFiles: new Map([[PATH, "---\nm: {a: 1}\n---\nbody"]]),
+    });
+    render(<PropertiesPanel />);
+    fireEvent.change(screen.getByDisplayValue("{a: 1}"), {
+      target: { value: "{a: 2}" },
+    });
+    expect(fileContent()).toBe("---\nm: {a: 2}\n---\nbody");
+  });
+
   // What turns this red: adding the typed text as it is — `my tag` is a tag only in front
   // matter, which the body's `#` cannot reach.
   it("adds a tags chip only for a name a body tag can spell", async () => {

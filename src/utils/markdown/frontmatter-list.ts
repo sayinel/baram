@@ -119,8 +119,9 @@ export function readFrontmatterLists(
   yaml: string,
   field: string,
 ): FrontmatterList[] {
-  const inlineRe = new RegExp(`^(${field}${WS}*:)${WS}*\\[([^\\]]*)\\]`, "iu");
-  const headerRe = new RegExp(`^(${field}${WS}*:)${WS}*$`, "iu");
+  const key = escapeRegExp(field);
+  const inlineRe = new RegExp(`^(${key}${WS}*:)${WS}*\\[([^\\]]*)\\]`, "iu");
+  const headerRe = new RegExp(`^(${key}${WS}*:)${WS}*$`, "iu");
   const itemRe = new RegExp(`^(${WS}*-${WS}+)([^\\n]+)$`, "u");
   const lines = splitLines(yaml);
   const documentNewline = yaml.includes("\r\n") ? "\r\n" : "\n";
@@ -208,16 +209,13 @@ export function writeFrontmatterList(
   names: string[],
   nameOf: (value: string) => string,
 ): string {
-  const keyRe = new RegExp(`^["']?${field}["']?${WS}*:`, "iu");
-  const keys = splitLines(yaml).filter((line) => keyRe.test(line.text)).length;
-  if (keys === 0) {
+  if (keyLineCount(yaml, field) === 0) {
     return names.length > 0
       ? appendFrontmatterLine(yaml, `${field}: ${flowList(names)}`)
       : yaml;
   }
-  const lists = readFrontmatterLists(yaml, field);
-  if (keys > 1 || lists.length !== 1 || !lists[0].complete) return yaml;
-  const [list] = lists;
+  const list = writableFrontmatterList(yaml, field);
+  if (!list) return yaml;
 
   const wanted = new Set(names);
   const stays = (item: FrontmatterListItem) => {
@@ -258,6 +256,20 @@ export function writeFrontmatterList(
   );
 }
 
+/**
+ * The one `field` list `writeFrontmatterList` rewrites in place, or null when it would leave
+ * the field alone: no key, more than one key that reads as `field` (quoted, or in another case),
+ * a key whose value is not a list, or a list not read to its end (`complete`).
+ */
+export function writableFrontmatterList(
+  yaml: string,
+  field: string,
+): FrontmatterList | null {
+  if (keyLineCount(yaml, field) !== 1) return null;
+  const lists = readFrontmatterLists(yaml, field);
+  return lists.length === 1 && lists[0].complete ? lists[0] : null;
+}
+
 /** Unicode whitespace (`White_Space`), the set Rust's `char::is_whitespace` and `\s` use. */
 const WS = "\\p{White_Space}";
 
@@ -270,6 +282,17 @@ interface Line {
   start: number;
   /** The line without its `\n`, and without the one `\r` before that `\n`. */
   text: string;
+}
+
+/** `s` with the characters a regular expression gives a meaning to escaped. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** How many lines of `yaml` start with a key that reads as `field`, quoted or not, in any case. */
+function keyLineCount(yaml: string, field: string): number {
+  const keyRe = new RegExp(`^["']?${escapeRegExp(field)}["']?${WS}*:`, "iu");
+  return splitLines(yaml).filter((line) => keyRe.test(line.text)).length;
 }
 
 /**

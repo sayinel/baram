@@ -66,6 +66,18 @@ describe("readFrontmatterLists", () => {
     ]);
   });
 
+  // §72 The Properties panel reads any key's list: a key is text, not a pattern.
+  it("reads a field whose name holds regular-expression characters", () => {
+    const yaml = "aab: [no]\na+b: [x]\nc.d:\n  - y";
+    expect(frontmatterListItems(yaml, "a+b").map((i) => i.value)).toEqual([
+      "x",
+    ]);
+    expect(frontmatterListItems(yaml, "c.d").map((i) => i.value)).toEqual([
+      "y",
+    ]);
+    expect(frontmatterListItems("cxd: [z]", "c.d")).toEqual([]);
+  });
+
   it("reads no list from a field in another form", () => {
     for (const yaml of ["tags: solo", "tags: [a,\n  b]", "title: x"]) {
       expect(readFrontmatterLists(yaml, "tags")).toEqual([]);
