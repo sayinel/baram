@@ -50,7 +50,7 @@ impl Drop for Running<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::scope::Allowed;
+    use super::super::scope::{Allowed, FixedRoot};
     use super::super::server::Server;
     use super::super::tools::{self, ToolName};
     use super::*;
@@ -89,6 +89,7 @@ mod tests {
         let vault = Vault {
             name: "v".into(),
             root: dir.path().canonicalize().unwrap(),
+            spellings: None,
         };
         for name in ["a.md", "b.md", "c.md"] {
             std::fs::write(vault.root.join(name), "[[a]]\n").unwrap();
@@ -116,7 +117,10 @@ mod tests {
         std::fs::write(root.join("a.md"), "[[a]]\n").unwrap();
         for tool in [ToolName::Backlinks, ToolName::OutgoingLinks] {
             let server = Server::new(
-                Allowed::Fixed(vec![root.clone()]),
+                Allowed::Fixed(vec![FixedRoot {
+                    root: root.clone(),
+                    spelled: Vec::new(),
+                }]),
                 None,
                 Vec::new(),
                 Box::new(AppConfig::default),

@@ -329,6 +329,31 @@ fn a_vault_flag_that_does_not_resolve_stops_the_server_before_stdout() {
     }
 }
 
+/// A `--vault` behind a folder that cannot be entered stops the server the way the CLI
+/// stops (spec 0068 §3.1): IO with the OS's reason, exit 1, and nothing on stdout.
+///
+/// What fails this: `vault::from_path` deciding by `Path::is_dir` (VAULT_NOT_FOUND).
+#[test]
+fn a_vault_flag_behind_a_folder_that_cannot_be_entered_stops_the_server_with_io() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    let locked = sb.base.join("locked");
+    write(&locked, "v/a.md", "x\n");
+    let unreachable = locked.join("v").to_string_lossy().into_owned();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let ended = session(&sb, &["--vault", &unreachable]).end();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    assert_eq!(ended.code, 1, "{}", ended.stderr);
+    assert!(ended.seen.is_empty(), "{:?}", ended.seen);
+    assert!(
+        ended
+            .stderr
+            .starts_with(&format!("error[IO]: cannot read {unreachable}: ")),
+        "{}",
+        ended.stderr
+    );
+}
+
 /// `list_vaults` lists the vaults the server may read — a registered one by the CLI's row,
 /// a `--vault` the app does not register as `unregistered` — and names the one the call
 /// resolved to: the first `--vault` by default, the `vault` argument when it is given, and
@@ -364,29 +389,37 @@ fn list_vaults_shows_the_scope_and_the_vault_a_call_reads() {
     assert_eq!(s.end().code, 0);
 }
 
-/// A data tool's `vault` gets one answer for a directory outside the scope and for a path
-/// that is not there (spec 0068 §3.2): `read_note` through each gives the same error text,
-/// candidates included, but for the path it repeats. The scope's own vault is read, so the
-/// error is the scope's.
+/// A data tool's `vault` gets one answer for a directory outside the scope, for a path
+/// that is not there, and for one behind a folder that cannot be entered (spec 0068 §3.2):
+/// `read_note` through each gives the same error text, candidates included, but for the
+/// path it repeats. The scope's own vault is read, so the error is the scope's.
 ///
 /// What fails this: an existence check before the scope (the CLI's `no directory at …` for
-/// the missing path); candidates listed for one of the two and not the other.
+/// the missing path, `cannot read …` for the locked one); candidates listed for one of them
+/// and not the others.
 #[test]
 fn a_data_tool_answers_a_vault_outside_the_scope_as_it_answers_a_missing_one() {
+    use std::os::unix::fs::PermissionsExt;
     let sb = sandbox();
     write(&sb.vault, "a.md", "inside\n");
     let outside = sb.base.join("outside");
     write(&outside, "a.md", "outside\n");
     let missing = sb.base.join("missing");
+    let locked = sb.base.join("locked");
+    write(&locked, "v/a.md", "locked\n");
+    let unreachable = locked.join("v");
     let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
     s.handshake();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
     let mut answers = Vec::new();
-    for (id, vault) in [(1, &outside), (2, &missing)] {
+    for (id, vault) in [(1, &outside), (2, &missing), (4, &unreachable)] {
         let vault = vault.to_string_lossy().into_owned();
         let result = s.call(id, "read_note", json!({ "vault": vault, "path": "a.md" }));
         answers.push(tool_error(&result).replace(&vault, "<vault>"));
     }
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     assert_eq!(answers[0], answers[1]);
+    assert_eq!(answers[0], answers[2]);
     let mut lines = answers[0].lines();
     assert_eq!(
         lines.next(),
@@ -400,6 +433,83 @@ fn a_data_tool_answers_a_vault_outside_the_scope_as_it_answers_a_missing_one() {
         3,
         "read_note",
         json!({ "vault": vault_arg(&sb), "path": "a.md" }),
+    );
+    assert_eq!(structured(&result)["content"], json!("inside\n"));
+    assert_eq!(s.end().code, 0);
+}
+
+/// A tool's `vault` and an absolute path argument are matched against the spellings of the
+/// vaults the server reads by their letters (spec 0068 §3.2). A link to the vault, which the
+/// disk would resolve onto it, is refused — as `vault` with the answer a missing path gets,
+/// as a path as outside — while the server was started with the folder's own path, or with
+/// no `--vault` and the folder registered; started with the link as `--vault`, the server
+/// reads it both ways, and the folder's own path too.
+///
+/// What fails this: either argument resolved on disk before it is compared (the link is read
+/// in the first session); the default vault handed to the tool without its spellings (the
+/// link is read in the second); the `--vault` value left out of the spellings (the link is
+/// refused in the third).
+#[test]
+fn a_spelling_of_the_vault_the_server_was_not_given_is_refused() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "inside\n");
+    let link = sb.base.join("link");
+    std::os::unix::fs::symlink(&sb.vault, &link).expect("link to the vault");
+    let link = link.to_string_lossy().into_owned();
+    let missing = sb.base.join("missing").to_string_lossy().into_owned();
+    let canonical = vault_arg(&sb);
+    let mut s = session(&sb, &["--vault", &canonical]);
+    s.handshake();
+    let linked = s.call(1, "read_note", json!({ "vault": link, "path": "a.md" }));
+    let absent = s.call(2, "read_note", json!({ "vault": missing, "path": "a.md" }));
+    assert_eq!(
+        tool_error(&linked).replace(&link, "<path>"),
+        tool_error(&absent).replace(&missing, "<path>")
+    );
+    let through = format!("{link}/a.md");
+    let result = s.call(3, "read_note", json!({ "path": through }));
+    assert_eq!(
+        tool_error(&result),
+        format!("error[PATH_OUTSIDE_VAULT]: {through} is outside the vault at {canonical}")
+    );
+    let result = s.call(
+        4,
+        "read_note",
+        json!({ "path": format!("{canonical}/a.md") }),
+    );
+    assert_eq!(structured(&result)["content"], json!("inside\n"));
+    assert_eq!(s.end().code, 0);
+
+    // Without `--vault`, the default vault — the registered one that holds the project
+    // directory — is matched by the same letters.
+    write_config(&sb, &[("baram:context", registered(&sb))]);
+    let project = [("CLAUDE_PROJECT_DIR", canonical.as_str())];
+    let mut s = session_with(&sb, &sb.home, &[], &project);
+    s.handshake();
+    let result = s.call(1, "read_note", json!({ "path": through }));
+    assert_eq!(
+        tool_error(&result),
+        format!("error[PATH_OUTSIDE_VAULT]: {through} is outside the vault at {canonical}")
+    );
+    let result = s.call(
+        2,
+        "read_note",
+        json!({ "path": format!("{canonical}/a.md") }),
+    );
+    assert_eq!(structured(&result)["content"], json!("inside\n"));
+    assert_eq!(s.end().code, 0);
+
+    let mut s = session(&sb, &["--vault", &link]);
+    s.handshake();
+    let result = s.call(1, "read_note", json!({ "vault": link, "path": through }));
+    let page = structured(&result);
+    assert_eq!(page["content"], json!("inside\n"));
+    assert_eq!(page["path"], json!("a.md"));
+    assert_eq!(page["vault"]["path"], json!(canonical));
+    let result = s.call(
+        2,
+        "read_note",
+        json!({ "vault": canonical, "path": format!("{canonical}/a.md") }),
     );
     assert_eq!(structured(&result)["content"], json!("inside\n"));
     assert_eq!(s.end().code, 0);
@@ -802,6 +912,37 @@ fn search_and_read_note_page_through_notes() {
     assert_eq!(s.end().code, 0);
 }
 
+/// `list_files` and `search` refuse a `folder` the vault walk skips with the CLI's message,
+/// which names the rule (spec 0066 §3.4).
+///
+/// What fails this: the folder check dropped from either tool (`.obsidian` is there and
+/// holds a note with the query in it, so the call would answer); the message's list built
+/// from anything but the walkers' `SKIP_DIRS`.
+#[test]
+fn a_folder_the_vault_walk_skips_is_refused_by_both_tools_that_take_one() {
+    let sb = sandbox();
+    write(&sb.vault, ".obsidian/app.md", "needle\n");
+    let mut s = session(&sb, &["--vault", &vault_arg(&sb)]);
+    s.handshake();
+    for (id, tool, arguments) in [
+        (1, "list_files", json!({ "folder": ".obsidian" })),
+        (
+            2,
+            "search",
+            json!({ "query": "needle", "folder": ".obsidian" }),
+        ),
+    ] {
+        let result = s.call(id, tool, arguments);
+        assert_eq!(
+            tool_error(&result),
+            "error[INVALID_ARGUMENT]: .obsidian is a folder the vault walk skips \
+             (hidden, or one of: node_modules, .git, .obsidian, .baram)",
+            "{tool}"
+        );
+    }
+    assert_eq!(s.end().code, 0);
+}
+
 /// A search page's rows as (path, line).
 fn hit_keys(page: &Value) -> Vec<(&str, u64)> {
     page["items"]
@@ -1007,6 +1148,97 @@ fn a_path_no_file_system_takes_is_an_invalid_argument() {
             tool_error(&result),
             "error[INVALID_ARGUMENT]: a\\u0000b.md is not a valid file path: file name \
              contained an unexpected NUL byte",
+            "{tool}"
+        );
+    }
+    assert_eq!(s.end().code, 0);
+}
+
+/// The three tools that read a note refuse a name the note rules refuse with one answer,
+/// whether a file is there or not (spec 0068 D6): asked of the sandbox vault, which holds
+/// each file below, and of an empty vault, `read_note`, `list_tasks` with `file` and
+/// `outgoing_links` give the same text. The note both vaults lack is FILE_NOT_FOUND in
+/// both, and `a.md`, which only the sandbox vault holds, is read there — the vaults are
+/// the ones asked. A note name the disk resolves to other letters the rules refuse —
+/// `link.md`, a link to `.env`, and `b.md` beside a `b.MD` on a volume that ignores case —
+/// is FILE_NOT_FOUND in both, as a note that is not there.
+///
+/// What fails this: any of the three asking for the file before the note rules — the
+/// empty vault then answers FILE_NOT_FOUND where the full one says why it refuses; the
+/// rules' refusal of the resolved path returned as it is (`link.md` is then "not a
+/// markdown note" in the sandbox vault).
+#[test]
+fn the_note_tools_answer_a_name_they_refuse_alike_whether_a_file_is_there() {
+    let sb = sandbox();
+    for file in [
+        ".env",
+        ".git/config",
+        "x.txt",
+        "notes/.draft.md",
+        "node_modules/m.md",
+        "b.MD",
+    ] {
+        write(&sb.vault, file, "- [ ] a task\n");
+    }
+    std::os::unix::fs::symlink(sb.vault.join(".env"), sb.vault.join("link.md")).expect("link");
+    write(&sb.vault, "a.md", "- [ ] a task\n");
+    let empty = sb.base.join("empty");
+    std::fs::create_dir_all(&empty).expect("mkdir");
+    let empty = empty.to_string_lossy().into_owned();
+    let full = vault_arg(&sb);
+    let mut s = session(&sb, &["--vault", &full, "--vault", &empty]);
+    s.handshake();
+    let mut id = 0;
+    for (input, first) in [
+        (
+            ".env",
+            "error[INVALID_ARGUMENT]: .env is not a markdown note",
+        ),
+        (
+            ".git/config",
+            "error[INVALID_ARGUMENT]: .git/config is not a markdown note",
+        ),
+        (
+            "x.txt",
+            "error[INVALID_ARGUMENT]: x.txt is not a markdown note",
+        ),
+        (
+            "notes/.draft.md",
+            "error[INVALID_ARGUMENT]: notes/.draft.md is where the vault walk does not go",
+        ),
+        (
+            "node_modules/m.md",
+            "error[INVALID_ARGUMENT]: node_modules/m.md is where the vault walk does not go",
+        ),
+        ("nope.md", "error[FILE_NOT_FOUND]: no file at nope.md"),
+        ("link.md", "error[FILE_NOT_FOUND]: no file at link.md"),
+        ("b.md", "error[FILE_NOT_FOUND]: no file at b.md"),
+    ] {
+        for (tool, key) in [
+            ("read_note", "path"),
+            ("list_tasks", "file"),
+            ("outgoing_links", "path"),
+        ] {
+            for vault in [&full, &empty] {
+                id += 1;
+                let result = s.call(id, tool, json!({ "vault": vault, key: input }));
+                assert_eq!(tool_error(&result), first, "{tool} {input} in {vault}");
+            }
+        }
+    }
+    for (tool, key) in [
+        ("read_note", "path"),
+        ("list_tasks", "file"),
+        ("outgoing_links", "path"),
+    ] {
+        id += 1;
+        let result = s.call(id, tool, json!({ "vault": &full, key: "a.md" }));
+        structured(&result);
+        id += 1;
+        let result = s.call(id, tool, json!({ "vault": &empty, key: "a.md" }));
+        assert_eq!(
+            tool_error(&result),
+            "error[FILE_NOT_FOUND]: no file at a.md",
             "{tool}"
         );
     }

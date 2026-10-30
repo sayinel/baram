@@ -12,6 +12,7 @@ mod ops_notes;
 mod ops_search;
 mod output;
 mod paths;
+mod spelling;
 mod vault;
 
 // §393 `plugin_index_cmd` reads the task panel's exclusions the way the CLI does.

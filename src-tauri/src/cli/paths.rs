@@ -2,6 +2,7 @@
 // is printed (spec 0066 §3.4). Which vault that is, is `vault.rs`.
 
 use super::error::{CliError, ErrorCode};
+use super::spelling;
 use super::vault::Vault;
 use crate::context::manager::resolve_canonical;
 use std::path::{Component, Path, PathBuf};
@@ -35,36 +36,106 @@ pub(crate) fn fold(path: &Path) -> Option<PathBuf> {
 /// boundary: the caller is a model with no shell, whose arguments can come from the text of
 /// a note it read (spec 0068 D6), and every note or folder path a tool takes reaches the
 /// disk through this function — `backlinks` calls it directly, every other tool that takes
-/// one through `folder_arg` or `note_arg`.
+/// one through `folder_arg` or `note_names_first`. There an absolute input must start with
+/// one of `Vault::spellings` by its letters, which asks nothing of the disk: a spelling of
+/// the root that the server was not given — a link to it, another case on macOS's
+/// case-insensitive volume (on Windows only a non-ASCII case difference: the letters fold
+/// ASCII) — is outside, whether or not it would resolve into the vault (spec 0068 §3.2). What follows the spelling is put onto the canonical root as written, and is then
+/// resolved and checked as on the command line. A relative input whose `..` climbs out of
+/// the root is outside by its letters too (`written_path`).
 pub(crate) fn locate(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
-    let outside = || {
-        CliError::new(
-            ErrorCode::PathOutsideVault,
-            format!("{input} is outside the vault at {}", vault.root.display()),
-        )
-    };
+    let written = written_path(vault, input)?;
+    resolved_path(vault, input, &written)
+}
+
+/// PATH_OUTSIDE_VAULT for `input`.
+fn outside(vault: &Vault, input: &str) -> CliError {
+    CliError::new(
+        ErrorCode::PathOutsideVault,
+        format!("{input} is outside the vault at {}", vault.root.display()),
+    )
+}
+
+/// The path `input` names by its letters alone, before the disk is asked: a relative input
+/// pushed onto the root part by part, or for `baram mcp` an absolute one put onto the root
+/// after the spelling it starts with; then `.` and `..` folded. For `baram mcp` (the vault
+/// has `Vault::spellings`) the folded path must lie under the root, component by component,
+/// or it is outside — so a `..` that climbs out of the root is refused before the disk is
+/// asked where the path leads, and one that climbs out and back in is not. Without
+/// spellings — the command line's vaults — a relative `..` or an absolute input may lie
+/// outside the root by its letters while it resolves into it, and `resolved_path` decides.
+fn written_path(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
+    let windows = cfg!(windows);
     let candidate = if Path::new(input).is_absolute() {
-        PathBuf::from(input)
-    } else {
-        // Pushed component by component: a verbatim Windows root (`\\?\C:\…`, what
-        // canonicalize returns there) does not read `/` as a separator.
-        let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
-        let mut joined = vault.root.clone();
-        for part in input.split(separators).filter(|part| !part.is_empty()) {
-            joined.push(part);
+        match &vault.spellings {
+            None => PathBuf::from(input),
+            Some(spellings) => {
+                let rest = below_a_spelling(input, spellings, windows)
+                    .ok_or_else(|| outside(vault, input))?;
+                pushed(&vault.root, input, rest.iter().map(String::as_str), windows)?
+            }
         }
-        joined
+    } else {
+        // Pushed part by part so that each part passes `spelling::not_one_name` before
+        // `PathBuf::push` sees it.
+        let separators: &[char] = if windows { &['/', '\\'] } else { &['/'] };
+        let parts = input.split(separators).filter(|part| !part.is_empty());
+        pushed(&vault.root, input, parts, windows)?
     };
     // `..` is folded BEFORE the filesystem is asked: `resolve_canonical` climbs to an
     // existing ancestor by file name, and a path that ends in `..` has none.
-    let folded = fold(&candidate).ok_or_else(outside)?;
-    let resolved = resolve_canonical(&folded.to_string_lossy())
+    let written = fold(&candidate).ok_or_else(|| outside(vault, input))?;
+    if vault.spellings.is_some() && !written.starts_with(&vault.root) {
+        return Err(outside(vault, input));
+    }
+    Ok(written)
+}
+
+/// `written` as the disk resolves it, checked to lie in the vault. Only `written` — the
+/// folded path — reaches the disk, never `input`, so a `..` is applied to the letters even
+/// after a symbolic link (`only_the_folded_path_reaches_the_disk`).
+fn resolved_path(vault: &Vault, input: &str, written: &Path) -> Result<PathBuf, CliError> {
+    let resolved = resolve_canonical(&written.to_string_lossy())
         .map_err(|e| CliError::new(ErrorCode::Io, format!("cannot resolve {input}: {e}")))?;
     // After canonicalization, so a symlink inside the vault that points out is caught.
     if !resolved.starts_with(&vault.root) {
-        return Err(outside());
+        return Err(outside(vault, input));
     }
     Ok(resolved)
+}
+
+/// The parts of the absolute `input` below one of `spellings`, as written, by their letters
+/// (`spelling::letters`) — `None` when no spelling starts it, or `input` climbs past its
+/// root.
+fn below_a_spelling(input: &str, spellings: &[String], windows: bool) -> Option<Vec<String>> {
+    let path = spelling::letters(input, windows)?;
+    spellings.iter().find_map(|spelled| {
+        let root = spelling::letters(spelled, windows)?;
+        path.below(&root).map(<[String]>::to_vec)
+    })
+}
+
+/// `root` with each of `parts` pushed onto it. A part that `PathBuf::push` would not append
+/// as one name (`spelling::not_one_name` — on Windows, `C:x` replaces the path it is pushed
+/// onto) is refused before it is pushed: INVALID_ARGUMENT, the argument being what has to
+/// change, as for a path the system refuses as written (`refused_as_written`).
+fn pushed<'a>(
+    root: &Path,
+    input: &str,
+    parts: impl IntoIterator<Item = &'a str>,
+    windows: bool,
+) -> Result<PathBuf, CliError> {
+    let mut joined = root.to_path_buf();
+    for part in parts {
+        if spelling::not_one_name(part, windows) {
+            return Err(CliError::new(
+                ErrorCode::InvalidArgument,
+                format!("{input} is not a valid path: `{part}` is not a name a folder can hold"),
+            ));
+        }
+        joined.push(part);
+    }
+    Ok(joined)
 }
 
 /// A `--folder` value: a directory inside the vault that a whole-vault walk would also
@@ -106,7 +177,11 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
 /// cannot be entered would be reported as absent. A failed read is split by
 /// `metadata_failure`; a directory is FILE_NOT_FOUND too, as it is not a file.
 pub(crate) fn file_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
-    let file = locate(vault, input)?;
+    existing_file(input, locate(vault, input)?)
+}
+
+/// The question `file_arg` asks of what `locate` returned: is a file there.
+fn existing_file(input: &str, file: PathBuf) -> Result<PathBuf, CliError> {
     match std::fs::metadata(&file) {
         Ok(meta) if meta.is_file() => Ok(file),
         Ok(_) => Err(CliError::new(
@@ -160,46 +235,81 @@ fn metadata_failure(input: &str, noun: &str, source: std::io::Error) -> CliError
 }
 
 /// A `--file` value for a command that reads a NOTE: a file the vault walk would list.
-/// The walk lists `.md` and `.markdown` files by name, case-sensitively, and never
-/// enters a hidden or `SKIP_DIRS` folder, so a file outside that is refused the way
+/// The walk lists a file by its name (`fs::is_note_name`) and never enters a hidden or
+/// `SKIP_DIRS` folder (`walk_skips`), so a file outside that is refused the way
 /// `folder_arg` refuses a skipped folder — an answer for it would show what the app never
-/// shows (spec 0066 §3.4).
+/// shows (spec 0066 §3.4). Whether the file is there is asked first: on the command line a
+/// missing `notes.txt` is FILE_NOT_FOUND. `baram mcp` asks in the other order
+/// (`note_names_first`).
 pub(crate) fn note_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
     let file = file_arg(vault, input)?;
+    note_rules(vault, input, &file)?;
+    Ok(file)
+}
+
+/// `note_arg` for the MCP server's tools that read a note — `read_note`, `list_tasks` with
+/// `file`, `outgoing_links` (spec 0068 D6): the note rules are asked after `locate` and
+/// before the file is, so their refusal is the same whether a file is there or not.
+///
+/// The rules are asked of the path `locate` resolved: on a volume that ignores case
+/// (measured on macOS APFS) `X.MD` resolves to a note stored as `x.md` and is read, as on
+/// the command line. When the resolved path has other letters than the path as written — a
+/// case, a link — and the rules refuse it, the answer is the one the written letters get
+/// with nothing there: their own refusal if the rules refuse them too, else FILE_NOT_FOUND
+/// `no file at <input>` — the walk lists no note by that name. So `b.md` beside a `b.MD`,
+/// `NODE_MODULES/m.md` beside a `node_modules/` folder, and a `link.md` that links to
+/// `.env` answer as they do in a vault without those files. Answers that still differ with
+/// what is there include a link that leads out of the vault (PATH_OUTSIDE_VAULT, `locate`'s),
+/// a folder on the way that cannot be entered (IO, `existing_file`'s), and a written name
+/// that resolves to a note, which is read.
+pub(crate) fn note_names_first(vault: &Vault, input: &str) -> Result<PathBuf, CliError> {
+    let written = written_path(vault, input)?;
+    let file = resolved_path(vault, input, &written)?;
+    if note_rules(vault, input, &file).is_err() {
+        // `written` lies under the root whenever the vault has spellings — `written_path`
+        // refuses it otherwise. Without them, a relative `..` or an absolute input may lie
+        // outside by its letters, and the letters are not asked.
+        let as_written = if written.starts_with(&vault.root) {
+            note_rules(vault, input, &written)
+        } else {
+            Ok(())
+        };
+        return Err(match as_written {
+            Err(refusal) => refusal,
+            Ok(()) => CliError::new(ErrorCode::FileNotFound, format!("no file at {input}")),
+        });
+    }
+    existing_file(input, file)
+}
+
+/// The two rules a note path meets — neither reads the disk.
+fn note_rules(vault: &Vault, input: &str, file: &Path) -> Result<(), CliError> {
     let name = file
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if !(name.ends_with(".md") || name.ends_with(".markdown")) {
+    if !crate::fs::is_note_name(&name) {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is not a markdown note"),
         ));
     }
-    if walk_skips(vault, &file) {
+    if walk_skips(vault, file) {
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!("{input} is where the vault walk does not go"),
         ));
     }
-    Ok(file)
+    Ok(())
 }
 
-/// Whether the vault walk never reaches `path`: a component BELOW the vault root is
-/// hidden, or is one of `SKIP_DIRS`. The two `fs` walkers, `collect_md_files` and
-/// `collect_all_files`, skip a hidden ENTRY of either kind and test `SKIP_DIRS` on
-/// directories only; a file named exactly like one of `SKIP_DIRS` is never a note, so for
-/// what the callers ask — a folder, or a markdown file — the answer is the one those two
-/// walkers give. `search`'s own walker skips hidden directories but not hidden files;
-/// `search` reaches this only through `--folder`, and for a folder the two rules agree.
+/// Whether the vault walk never reaches `path`: `fs::is_skipped_relative`, the walkers' own
+/// rule, asked of the components BELOW the vault root. The callers pass what `locate`
+/// returned, which lies under the root. `search`'s own walker skips hidden directories but
+/// not hidden files; `search` reaches this only through `--folder`, and for a folder the
+/// two rules agree.
 pub(crate) fn walk_skips(vault: &Vault, path: &Path) -> bool {
-    path.strip_prefix(&vault.root)
-        .unwrap_or(path)
-        .components()
-        .any(|component| {
-            let name = component.as_os_str().to_string_lossy();
-            name.starts_with('.') || crate::fs::SKIP_DIRS.contains(&name.as_ref())
-        })
+    crate::fs::is_skipped_relative(path.strip_prefix(&vault.root).unwrap_or(path))
 }
 
 /// `/` between components on every platform.
@@ -238,6 +348,7 @@ mod tests {
         Vault {
             name: "v".into(),
             root: root.to_path_buf(),
+            spellings: None,
         }
     }
 
@@ -302,6 +413,210 @@ mod tests {
         assert_eq!(error.code, ErrorCode::PathOutsideVault);
     }
 
+    /// Only the folded path reaches the disk: a `..` after a link is applied to the letters,
+    /// so `out/../tabs.md` is the vault's own `tabs.md` although `out` links elsewhere —
+    /// following the link first, as the kernel would, gives `<elsewhere>/tabs.md`, outside.
+    ///
+    /// What fails this: `resolve_canonical` given the joined path instead of the folded one.
+    #[cfg(unix)]
+    #[test]
+    fn only_the_folded_path_reaches_the_disk() {
+        let (_t, base) = tree(&["vault", "elsewhere/deep"]);
+        std::fs::write(base.join("vault/tabs.md"), "x").unwrap();
+        std::fs::write(base.join("elsewhere/tabs.md"), "x").unwrap();
+        std::os::unix::fs::symlink(base.join("elsewhere/deep"), base.join("vault/out")).unwrap();
+        let vault = vault_at(&base.join("vault"));
+        assert_eq!(
+            locate(&vault, "out/../tabs.md").unwrap(),
+            base.join("vault/tabs.md")
+        );
+        // The control: the link itself leads out of the vault.
+        assert_eq!(
+            locate(&vault, "out").unwrap_err().code,
+            ErrorCode::PathOutsideVault
+        );
+    }
+
+    /// For `baram mcp` (`Vault::spellings` set) an absolute path must start with one of the
+    /// root's spellings by its letters (spec 0068 §3.2), and the rest is put onto the
+    /// canonical root as written. A link to the vault is no spelling unless it is given as
+    /// one, so it is refused as outside whatever it resolves to — while the command line,
+    /// which has no spellings, resolves it on disk and accepts it. A link inside the vault
+    /// that points out is still caught after the rebase.
+    ///
+    /// What fails this: the spellings ignored (the link is accepted); the containment check
+    /// skipped after a rebase (`out/secret.md` is accepted).
+    #[cfg(unix)]
+    #[test]
+    fn for_the_mcp_server_an_absolute_path_starts_with_a_spelling_of_the_root() {
+        let (_t, base) = tree(&["vault/Notes", "other"]);
+        std::fs::write(base.join("other/secret.md"), "x").unwrap();
+        std::os::unix::fs::symlink(base.join("vault"), base.join("to-vault")).unwrap();
+        std::os::unix::fs::symlink(base.join("other"), base.join("vault/out")).unwrap();
+        let root = base.join("vault");
+        let canonical = root.to_string_lossy().into_owned();
+        let link = base.join("to-vault").to_string_lossy().into_owned();
+        let cli = vault_at(&root);
+        let given = |spellings: &[&str]| Vault {
+            spellings: Some(spellings.iter().map(|s| s.to_string()).collect()),
+            ..vault_at(&root)
+        };
+        let through_link = format!("{link}/Notes/a.md");
+        assert_eq!(
+            locate(&cli, &through_link).unwrap(),
+            root.join("Notes/a.md")
+        );
+        let only_canonical = given(&[&canonical]);
+        let refused = locate(&only_canonical, &through_link).unwrap_err();
+        assert_eq!(refused.code, ErrorCode::PathOutsideVault);
+        assert_eq!(
+            refused.message,
+            format!("{through_link} is outside the vault at {canonical}")
+        );
+        for spelled in [
+            format!("{canonical}/Notes/a.md"),
+            format!("{canonical}/./Notes//a.md"),
+            format!("{canonical}/x/../Notes/a.md"),
+        ] {
+            assert_eq!(
+                locate(&only_canonical, &spelled).unwrap(),
+                root.join("Notes/a.md"),
+                "{spelled}"
+            );
+        }
+        let with_link = given(&[&canonical, &link]);
+        assert_eq!(
+            locate(&with_link, &through_link).unwrap(),
+            root.join("Notes/a.md")
+        );
+        assert_eq!(
+            locate(&with_link, &format!("{link}/out/secret.md"))
+                .unwrap_err()
+                .code,
+            ErrorCode::PathOutsideVault
+        );
+    }
+
+    /// For `baram mcp` a relative path whose `..` climbs out of the root is outside by its
+    /// letters, before the disk is asked — as an absolute path that spells no root is. Asking
+    /// the disk first answered three ways for three paths outside the vault: `in.md`, a link
+    /// to the vault's `a.md`, was read; `none.md` was outside; `env.md`, a link to the vault's
+    /// `.env`, was FILE_NOT_FOUND — so a model could tell, through `..`, where a link into the
+    /// vault lies. Now the three get one answer, with the message of the absolute form. A path
+    /// that climbs out and comes back in (`notes/../../vault/a.md`) lies under the root by its
+    /// letters and is read; the command line, which has no spellings, still resolves on disk
+    /// and reads the link.
+    ///
+    /// What fails this: the folded path not checked against the root (`in.md` is read, and
+    /// `env.md` is FILE_NOT_FOUND); the check made on the command line too (the CLI half);
+    /// a check on the letters as typed rather than folded (the way back in is refused).
+    #[cfg(unix)]
+    #[test]
+    fn for_the_mcp_server_a_relative_path_that_climbs_out_is_outside_by_its_letters() {
+        let (_t, base) = tree(&["vault/notes", "other"]);
+        let root = base.join("vault");
+        std::fs::write(root.join("a.md"), "x").unwrap();
+        std::fs::write(root.join(".env"), "x").unwrap();
+        std::os::unix::fs::symlink(root.join("a.md"), base.join("other/in.md")).unwrap();
+        std::os::unix::fs::symlink(root.join(".env"), base.join("other/env.md")).unwrap();
+        let mcp = Vault {
+            spellings: Some(vec![root.to_string_lossy().into_owned()]),
+            ..vault_at(&root)
+        };
+        let outside_message =
+            |input: &str| format!("{input} is outside the vault at {}", root.display());
+        for input in ["../other/in.md", "../other/none.md", "../other/env.md"] {
+            for (what, result) in [
+                ("locate", locate(&mcp, input)),
+                ("note", note_names_first(&mcp, input)),
+            ] {
+                let error = result.unwrap_err();
+                assert_eq!(
+                    (error.code, error.message),
+                    (ErrorCode::PathOutsideVault, outside_message(input)),
+                    "{what} {input}"
+                );
+            }
+        }
+        let absolute = format!("{}/../other/in.md", root.display());
+        assert_eq!(
+            locate(&mcp, &absolute).unwrap_err().code,
+            ErrorCode::PathOutsideVault
+        );
+        assert_eq!(
+            note_names_first(&mcp, "notes/../../vault/a.md").unwrap(),
+            root.join("a.md")
+        );
+        assert_eq!(
+            locate(&vault_at(&root), "../other/in.md").unwrap(),
+            root.join("a.md")
+        );
+    }
+
+    /// On Windows a part of a relative path that starts with a drive (`C:x`) would replace
+    /// the vault root when pushed — `C:x` names the current directory of drive `C:` — so it
+    /// is refused before it is pushed. Tested with `windows = true` on every host; on Unix
+    /// the same part is a name.
+    ///
+    /// What fails this: `pushed` without the `spelling::not_one_name` check.
+    #[test]
+    fn a_part_that_names_a_drive_is_refused_before_it_is_pushed() {
+        let root = Path::new("/v");
+        let error = pushed(root, "notes/C:x", ["notes", "C:x"], true).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert_eq!(
+            error.message,
+            "notes/C:x is not a valid path: `C:x` is not a name a folder can hold"
+        );
+        // On Unix `C:x` is a name like any other. (On a Windows host `Path::join` itself
+        // reads it as a drive, so this half says nothing there.)
+        if cfg!(unix) {
+            assert_eq!(
+                pushed(root, "notes/C:x", ["notes", "C:x"], false).unwrap(),
+                root.join("notes").join("C:x")
+            );
+        }
+    }
+
+    /// On Windows, through `locate` itself: a relative part that starts with a drive is refused
+    /// before it is pushed, and for `baram mcp` an absolute path is put onto the verbatim root
+    /// `canonicalize` gives, whether it is written with that `\\?\` prefix and `\`, with `/`
+    /// after it — a path built from the `vault.path` a tool reports — or as the plain drive
+    /// path a user types. Runs once a Windows job runs the tests.
+    ///
+    /// What fails this: `locate` pushing a part without `pushed`'s check (`C:x` then replaces
+    /// the root and is read against drive `C:`'s current directory); the letters reading
+    /// `\\?\D:` and `D:` as two places, or `/` after it as part of a name.
+    #[cfg(windows)]
+    #[test]
+    fn on_windows_a_drive_part_is_refused_and_a_verbatim_root_takes_each_spelling_of_it() {
+        let (_t, base) = tree(&["vault/notes"]);
+        let root = base.join("vault");
+        let error = locate(&vault_at(&root), "notes/C:x").unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument, "{}", error.message);
+        let canonical = root.to_string_lossy().into_owned();
+        let plain = canonical
+            .strip_prefix(r"\\?\")
+            .expect("canonicalize gives a verbatim path")
+            .to_string();
+        let vault = Vault {
+            spellings: Some(vec![canonical.clone()]),
+            ..vault_at(&root)
+        };
+        for input in [
+            format!(r"{canonical}\notes\a.md"),
+            format!("{canonical}/notes/a.md"),
+            format!(r"{canonical}\notes/a.md"),
+            format!(r"{plain}\notes\a.md"),
+        ] {
+            assert_eq!(
+                locate(&vault, &input).unwrap(),
+                root.join("notes").join("a.md"),
+                "{input}"
+            );
+        }
+    }
+
     #[test]
     fn printed_paths_are_relative_and_slash_separated() {
         let (_t, base) = tree(&["vault/notes"]);
@@ -315,6 +630,11 @@ mod tests {
 
     // ── --folder ──────────────────────────────────────────────────────────────────
 
+    /// The message names the rule. The list is written out here, not built from
+    /// `SKIP_DIRS`: built from it, the test would agree with any list.
+    ///
+    /// What fails this: the folder check dropped (`.obsidian` exists, so it is listed);
+    /// the message's list built from anything but the walkers' `SKIP_DIRS`.
     #[test]
     fn a_folder_the_walk_skips_is_refused_even_when_it_does_not_exist() {
         let (_t, base) = tree(&["vault/docs", "vault/.obsidian", "vault/node_modules"]);
@@ -327,6 +647,14 @@ mod tests {
         ] {
             let error = folder_arg(&vault, input).unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidArgument, "{input}");
+            assert_eq!(
+                error.message,
+                format!(
+                    "{input} is a folder the vault walk skips \
+                     (hidden, or one of: node_modules, .git, .obsidian, .baram)"
+                ),
+                "{input}"
+            );
         }
     }
 
@@ -415,6 +743,7 @@ mod tests {
         let vault = Vault {
             name: "v".into(),
             root: dir.path().canonicalize().unwrap(),
+            spellings: None,
         };
         let long = format!("{}.md", "x".repeat(300));
         for input in ["a\0b.md", long.as_str()] {
@@ -500,6 +829,210 @@ mod tests {
             let error = note_arg(&vault, input).unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidArgument, "{input}");
             assert_eq!(error.message, message, "{input}");
+        }
+    }
+
+    /// `note_arg` and `folder_arg` answer as the walk does, over the fixture of
+    /// `fs::walk_rules`' own parity test plus `c.MD`: a note is accepted exactly when
+    /// `collect_md_files` lists it, and a folder exactly when the walk enters it. Links are
+    /// left out — the walk does not follow them, and `locate` resolves them first.
+    ///
+    /// What fails this: either check reading a rule of its own that the walkers do not share
+    /// — `.md` matched without regard to case (`c.MD` accepted), `.markdown` left out,
+    /// hidden files let through (`sub/.h.md`), a `SKIP_DIRS` folder entered.
+    #[tokio::test]
+    async fn the_note_and_folder_checks_admit_what_the_vault_walk_does() {
+        let (_t, base) = tree(&["vault"]);
+        let root = base.join("vault");
+        let files = [
+            "a.md",
+            "b.markdown",
+            "c.pdf",
+            "c.MD",
+            ".DS_Store",
+            ".obsidian/w.json",
+            "node_modules/x.md",
+            "sub/.h.md",
+            "sub/d.md",
+            "sub/.drafts/e.md",
+        ];
+        for file in files {
+            let path = root.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "x").unwrap();
+        }
+        let vault = vault_at(&root);
+        let mut listed = Vec::new();
+        crate::fs::collect_md_files(&root, &mut listed)
+            .await
+            .unwrap();
+        let mut accepted: Vec<&str> = files
+            .iter()
+            .copied()
+            .filter(|file| note_arg(&vault, file).is_ok())
+            .collect();
+        let mut walked: Vec<String> = listed.iter().map(|path| relative(&vault, path)).collect();
+        accepted.sort_unstable();
+        walked.sort_unstable();
+        assert_eq!(accepted, walked);
+        // A positive half: the fixture puts notes on both sides of the rule.
+        assert_eq!(accepted, ["a.md", "b.markdown", "sub/d.md"]);
+
+        // The folders the walk enters: the root and each one a file it collects lies in.
+        let mut every = Vec::new();
+        crate::fs::collect_all_files(&root, &mut every)
+            .await
+            .unwrap();
+        let mut entered: Vec<String> = every
+            .iter()
+            .filter_map(|path| path.parent())
+            .map(|dir| relative(&vault, dir))
+            .collect();
+        entered.sort_unstable();
+        entered.dedup();
+        assert_eq!(entered, ["", "sub"]);
+        for folder in ["", "sub", ".obsidian", "node_modules", "sub/.drafts"] {
+            assert_eq!(
+                folder_arg(&vault, folder).is_ok(),
+                entered.iter().any(|dir| dir == folder),
+                "{folder:?}"
+            );
+        }
+    }
+
+    /// For `baram mcp` the note rules come before the file questions (`note_names_first`):
+    /// a name the rules refuse gets the same answer whether a file is there or not, so a
+    /// tool does not tell whether a file it would never read exists (spec 0068 D6). What
+    /// `locate` refuses still comes first, and a name the rules take is then asked about —
+    /// a note is read when it is there and missing when it is not.
+    ///
+    /// What fails this: `note_names_first` asking for the file before the rules (each
+    /// refused name is then FILE_NOT_FOUND in the empty vault); the rules asked before
+    /// `locate` (`../other/x.txt` is then "not a markdown note").
+    #[test]
+    fn for_the_mcp_server_a_name_the_note_rules_refuse_answers_alike_whether_it_is_there() {
+        let (_t, base) = tree(&[
+            "full/notes",
+            "full/.git",
+            "full/node_modules",
+            "empty",
+            "other",
+        ]);
+        let full = base.join("full");
+        for file in [
+            ".env",
+            ".git/config",
+            "x.txt",
+            "notes/.draft.md",
+            "node_modules/m.md",
+            "a.md",
+        ] {
+            std::fs::write(full.join(file), "x").unwrap();
+        }
+        std::fs::create_dir_all(full.join("d.md")).unwrap();
+        std::fs::write(base.join("other/x.txt"), "x").unwrap();
+        let (full, empty) = (vault_at(&full), vault_at(&base.join("empty")));
+        for (input, code) in [
+            (".env", ErrorCode::InvalidArgument),
+            (".git/config", ErrorCode::InvalidArgument),
+            ("x.txt", ErrorCode::InvalidArgument),
+            ("notes/.draft.md", ErrorCode::InvalidArgument),
+            ("node_modules/m.md", ErrorCode::InvalidArgument),
+            ("d.md", ErrorCode::FileNotFound),
+            ("../other/x.txt", ErrorCode::PathOutsideVault),
+        ] {
+            let there = note_names_first(&full, input).unwrap_err();
+            let absent = note_names_first(&empty, input).unwrap_err();
+            assert_eq!(there.code, code, "{input}: {}", there.message);
+            assert_eq!(
+                there
+                    .message
+                    .replace(&full.root.to_string_lossy().into_owned(), "<root>"),
+                absent
+                    .message
+                    .replace(&empty.root.to_string_lossy().into_owned(), "<root>"),
+                "{input}"
+            );
+            assert_eq!(there.code, absent.code, "{input}");
+        }
+        assert_eq!(
+            note_names_first(&full, "a.md").unwrap(),
+            full.root.join("a.md")
+        );
+        assert_eq!(
+            note_names_first(&empty, "a.md").unwrap_err().code,
+            ErrorCode::FileNotFound
+        );
+    }
+
+    /// For `baram mcp`, a path the note rules take as written but refuse once `locate` has
+    /// resolved it to other letters — another case on a volume that ignores case, or a link —
+    /// answers as its letters answer with nothing there: FILE_NOT_FOUND `no file at <input>`.
+    /// The walk lists no note by that name either way. Letters the rules refuse as written keep
+    /// that refusal, file or none, and `X.MD`, which resolves to the note `x.md`, is read.
+    /// Asked of a vault holding each file, of one holding only `node_modules/`, and of an empty
+    /// one. A volume that keeps case resolves `b.md` to nothing, so there the link (Unix) is
+    /// what reaches other letters; `folds_case` gates the positive halves for the rest.
+    ///
+    /// What fails this: the resolved path's refusal returned as it is (`b.md` is then "not a
+    /// markdown note" while `b.MD` is there, `NODE_MODULES/m.md` "where the vault walk does not
+    /// go" while `node_modules/` is there, `link.md` "not a markdown note" while it links to
+    /// `.env`); the written letters' refusal dropped (`.ENV` is then FILE_NOT_FOUND).
+    #[test]
+    fn for_the_mcp_server_a_path_resolved_to_other_letters_answers_as_if_nothing_were_there() {
+        let (_t, base) = tree(&["full/node_modules", "folder_only/node_modules", "empty"]);
+        let full = base.join("full");
+        for file in ["b.MD", "node_modules/m.md", ".env", "x.md"] {
+            std::fs::write(full.join(file), "x").unwrap();
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(full.join(".env"), full.join("link.md")).unwrap();
+        let folds_case = std::fs::metadata(full.join("B.MD")).is_ok();
+        let vaults = [
+            vault_at(&full),
+            vault_at(&base.join("folder_only")),
+            vault_at(&base.join("empty")),
+        ];
+        let mut cases = vec![
+            ("b.md", ErrorCode::FileNotFound, "no file at b.md"),
+            (
+                "NODE_MODULES/m.md",
+                ErrorCode::FileNotFound,
+                "no file at NODE_MODULES/m.md",
+            ),
+            (
+                ".ENV",
+                ErrorCode::InvalidArgument,
+                ".ENV is not a markdown note",
+            ),
+        ];
+        if cfg!(unix) {
+            cases.push(("link.md", ErrorCode::FileNotFound, "no file at link.md"));
+        }
+        for (input, code, message) in cases {
+            for vault in &vaults {
+                let error = note_names_first(vault, input).unwrap_err();
+                assert_eq!(
+                    (error.code, error.message.as_str()),
+                    (code, message),
+                    "{input} in {}",
+                    vault.root.display()
+                );
+            }
+        }
+        // The mechanism: these did resolve to other letters.
+        #[cfg(unix)]
+        assert_eq!(locate(&vaults[0], "link.md").unwrap(), full.join(".env"));
+        if folds_case {
+            assert_eq!(locate(&vaults[0], "b.md").unwrap(), full.join("b.MD"));
+            assert_eq!(
+                locate(&vaults[1], "NODE_MODULES/m.md").unwrap(),
+                base.join("folder_only/node_modules/m.md")
+            );
+            assert_eq!(
+                note_names_first(&vaults[0], "X.MD").unwrap(),
+                full.join("x.md")
+            );
         }
     }
 

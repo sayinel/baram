@@ -430,6 +430,60 @@ fn outside_any_vault_the_command_fails_instead_of_guessing() {
     );
 }
 
+/// A `--vault` that is there but behind a folder that cannot be entered is IO with the OS's
+/// reason, not VAULT_NOT_FOUND (spec 0066 §3.7): the folder was not deleted. The same
+/// folder with nothing in it at that name is VAULT_NOT_FOUND — the control.
+///
+/// What fails this: `vault::from_path` deciding by `Path::is_dir`.
+#[test]
+fn a_vault_behind_a_folder_that_cannot_be_entered_is_io() {
+    use std::os::unix::fs::PermissionsExt;
+    let sb = sandbox();
+    write(&sb.base, "locked/v/a.md", "x\n");
+    let locked = sb.base.join("locked");
+    let unreachable = locked.join("v").to_string_lossy().into_owned();
+    let missing = locked.join("nope").to_string_lossy().into_owned();
+    let _unlock = Unlock(locked.clone());
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("chmod");
+    let ran = baram(&sb, &sb.home, &["--vault", &unreachable, "files"]);
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert!(ran.stdout.is_empty(), "stdout: {}", ran.stdout);
+    assert!(
+        ran.stderr
+            .starts_with(&format!("error[IO]: cannot read {unreachable}: ")),
+        "stderr: {}",
+        ran.stderr
+    );
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    let ran = baram(&sb, &sb.home, &["--vault", &missing, "files"]);
+    assert_eq!(ran.code, 1, "stderr: {}", ran.stderr);
+    assert_eq!(
+        ran.stderr,
+        format!("error[VAULT_NOT_FOUND]: no directory at {missing}\n")
+    );
+}
+
+/// The command line resolves an absolute path on disk and then checks that it is in the
+/// vault — a scope rule, not the MCP server's spellings (spec 0066 §3.4): a path through a
+/// link to the vault is read.
+///
+/// What fails this: the MCP server's letter rule applied to the command line.
+#[test]
+fn on_the_command_line_an_absolute_path_through_a_link_to_the_vault_is_read() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "inside\n");
+    let link = sb.base.join("link");
+    std::os::unix::fs::symlink(&sb.vault, &link).expect("link to the vault");
+    let through = link.join("a.md").to_string_lossy().into_owned();
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--vault", &vault_arg(&sb), "read", &through],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(ran.stdout, "inside\n");
+}
+
 #[test]
 fn the_hangul_check_sees_what_it_looks_for() {
     // \u{D30C}\u{C77C} is a Hangul syllable pair, \u{1100} a jamo, \u{3131} a compatibility jamo.
@@ -604,6 +658,14 @@ fn a_folder_argument_is_checked_before_anything_is_walked() {
                 code,
                 "{command:?} --folder {folder}"
             );
+            if folder == ".obsidian" {
+                assert_eq!(
+                    json(&ran.stderr)["error"]["message"],
+                    ".obsidian is a folder the vault walk skips \
+                     (hidden, or one of: node_modules, .git, .obsidian, .baram)",
+                    "{command:?}"
+                );
+            }
         }
     }
 }
@@ -630,6 +692,27 @@ fn search_finds_md_only_and_reports_line_numbers_from_one() {
                 { "path": "docs/guide.md", "line": 1, "snippet": "needle in the guide" }
             ]
         })
+    );
+}
+
+/// A snippet is bounded in characters however long the match (`search::SNIPPET_CHARS`): `.*`
+/// over a line of 10,000 characters gives 300 of them and the `…` that marks the cut.
+///
+/// What fails this: the match kept whole in the snippet.
+#[test]
+fn a_long_match_gives_a_bounded_snippet() {
+    let sb = sandbox();
+    write(&sb.vault, "long.md", &format!("{}\n", "x".repeat(10_000)));
+    let vault = vault_arg(&sb);
+    let ran = baram(
+        &sb,
+        &sb.home,
+        &["--json", "--vault", &vault, "search", "--regex", ".*"],
+    );
+    assert_eq!(ran.code, 0, "stderr: {}", ran.stderr);
+    assert_eq!(
+        json(&ran.stdout)["items"][0]["snippet"],
+        format!("{}…", "x".repeat(300))
     );
 }
 
@@ -1170,6 +1253,35 @@ fn tasks_of_a_file_the_vault_walk_never_shows_is_refused() {
             ran.stderr,
             format!("error[INVALID_ARGUMENT]: {message}\n"),
             "{file}"
+        );
+    }
+}
+
+/// The command line asks whether the file is there before the note rules (spec 0066
+/// §3.4): a name the rules would refuse is FILE_NOT_FOUND, exit 1, when nothing is there.
+/// Only `baram mcp` asks the rules first (spec 0068 D6).
+///
+/// What fails this: `tasks --file` or `links` switched to the MCP server's order, which
+/// answers exit 2, INVALID_ARGUMENT.
+#[test]
+fn on_the_command_line_a_missing_file_is_not_found_before_the_note_rules_refuse_it() {
+    let sb = sandbox();
+    write(&sb.vault, "a.md", "- [ ] a task\n");
+    let vault = vault_arg(&sb);
+    for args in [
+        &["tasks", "--file", "nope.txt"][..],
+        &["links", "nope.txt"][..],
+        &["tasks", "--file", ".hidden/nope.md"][..],
+        &["links", ".hidden/nope.md"][..],
+    ] {
+        let mut argv = vec!["--vault", vault.as_str()];
+        argv.extend_from_slice(args);
+        let ran = baram(&sb, &sb.home, &argv);
+        assert_eq!(ran.code, 1, "{args:?}: stderr: {}", ran.stderr);
+        assert!(
+            ran.stderr.starts_with("error[FILE_NOT_FOUND]: no file at "),
+            "{args:?}: stderr: {}",
+            ran.stderr
         );
     }
 }

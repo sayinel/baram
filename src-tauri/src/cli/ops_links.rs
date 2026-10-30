@@ -211,6 +211,7 @@ mod tests {
         Vault {
             name: "v".into(),
             root: PathBuf::from("/vault"),
+            spellings: None,
         }
     }
 

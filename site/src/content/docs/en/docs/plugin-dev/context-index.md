@@ -71,7 +71,7 @@ interface IndexSearchResult { items: { line: number; path: string; snippet: stri
 - A field with no value is `null`; no field is ever left out.
 - `backlinks` is in (path, line) order with one row per line; `links` in line order; `tags` by
   count, then name; `notesWithTag` by path; `tasks` by path and line.
-- `snippet` is the line the link is on, trimmed and cut at 200 bytes with `…` — for a search match, up to 100 bytes either side of the match, with `…` where it is cut.
+- `snippet` is the line the link is on, trimmed and cut at 200 bytes with `…` — for a search match, about 100 bytes either side of the match and at most 300 of the line's characters, so a long match is cut too, with a `…` at each end where it is cut (302 characters at most).
 
 ## Each read
 
