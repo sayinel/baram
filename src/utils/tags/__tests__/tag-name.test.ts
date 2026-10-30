@@ -1,7 +1,16 @@
 // §56m A tag's name and the vault tag list merged by name.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isBodyTagName, tagEntriesByName, tagName } from "../tag-name";
+import { yamlString } from "../../markdown/yaml-scalar";
+import { lineHasTag } from "../../tasks/task-tag-token";
+import {
+  isBodyTagName,
+  TAG_PART_CLASS,
+  tagEntriesByName,
+  tagName,
+} from "../tag-name";
 
 describe("tagName", () => {
   it("removes every leading #", () => {
@@ -59,40 +68,58 @@ describe("tagEntriesByName", () => {
   });
 });
 
+interface NameRow {
+  accepted: boolean;
+  bare?: string;
+  name: string;
+  why: string;
+}
+
+const { names } = JSON.parse(
+  readFileSync(
+    join(process.cwd(), "src-tauri/src/tag/fixtures/frontmatter-tags.json"),
+    "utf8",
+  ),
+) as { names: NameRow[] };
+
 describe("isBodyTagName", () => {
-  // The backend's tag letters (`md::is_tag_char`): what a tag written `#name` in a note's body
-  // holds. A name with anything else is not a tag the body can spell — `#a b` is the tag `a`.
-  it("accepts letters, digits, _, - and /", () => {
-    for (const name of [
-      "solo",
-      "a/b",
-      "일기",
-      "baram-dev",
-      "x_1",
-      "café",
-      "Ⅻ",
-      "2024",
-    ]) {
-      expect(isBodyTagName(name)).toBe(true);
-    }
+  // The fixture's `names` are the rows the backend's rule on `rename_tag` is tested on
+  // (`the_new_name_rule_agrees_with_the_shared_fixture`). What turns a row red: an alphabet,
+  // a `/` rule, the `-` refusal or the base-character rule other than the backend's.
+  it.each(names.map((r) => [r.name, r.accepted, r.why] as const))(
+    "%j is accepted: %s (%s)",
+    (name, accepted) => {
+      expect(isBodyTagName(name)).toBe(accepted);
+    },
+  );
+
+  // An accepted name is written into a bare front-matter entry as `bare`, the spelling the
+  // backend's writer gives it (`frontmatter::yaml_string`) — the frontend's `yamlString`.
+  it.each(
+    names.filter((r) => r.accepted).map((r) => [r.name, r.bare] as const),
+  )("%j is written bare as %j", (name, bare) => {
+    expect(yamlString(name)).toBe(bare);
   });
 
-  it("refuses anything else, and the empty name", () => {
-    for (const name of [
-      "a b",
-      'a"b',
-      "'a",
-      "a'",
-      "[a]",
-      "a,b",
-      "a.b",
-      "a:b",
-      "#a",
-      "🔥",
-      "a\tb",
-      "",
-    ]) {
-      expect(isBodyTagName(name)).toBe(false);
+  it("has rows on both sides", () => {
+    expect(names.some((r) => r.accepted)).toBe(true);
+    expect(names.some((r) => !r.accepted)).toBe(true);
+  });
+
+  // The part alphabet is the one the agenda's tag toggle ends a tag at (`task-tag-token.ts`,
+  // which reads the backend's `task/fixtures/tag-boundary.json`): a character that continues a
+  // tag there is one a name may hold here. Checked over the Basic Multilingual Plane, which is
+  // what `lineHasTag` looks at one UTF-16 unit at a time.
+  it("ends a tag where the agenda's tag toggle does", () => {
+    const part = new RegExp(`^(?:${TAG_PART_CLASS}|/)$`, "u");
+    const differ: string[] = [];
+    for (let cp = 0; cp <= 0xffff; cp++) {
+      if (cp >= 0xd800 && cp <= 0xdfff) continue;
+      const c = String.fromCharCode(cp);
+      if (part.test(c) === lineHasTag(`#x${c}`, "x")) {
+        differ.push(cp.toString(16));
+      }
     }
+    expect(differ).toEqual([]);
   });
 });

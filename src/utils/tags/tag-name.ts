@@ -3,14 +3,40 @@
 import type { TagEntry } from "../../ipc/types";
 
 /**
- * Whether `name` is a tag a note's body can spell as `#name`: every character a letter, a digit,
- * `_`, `-` or `/` — the backend's tag letters (`md::is_tag_char`: Rust's `char::is_alphanumeric`,
- * which is Unicode `Alphabetic` or a number, `Nd`·`Nl`·`No`). The app's tag-name inputs take
- * only such names: anything else is a tag only in front matter, which the body's `#` cannot
- * reach, and a quote or a bracket there is read back as another name.
+ * One character of a part of a tag name, as the body's reader takes it — the backend's
+ * `md::TAG_PART_CLASS`, `[\w\p{Script=Hangul}-]`, where Rust's Unicode `\w` is Alphabetic, a
+ * mark, a decimal digit, connector punctuation or a join control. JavaScript's `\w` is ASCII
+ * even with the `u` flag, so the properties are written out. The agenda's tag toggle
+ * (`task-tag-token.ts`) holds the same set with `/`; a test compares the two over the Basic
+ * Multilingual Plane. The Unicode tables can differ: over every code point (2026-10-30), Node
+ * 24.21 (Unicode 17) takes 4699 that the backend's `regex-syntax` 0.8.11 does not, U+A7CE among
+ * them — characters newer than its tables — and none the other way.
+ */
+export const TAG_PART_CLASS =
+  "[\\p{Alphabetic}\\p{M}\\p{Nd}\\p{Pc}\\p{Join_Control}\\p{Script=Hangul}-]";
+
+/** A whole tag name the body's reader reads back from `#name`: parts joined by single `/`s. */
+const BODY_TAG_NAME = new RegExp(
+  `^${TAG_PART_CLASS}+(?:/${TAG_PART_CLASS}+)*$`,
+  "u",
+);
+
+/**
+ * Whether `name` is a tag a note's body can spell as `#name` — the rule `tag::rename_tag` puts
+ * on a new name (see its doc): every character is one the body's reader takes in a tag
+ * (`TAG_PART_CLASS`) or a `/` joining two non-empty parts; the name is not `-` alone (a list
+ * marker to YAML); and it has a base character, one neither default-ignorable nor a combining
+ * mark (a name of only Hangul fillers, ZWNJ, ZWJ or marks shows blank). The app's tag-name
+ * inputs take only such names: anything else is a tag only in front matter, which the body's
+ * `#` cannot reach, and a quote or a bracket there is read back as another name. The rows of
+ * `src-tauri/src/tag/fixtures/frontmatter-tags.json`'s `names` pin the two languages together.
  */
 export function isBodyTagName(name: string): boolean {
-  return /^[\p{Alphabetic}\p{N}_/-]+$/u.test(name);
+  return (
+    BODY_TAG_NAME.test(name) &&
+    name !== "-" &&
+    !/^[\p{Default_Ignorable_Code_Point}\p{M}]*$/u.test(name)
+  );
 }
 
 /**
