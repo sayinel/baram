@@ -8,6 +8,7 @@ mod extractor;
 mod filing;
 #[cfg(test)]
 mod fold_gate;
+mod html_media;
 mod judgement;
 mod markdown_links;
 mod normalizer;

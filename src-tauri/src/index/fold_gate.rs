@@ -97,6 +97,12 @@ const ALLOWED: &[(&str, &str, &str)] = &[
          name",
     ),
     (
+        "html_media.rs",
+        "markup.eq_ignore_ascii_case(name)",
+        "named: an HTML tag or attribute name (`img`, `src`) in any ASCII case, \
+         as the HTML parser reads markup names — markup, not a file name",
+    ),
+    (
         "service/rename/pdf_highlights.rs",
         r#"if !rel.get(cut..)?.eq_ignore_ascii_case(".pdf") {"#,
         "highlight_paths: the extension `.pdf` in any ASCII case, as the \
