@@ -1,3 +1,4 @@
+use super::attachments::at;
 use super::*;
 
 #[tokio::test]
@@ -272,8 +273,9 @@ async fn a_reference_left_on_purpose_is_reported_before_the_same_stem_exemption_
     // issue 678: `b/old.md` holds `((#^x))` and `((old#^b1))` on ONE line, so
     // the index names it for one line and its own self-reference accounts for
     // it — the exemption would spare it. But a block reference to the old
-    // name was left on purpose (no reference can spell `old (draft)`), and
-    // that is reported first: a reference in it still says the old name.
+    // name was left on purpose (no reference can spell `old.md`: a link
+    // spelling it reads as the note `old`), and that is reported first: a
+    // reference in it still says the old name.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678j", true).await;
     std::fs::create_dir_all(dir.path().join("a")).unwrap();
@@ -286,8 +288,8 @@ async fn a_reference_left_on_purpose_is_reported_before_the_same_stem_exemption_
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/old (draft).md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "old.md.md"]),
     )
     .await
     .unwrap();
@@ -296,7 +298,7 @@ async fn a_reference_left_on_purpose_is_reported_before_the_same_stem_exemption_
         "{:?}",
         result.updated_files
     );
-    assert_eq!(result.skipped_files, vec![format!("{root}/b/old.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["b", "old.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("b/old.md")).unwrap(),
         "mine ^x ((#^x)) ((old#^b1))\n"
@@ -398,7 +400,7 @@ async fn a_reference_left_in_the_renamed_note_is_reported_though_its_own_referen
     // issue 678: the renamed note holds a self-reference and a reference to
     // its own old name ON ONE LINE, so the index names it for one line and
     // its self-references account for that line — the exemption would spare
-    // it. But `old (draft)` is a stem no block reference can spell, so the
+    // it. But `old.md` is a stem no block reference can spell, so the
     // reference to the old name is left on purpose, and that is reported
     // ahead of the exemption. Without the left-behind disjunct the note
     // would go unmentioned while still naming a note that no longer exists.
@@ -415,8 +417,8 @@ async fn a_reference_left_in_the_renamed_note_is_reported_though_its_own_referen
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/old (draft).md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["old.md.md"]),
     )
     .await
     .unwrap();
@@ -425,9 +427,9 @@ async fn a_reference_left_in_the_renamed_note_is_reported_though_its_own_referen
         "{:?}",
         result.updated_files
     );
-    assert_eq!(result.skipped_files, vec![format!("{root}/old (draft).md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["old.md.md"])]);
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("old (draft).md")).unwrap(),
+        std::fs::read_to_string(dir.path().join("old.md.md")).unwrap(),
         "mine ^x\n\nsee ((#^x)) and ((old#^b1))\n"
     );
 }

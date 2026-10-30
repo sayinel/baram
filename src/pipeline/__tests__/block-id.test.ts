@@ -1,4 +1,6 @@
 // §30a Block ID utility tests + §30b Block Reference/Embed utility tests
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -6,6 +8,7 @@ import {
   BLOCK_EMBED_RE,
   BLOCK_ID_SUFFIX_RE,
   BLOCK_REF_RE,
+  escapeBlockRefTarget,
   extractBlockId,
   generateBlockId,
   parseBlockEmbedMatch,
@@ -14,7 +17,39 @@ import {
   serializeBlockEmbed,
   serializeBlockRef,
   splitRefWidth,
+  unescapeBlockRefTarget,
 } from "../block-id";
+
+// §275.4 The link index reads a block reference's target with these escapes
+// undone, and a rename writes them (`index/block_ref_escape.rs`); the cases
+// live in a fixture the Rust test reads too.
+interface EscapeCase {
+  escaped: string;
+  raw: string;
+  why: string;
+}
+
+const escapeFixture = JSON.parse(
+  readFileSync(
+    join(
+      process.cwd(),
+      "src-tauri/src/index/fixtures/block-ref-target-escape.json",
+    ),
+    "utf8",
+  ),
+) as { cases: EscapeCase[]; unescape_only: EscapeCase[] };
+
+describe("block reference target escaping and the fixture the index reads", () => {
+  // What fails this: unescaping `%25` first — `a%2529b` reads as `a)b`.
+  it.each(escapeFixture.cases)("$why", ({ escaped, raw }) => {
+    expect(escapeBlockRefTarget(raw)).toBe(escaped);
+    expect(unescapeBlockRefTarget(escaped)).toBe(raw);
+  });
+
+  it.each(escapeFixture.unescape_only)("$why", ({ escaped, raw }) => {
+    expect(unescapeBlockRefTarget(escaped)).toBe(raw);
+  });
+});
 
 describe("extractBlockId", () => {
   it("extracts simple alphanumeric ID", () => {

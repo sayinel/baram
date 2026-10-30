@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use super::block_ref_escape::unescape_block_ref_target;
 use super::normalizer::nfc;
 use super::IndexError;
 use super::{LinkEntry, LinkKind};
@@ -171,11 +172,12 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Self-ref ((#^id)) → use current file stem as target
+            // Self-ref ((#^id)) → use current file stem as target; any other target is
+            // read as the editor reads it, its escapes undone (`block_ref_escape`).
             let target = if raw_target.is_empty() {
                 file_stem_from_path(file_path)
             } else {
-                raw_target.to_string()
+                unescape_block_ref_target(raw_target).into_owned()
             };
 
             entries.push(LinkEntry {
@@ -217,11 +219,12 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Self-ref ((#^id)) → use current file stem as target
+            // Self-ref ((#^id)) → use current file stem as target; any other target is
+            // read as the editor reads it, its escapes undone (`block_ref_escape`).
             let target = if raw_target.is_empty() {
                 file_stem_from_path(file_path)
             } else {
-                raw_target.to_string()
+                unescape_block_ref_target(raw_target).into_owned()
             };
 
             entries.push(LinkEntry {

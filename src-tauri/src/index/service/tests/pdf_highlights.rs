@@ -309,3 +309,69 @@ async fn a_pdf_with_some_highlight_files_or_none_carries_what_it_has() {
     assert!(!dir.path().join(".baram").exists());
     assert!(!dir.path().join("highlights").exists());
 }
+
+#[tokio::test]
+async fn an_escaped_highlight_reference_is_a_backlink_of_its_note_and_follows_the_rename() {
+    // The frontend writes a highlight reference with the target's `)`, `#`,
+    // `|` and `%` escaped (§275.4): `((highlights/papers/BERT (2019%29#^h1))`.
+    // The index reads it as the note `highlights/papers/BERT (2019).md`, so
+    // it is that note's backlink, and when the PDF's rename carries the note
+    // along, the reference is respelled — escaped again where the new name
+    // needs it.
+    // What fails this: the extractor reading a block reference's target as
+    // written — the note has no backlink, the reference is left pointing at
+    // a note that moved, and nothing is reported.
+    let sidecar = r#"{"companion":"highlights/papers/BERT (2019).md","highlights":[],"pdf":"papers/BERT (2019).pdf","version":1}
+"#;
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-escaped", true).await;
+    for (path, text) in [
+        ("highlights/papers/BERT (2019).md", "quote ^h1\n"),
+        (".baram/pdf-highlights/papers/BERT (2019).json", sidecar),
+        ("r.md", "((highlights/papers/BERT (2019%29#^h1))\n"),
+    ] {
+        let path = dir.path().join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    std::fs::create_dir_all(dir.path().join("papers")).unwrap();
+    std::fs::write(dir.path().join("papers/BERT (2019).pdf"), b"%PDF\xff\n").unwrap();
+    let state = LinkIndexState::new();
+    refresh_index_inner(&state, &ctx, &root).await.unwrap();
+    let r = at(&root, &["r.md"]);
+    assert_eq!(
+        backlink_lines(
+            &state,
+            &ctx,
+            &at(&root, &["highlights", "papers", "BERT (2019).md"]),
+            &r
+        )
+        .await,
+        vec![1]
+    );
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &at(&root, &["papers", "BERT (2019).pdf"]),
+        &at(&root, &["papers", "Survey (2020).pdf"]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.updated_files, vec![r.clone()]);
+    assert!(result.skipped_files.is_empty(), "{result:?}");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "((highlights/papers/Survey (2020%29#^h1))\n"
+    );
+    assert_eq!(
+        backlink_lines(
+            &state,
+            &ctx,
+            &at(&root, &["highlights", "papers", "Survey (2020).md"]),
+            &r
+        )
+        .await,
+        vec![1]
+    );
+}

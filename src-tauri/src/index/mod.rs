@@ -3,6 +3,7 @@
 // 전략: Vault 열기 시 전체 .md 파일 스캔 → 인메모리 HashMap 저장
 //       파일 저장 시 해당 파일만 증분 업데이트
 
+mod block_ref_escape;
 mod extractor;
 mod filing;
 #[cfg(test)]
@@ -118,13 +119,16 @@ impl LinkKind {
 #[cfg(test)]
 impl LinkKind {
     /// One reference of this kind to `target`, as prose spells it — what the
-    /// count test builds its fixture from, kind by kind over `ALL`. No `_`
-    /// arm: a new kind must say how it is spelled before the suite compiles.
+    /// count test builds its fixture from, kind by kind over `ALL`; a block
+    /// reference's target escaped as the frontend and a rename write it
+    /// (`block_ref_escape::spell_block_ref_target`). No `_` arm: a new kind
+    /// must say how it is spelled before the suite compiles.
     pub(crate) fn spelled(self, target: &str, id: &str) -> String {
+        let block = block_ref_escape::spell_block_ref_target(target);
         match self {
             LinkKind::Wikilink => format!("[[{target}]]"),
-            LinkKind::BlockRef => format!("(({target}#^{id}))"),
-            LinkKind::BlockEmbed => format!("{{{{embed (({target}#^{id}))}}}}"),
+            LinkKind::BlockRef => format!("(({block}#^{id}))"),
+            LinkKind::BlockEmbed => format!("{{{{embed (({block}#^{id}))}}}}"),
         }
     }
 }
@@ -667,9 +671,14 @@ mod tests {
         // a key both sides took from one wrong function would agree on an
         // empty bucket. What fails that half: judging the old name by its
         // stem (`Path::file_stem`) in `RenameTarget::judge` — 0 != 3.
+        // A name holding `)` is written escaped in a block reference
+        // (`t (1%29`), so the count runs for `t (1)` too. What fails that
+        // half: reading a block reference's target as written in
+        // `extract_links` — 1 != 3; or in `visit_block_references_to` — 3 != 1.
         for (old_path, name, new_path) in [
             ("/vault/target.md", "target", "/vault/renamed.md"),
             ("/vault/target.txt", "target.txt", "/vault/renamed.txt"),
+            ("/vault/t (1).md", "t (1)", "/vault/u (2).md"),
         ] {
             let mut content = LinkKind::ALL
                 .iter()

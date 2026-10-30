@@ -9,7 +9,9 @@ use super::LinkKind;
 pub struct LinkEntry {
     /// The file containing the link
     pub source_path: String,
-    /// The target referenced by the link
+    /// The target referenced by the link — a block reference's or an
+    /// embed's with its §275.4 escapes undone (`block_ref_escape`), as the
+    /// editor reads it
     pub target: String,
     /// Line number (1-based)
     pub line: u32,
