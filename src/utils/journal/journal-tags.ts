@@ -25,20 +25,24 @@ export function buildTagIndex(
 
 /**
  * Extract all unique tags from markdown content.
- * Sources: frontmatter `tags: [a, b]` array AND inline `#tagname` in body text.
- * Skips tags inside fenced code blocks.
+ * Sources: frontmatter `tags: [a, b]` array AND inline `#tagname` in the body — the text after
+ * the frontmatter, as the backend's index reads it: a `#x` in another frontmatter field is not
+ * a tag. Skips tags inside fenced code blocks.
  */
 export function extractTagsFromContent(content: string): string[] {
   const tags = new Set<string>();
+  const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  const body = frontmatterMatch
+    ? content.slice(frontmatterMatch[0].length)
+    : content;
 
   // Strip fenced code blocks before scanning inline tags
-  const withoutCodeBlocks = content
+  const withoutCodeBlocks = body
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`]*`/g, "");
 
   // Extract frontmatter tags: `tags: [a, b, c]` or `tags:\n  - a`, each by its name — an
   // item spelled `"#solo"` is the tag `solo`.
-  const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
   if (frontmatterMatch) {
     for (const { value } of frontmatterListItems(frontmatterMatch[1], "tags")) {
       const name = tagName(value).toLowerCase();
