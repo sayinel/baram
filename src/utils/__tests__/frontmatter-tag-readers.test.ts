@@ -1,10 +1,12 @@
 // §56m The app's front-matter tag readers name the same tags as the backend's.
 //
-// The cases live in `fixtures/frontmatter-tags.json` — front matter and the names the backend's
-// front-matter tag reader (`extract_frontmatter_tags`) gives it. Every reader in the app that
-// reads front-matter tags must name the same tags from the same front matter: the tag bar's
-// pills, the journal search filter, and the journal tag index and the Zettel inbox
-// (`extractTagsFromContent`, which lowercases as the backend's index does).
+// The cases live in `src-tauri/src/tag/fixtures/frontmatter-tags.json`, which the backend's
+// reader test (`tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture`) reads
+// too: front matter, and the names `extract_frontmatter_tags` gives it. Every reader in the app
+// that reads front-matter tags must name the same tags from the same front matter — the tag
+// bar's pills, the journal search filter, and the journal tag index and the Zettel inbox
+// (`extractTagsFromContent`, which lowercases as the backend's index does). Where a case
+// carries `frontendTags`, the app reads the text differently on purpose and that is its answer.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -12,23 +14,25 @@ import { describe, expect, it } from "vitest";
 import { parseFrontmatterTags } from "../../extensions/nodes/frontmatter-view";
 import { extractFrontmatterFields } from "../journal/journal-search";
 import { extractTagsFromContent } from "../journal/journal-tags";
-import { frontmatterListItems } from "../markdown/frontmatter-list";
-import { tagName } from "../tags/tag-name";
 
 interface Case {
+  frontendTags?: string[];
+  frontendWhy?: string;
   frontmatter: string;
-  names: string[];
+  tags: string[];
   why: string;
 }
 
 const { cases } = JSON.parse(
   readFileSync(
-    join(process.cwd(), "src/utils/__tests__/fixtures/frontmatter-tags.json"),
+    join(process.cwd(), "src-tauri/src/tag/fixtures/frontmatter-tags.json"),
     "utf8",
   ),
 ) as { cases: Case[] };
 
-const ROWS = cases.map((c) => [c.frontmatter, c.names] as const);
+const ROWS = cases.map(
+  (c) => [c.frontmatter, c.frontendTags ?? c.tags] as const,
+);
 
 describe("front-matter tag readers agree with the backend's (§56m)", () => {
   it("has cases to agree on", () => {
@@ -50,12 +54,8 @@ describe("front-matter tag readers agree with the backend's (§56m)", () => {
     expect(extractTagsFromContent(content)).toEqual(lowered);
   });
 
-  // The one reading that differs on purpose: a comma inside a quoted inline item does not
-  // split it here (the backend reads `a` and `b`), so a rewrite keeps the item whole.
-  it("keeps a quoted inline item whole at its comma", () => {
-    const names = (fm: string) =>
-      frontmatterListItems(fm, "tags").map((i) => tagName(i.value));
-    expect(names(`tags: ["a, b", c]`)).toEqual(["a, b", "c"]);
-    expect(names(`tags: ['a, b']`)).toEqual(["a, b"]);
+  // The fixture holds the intended difference as rows of its own: the test must see them.
+  it("reads the cases where the app reads the text differently on purpose", () => {
+    expect(cases.some((c) => c.frontendTags && c.frontendWhy)).toBe(true);
   });
 });

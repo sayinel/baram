@@ -109,11 +109,11 @@ export function listItemSpelling(
  * (`White_Space`, as Rust's `char::is_whitespace`). An item's value is its text less every `"`
  * at either end, then every `'` — no escape is read.
  *
- * Measured against the backend's reader on 86 inputs (2026-10-26) — the rows of
- * `src/utils/__tests__/fixtures/frontmatter-tags.json` and 52 more from a review — the one
- * reading that differs is on purpose: in `field: [a, b]` a comma inside a quoted item does not split it —
- * `["a, b"]` and `["a\", b"]` are one item here and two there — so that writing the list back
- * keeps the item whole.
+ * The backend's reader and this one read the cases of
+ * `src-tauri/src/tag/fixtures/frontmatter-tags.json` in their tests. The one reading that
+ * differs there is on purpose, and those cases say so (`frontendTags`): in `field: [a, b]` a
+ * comma inside a quoted item does not split it — `["a, b"]` and `["a\", b"]` are one item here
+ * and two there — so that writing the list back keeps the item whole.
  */
 export function readFrontmatterLists(
   yaml: string,

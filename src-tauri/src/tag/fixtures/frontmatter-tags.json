@@ -1,5 +1,5 @@
 {
-  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; each entry trimmed, then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. `cases` are front matters to read; `names` (see `names_contract`) are names to rename to. Every character outside ASCII is written as a JSON unicode escape.",
+  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; each entry trimmed, then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. `cases` are front matters to read; `names` (see `names_contract`) are names to rename to. Every character outside ASCII is written as a JSON unicode escape. A case may also carry `frontendTags` and `frontendWhy`: the names the app's frontend reader (`readFrontmatterLists` in `src/utils/markdown/frontmatter-list.ts`) gives where it reads the text differently on purpose \u2014 it does not split an inline list at a comma inside a quoted entry, so that its writer keeps the entry whole. The Rust test reads `tags`; the frontend's test (`src/utils/__tests__/frontmatter-tag-readers.test.ts`) reads `frontendTags` where a case has it.",
   "cases": [
     {
       "frontmatter": "tags: [\"#solo\"]",
@@ -190,6 +190,153 @@
       "frontmatter": "title: about #solo\nkeywords: [a]",
       "tags": [],
       "why": "a # in another field and a list under another key are not tags (to YAML the # begins a comment)"
+    },
+    {
+      "frontmatter": "tags: [\ufeffa]",
+      "tags": [
+        "\ufeffa"
+      ],
+      "why": "U+FEFF is not whitespace (White_Space) and stays in the name; JavaScript's trim would take it off"
+    },
+    {
+      "frontmatter": "tags: [a\u0085]",
+      "tags": [
+        "a"
+      ],
+      "why": "U+0085 (NEL) is whitespace (White_Space) and trimmed; JavaScript's trim keeps it, and so does YAML, which reads a\\u0085"
+    },
+    {
+      "frontmatter": "tags:\n\u3000- a",
+      "tags": [
+        "a"
+      ],
+      "why": "an ideographic space (U+3000) before the dash is whitespace to the item pattern, so the line is an item; YAML rejects the text"
+    },
+    {
+      "frontmatter": "tags:\u3000\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "U+3000 after the colon is whitespace to the key pattern, so the key line opens a block list; YAML reads one string, not a list"
+    },
+    {
+      "frontmatter": "tags:\n  -\u3000a",
+      "tags": [
+        "a"
+      ],
+      "why": "U+3000 after the dash separates the item; YAML reads the string -\\u3000a, not a list"
+    },
+    {
+      "frontmatter": "tags: [a]\ntags: [b]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "every tags list is read, in order; YAML rejects the repeated key"
+    },
+    {
+      "frontmatter": "tags:\n  - a\ntags: [b]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a block list, then an inline list under a second key: both are read; YAML rejects the repeated key"
+    },
+    {
+      "frontmatter": "Tags: [a]\ntags:\n  - b",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "keys that differ in case are each read; YAML keeps them as two keys"
+    },
+    {
+      "frontmatter": "x: 1\u2028tags: [a]",
+      "tags": [],
+      "why": "lines are cut at \\n only, so the text after U+2028 is not the start of a line; YAML rejects the text"
+    },
+    {
+      "frontmatter": "title: t\rtags: [a]",
+      "tags": [],
+      "why": "a lone \\r does not end a line; yaml rejects the text, js-yaml reads tags [a]"
+    },
+    {
+      "frontmatter": "tags:\n  - a\ntags:\n  - b",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "two block lists under two keys: both are read; YAML rejects the repeated key"
+    },
+    {
+      "frontmatter": "tags:\n  - a\n  - b\n  - c\nTags: [d]",
+      "tags": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "why": "a block list, then an inline list under a key in another case; YAML keeps them as two keys"
+    },
+    {
+      "frontmatter": "tags:\n  - a\u2028b",
+      "tags": [
+        "a\u2028b"
+      ],
+      "why": "U+2028 inside an item is text: the line is cut at \\n only, and the trim takes whitespace off the ends"
+    },
+    {
+      "frontmatter": "tags:\n  - a\r\r\n  - b",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "one \\r goes with the \\n and the trim takes the other; yaml reads a\\r, js-yaml a"
+    },
+    {
+      "frontmatter": "tags:\r\r\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "the key line keeps one \\r, which the key pattern's trailing whitespace takes; yaml reads a string, js-yaml the list [a]"
+    },
+    {
+      "frontmatter": "tags: [\"a, b\", c]",
+      "tags": [
+        "a",
+        "b",
+        "c"
+      ],
+      "why": "an inline list is split at every comma, quoted or not",
+      "frontendTags": [
+        "a, b",
+        "c"
+      ],
+      "frontendWhy": "the frontend reader does not split inside a quoted entry, so its writer keeps the entry whole; YAML reads the same as the frontend"
+    },
+    {
+      "frontmatter": "tags: ['a, b']",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a single-quoted entry is split at its comma too",
+      "frontendTags": [
+        "a, b"
+      ],
+      "frontendWhy": "one quoted entry to the frontend reader, as to YAML"
+    },
+    {
+      "frontmatter": "tags: [\"a\\\", b\"]",
+      "tags": [
+        "a\\",
+        "b"
+      ],
+      "why": "no escape is read: the \\\" is a backslash and the end of a quoted part, then the split",
+      "frontendTags": [
+        "a\\\", b"
+      ],
+      "frontendWhy": "the frontend reader skips an escaped quote while it looks for the end of a quoted entry, and reads no escape in the name; YAML reads a\", b"
     }
   ],
   "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and it has a base character (not every character is default-ignorable or a combining mark). For an accepted name, `bare` is how it is written into a bare list entry (no quote character, no leading `#`) by `frontmatter::yaml_string`: plain only when the plain-spelling rule allows it (a letter, digit or `_` first, then letters, marks, digits and `_-./`) and no YAML reader would read it as something other than text; quoted otherwise. These rows are the contract any copy of the rule is held to, in Rust or another language; the Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads them. Every row uses characters old enough to be in every Unicode table the two languages ship.",
