@@ -301,9 +301,12 @@ fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
 /// outside Rust agrees where its own tables do; a character the standard library knows and
 /// those tables do not yet (U+A7CE on this toolchain) is refused.
 ///
-/// Into a bare front-matter entry (no quote character, no leading `#`) the name is written as the frontend's
-/// `yamlString` spells it (`frontmatter::yaml_string`): quoted when YAML would read the plain
-/// spelling as something else, such as `null`, `true` or `123`.
+/// Into a bare front-matter entry (no quote character, no leading `#`) the name is written as
+/// `frontmatter::yaml_string` spells it: plain only when the plain-spelling rule allows it — a
+/// letter, digit or `_` first, then letters, marks, digits and `_-./` — and no YAML reader would
+/// read it as something other than text, such as `null`, `true` or `123`; quoted otherwise. The
+/// `names` rows of `tag/fixtures/frontmatter-tags.json` are the contract a copy of this rule in
+/// any language is held to.
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
@@ -912,8 +915,8 @@ mod tests {
     }
 
     /// §56m A name YAML would read as something other than text — `null`, `true`, a number —
-    /// is written double-quoted into a bare entry, so YAML still reads the string (the
-    /// frontend's `yamlString` rule, `frontmatter::yaml_string`); an entry the user quoted, or
+    /// is written double-quoted into a bare entry, so YAML still reads the string
+    /// (`frontmatter::yaml_string`); an entry the user quoted, or
     /// spelled with `#`, keeps its spelling. What fails this: writing the name bare (`tags:
     /// [null]` is null to YAML, and `- 123` a number).
     #[tokio::test]

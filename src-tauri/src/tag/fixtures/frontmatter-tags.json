@@ -192,7 +192,7 @@
       "why": "a # in another field and a list under another key are not tags (to YAML the # begins a comment)"
     }
   ],
-  "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and it has a base character (not every character is default-ignorable or a combining mark). For an accepted name, `bare` is how it is written into a bare list entry (no quotes, no `#`): `frontmatter::yaml_string`, the frontend's `yamlString`, which quotes a spelling YAML would read as something other than this text. The Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads this section; the app's tag-name input can read it to agree. Every row uses characters old enough to be in every Unicode table the two languages ship.",
+  "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and it has a base character (not every character is default-ignorable or a combining mark). For an accepted name, `bare` is how it is written into a bare list entry (no quote character, no leading `#`) by `frontmatter::yaml_string`: plain only when the plain-spelling rule allows it (a letter, digit or `_` first, then letters, marks, digits and `_-./`) and no YAML reader would read it as something other than text; quoted otherwise. These rows are the contract any copy of the rule is held to, in Rust or another language; the Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads them. Every row uses characters old enough to be in every Unicode table the two languages ship.",
   "names": [
     {
       "name": "solo",
@@ -258,7 +258,7 @@
       "name": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645",
       "accepted": true,
       "bare": "\"\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645\"",
-      "why": "a ZWNJ inside a Persian word is a tag character (join control); yamlString quotes it, since its plain spelling allows only letters, marks, digits and _-./"
+      "why": "a ZWNJ inside a Persian word is a tag character (join control); the plain spelling rule quotes it, since after the first character it allows only letters, marks, digits and _-./"
     },
     {
       "name": "a\u203fb",
@@ -354,7 +354,7 @@
       "name": "-x",
       "accepted": true,
       "bare": "\"-x\"",
-      "why": "a plain spelling must not start with -"
+      "why": "the plain spelling rule starts with a letter, digit or _ (YAML itself reads -x as the text)"
     },
     {
       "name": "--",

@@ -28,25 +28,23 @@ static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
 static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*-\s+(.+)$").unwrap());
 
-/// A plain spelling YAML reads as one string holding exactly this text: letters, digits and
-/// `_-./`, single spaces between, no indicator first. The frontend's `SAFE_PLAIN`
-/// (`src/utils/markdown/yaml-scalar.ts`) written without its lookarounds, which this regex
-/// crate does not have. The `names` rows of `tag/fixtures/frontmatter-tags.json` state the
-/// spelling each name gets, and a test here checks this port against them.
+/// The plain spellings a bare entry may keep: a letter, digit or `_` first, then letters, marks,
+/// digits and `_-./`, with single spaces between parts. YAML reads such a spelling as one plain
+/// scalar of exactly this text, whose type `READS_AS_NON_STRING_RE` then judges.
 static SAFE_PLAIN_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\A[\p{L}\p{N}_][\p{L}\p{M}\p{N}_./-]*(?: [\p{L}\p{M}\p{N}_./-]+)*\z").unwrap()
 });
 
 /// Plain spellings some YAML reader resolves to something other than a string: booleans and
 /// null (`yes` · `no` · `on` · `off` · `y` · `n` too, as YAML 1.1 readers do) and anything that
-/// starts with a digit and could be a number or a date. The frontend's `READS_AS_NON_STRING`.
+/// starts with a digit and could be a number or a date.
 static READS_AS_NON_STRING_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\A(?:true|false|yes|no|on|off|y|n|null|[0-9][0-9a-fA-FxXoO_.:+-]*)\z").unwrap()
 });
 
-/// `value` quoted so YAML reads it back as that text and the quote-stripping readers here and in
-/// the app do too: double quotes when nothing in it needs an escape, else single quotes when it
-/// holds no `'` and no line break, else a JSON string. The frontend's `quotedScalar`.
+/// `value` quoted for a bare entry: double quotes when nothing in it needs an escape (always so
+/// for a name `rename_tag` accepts); else single quotes when it holds no `'` and no line break;
+/// else a JSON string, which YAML reads back and the quote-stripping readers do not.
 fn quoted_scalar(value: &str) -> String {
     let needs_escape = |c: char| c == '"' || c == '\\' || c < ' ';
     if !value.contains(needs_escape) {
@@ -58,8 +56,12 @@ fn quoted_scalar(value: &str) -> String {
     }
 }
 
-/// A tag name as a bare (unquoted) list entry spells it: plain when every YAML reader reads that
-/// spelling as this string, quoted otherwise. The frontend's `yamlString`.
+/// A tag name as a bare (unquoted) list entry spells it: plain when `SAFE_PLAIN_RE` allows the
+/// spelling and no YAML reader resolves it to something other than a string
+/// (`READS_AS_NON_STRING_RE`); quoted otherwise, which also quotes some spellings YAML reads as
+/// this text (`-x`, `a‿b`). The `names` rows of `tag/fixtures/frontmatter-tags.json` are the
+/// contract any copy of this rule, in Rust or another language, is held to: each accepted name
+/// with the spelling it gets here (`the_new_name_rule_agrees_with_the_shared_fixture`).
 pub(super) fn yaml_string(value: &str) -> String {
     if SAFE_PLAIN_RE.is_match(value) && !READS_AS_NON_STRING_RE.is_match(value) {
         value.to_string()
