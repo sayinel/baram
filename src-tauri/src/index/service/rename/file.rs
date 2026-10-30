@@ -18,7 +18,7 @@ use super::referrers::{
     apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers, Unchanged,
 };
 use super::scope::{Referrers, RenameScope};
-use super::{plain_absolute, push_for_keys, RenameResult};
+use super::{plain_absolute, push_for_keys, MovedFile, RenameResult};
 
 pub(crate) async fn rename_file_with_links_inner(
     state: &LinkIndexState,
@@ -290,25 +290,34 @@ pub(super) async fn rename_file(
     //    renamed as any note is, and what that rename rewrote or left is this rename's too.
     let carried =
         carry_pdf_highlights(state, ctx_mgr, &scope.dirs, old_path, new_path, windows).await;
-    let mut updated_files = rewritten.updated;
-    let mut skipped_files = rewritten.skipped;
-    let mut skipped_more = carried.skipped;
-    skipped_more.extend(markdown_left);
-    for (all, more) in [
-        (&mut updated_files, carried.updated),
-        (&mut skipped_files, skipped_more),
-    ] {
-        for file in more {
-            if !all.contains(&file) {
-                all.push(file);
-            }
-        }
-    }
+    let mut updated = rewritten.updated;
+    updated.extend(carried.updated);
+    let mut skipped = rewritten.skipped;
+    skipped.extend(carried.skipped);
+    skipped.extend(markdown_left);
     Ok(RenameResult {
-        updated_files,
-        skipped_files,
+        updated_files: where_they_are(updated, &carried.moved),
+        skipped_files: where_they_are(skipped, &carried.moved),
         moved: carried.moved,
     })
+}
+
+/// `files` named where they are once the carry is done — a file the carry moved (the
+/// highlight note, which this rename may have rewritten or left as a referrer before it
+/// moved) by its new path — each once, in order. The frontend finds an open file by that
+/// path: it re-keys every moved file before it reads `updated_files`.
+fn where_they_are(files: Vec<String>, moved: &[MovedFile]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(files.len());
+    for file in files {
+        let file = match moved.iter().find(|pair| pair.from == file) {
+            Some(pair) => pair.to.clone(),
+            None => file,
+        };
+        if !out.contains(&file) {
+            out.push(file);
+        }
+    }
+    out
 }
 
 /// Whether a note other than the one at `path` has its stem in one of `dirs`' indexes —

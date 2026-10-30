@@ -470,3 +470,97 @@ async fn a_highlight_note_the_user_renames_follows_the_stem_contract() {
     );
     assert!(!reported);
 }
+
+#[tokio::test]
+async fn a_highlight_note_the_pdf_rename_rewrites_is_reported_where_it_moved() {
+    // The highlight note links its PDF, so the PDF's rename rewrites it as a
+    // referrer and then carries it along. The result names it by the path it
+    // has now — the frontend re-keys every moved file first, then syncs the
+    // open ones `updated_files` names.
+    // What fails this: returning the files as the rename collected them
+    // (`where_they_are` skipped in `rename_file`) — `updated_files` names
+    // `highlights/papers/Paper.md`, which is gone, and an open clean tab on the
+    // note keeps the old link.
+    let ctx = ContextManager::new();
+    let (dir, root, state) = vault_with_a_pdf(
+        &ctx,
+        &[(
+            "highlights/papers/Paper.md",
+            "source: [[papers/Paper.pdf]]\n\nquote ^h1\n",
+        )],
+    )
+    .await;
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &at(&root, &["papers", "Paper.pdf"]),
+        &at(&root, &["papers", "Survey.pdf"]),
+    )
+    .await
+    .unwrap();
+    let note = at(&root, &["highlights", "papers", "Survey.md"]);
+    assert_eq!(result.updated_files, vec![note.clone()]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    assert_eq!(
+        result.moved,
+        vec![MovedFile {
+            from: at(&root, &["highlights", "papers", "Paper.md"]),
+            to: note,
+        }]
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("highlights/papers/Survey.md")).unwrap(),
+        "source: [[papers/Survey.pdf]]\n\nquote ^h1\n"
+    );
+}
+
+#[tokio::test]
+async fn a_pdf_rename_that_changes_only_the_extensions_case_moves_nothing_else() {
+    // `Paper.pdf` → `Paper.PDF`: both names cut at `.pdf` in any case, so the
+    // sidecar and the note keep their names. Nothing else moves, so `moved` is
+    // empty; the sidecar's `pdf` record names the new spelling.
+    // What fails this: reporting a pair whose two paths are one — the guard in
+    // `carry_pdf_highlights` for the sidecar, the early return in
+    // `carry_companion` for the note.
+    let ctx = ContextManager::new();
+    let (dir, root, state) = vault_with_a_pdf(
+        &ctx,
+        &[
+            (".baram/pdf-highlights/papers/Paper.json", SIDECAR),
+            ("highlights/papers/Paper.md", "quoted ^h1\n"),
+            ("r.md", "((highlights/papers/Paper#^h1))\n"),
+        ],
+    )
+    .await;
+
+    let result = rename_file_with_links_inner(
+        &state,
+        &ctx,
+        &at(&root, &["papers", "Paper.pdf"]),
+        &at(&root, &["papers", "Paper.PDF"]),
+    )
+    .await
+    .unwrap();
+    assert!(result.moved.is_empty(), "{:?}", result.moved);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
+    let sidecar = sidecar_at(&dir, ".baram/pdf-highlights/papers/Paper.json");
+    assert_eq!(sidecar["pdf"], "papers/Paper.PDF");
+    assert_eq!(sidecar["companion"], "highlights/papers/Paper.md");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("highlights/papers/Paper.md")).unwrap(),
+        "quoted ^h1\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
+        "((highlights/papers/Paper#^h1))\n"
+    );
+}

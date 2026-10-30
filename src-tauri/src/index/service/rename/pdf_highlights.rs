@@ -107,7 +107,9 @@ pub(super) async fn carry_pdf_highlights(
         let sidecar_to = under(root, new_sidecar);
         let companion = (companion_now != Companion::Left).then_some(new_companion.as_str());
         let sidecar = carry_sidecar(&sidecar_from, &sidecar_to, dirs, new_rel, companion).await;
-        if sidecar.moved {
+        // A rename that changes only the case of `.pdf` names the sidecar the same: its
+        // records are rewritten in place, and nothing moved.
+        if sidecar.moved && sidecar_from != sidecar_to {
             carried.moved.push(MovedFile {
                 from: sidecar_from,
                 to: sidecar_to,
@@ -123,14 +125,17 @@ pub(super) async fn carry_pdf_highlights(
 enum Companion {
     /// There was none.
     Absent,
-    /// Renamed with the PDF.
+    /// Under the name the PDF's new name gives it: renamed with the PDF, or already so
+    /// named when only the case of `.pdf` changed.
     Moved,
     /// Still under the old name.
     Left,
 }
 
 /// Rename the companion note from `from` to `to` as any note is renamed, its result folded
-/// into `carried`. Left when `to` is another entry or the rename refuses.
+/// into `carried`. Left when `to` is another entry or the rename refuses; kept, with nothing
+/// renamed, when `to` is `from` — a rename that changes only the case of `.pdf`, which both
+/// names are cut at.
 async fn carry_companion(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
@@ -138,6 +143,9 @@ async fn carry_companion(
     to: &str,
     carried: &mut Carried,
 ) -> Companion {
+    if from == to {
+        return Companion::Moved;
+    }
     match another_entry_at(from, to) {
         Ok(false) => {}
         Ok(true) => {
@@ -205,9 +213,14 @@ async fn carry_sidecar(
         }
     }
     let text = tokio::fs::read_to_string(from).await.ok();
-    if let Err(e) = tokio::fs::rename(from, to).await {
-        log::warn!("rename: the highlight sidecar {from} could not be moved: {e}");
-        return stayed;
+    // `from` is `to` when only the case of `.pdf` changed: there is nothing to move, so the
+    // OS is not asked to rename a path onto itself (a no-op on a POSIX host, where no test
+    // can tell the two apart).
+    if from != to {
+        if let Err(e) = tokio::fs::rename(from, to).await {
+            log::warn!("rename: the highlight sidecar {from} could not be moved: {e}");
+            return stayed;
+        }
     }
     let stale = SidecarCarried {
         moved: true,
@@ -231,9 +244,13 @@ async fn carry_sidecar(
 }
 
 /// The sidecar `text` with its records of where things are — `pdf`, and `companion` when one
-/// is given — set to the new paths, every other key kept; written as the frontend writes a
-/// sidecar (`JSON.stringify(sidecar, null, 2)` and a line break), though with its keys in
-/// `serde_json`'s order. `None` for text that is not a JSON object whose records are strings,
+/// is given — set to the new paths, every other key and value kept; written as the frontend
+/// writes a sidecar (`JSON.stringify(sidecar, null, 2)` and a line break), except for key
+/// order: `serde_json` is built here without its `preserve_order` feature, so every object's
+/// keys, nested ones included, come out sorted (`{"b":1,"a":2}` as `{"a":2,"b":1}`). The
+/// frontend reads a key by its name. The feature is left off: it is one switch for every
+/// crate in the build that uses `serde_json`'s map. `None` for text that is not a JSON object
+/// whose records are strings,
 /// which the frontend reads as no sidecar either (`parseSidecar`). The records, not the path
 /// rule, are what the frontend opens an area highlight's PDF and a text highlight's note by
 /// (`resolveHighlightRef`).

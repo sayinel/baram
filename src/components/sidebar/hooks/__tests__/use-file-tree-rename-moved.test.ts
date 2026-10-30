@@ -9,7 +9,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../ipc/invoke")>()),
-  readFile: vi.fn(async () => ""),
+  readFile: vi.fn(async (path: string) =>
+    path === "/vault/highlights/papers/Survey.md"
+      ? "source: [[papers/Survey.pdf]]\n"
+      : "",
+  ),
   refreshIndex: vi.fn(async () => ({ fileCount: 0, linkCount: 0 })),
   renameFileWithLinks: vi.fn(),
   renameNamespace: vi.fn(),
@@ -95,5 +99,46 @@ describe("files a rename carried along (§33 moved)", () => {
     await saveDirtyTab(noteTab, "pdf", async () => {});
     expect(writeFile).toHaveBeenCalledWith(MOVED_NOTE, "edited quote ^h1\n");
     expect(writeFile).not.toHaveBeenCalledWith(NOTE, expect.anything());
+  });
+
+  it("syncs an open clean tab on the highlight note by the path the result names", async () => {
+    // The PDF's rename rewrites the note's link to the PDF and then carries the
+    // note along; the backend names it in `updatedFiles` where it moved to.
+    // The hook re-keys every moved file first, so the note's clean tab takes
+    // the new text. The partner case below is the result naming the note's
+    // old path, as the backend did before: the tab keeps the stale link.
+    // What fails this: syncing `updatedFiles` before the re-key — the new
+    // path is not open yet.
+    for (const [reported, expected] of [
+      [MOVED_NOTE, "source: [[papers/Survey.pdf]]\n"],
+      [NOTE, "source: [[papers/Paper.pdf]]\n"],
+    ] as const) {
+      useFileStore.setState({
+        fileTree: [
+          {
+            children: [{ isDir: false, name: "Paper.pdf", path: PDF }],
+            isDir: true,
+            name: "papers",
+            path: "/vault/papers",
+          },
+        ],
+        openFiles: new Map([[NOTE, "source: [[papers/Paper.pdf]]\n"]]),
+      });
+      useEditorStore.setState({
+        activeTabId: "pdf",
+        tabs: [
+          tab("pdf", PDF, "Paper.pdf"),
+          { ...tab("clean", NOTE, "Paper.md"), isDirty: false },
+        ],
+      });
+      vi.mocked(renameFileWithLinks).mockResolvedValue({
+        moved: [{ from: NOTE, to: MOVED_NOTE }],
+        skippedFiles: [],
+        updatedFiles: [reported],
+      });
+      const { result } = renderHook(() => useFileTreeRename({ current: null }));
+      await act(() => result.current.handleConfirmRename(PDF, "Survey.pdf"));
+      expect(useFileStore.getState().openFiles.get(MOVED_NOTE)).toBe(expected);
+    }
   });
 });
