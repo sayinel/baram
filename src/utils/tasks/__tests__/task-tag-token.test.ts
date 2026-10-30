@@ -30,8 +30,11 @@ describe("lineHasTag — 쓰는 쪽 경계", () => {
     expect(table.rows.some((row) => !row.found)).toBe(true);
   });
 
-  // What fails this: a `TAG_CHAR_RE` other than the reader's class — the old
-  // `[\p{Alphabetic}\p{N}_/-]` answers the `½`, U+0301 and `‿` rows the other way.
+  // What fails this: a `TAG_CHAR_RE` other than the reader's class — dropping any one of
+  // its parts, or `\p{L}` for `\p{Alphabetic}` (the `Ⅻ` row), or `\p{N}` for `\p{Nd}` (the
+  // `½` row), answers some row the other way; a boundary before the `#` read by JavaScript's
+  // `\s` (the U+0085 and U+FEFF rows); or the character after the tag read as one UTF-16
+  // unit (the U+20000 row).
   it.each(table.rows)("$line → $found ($why)", (row) => {
     expect(lineHasTag(row.line, "someday")).toBe(row.found);
   });

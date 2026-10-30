@@ -1,5 +1,5 @@
 {
-  "contract": "\u00a7312 \u00b7 \u00a756m Whether the task toggle finds the tag someday on a line, and whether the indexer reads it there. `found` is what `task::tag::find_tag` (Rust, through `apply_tag`) and `lineHasTag` (TypeScript, `src/utils/tasks/task-tag-token.ts`) answer: a `#someday` with a boundary before it (start of line, whitespace or `(`) and no tag character after it (`md::is_tag_char`, and `TAG_CHAR_RE` there). `read` is whether `md::extract_inline_tags` reads the tag someday on the line. A row with `read` and not `found` is a line whose task carries the tag someday while the toggle cannot remove it; the agenda's `somedayVerdict` (`src/utils/tasks/task-triage.ts`) calls such a line `locked`. The Rust test `task::tag::tests::tag_boundary_table_is_shared_with_the_front_end` reads every row for both columns, and `src/utils/tasks/__tests__/task-tag-token.test.ts` reads `found`. Every character outside ASCII is written as a JSON unicode escape.",
+  "contract": "\u00a7312 \u00b7 \u00a756m Whether the task toggle finds the tag someday on a line, and whether the indexer reads it there. `found` is what `task::tag::find_tag` (Rust, through `apply_tag`) and `lineHasTag` (TypeScript, `src/utils/tasks/task-tag-token.ts`) answer: a `#someday` with a boundary before it (start of line, a white-space character by the Unicode White_Space property, or `(`) and no tag character after it, both read as whole code points, (`md::is_tag_char`, and `TAG_CHAR_RE` there). `read` is whether `md::extract_inline_tags` reads the tag someday on the line. A row with `read` and not `found` is a line whose task carries the tag someday while the toggle cannot remove it; the agenda's `somedayVerdict` (`src/utils/tasks/task-triage.ts`) calls such a line `locked`. The Rust test `task::tag::tests::tag_boundary_table_is_shared_with_the_front_end` reads every row for both columns, and `src/utils/tasks/__tests__/task-tag-token.test.ts` reads `found`. Every character outside ASCII is written as a JSON unicode escape.",
   "rows": [
     {
       "line": "- [ ] \uc5ec\ud589 #someday",
@@ -134,10 +134,52 @@
       "why": "no tag at all"
     },
     {
+      "line": "- [ ] \uc5ec\ud589 #someday\u200cx",
+      "found": false,
+      "read": false,
+      "why": "a join control (ZWNJ, U+200C) is a tag character: the reader reads someday\u200cx"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\u3200",
+      "found": false,
+      "read": false,
+      "why": "a Hangul-script symbol (U+3200) is a tag character through the Hangul script, though it is not Alphabetic"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\u216b",
+      "found": false,
+      "read": false,
+      "why": "a Roman numeral (U+216B, category Nl) is Alphabetic, so a tag character, though it is not a letter (L)"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\ud840\udc00",
+      "found": false,
+      "read": false,
+      "why": "a letter outside the Basic Multilingual Plane (U+20000) is a tag character: the next character is read whole, not as half of it"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589 #someday\ud83d\ude00",
+      "found": true,
+      "read": true,
+      "why": "an emoji outside the Basic Multilingual Plane (U+1F600) is not a tag character, so the tag ends before it"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589\u0085#someday",
+      "found": true,
+      "read": true,
+      "why": "NEL (U+0085) is white space to Unicode, and so to the reader's \\s, so it is a boundary before the #"
+    },
+    {
+      "line": "- [ ] \uc5ec\ud589\ufeff#someday",
+      "found": false,
+      "read": false,
+      "why": "U+FEFF is not white space to Unicode, so it is no boundary before the #"
+    },
+    {
       "line": "- [ ] \uc5ec\ud589 #someday/",
       "found": false,
       "read": true,
-      "why": "the one shape where the two still part: the reader stops before a / that no part follows and reads someday, while the toggle takes / as a tag character (a child may follow) and finds nothing to remove"
+      "why": "a / with no part after it: the reader stops before it and reads someday, while the toggle takes / as a tag character (a child may follow) and finds nothing to remove. This is the shape the reader and the toggle still part on, with #someday//x and #someday/. alike"
     }
   ]
 }
