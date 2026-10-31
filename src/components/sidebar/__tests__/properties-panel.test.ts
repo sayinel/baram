@@ -425,6 +425,45 @@ describe("values the panel shows as YAML text (§72)", () => {
   });
 });
 
+describe("values that run on past their key's line (§72)", () => {
+  // What turns this red: reading only the key's line — the panel showed the first line of a
+  // value js-yaml reads over several lines and let an edit cut it, and `b: 2}` showed as a key
+  // of its own. yaml 2.9.1 reports an error for each; js-yaml reads one value.
+  it.each([
+    'k: "a\nb"',
+    "k: 'a\nb'",
+    "k: [a,\nb]",
+    "k: {a: 1,\nb: 2}",
+    'k: "a # not a comment\nb: c"',
+    "k: ['x,\ny']",
+    "k: [a,\nb,\nc: d]",
+  ])("hides %j and the lines it runs on to", (field) => {
+    const keys = parseYamlProperties(`title: t\n${field}\nlast: z`).map(
+      (e) => e.key,
+    );
+    expect(keys).toEqual(["title", "last"]);
+  });
+
+  // The sibling: values that close on their line are shown, comments and quotes inside
+  // included.
+  it.each([
+    ['k: "a [b"', "string"],
+    ["k: 'it''s {'", "string"],
+    ["k: [a, '[', \"]\"] # ]", "yaml"],
+    ["k: {a: [1, 2]} # {", "yaml"],
+    ["k: it's [plain", "string"],
+    ['k: "a\\"b"', "string"],
+    ["k: [it's, b]", "array"],
+    ['k: ["a\\"", b]', "array"],
+    ['k: ["a\\" ,"]', "array"],
+  ])("shows %j", (field, type) => {
+    const keys = parseYamlProperties(`title: t\n${field}\nlast: z`).map(
+      (e) => `${e.key}:${e.type}`,
+    );
+    expect(keys).toEqual(["title:string", `k:${type}`, "last:string"]);
+  });
+});
+
 describe("isWritableYamlValue (§72)", () => {
   const DOC = [
     "title: t",
@@ -600,6 +639,21 @@ describe("isWritableYamlValue (§72)", () => {
       }
     },
   );
+
+  // A key in a flow mapping is a quoted scalar too. yaml reports an open quote inside a flow
+  // collection itself, so this holds the behaviour, not the check that also covers it.
+  it("refuses a flow mapping key quoted as YAML leaves open", () => {
+    const yaml = "title: t\nflow: {a: 1}\nnext: 'x'\nlast: z";
+    expect(isWritableYamlValue(yaml, "flow", "{''': 1}")).toBe(false);
+    expect(isWritableYamlValue(yaml, "flow", "{'''': 1}")).toBe(true);
+  });
+
+  // What turns this red: judging every quoted scalar in the front matter — one on a line the
+  // edit does not touch refused every edit.
+  it("judges only the quoted scalars on the edited line", () => {
+    const yaml = "other: '''\nnext: 'x'\nflow: {a: 1}";
+    expect(isWritableYamlValue(yaml, "flow", "{a: 2}")).toBe(true);
+  });
 
   // The sibling: a quoted scalar or a collection that closes on its line is still written,
   // whatever the next line holds.

@@ -330,8 +330,10 @@ function diagnostics(yaml: string): [string, number, number][] {
  * inside (§7.3.2); double-quoted, with `\` escaping the next character (§7.3.1). The quoted
  * tokens are the ones `yaml`'s own parser finds, in a flow collection too, but their closing is
  * judged here: its lexer takes `'''` for a whole scalar and lets `"\"` run on to a quote on the
- * next line. A token that runs past the edited line is not checked for that here: in every
- * case measured, `yaml` also reports an error for it, which `diagnostics` refuses.
+ * next line. Inside a flow collection its lexer leaves such a quote open and reports an error
+ * (`MISSING_CHAR`), so in every case measured only a value outside a collection needs this. A
+ * token that runs past the edited line is not checked for that here: in every case measured,
+ * `yaml` also reports an error for it, which `diagnostics` refuses.
  */
 function quotesCloseWithin(
   candidate: string,
@@ -356,6 +358,49 @@ function quotesCloseWithin(
     });
   }
   return closed;
+}
+
+/**
+ * Whether a value's quote or flow bracket is still open at the end of `value`: it starts (after
+ * any anchor and tag) with a quote or with `[` or `{`, and that quote does not close or those
+ * brackets do not balance. Quotes close as `quotesCloseWithin` judges them — `''` inside a
+ * single-quoted scalar, `\` escaping the next character inside a double-quoted one — and open
+ * only where a node starts: at the value's start, or after `[`, `{`, `,` or `:`. Outside quotes
+ * a `#` at the start or after whitespace begins a comment, to the end of its line. A plain
+ * value never is: one that runs on needs an indented line, which `topLevelFields` counts.
+ */
+function opensPastItsLine(value: string): boolean {
+  const rest = value.replace(/^(?:[&!]\S*\s+)*/, "");
+  if (!/^['"[{]/.test(rest)) return false;
+  let depth = 0;
+  let quote: null | string = null;
+  let previous = "";
+  for (let i = 0; i < rest.length; i++) {
+    const c = rest[i];
+    if (quote === "'") {
+      if (c === "'") {
+        if (rest[i + 1] === "'") i++;
+        else quote = null;
+      }
+      continue;
+    }
+    if (quote === '"') {
+      if (c === "\\") i++;
+      else if (c === '"') quote = null;
+      continue;
+    }
+    if (c === "#" && (i === 0 || /\s/.test(rest[i - 1]))) {
+      const lineEnd = rest.indexOf("\n", i);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+      continue;
+    }
+    if ((c === "'" || c === '"') && /^[[{,:]?$/.test(previous)) quote = c;
+    else if (c === "[" || c === "{") depth++;
+    else if (c === "]" || c === "}") depth--;
+    if (!/\s/.test(c)) previous = c;
+  }
+  return quote !== null || depth > 0;
 }
 
 /**
@@ -416,16 +461,27 @@ function scalarText(raw: string): string {
 /**
  * The top-level fields of `yaml`, in order. A field runs from its key line through the last
  * line under it that is indented or a `-` item; blank and comment lines count only when such a
- * line follows them, and the next column-0 line that is neither ends it.
+ * line follows them, and the next column-0 line that is neither ends it. A value whose quote or
+ * flow bracket does not close on the key's line (`opensPastItsLine`) also takes every line up
+ * to the one that closes it, whatever those lines hold: `k: {a: 1,` then `b: 2}` is one field,
+ * as js-yaml reads it (yaml 2.9.1 reports an error), not a field `b` holding `2}`.
  */
 function topLevelFields(yaml: string): Field[] {
   const fields: Field[] = [];
   let field: Field | null = null;
+  // The value so far of a field whose quote or bracket is still open.
+  let open: null | string = null;
   let start = 0;
   for (const piece of yaml.split("\n")) {
     const text = piece.endsWith("\r") ? piece.slice(0, -1) : piece;
     const lineStart = start;
     start += piece.length + 1;
+    if (field && open !== null) {
+      field.continued = true;
+      field.end = lineStart + text.length;
+      open = opensPastItsLine(`${open}\n${text}`) ? `${open}\n${text}` : null;
+      continue;
+    }
     const key = KEY_LINE.exec(text);
     if (key) {
       field = {
@@ -437,6 +493,7 @@ function topLevelFields(yaml: string): Field[] {
         value: (key[2] ?? "").trim(),
       };
       fields.push(field);
+      if (opensPastItsLine(field.value)) open = field.value;
       continue;
     }
     if (!field || /^[ \t]*(?:#|$)/.test(text)) continue;
