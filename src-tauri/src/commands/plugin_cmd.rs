@@ -802,12 +802,12 @@ pub async fn plugin_sandbox_send(
 
 /// §260 Phase 4b host-only — park a large payload for one sandbox to pull.
 ///
-/// WHY a command instead of `plugin_sandbox_send`: that path is an `ipc::Channel`, and any
-/// frame at or above `CHANNEL_QUEUE_THRESHOLD` is staged in tauri's app-global
-/// channel-data queue, which `FETCH_CHANNEL_DATA_COMMAND` exposes to every webview with a
-/// guessable sequential id (`channels.rs`). A document read is the first payload that
-/// crosses that line routinely, so it goes the way 3c-2b established for the plugin bundle
-/// — the sandbox pulls it as an invoke RESULT (`PluginOp::StagedRead`).
+/// WHY a command instead of `plugin_sandbox_send`: that path is an `ipc::Channel`, and a frame at
+/// or above `CHANNEL_QUEUE_THRESHOLD` takes tauri's channel-data queue and one more round trip
+/// (`channels.rs`). Phase 4b chose this path when that queue was app-global and any webview could
+/// fetch from it with a guessable id; at tauri 2.12.2 it is per webview (spec 0074 §10). A document
+/// read is the first payload that crosses that line routinely, so it goes the way 3c-2b established
+/// for the plugin bundle — the sandbox pulls it as an invoke RESULT (`PluginOp::StagedRead`).
 ///
 /// Host-only (`host_window_guard`) so no sandbox can stage into any slot, its own included:
 /// the whole point is that the payload's provenance is the host, which has already checked
