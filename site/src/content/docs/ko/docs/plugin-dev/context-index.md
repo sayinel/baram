@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: 인덱스"
-sourceHash: "f516746a5b9b"
+sourceHash: "9f5b2d533ddc"
 ---
 
 ## `context.index` (`files` 또는 `files:readonly` 필요)
@@ -52,7 +52,7 @@ interface IndexLink {
   line: number;
   path: string | null;   // resolution 이 "resolved" 일 때 — [[Paper.pdf]] 같은 첨부도
   resolution: "otherVault" | "resolved" | "unresolved";
-  target: string;        // 괄호 안의 이름 — 별칭 · 제목 · 표시 글 없이
+  target: string;        // 괄호 안의 이름 — 별칭 · 제목 · 표시 글 없이. 블록 참조는 이스케이프를 풀고(%29 는 ")"), 위키링크는 적힌 그대로
   type: IndexLinkType;   // "wikilink" | "blockRef" | "blockEmbed"
   vault: string | null;  // resolution 이 "otherVault" 일 때 — 링크가 부른 볼트 별칭
 }

@@ -220,8 +220,9 @@ async fn a_rename_through_a_symlinked_folder_is_refused_as_spelled() {
 async fn a_referrer_no_registered_context_covers_is_reported() {
     // The index named `r.md`, which then became a symlink to a file outside
     // every registered root: no covering root, so the judgement would see
-    // no link in it. `a/old.md` → `a/old.txt` keeps the stem, so an
-    // unchanged referrer is otherwise no news (`Unchanged::Ignore`); this
+    // no link in it. `a/old.md` → `a/old.markdown` keeps the name key
+    // (`name_key`), so an unchanged referrer is otherwise no news
+    // (`Unchanged::Ignore`); this
     // one is reported, and the file it points to is untouched.
     // What fails this: removing the empty-covering branch in
     // `rewrite_referrers` — the rewrite sees no covering root, changes
@@ -244,11 +245,11 @@ async fn a_referrer_no_registered_context_covers_is_reported() {
         &state,
         &ctx,
         &format!("{root}/a/old.md"),
-        &format!("{root}/a/old.txt"),
+        &format!("{root}/a/old.markdown"),
     )
     .await
     .unwrap();
-    assert!(dir.path().join("a/old.txt").exists());
+    assert!(dir.path().join("a/old.markdown").exists());
     assert_eq!(result.updated_files, Vec::<String>::new());
     assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "[[a/old]]\n");

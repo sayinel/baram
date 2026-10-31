@@ -84,6 +84,7 @@ describe("renaming under Windows paths (issue 595)", () => {
 
   it("renames a file with the separator the tree used", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: [],
     });
@@ -105,6 +106,7 @@ describe("renaming under Windows paths (issue 595)", () => {
 
   it("CONTROL: a path the tree does not know falls back to the name after the last slash", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: [],
     });
@@ -118,6 +120,7 @@ describe("renaming under Windows paths (issue 595)", () => {
 
   it("a Windows path the tree does not know still splits at its backslash", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: [],
     });

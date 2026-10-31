@@ -10,15 +10,18 @@ use crate::context::{ContextInfo, ContextManager, ContextType, VaultType};
 use crate::index::{BacklinkResult, IndexStats, LinkGraph, LinkIndex};
 
 mod alias;
+mod attachments;
 mod block_id;
 mod boundary;
 mod builds;
 mod context_reads;
 mod contexts;
 mod file_rename;
+mod markdown_links;
 mod namespace;
 mod nested_roots;
 mod normalization;
+mod pdf_highlights;
 mod same_stem;
 mod stem_spelling;
 mod sync;

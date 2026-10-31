@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -45,6 +47,35 @@ describe("path derivation", () => {
     expect(sidecarPathFor("attention.pdf")).toBe(
       ".baram/pdf-highlights/attention.json",
     );
+  });
+});
+
+// §273 · §275 A file rename moves these files with the PDF, in Rust
+// (`index/service/rename/pdf_highlights.rs`), so both sides hold the path rule.
+// The cases live in a fixture the Rust test reads too; neither side holds them.
+interface PathCase {
+  companion: string;
+  pdf: string;
+  sidecar: string;
+  why: string;
+}
+
+const pathFixture = JSON.parse(
+  readFileSync(
+    join(
+      process.cwd(),
+      "src-tauri/src/index/fixtures/pdf-highlight-paths.json",
+    ),
+    "utf8",
+  ),
+) as { cases: PathCase[] };
+
+describe("path derivation and the fixture the rename reads", () => {
+  // What fails this: replacing `.pdf` only in lower case — the `.PDF` case
+  // keeps it; replacing every `.pdf` — `a.pdf.pdf` loses its first.
+  it.each(pathFixture.cases)("$why", ({ companion, pdf, sidecar }) => {
+    expect(sidecarPathFor(pdf)).toBe(sidecar);
+    expect(companionPathFor(pdf)).toBe(companion);
   });
 });
 

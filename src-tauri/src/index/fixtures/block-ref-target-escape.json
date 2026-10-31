@@ -1,0 +1,48 @@
+{
+  "why": "§275.4 A block reference's target cannot hold `)`, `#` or `|` (BLOCK_REF_RE's `[^)#|]*?`), so the frontend percent-escapes them, and `%` first so the escape round-trips (TARGET_ESCAPE_PAIRS, escapeBlockRefTarget and unescapeBlockRefTarget in src/pipeline/block-id.ts). The link index reads a target the same way and a rename writes one the same way (index/block_ref_escape.rs). Both read this file.",
+  "pairs": [
+    ["%", "%25"],
+    [")", "%29"],
+    ["#", "%23"],
+    ["|", "%7C"]
+  ],
+  "cases": [
+    {
+      "raw": "highlights/papers/BERT (2019)",
+      "escaped": "highlights/papers/BERT (2019%29",
+      "why": "a paper's year in parentheses"
+    },
+    {
+      "raw": "C# notes|draft",
+      "escaped": "C%23 notes%7Cdraft",
+      "why": "a hash and a pipe"
+    },
+    {
+      "raw": "50% off",
+      "escaped": "50%25 off",
+      "why": "a literal percent sign is escaped first"
+    },
+    {
+      "raw": "a%29b",
+      "escaped": "a%2529b",
+      "why": "a name that already reads like an escape round-trips"
+    },
+    {
+      "raw": "plain/note",
+      "escaped": "plain/note",
+      "why": "nothing to escape"
+    }
+  ],
+  "unescape_only": [
+    {
+      "escaped": "a%7cb",
+      "raw": "a%7cb",
+      "why": "the escapes are upper case; a lower-case one is text"
+    },
+    {
+      "escaped": "50% off",
+      "raw": "50% off",
+      "why": "a percent sign not followed by an escape is text"
+    }
+  ]
+}

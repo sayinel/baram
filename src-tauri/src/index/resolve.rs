@@ -1,35 +1,38 @@
 //! The maps a `[[name]]` is resolved through and the graph built on them (§29).
 
+use super::filing::{file_name, root_relative_key, root_relative_path};
 use super::normalizer::{
     extract_id_from_stem, fold_name, is_id_target, normalize_file_path, normalize_target,
-    resolve_target, strip_extension_and_fold,
+    resolve_target,
 };
 use super::{LinkEdge, LinkEntry, LinkGraph, LinkIndex, LinkResolution};
+use std::borrow::Cow;
 
 impl LinkIndex {
-    /// Register a file path in file_map and relative_map for target resolution
-    pub(super) fn register_file_path(&mut self, file_path: &str, root_path: &str) {
-        let stem = normalize_file_path(file_path);
+    /// Register a file path in file_map and relative_map for target resolution.
+    /// Both keys are read from the path's components (`LinkIndex::windows`):
+    /// the stem from its file name, the relative path from those under the
+    /// root joined with `/` — the `Path` key `keys_for` gives the file, so a
+    /// Windows path is keyed `notes/architecture`, as its link is written.
+    /// Returns whether `file_map` newly gained the path.
+    pub(super) fn register_file_path(&mut self, file_path: &str, root_path: &str) -> bool {
+        let stem = normalize_file_path(file_name(file_path, self.windows));
         let paths = self.file_map.entry(stem.clone()).or_default();
-        if !paths.contains(&file_path.to_string()) {
+        let gained = !paths.contains(&file_path.to_string());
+        if gained {
             paths.push(file_path.to_string());
         }
 
         // Build relative path mapping (e.g., "notes/architecture" → "/vault/notes/architecture.md")
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel);
-            let rel_normalized = strip_extension_and_fold(rel);
-            self.relative_map
-                .insert(rel_normalized, file_path.to_string());
+        if let Some(rel) = root_relative_key(root_path, file_path, self.windows) {
+            self.relative_map.insert(rel, file_path.to_string());
         }
 
         // Register id → path for [[ID]] resolution (Zettelkasten)
         if let Some(id) = extract_id_from_stem(&stem) {
             self.id_map.insert(id, file_path.to_string());
         }
+        gained
     }
 
     /// §278 Register a file as a wikilink TARGET only — `name_map` and nothing else.
@@ -52,19 +55,13 @@ impl LinkIndex {
     pub(super) fn register_link_target(&mut self, file_path: &str, root_path: &str) -> bool {
         let mut keys: Vec<String> = Vec::new();
 
-        if let Some(name) = std::path::Path::new(file_path)
-            .file_name()
-            .map(|n| fold_name(&n.to_string_lossy()))
-        {
-            keys.push(name);
+        let name = file_name(file_path, self.windows);
+        if !name.is_empty() {
+            keys.push(fold_name(name));
         }
 
-        if let Some(rel) = file_path.strip_prefix(root_path) {
-            let rel = fold_name(
-                rel.strip_prefix('/')
-                    .or_else(|| rel.strip_prefix('\\'))
-                    .unwrap_or(rel),
-            );
+        if let Some(rel) = root_relative_path(root_path, file_path, self.windows) {
+            let rel = fold_name(&rel);
             if !keys.contains(&rel) {
                 keys.push(rel);
             }
@@ -156,12 +153,16 @@ impl LinkIndex {
     /// `None` unless `normalize_target` stripped a note extension from `full`
     /// (`full != normalized`), so a target with none — `[[Paper]]`,
     /// `[[Paper.pdf]]` — takes exactly the chain in `resolve_target_from_map`,
-    /// and the §278 order stays. The guard is needed: `file_map` is not only
-    /// notes, since a save that rewrites the file registers
-    /// whatever path it is given (`update_file_index_inner` → `update_file_unless_held`
-    /// → `write_note` → `register_file_path`), and an
-    /// extension-less file's name equals its key, so `[[architecture]]` would
-    /// match `architecture` by name. With no candidate, `[[foo.markdown]]`
+    /// and the §278 order stays. `file_map` holds notes: the build registers
+    /// the `.md` and `.markdown` files it collects, and a save, a sync or a
+    /// rename writes a file through `write_note` (→ `register_file_path`) only
+    /// when its path passes the note rule (`is_note`) — any other file is a
+    /// link target (`Mutation::Target`), in `name_map` alone. The guard is
+    /// still needed because that rule reads the path as given while the index
+    /// registers the file it resolves to (`Mutation::update` canonicalises):
+    /// a note `link.md` that is a symbolic link to `architecture` puts the
+    /// extension-less `architecture` in `file_map`, whose name equals its key,
+    /// so `[[architecture]]` would match it by name. With no candidate, `[[foo.markdown]]`
     /// beside only `foo.md` falls through to the stem `foo`: the note, not the
     /// ghost `foo.markdown.md`.
     fn spelled_note_name(&self, full: &str, normalized: &str) -> Option<String> {
@@ -170,18 +171,10 @@ impl LinkIndex {
         }
         let stem = normalized.rsplit('/').next().unwrap_or(normalized);
         let notes = self.file_map.get(stem)?;
-        let name_of = |path: &String| {
-            std::path::Path::new(path.as_str())
-                .file_name()
-                .map(|n| fold_name(&n.to_string_lossy()))
-        };
+        let name_of = |path: &String| Some(fold_name(file_name(path, self.windows)));
         let relative_of = |path: &String| {
-            let rel = path.strip_prefix(self.root_path.as_deref()?)?;
-            let rel = rel
-                .strip_prefix('/')
-                .or_else(|| rel.strip_prefix('\\'))
-                .unwrap_or(rel);
-            Some(fold_name(rel))
+            root_relative_path(self.root_path.as_deref()?, path, self.windows)
+                .map(|rel| fold_name(&rel))
         };
         notes
             .iter()
@@ -195,15 +188,50 @@ impl LinkIndex {
     }
 
     /// Resolve a link's target to an indexed file, preferring its spelled
-    /// note extension before the normalized map lookup. `get_link_graph`
-    /// asks here for each entry when the index has a root, including entries
-    /// behind a vault alias, whose edges it marks `cross_vault`.
-    /// `outgoing_resolved` asks here only for entries without a vault alias.
+    /// note extension before the normalized map lookup. Reached only through
+    /// `resolve_entry`, for an entry that is not a self-reference.
+    ///
+    /// The target as `link_text` spells it.
     fn resolve_link(&self, raw_target: &str) -> Option<String> {
-        let normalized = normalize_target(raw_target);
-        let full = fold_name(raw_target.trim());
+        let raw = self.link_text(raw_target);
+        let normalized = normalize_target(&raw);
+        let full = fold_name(&raw);
         self.spelled_note_name(&full, &normalized)
             .or_else(|| self.resolve_target_from_map(&normalized))
+    }
+
+    /// `raw_target` trimmed, and with its `\` read as `/` when the index
+    /// reads paths the Windows way: the maps' path keys are joined with `/`
+    /// (`register_file_path`), so `[[notes\x]]` and `[[notes/x]]` name one
+    /// note, as `filing_key` files them under one key, and `[[.\x]]` reads as
+    /// `[[./x]]` — the resolver has no relative step, so both go by the stem.
+    /// `resolve_link` resolves this text, and `get_link_graph` builds the
+    /// placeholder of a target nothing answers from it, so the two
+    /// spellings of an unresolved path meet at one node.
+    fn link_text<'a>(&self, raw_target: &'a str) -> Cow<'a, str> {
+        let raw = raw_target.trim();
+        if self.windows {
+            Cow::Owned(raw.replace('\\', "/"))
+        } else {
+            Cow::Borrowed(raw)
+        }
+    }
+
+    /// The file `entry` names: for a self-reference, `((#^id))`, the note
+    /// that holds it; otherwise `resolve_link` of its target. Not the maps
+    /// for a self-reference: its `target` is the note's own file stem
+    /// (`extract_links`), which the stem lookup answers with whichever note
+    /// of that stem `file_map` lists first — another folder's `plan.md`, or
+    /// the root's through `relative_map` — and which for `x.md.md` is `x.md`,
+    /// the note `spelled_note_name` finds by that name. `get_link_graph` asks
+    /// here for each entry when the index has a root, including entries
+    /// behind a vault alias, whose edges it marks `cross_vault`;
+    /// `outgoing_resolved` asks here only for entries without a vault alias.
+    fn resolve_entry(&self, entry: &LinkEntry) -> Option<String> {
+        if entry.self_reference {
+            return Some(entry.source_path.clone());
+        }
+        self.resolve_link(&entry.target)
     }
 
     /// Get the full link graph
@@ -214,11 +242,11 @@ impl LinkIndex {
         for (source, entries) in &self.outgoing {
             nodes_set.insert(source.clone());
             for entry in entries {
-                let target_normalized = normalize_target(&entry.target);
+                let target_normalized = normalize_target(&self.link_text(&entry.target));
                 if let Some(root) = &self.root_path {
                     // Use file maps for accurate resolution, fall back to simple path construction
                     let target_path = self
-                        .resolve_link(&entry.target)
+                        .resolve_entry(entry)
                         .unwrap_or_else(|| resolve_target(root, &target_normalized));
                     nodes_set.insert(target_path.clone());
                     edges.push(LinkEdge {
@@ -253,7 +281,7 @@ impl LinkIndex {
     }
 
     /// §387 The links `file_path` holds, each with how `baram links` reports it: the file
-    /// the graph's resolver (`resolve_link`) finds for the target, or, for a
+    /// the graph's resolver (`resolve_entry`) finds for the link, or, for a
     /// cross-vault link, its alias.
     ///
     /// `None` when `outgoing` holds nothing under that exact string: the file is not
@@ -264,8 +292,9 @@ impl LinkIndex {
     ///
     /// ONE method rather than three exposed pieces, because the ORDER is the contract.
     /// A cross-vault link is decided first: its `target` is the bare note name, so
-    /// asking the maps would resolve `[[journal::x]]` to a local `x.md`. Then the target
-    /// is passed to `resolve_link`, which checks its spelled note extension and
+    /// asking the maps would resolve `[[journal::x]]` to a local `x.md`. Then the entry
+    /// is passed to `resolve_entry`: a self-reference is the note itself, and any other
+    /// target goes to `resolve_link`, which checks its spelled note extension and
     /// normalized maps. So for a cross-vault link this is NOT what `get_link_graph`
     /// does: the graph asks the maps for every entry, alias or not, and only marks
     /// the edge `cross_vault`.
@@ -284,7 +313,7 @@ impl LinkIndex {
                 .map(|entry| {
                     let resolution = match &entry.target_vault_alias {
                         Some(alias) => LinkResolution::OtherVault(alias.clone()),
-                        None => match self.resolve_link(&entry.target) {
+                        None => match self.resolve_entry(entry) {
                             Some(path) => LinkResolution::Resolved(path),
                             None => LinkResolution::Unresolved,
                         },
@@ -579,6 +608,212 @@ mod tests {
             graph_targets_of(&files, &["/vault/notes/architecture"], "[[architecture]]\n"),
             vec!["/vault/notes/architecture.md"]
         );
+    }
+
+    /// The notes `notes` registered in that order, as `build` registers
+    /// them, then `source` saved holding `content` (`update_file_from_content`
+    /// — a save drops the note from its stem's list and appends it). The edge
+    /// targets from `source` in the graph, then `outgoing_resolved`'s answers,
+    /// each in the order the links are written.
+    fn self_reference_ends(
+        notes: &[&str],
+        source: &str,
+        content: &str,
+    ) -> (Vec<String>, Vec<LinkResolution>) {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        for note in notes {
+            index.register_file_path(note, "/vault");
+        }
+        index.update_file_from_content(source, content);
+        let graph = index
+            .get_link_graph()
+            .edges
+            .into_iter()
+            .filter(|e| e.from == source)
+            .map(|e| e.to)
+            .collect();
+        let outgoing = index
+            .outgoing_resolved(source)
+            .expect("the source is indexed")
+            .into_iter()
+            .map(|(_, resolution)| resolution)
+            .collect();
+        (graph, outgoing)
+    }
+
+    #[test]
+    fn a_self_reference_resolves_to_the_note_that_holds_it() {
+        // `((#^b1))` names no file; the extractor gives it the note's own
+        // stem as its target. Read by the maps, that stem is another note's:
+        // the one `file_map` lists first under it — `aaa/plan.md` registered
+        // first, or `zzz/plan.md` once the save moved `notes/plan.md` behind
+        // it — the root's `plan.md` through `relative_map` whatever the
+        // order, and for `x.md.md`, whose stem is `x.md`, the note `x.md`.
+        // What fails this: resolving every entry by its target
+        // (`resolve_link(&entry.target)` in place of `resolve_entry`) — each
+        // case below answers the other note.
+        let content = "para ^b1\n((#^b1))\n{{embed ((#^b1))}}\n";
+        let source = "/vault/notes/plan.md";
+        let itself = || {
+            (
+                vec![source.to_string(); 2],
+                vec![LinkResolution::Resolved(source.to_string()); 2],
+            )
+        };
+        for notes in [
+            ["/vault/aaa/plan.md", source],
+            [source, "/vault/zzz/plan.md"],
+            ["/vault/plan.md", source],
+            [source, "/vault/plan.md"],
+        ] {
+            assert_eq!(
+                self_reference_ends(&notes, source, content),
+                itself(),
+                "{notes:?}"
+            );
+        }
+
+        let source = "/vault/notes/x.md.md";
+        assert_eq!(
+            self_reference_ends(
+                &["/vault/notes/x.md", source],
+                source,
+                "para ^c1\n((#^c1))\n"
+            ),
+            (
+                vec![source.to_string()],
+                vec![LinkResolution::Resolved(source.to_string())]
+            )
+        );
+        // The positive partner: a reference that spells the stem still goes
+        // by the maps — `((plan#^b1))` in `zzz/plan.md` names the note the
+        // stem lookup answers, the root's `plan.md`.
+        assert_eq!(
+            self_reference_ends(
+                &["/vault/plan.md", "/vault/zzz/plan.md"],
+                "/vault/zzz/plan.md",
+                "((plan#^b1))\n"
+            ),
+            (
+                vec!["/vault/plan.md".to_string()],
+                vec![LinkResolution::Resolved("/vault/plan.md".to_string())]
+            )
+        );
+    }
+
+    #[test]
+    fn a_windows_path_is_keyed_by_its_components_joined_with_a_slash() {
+        // The walk spells a Windows path with `\`; the links are written
+        // with `/`, or `\`. Read the Windows way (`with_windows(true)`, on
+        // any host — issue 595's rule), the maps key each path by its
+        // components, so the links resolve as on any other host, and the
+        // backlinks agree with them. `other\x.md` is registered first: a
+        // path link that misses the relative path falls back to it by stem.
+        // What fails this, one site at a time: `register_file_path` keying
+        // `relative_map` by the stripped string — `[[notes/x]]` falls back
+        // to `other\x.md`; `register_link_target` so — `[[papers/Paper.pdf]]`
+        // is unresolved; `relative_of` in `spelled_note_name` so —
+        // `[[d/x.md]]` goes to `d\x.markdown`, registered last under `d/x`;
+        // dropping the `\` fold from `link_text` — `[[notes\x]]` is
+        // unresolved; `register_file_path` reading the stem from the whole
+        // path — `[[x]]` is unresolved where `\` is no separator to the host;
+        // `file_incoming` filing with `cfg!(windows)` — `[[notes\x]]` is not
+        // a backlink.
+        let mut index = LinkIndex::with_windows(true);
+        index.root_path = Some(r"C:\v".to_string());
+        for note in [
+            r"C:\v\other\x.md",
+            r"C:\v\notes\x.md",
+            r"C:\v\d\x.md",
+            r"C:\v\d\x.markdown",
+        ] {
+            index.register_file_path(note, r"C:\v");
+        }
+        index.register_link_target(r"C:\v\papers\Paper.pdf", r"C:\v");
+        index.update_file_from_content(
+            r"C:\v\r.md",
+            "[[notes/x]]\n[[notes\\x]]\n[[papers/Paper.pdf]]\n[[Paper.pdf]]\n\
+             [[d/x.md]]\n[[d\\x.markdown]]\n[[x]]\n",
+        );
+        let resolved = |path: &str| LinkResolution::Resolved(path.to_string());
+        let expected = vec![
+            resolved(r"C:\v\notes\x.md"),
+            resolved(r"C:\v\notes\x.md"),
+            resolved(r"C:\v\papers\Paper.pdf"),
+            resolved(r"C:\v\papers\Paper.pdf"),
+            resolved(r"C:\v\d\x.md"),
+            resolved(r"C:\v\d\x.markdown"),
+            resolved(r"C:\v\other\x.md"),
+        ];
+        let outgoing: Vec<LinkResolution> = index
+            .outgoing_resolved(r"C:\v\r.md")
+            .expect("r.md is indexed")
+            .into_iter()
+            .map(|(_, resolution)| resolution)
+            .collect();
+        assert_eq!(outgoing, expected);
+        let graph: Vec<LinkResolution> = index
+            .get_link_graph()
+            .edges
+            .into_iter()
+            .filter(|e| e.from == r"C:\v\r.md")
+            .map(|e| LinkResolution::Resolved(e.to))
+            .collect();
+        assert_eq!(graph, expected);
+        let lines: Vec<u32> = index
+            .get_backlinks(r"C:\v\notes\x.md", &[])
+            .into_iter()
+            .map(|b| b.line)
+            .collect();
+        assert_eq!(lines, vec![1, 2, 7]);
+    }
+
+    #[test]
+    fn a_windows_backslash_reads_as_a_slash_in_a_relative_target_and_a_placeholder() {
+        // On Windows `[[.\x]]` is `[[./x]]`, and `filing_key` files both under
+        // one key; the resolver, which has no relative step, sends both to
+        // the note of the stem. An unresolved `[[notes\y]]` and `[[notes/y]]`
+        // meet at one placeholder node.
+        // What fails this: reading `\` as `/` only in a target that is not
+        // relative (`link_text`) — `[[.\x]]` is unresolved; building the
+        // placeholder from the target as written (`get_link_graph`) — two
+        // placeholder nodes.
+        let mut index = LinkIndex::with_windows(true);
+        index.root_path = Some(r"C:\v".to_string());
+        index.register_file_path(r"C:\v\d\x.md", r"C:\v");
+        index.update_file_from_content(
+            r"C:\v\r.md",
+            "[[./x]]\n[[.\\x]]\n[[notes/y]]\n[[notes\\y]]\n",
+        );
+        let x = LinkResolution::Resolved(r"C:\v\d\x.md".to_string());
+        let outgoing: Vec<LinkResolution> = index
+            .outgoing_resolved(r"C:\v\r.md")
+            .expect("r.md is indexed")
+            .into_iter()
+            .map(|(_, resolution)| resolution)
+            .collect();
+        assert_eq!(
+            outgoing,
+            vec![
+                x.clone(),
+                x,
+                LinkResolution::Unresolved,
+                LinkResolution::Unresolved
+            ]
+        );
+        let graph = index.get_link_graph();
+        let ends: Vec<&str> = graph
+            .edges
+            .iter()
+            .filter(|e| e.from == r"C:\v\r.md")
+            .map(|e| e.to.as_str())
+            .collect();
+        assert_eq!(ends.len(), 4);
+        assert_eq!(ends[0], r"C:\v\d\x.md");
+        assert_eq!(ends[1], ends[0]);
+        assert_eq!(ends[3], ends[2]);
+        assert_eq!(graph.nodes.len(), 3, "{:?}", graph.nodes);
     }
 
     #[test]
