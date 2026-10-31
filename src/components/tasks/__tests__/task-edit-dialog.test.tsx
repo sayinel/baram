@@ -95,6 +95,32 @@ describe("TaskEditDialog", () => {
     expect(markdown(ed)).toContain("2026-12-25");
   });
 
+  // §56m 무엇이 이것을 빨갛게 하는가: 친 글자를 그대로 태그로 쓰는 것 — `a b`는 `#a b`가
+  // 되어 태그 `a`와 본문 단어 `b`로 갈라지고, `x"y`는 본문의 `#`이 읽지 못하는 이름이다.
+  // 또는 줄에 이미 있던 `#a.b`까지 같은 규칙으로 걸러, 태그 칸을 고치자 그 글자가 사라지는 것.
+  it("태그 칸은 본문이 쓸 수 있는 이름만 줄에 넣고, 줄에 있던 태그는 지킨다", () => {
+    const ed = open("- [ ] 초안 #a.b");
+    const field = screen.getByDisplayValue("a.b") as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'a.b, #new, a b, x"y' } });
+    expect(field.value).toBe('a.b, #new, a b, x"y');
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(field.className).toBe("settings-input is-invalid");
+    expect(screen.getByText("- [ ] 초안 #a.b #new")).toBeTruthy();
+    fireEvent.click(screen.getByText("Save"));
+    expect(markdown(ed)).toBe("- [ ] 초안 #a.b #new");
+  });
+
+  it("받는 이름만 있으면 태그 칸에 경고가 없다", () => {
+    open("- [ ] 초안");
+    const field = screen.getByPlaceholderText(
+      "deep-work, someday",
+    ) as HTMLInputElement;
+    fireEvent.change(field, { target: { value: "#new, 한글/하위" } });
+    expect(field.getAttribute("aria-invalid")).toBe("false");
+    expect(field.className).toBe("settings-input");
+    expect(screen.getByText("- [ ] 초안 #new #한글/하위")).toBeTruthy();
+  });
+
   it("문단이면 저장할 때 태스크가 된다", () => {
     const ed = open("초안 쓰기");
     fireEvent.click(screen.getByText("Save"));

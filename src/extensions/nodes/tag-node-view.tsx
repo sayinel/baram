@@ -10,6 +10,7 @@ import { Tooltip } from "../../components/Tooltip";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 
 export function TagNodeView({
   node,
@@ -56,8 +57,10 @@ export function TagNodeView({
 
   const commitEdit = useCallback(() => {
     setIsEditing(false);
-    const trimmed = editValue.trim().replace(/^#/, "");
-    if (trimmed && trimmed !== tag) {
+    // Every leading `#`: the node serializes as `#` + its tag, so `##x` is not a tag.
+    const trimmed = tagName(editValue.trim());
+    // A name the body cannot spell (`a b`) would be saved as another tag: leave the node as it is.
+    if (isBodyTagName(trimmed) && trimmed !== tag) {
       updateAttributes({ tag: trimmed });
     }
     editor?.commands.focus();
@@ -98,13 +101,16 @@ export function TagNodeView({
       e.stopPropagation(); // prevent ProseMirror shortcuts
       if (e.key === "Enter") {
         e.preventDefault();
+        // A name the body cannot spell is refused: the box stays open with it.
+        const typed = tagName(editValue.trim());
+        if (typed && !isBodyTagName(typed)) return;
         commitEdit();
       } else if (e.key === "Escape") {
         e.preventDefault();
         cancelEdit();
       }
     },
-    [commitEdit, cancelEdit],
+    [commitEdit, cancelEdit, editValue],
   );
 
   if (isEditing) {

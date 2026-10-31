@@ -21,3 +21,17 @@ export function extractFrontmatter(
     rest: content.slice(match[0].length),
   };
 }
+
+/**
+ * §72 `content` with the YAML of its frontmatter block (what `extractFrontmatter` returns as
+ * `yaml`) replaced by `yaml`, and every other character — both `---` fences, their line breaks,
+ * the body — as it was. `content` unchanged when it has no frontmatter block.
+ */
+export function withFrontmatterYaml(content: string, yaml: string): string {
+  const found = extractFrontmatter(content);
+  if (!found) return content;
+  const start = /^---\r?\n/.exec(content)![0].length;
+  return (
+    content.slice(0, start) + yaml + content.slice(start + found.yaml.length)
+  );
+}

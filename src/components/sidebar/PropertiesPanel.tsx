@@ -17,16 +17,25 @@ import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { showPrompt } from "../../utils/ai-commands";
 import { logger } from "../../utils/logger";
-import { extractFrontmatter } from "../../utils/markdown/frontmatter";
 import {
+  extractFrontmatter,
+  withFrontmatterYaml,
+} from "../../utils/markdown/frontmatter";
+import { endsInOpenValue } from "../../utils/markdown/frontmatter-fields";
+import {
+  addYamlProperty,
   ARRAY_KEYS,
   ENUM_KEYS,
   ENUM_VALUES,
   parseYamlProperties,
-  serializeYamlProperties,
+  removeYamlProperty,
+  setYamlPropertyItems,
+  setYamlPropertyValue,
 } from "../../utils/markdown/yaml-properties";
 import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 import { getSkillSections } from "./skill-panel-registry";
+import { usePropertyInputEdits } from "./use-property-input-edits";
 // §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";
 import "./SkillLintSection";
@@ -76,43 +85,23 @@ export function PropertiesPanel() {
       parsed: p ?? null,
     };
   }, [content]);
+  const inputEdits = usePropertyInputEdits(yaml, filePath);
 
   // ── write-back helpers ───────────────────────────────────────────────────
 
-  function applyEntries(updated: PropertyEntry[], skipUndo = false) {
-    if (!filePath || !parsed) return;
-    if (!skipUndo && yaml !== null) {
-      undoStackRef.current.push(yaml);
-      redoStackRef.current = [];
-    }
-    const newYaml = serializeYamlProperties(updated);
-    const newContent = rebuildContent(newYaml, parsed.rest);
-    useFileStore.getState().setFileContent(filePath, newContent);
-    if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
-    useEditorStore.getState().requestContentRefresh();
-    forceRender((n) => n + 1);
-  }
-
+  /**
+   * §72 Writes `newYaml` as the open file's frontmatter. Every other character of the file —
+   * the `---` fences and their line breaks, the body — stays as it was (`withFrontmatterYaml`);
+   * an edit that changes nothing (a write the editors refused) is not recorded.
+   */
   function applyYamlDirectly(newYaml: string, skipUndo = false) {
-    if (!filePath || !parsed) return;
-    if (!skipUndo && yaml !== null) {
+    if (!filePath || !parsed || content === null || yaml === null) return;
+    if (newYaml === yaml) return;
+    if (!skipUndo) {
       undoStackRef.current.push(yaml);
       redoStackRef.current = [];
     }
-    const newContent = rebuildContent(newYaml, parsed.rest);
-    useFileStore.getState().setFileContent(filePath, newContent);
-    if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
-    useEditorStore.getState().requestContentRefresh();
-    forceRender((n) => n + 1);
-  }
-
-  function applySourceText(text: string) {
-    if (!filePath || !parsed) return;
-    if (yaml !== null) {
-      undoStackRef.current.push(yaml);
-      redoStackRef.current = [];
-    }
-    const newContent = rebuildContent(text, parsed.rest);
+    const newContent = withFrontmatterYaml(content, newYaml);
     useFileStore.getState().setFileContent(filePath, newContent);
     if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
     useEditorStore.getState().requestContentRefresh();
@@ -139,66 +128,84 @@ export function PropertiesPanel() {
     if (!sourceMode) {
       setSourceText(yaml ?? "");
     } else {
-      applySourceText(sourceText);
+      applyYamlDirectly(sourceText);
     }
     setSourceMode((v) => !v);
   };
 
+  /**
+   * §72 Writes a list edit, or — when the list writer left the front matter as it was (a scalar
+   * `tags:`, a list it did not read to its end, a second key of that name) — says why nothing
+   * changed instead of changing nothing in silence.
+   */
+  function applyListEdit(newYaml: string) {
+    if (newYaml === yaml) {
+      useUIStore.getState().showToast(t("properties.listNotEditable"), "info");
+      return;
+    }
+    applyYamlDirectly(newYaml);
+  }
+
   // ── field handlers ───────────────────────────────────────────────────────
 
+  // Each edit rewrites only its own property's lines (`yaml-properties.ts`).
   const handleStringChange = useCallback(
     (key: string, val: string) => {
-      const updated = entries.map((e) =>
-        e.key === key ? { ...e, value: val } : e,
-      );
-      applyEntries(updated);
+      const entry = entries.find((e) => e.key === key);
+      if (!entry) return;
+      const newYaml = inputEdits.change(entry, val);
+      if (newYaml !== null) applyYamlDirectly(newYaml);
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, filePath, parsed],
+    [entries, yaml, content, filePath, parsed],
   );
 
-  const handleEnumChange = useCallback(
-    (key: string, val: string) => {
-      const updated = entries.map((e) =>
-        e.key === key ? { ...e, value: val } : e,
-      );
-      applyEntries(updated);
-    },
-    // deps change on every edit, suppress to avoid infinite re-render
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, filePath, parsed],
-  );
+  // A choice is one whole edit: it keeps the type of the value it replaces.
+  const handleEnumChange = (key: string, val: string) => {
+    if (yaml !== null) applyYamlDirectly(setYamlPropertyValue(yaml, key, val));
+  };
 
   const handleChipRemove = useCallback(
     (key: string, idx: number) => {
-      const updated = entries.map((e) => {
-        if (e.key !== key) return e;
-        const arr = (e.value as string[]).filter((_, i) => i !== idx);
-        return { ...e, value: arr };
-      });
-      applyEntries(updated);
+      const entry = entries.find((e) => e.key === key);
+      if (yaml === null || !entry) return;
+      const items = (entry.value as string[]).filter((_, i) => i !== idx);
+      applyListEdit(setYamlPropertyItems(yaml, key, items));
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, filePath, parsed],
+    [entries, yaml, content, filePath, parsed],
   );
 
   const handleChipAdd = useCallback(
     (key: string) => {
       (async () => {
-        const item = await showPrompt("Add item:");
-        if (!item) return;
-        const updated = entries.map((e) => {
-          if (e.key !== key) return e;
-          return { ...e, value: [...(e.value as string[]), item.trim()] };
-        });
-        applyEntries(updated);
+        const typed = (await showPrompt("Add item:"))?.trim();
+        const entry = entries.find((e) => e.key === key);
+        if (!typed || yaml === null || !entry) return;
+        // §56m A tag chip takes a tag name, and only one a note's body can spell — the rule of
+        // the tag bar, whose list writer this edit goes through.
+        const item = key === "tags" ? tagName(typed) : typed;
+        // A chip shows each value once (`parseYamlProperties`): a second one is already there.
+        if (item === "" || (entry.value as string[]).includes(item)) return;
+        if (key === "tags" && !isBodyTagName(item)) {
+          useUIStore
+            .getState()
+            .showToast(
+              t("journal.capture.error.tagName", { tag: item }),
+              "info",
+            );
+          return;
+        }
+        applyListEdit(
+          setYamlPropertyItems(yaml, key, [...(entry.value as string[]), item]),
+        );
       })();
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, filePath, parsed],
+    [entries, yaml, content, filePath, parsed],
   );
 
   const handleOpenFile = useCallback(
@@ -239,24 +246,29 @@ export function PropertiesPanel() {
         : ARRAY_KEYS.has(key)
           ? "array"
           : "string";
-      const value: string | string[] = type === "array" ? [] : "";
-      const updated = [...entries, { key, value, type }];
+      if (yaml === null) return;
+      // A value that never closes would take the new key into it (`appendFrontmatterLine`).
+      if (endsInOpenValue(yaml)) {
+        useUIStore
+          .getState()
+          .showToast(t("properties.cannotAddProperty"), "info");
+        return;
+      }
       setLastAddedKey(key);
-      applyEntries(updated);
+      applyYamlDirectly(addYamlProperty(yaml, key, type));
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, filePath, parsed],
+    [yaml, content, filePath, parsed],
   );
 
   const handleDeleteProperty = useCallback(
     (key: string) => {
-      const updated = entries.filter((e) => e.key !== key);
-      applyEntries(updated);
+      if (yaml !== null) applyYamlDirectly(removeYamlProperty(yaml, key));
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entries, filePath, parsed],
+    [yaml, content, filePath, parsed],
   );
 
   // ── render ───────────────────────────────────────────────────────────────
@@ -331,17 +343,23 @@ export function PropertiesPanel() {
                   </button>
                 </div>
 
-                {entry.type === "string" && (
+                {(entry.type === "string" || entry.type === "yaml") && (
                   <input
+                    aria-invalid={
+                      inputEdits.draftOf(entry.key) !== undefined || undefined
+                    }
                     autoFocus={entry.key === lastAddedKey}
                     className="properties-input"
+                    onBlur={() => inputEdits.end(entry.key)}
                     onChange={(e) =>
                       handleStringChange(entry.key, e.target.value)
                     }
                     onFocus={() => {
                       if (entry.key === lastAddedKey) setLastAddedKey(null);
                     }}
-                    value={entry.value as string}
+                    value={
+                      inputEdits.draftOf(entry.key) ?? (entry.value as string)
+                    }
                   />
                 )}
 
@@ -474,10 +492,4 @@ function findFileInTree(tree: FileEntry[], name: string): FileEntry | null {
     }
   }
   return null;
-}
-
-// ─── PropertiesPanel ──────────────────────────────────────────────────────────
-
-function rebuildContent(yaml: string, rest: string): string {
-  return `---\n${yaml}\n---${rest}`;
 }

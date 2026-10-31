@@ -10,6 +10,12 @@ import { Tooltip } from "../../components/Tooltip";
 import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
+import {
+  frontmatterListItems,
+  writeFrontmatterList,
+} from "../../utils/markdown/frontmatter-list";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 import {
   canUseEditorChrome,
   withVimExternalEdit,
@@ -20,8 +26,6 @@ import {
 /** §12-⑩/§5b provenance: the remove pill is NodeView chrome (tagged); the
  *  input is a focus-local island under data-vim-suspend (untagged). */
 type TagMutationOrigin = "chrome" | "island";
-
-type TagsFormat = "block" | "inline" | "none";
 
 export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const { t } = useTranslation();
@@ -35,14 +39,23 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   // unchanged nodes).
   const canEdit = useEditorChrome(editor);
 
+  /** Whether the edit was dispatched — `false` leaves the front matter as it was. */
   const applyTags = useCallback(
-    (newTags: string[], origin: TagMutationOrigin) => {
+    (newTags: string[], origin: TagMutationOrigin): boolean => {
       // §12-⑩ event-time guard: this callback can fire from stale-rendered
       // UI after capability was revoked — the render gate is not enough.
-      if (!canUseEditorChrome(editor)) return;
+      if (!canUseEditorChrome(editor)) return false;
       const pos = getPos();
-      if (typeof pos !== "number") return;
+      if (typeof pos !== "number") return false;
       const newYaml = updateFrontmatterTags(node.textContent, newTags);
+      // A `tags:` field the bar cannot rewrite comes back unchanged — say so, rather than
+      // ignore the click.
+      if (newYaml === node.textContent) {
+        useUIStore
+          .getState()
+          .showToast(t("frontmatter.tagsNotEditable"), "info");
+        return false;
+      }
       const { tr } = editor.view.state;
       const nodeStart = pos + 1;
       const nodeEnd = pos + node.nodeSize - 1;
@@ -57,8 +70,9 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       }
       if (origin === "chrome") withVimExternalEdit(tr);
       editor.view.dispatch(tr);
+      return true;
     },
-    [editor, getPos, node],
+    [editor, getPos, node, t],
   );
 
   const removeTag = useCallback(
@@ -73,12 +87,18 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
 
   const addTag = useCallback(
     (raw: string) => {
-      const tag = raw.trim().replace(/^#+/, "");
-      if (!tag || tags.includes(tag)) return;
-      applyTags([...tags, tag], "island");
-      setInputValue("");
+      const tag = tagName(raw.trim());
+      if (tag === "" || tags.includes(tag)) return;
+      if (!isBodyTagName(tag)) {
+        useUIStore
+          .getState()
+          .showToast(t("journal.capture.error.tagName", { tag }), "info");
+        return;
+      }
+      // The typed text stays when nothing was written, rather than vanish as if it had been.
+      if (applyTags([...tags, tag], "island")) setInputValue("");
     },
-    [applyTags, tags],
+    [applyTags, t, tags],
   );
 
   const handleKeyDown = useCallback(
@@ -176,65 +196,25 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
 }
 
 /**
- * Parses the `tags:` field from a YAML frontmatter string.
- * Supports:
+ * The tag names in the `tags:` lists of a YAML frontmatter string (without its `---` fences),
+ * once each — a pill per tag. A name is the item's value without its leading `#`s (`tagName`),
+ * so `"#solo"` and `solo` are the one pill `#solo`. The lists are read as the tag index reads
+ * them (`frontmatterListItems`):
  *   tags: [tag1, tag2]       (inline array)
- *   tags:\n  - tag1\n  - tag2  (block list)
+ *   tags:\n  - tag1\n  - tag2  (block list, indented or not)
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function parseFrontmatterTags(yaml: string): string[] {
-  // Inline array: tags: [tag1, "tag 2", tag3]
-  const inlineMatch = yaml.match(/^tags:\s*\[([^\]]*)\]/m);
-  if (inlineMatch) {
-    return inlineMatch[1]
-      .split(",")
-      .map((t) => t.trim().replace(/^["']|["']$/g, ""))
-      .filter(Boolean);
-  }
-
-  // Block list: tags:\n  - tag1\n  - tag2
-  const blockMatch = yaml.match(/^tags:\s*\n((?:[ \t]+-[ \t]+\S[^\n]*\n?)+)/m);
-  if (blockMatch) {
-    return blockMatch[1]
-      .split("\n")
-      .map((line) => line.match(/^[ \t]+-[ \t]+(.+)$/)?.[1]?.trim() ?? "")
-      .filter(Boolean);
-  }
-
-  return [];
+  const names = frontmatterListItems(yaml, "tags").map((i) => tagName(i.value));
+  return [...new Set(names.filter(Boolean))];
 }
 
 /**
- * Rewrites the `tags:` section in YAML with new tags, preserving the original format.
- * If no tags field exists, appends `tags: [...]` after the first line.
+ * Rewrites the `tags:` list to hold the tag names `tags` (`writeFrontmatterList`): only the
+ * items and lines an edit touches change; without a `tags:` key, `tags: [...]` is appended at
+ * the end; a `tags:` field the writer cannot rewrite in place comes back unchanged.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export function updateFrontmatterTags(yaml: string, tags: string[]): string {
-  const format = detectTagsFormat(yaml);
-
-  if (format === "inline") {
-    const inlineValue = `[${tags.join(", ")}]`;
-    return yaml.replace(/^tags:\s*\[[^\]]*\]/m, `tags: ${inlineValue}`);
-  }
-
-  if (format === "block") {
-    const blockValue = "\n" + tags.map((t) => `  - ${t}`).join("\n");
-    return yaml.replace(
-      /^tags:\s*\n((?:[ \t]+-[ \t]+\S[^\n]*\n?)+)/m,
-      `tags:${blockValue}\n`,
-    );
-  }
-
-  // No tags field — append after first line
-  const lines = yaml.split("\n");
-  lines.splice(1, 0, `tags: [${tags.join(", ")}]`);
-  return lines.join("\n");
-}
-
-// --- NodeView component ---
-
-function detectTagsFormat(yaml: string): TagsFormat {
-  if (/^tags:\s*\[/m.test(yaml)) return "inline";
-  if (/^tags:\s*\n(?:[ \t]+-[ \t]+\S)/m.test(yaml)) return "block";
-  return "none";
+  return writeFrontmatterList(yaml, "tags", tags, tagName);
 }

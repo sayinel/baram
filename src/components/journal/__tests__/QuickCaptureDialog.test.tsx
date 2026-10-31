@@ -270,6 +270,37 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
   });
 });
 
+describe("QuickCaptureDialog — tag names (§56m)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useSettingsStore.setState({ locale: LOCALE });
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+    useFileStore.getState().setRootPath("/vault");
+    useUIStore.setState({ quickCaptureOpen: true });
+  });
+
+  // What turns this red: saving a tag a note's body could not spell — `a"b` reached the
+  // fleeting note's front matter as a name the tag index reads back as another.
+  it("refuses a tag a body tag could not spell, naming it, and keeps the capture", async () => {
+    render(<QuickCaptureDialog />);
+    setCaptureBody("note body");
+    fireEvent.change(screen.getByPlaceholderText(tagsPlaceholder), {
+      target: { value: '#ok #a"b' },
+    });
+    await vi.waitFor(() => expect(saveButton()).not.toBeDisabled());
+    fireEvent.click(saveButton());
+
+    expect(
+      await screen.findByText(
+        t("journal.capture.error.tagName", LOCALE, { tag: 'a"b' }),
+      ),
+    ).toBeTruthy();
+    expect(captureFleeting).not.toHaveBeenCalled();
+    expect(useUIStore.getState().quickCaptureOpen).toBe(true);
+  });
+});
+
 describe("QuickCaptureDialog — memo editor & dismissal guard", () => {
   beforeEach(() => {
     vi.clearAllMocks();

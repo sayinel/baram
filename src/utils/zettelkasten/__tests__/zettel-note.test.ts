@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { parse, parseDocument } from "yaml";
 
+import { parseNoteTitleInfo } from "../parse-note-title";
 import {
   buildFleetingNote,
   buildPermanentNote,
+  carriedTagField,
   parseFrontmatterAliases,
-  parseFrontmatterTags,
   sanitizeZettelTitle,
 } from "../zettel-note";
+
+/** The YAML a note's front matter holds. */
+function frontmatter(md: string): unknown {
+  return parse(/^---\n([\s\S]*?)\n---/.exec(md)![1]);
+}
 
 describe("sanitizeZettelTitle", () => {
   it("strips filesystem-reserved chars and collapses whitespace", () => {
@@ -41,6 +48,35 @@ describe("buildPermanentNote", () => {
     expect(content).toContain("title: TCP/IP 정리");
     expect(content).toContain("# TCP/IP 정리");
   });
+
+  // §94 What turns this red: writing the title as typed — `Plan: v2` made `title:` a mapping,
+  // `#1 idea` a comment, `- list` a sequence, and several did not parse at all.
+  it.each([
+    "Plan: v2",
+    "#1 idea",
+    "a #b",
+    "- list",
+    "[draft",
+    "{x",
+    "'quoted",
+    '"quoted"',
+    'He said "hi"',
+    "it's",
+    "2024",
+    "yes",
+    "@home",
+  ])(
+    "writes the title %j so YAML and the note-title reader read it back",
+    (title) => {
+      const { filename, content } = buildPermanentNote({
+        id: "202607051530",
+        title,
+        created: "2026-07-05T15:30",
+      });
+      expect(frontmatter(content)).toMatchObject({ title });
+      expect(parseNoteTitleInfo(filename, content).title).toBe(title);
+    },
+  );
 });
 
 describe("buildFleetingNote", () => {
@@ -70,32 +106,143 @@ describe("buildFleetingNote", () => {
     expect(content).toContain("tags: [idea, zettel/inbox]");
     expect(content).not.toContain("#idea");
   });
+
+  // What turns this red: joining the tags with `, ` — `tags: [#solo, idea]` is a YAML parse
+  // error (the `#` opens a comment), so the note's whole front matter is lost to every reader.
+  it("writes a tag YAML cannot hold plain quoted (§56m)", () => {
+    const { content } = buildFleetingNote({
+      id: "202607051530",
+      body: "x",
+      created: "2026-07-05T15:30",
+      tags: ["#solo", "idea"],
+    });
+    expect(content).toContain(`tags: ["#solo", idea]`);
+    expect(frontmatter(content)).toMatchObject({ tags: ["#solo", "idea"] });
+  });
 });
 
-describe("parseFrontmatterTags", () => {
-  it("parses an inline tags array", () => {
-    expect(parseFrontmatterTags("---\ntags: [a, b/c]\n---\n\nx")).toEqual([
-      "a",
-      "b/c",
-    ]);
+describe("carriedTagField", () => {
+  it("carries an inline tags array", () => {
+    expect(carriedTagField("---\ntags: [a, b/c]\n---\n\nx")).toBe(
+      "tags: [a, b/c]",
+    );
   });
 
-  it("parses a block-list tags field", () => {
-    expect(
-      parseFrontmatterTags("---\ntags:\n  - one\n  - two\n---\n\nx"),
-    ).toEqual(["one", "two"]);
+  // §56m What turns this red: carrying the values instead of the field — a block list became
+  // a flow list, and its items lost their quotes and comments.
+  it("carries a block list in its own form, its lines as written", () => {
+    const md = `---\ntags:\n  - "#solo" # first\n  - idea\n---\n`;
+    const field = carriedTagField(md);
+    expect(field).toBe(`tags:\n  - "#solo" # first\n  - idea`);
+    expect(parse(field)).toEqual({ tags: ["#solo", "idea"] });
   });
 
-  it("returns [] when there is no frontmatter or no tags field", () => {
-    expect(parseFrontmatterTags("no frontmatter")).toEqual([]);
-    expect(parseFrontmatterTags("---\nid: 1\n---\n")).toEqual([]);
+  it("is an empty list when there is no frontmatter or no tags field", () => {
+    expect(carriedTagField("no frontmatter")).toBe("tags: []");
+    expect(carriedTagField("---\nid: 1\n---\n")).toBe("tags: []");
   });
 
   // ‼️ 반대 방향 핀: `aliases:`를 읽지 않는 것. 공용 코어를 쓰므로 필드 이름 파라미터가
   // 없어지면 이 테스트만 잡는다.
   it("does not read the aliases field", () => {
     const md = `---\ntags: []\naliases: [Note, 영감노트]\n---\n`;
-    expect(parseFrontmatterTags(md)).toEqual([]);
+    expect(carriedTagField(md)).toBe("tags: []");
+  });
+
+  // §56m What turns these red: carrying the values instead of the items — `"#solo"` lost its
+  // quotes and `tags: [#solo]` stopped parsing.
+  it("keeps each item as written", () => {
+    expect(carriedTagField(`---\ntags: ["#solo", 'sq', plain]\n---\n`)).toBe(
+      `tags: ["#solo", 'sq', plain]`,
+    );
+  });
+
+  it("quotes an item whose spelling YAML cannot read", () => {
+    expect(carriedTagField("---\ntags: [#unq]\n---\n")).toBe(`tags: ["#unq"]`);
+    expect(carriedTagField("---\ntags:\n  - #unq\n---\n")).toBe(
+      `tags:\n  - "#unq"`,
+    );
+  });
+
+  it("carries a CRLF block list with \\n line breaks", () => {
+    expect(carriedTagField("---\ntags:\r\n  - a\r\n  - b\r\n---\n")).toBe(
+      "tags:\n  - a\n  - b",
+    );
+  });
+
+  // A field the writer cannot carry as written — two `tags` keys, a list not read to its end —
+  // is carried as a new flow list of the values read.
+  it("carries the values read when the field cannot be carried as written", () => {
+    expect(carriedTagField("---\ntags: [a]\ntags: [b]\n---\n")).toBe(
+      "tags: [a, b]",
+    );
+    expect(carriedTagField("---\ntags:\n  - a long\n    tag\n---\n")).toBe(
+      "tags: [a long]",
+    );
+  });
+
+  // What turns these red: carrying as written a list the app reads but YAML does not — the
+  // readers take any whitespace around the colon and the `-` and as indentation, so a tab or a
+  // no-break space there, or ragged indentation, was copied into the new note as an error or
+  // as another value.
+  it.each([
+    ["tags:\n\t- a\n\t- b", "tags: [a, b]"],
+    ["tags:\n\u00a0 - a\n\u00a0 - b", "tags: [a, b]"],
+    ["tags:\n  - \u00a0a", "tags: [a]"],
+    ["tags:\n  - a\n    - b", "tags: [a, b]"],
+    ["tags:\n    - a\n  - b", "tags: [a, b]"],
+    ["tags:\n  - a\n  - \u00a0", "tags: [a]"],
+    ["tags:[a, b]", "tags: [a, b]"],
+    ["tags:\u00a0[a, b]", "tags: [a, b]"],
+    ["tags\u00a0: [a, b]", "tags: [a, b]"],
+    ["tags:\u3000\n  - a\n  - b", "tags: [a, b]"],
+    ["tags:\u00a0\n  - a\n  - b", "tags: [a, b]"],
+  ])(
+    "carries %j, which YAML reads otherwise, as a new flow list",
+    (field, carried) => {
+      expect(carriedTagField(`---\n${field}\n---\n`)).toBe(carried);
+    },
+  );
+
+  // The sibling: the spacings YAML reads as the same list are carried as written.
+  it.each([
+    "tags:\t[a, b]",
+    "tags :\t[a, b]",
+    "tags\t: [a, b]",
+    "tags:\n- a\n- b",
+    "tags:\n  -\ta\n  - b",
+    "tags:\n    - a # c\n    -  \n    - b",
+    "tags: \t\n  - a\n  - b",
+  ])("carries %j as written", (field) => {
+    expect(carriedTagField(`---\n${field}\n---\n`)).toBe(field);
+  });
+
+  it("carries only a field YAML reads as the tags the app reads", () => {
+    const keys = ["tags:", "tags :", "tags\t:", "Tags:", "tags\u00a0:"];
+    const gaps = ["", " ", "\t", "\u00a0", " \u00a0", "\u3000"];
+    const leads = ["- ", "  - ", "  -\t", "\t- ", "\u00a0 - ", "  - \u00a0"];
+    const fields: string[] = [];
+    for (const key of keys) {
+      for (const gap of gaps) {
+        fields.push(`${key}${gap}[a, "#b"]`, `${key}${gap}\n  - a\n  - "#b"`);
+      }
+      for (const first of leads) {
+        for (const second of leads) {
+          fields.push(`${key}\n${first}a\n${second}"#b"`);
+        }
+      }
+    }
+    for (const field of fields) {
+      const carried = carriedTagField(`---\n${field}\n---\n`);
+      const doc = parseDocument(carried, { uniqueKeys: true });
+      expect(doc.errors, JSON.stringify(field)).toEqual([]);
+      const read = doc.toJS() as Record<string, unknown>;
+      expect(Object.keys(read).map((k) => k.toLowerCase())).toEqual(["tags"]);
+      expect(Object.values(read)[0], JSON.stringify(field)).toEqual([
+        "a",
+        "#b",
+      ]);
+    }
   });
 });
 

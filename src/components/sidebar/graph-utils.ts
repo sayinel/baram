@@ -2,6 +2,8 @@
 
 import type { LinkGraph } from "../../ipc/types";
 
+import { tagName } from "../../utils/tags/tag-name";
+
 /** Cytoscape edge element */
 export interface GraphEdge {
   data: {
@@ -250,11 +252,12 @@ export function toGraphElements(
   const TAG_PREFIX = "tag:";
   const nodes: GraphNode[] = graph.nodes.map((nodeId) => {
     if (nodeId.startsWith(TAG_PREFIX)) {
-      const tagName = nodeId.slice(TAG_PREFIX.length);
+      // A front-matter tag the index read with its `#` is the node `tag:#solo`.
+      const name = tagName(nodeId.slice(TAG_PREFIX.length));
       return {
         data: {
           id: nodeId,
-          label: `#${tagName}`,
+          label: `#${name}`,
           degree: degreeMap.get(nodeId) ?? 0,
           isTag: true,
         },
