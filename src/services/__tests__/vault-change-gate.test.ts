@@ -1,8 +1,9 @@
 // §395 spec 0074 D12 · §7 "순서 관문" — `vault:changed` held per context while an app file operation runs:
 // a publish for a held context waits for the context's last release and goes out once; other contexts
 // are not held. Released by the operation, never by time.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { logger } from "../../utils/logger";
 import {
   __resetVaultChangeHolds,
   holdVaultChanges,
@@ -64,5 +65,39 @@ describe("holdVaultChanges (D12)", () => {
     release();
     expect(heard).toEqual(["ctx-b"]);
     stop();
+  });
+
+  /** One release, two contexts: the one with no other hold goes out, the other stays held. What fails
+   *  this: a release that publishes (or keeps) every context together. */
+  it("publishes only the context whose last hold went", () => {
+    const { heard, stop } = hear();
+    const both = holdVaultChanges(["ctx-a", "ctx-b"]);
+    const onlyB = holdVaultChanges(["ctx-b"]);
+    publishVaultChange("ctx-a");
+    publishVaultChange("ctx-b");
+    both();
+    expect(heard).toEqual(["ctx-a"]);
+    onlyB();
+    expect(heard).toEqual(["ctx-a", "ctx-b"]);
+    stop();
+  });
+
+  /** A subscriber throwing in the release-time publish must not leave the context held. What fails this:
+   *  the hold deleted after the publish instead of before it. */
+  it("leaves the context unheld when a listener throws at the release", () => {
+    const errors = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const stopThrowing = subscribeVaultChanges(() => {
+      throw new Error("listener gone");
+    });
+    const { heard, stop } = hear();
+    const release = holdVaultChanges(["ctx-a"]);
+    publishVaultChange("ctx-a");
+    release();
+    expect(heard).toEqual(["ctx-a"]);
+    publishVaultChange("ctx-a");
+    expect(heard).toEqual(["ctx-a", "ctx-a"]);
+    stopThrowing();
+    stop();
+    errors.mockRestore();
   });
 });

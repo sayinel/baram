@@ -8,8 +8,8 @@
 // §395 spec 0074 D12 — held back while an app file operation touches that context. The operation
 // raises a hold on every context holding a path it touches (`beginFileOperation` in
 // `plugins/file-decorations/operation-notices.ts` calls `holdVaultChanges`); a publish for a held
-// context is kept, and the context's last release publishes it once — after the operation told plugins
-// `file:rename` / `file:delete`. Released by the operation ending, never by time: an IPC that never
+// context is kept, and the context's last release publishes it once — after any `file:rename` / `file:delete`
+// notice the operation sent. Released by the operation ending, never by time: an IPC that never
 // ends keeps that context's `vault:changed` held, and no other context's.
 import { logger } from "../utils/logger";
 

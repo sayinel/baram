@@ -7,6 +7,7 @@ import {
   publishVaultChange,
 } from "../../../services/vault-changes";
 import { useContextStore } from "../../../stores/context/context";
+import { logger } from "../../../utils/logger";
 import {
   __resetFileDecorations,
   applyDecorations,
@@ -75,6 +76,7 @@ describe("operation notices (D10 · D12)", () => {
     applyDecorations("p", "P", [
       { decoration: { badge: "1" }, where: { absolute: "/v/d/x.md" } },
     ]);
+    expect(badgeAt("/v/d/x.md")).toBe("1");
     const recorder = recordNotices();
     notifyDeleted("/v/d", true);
     expect(badgeAt("/v/d/x.md")).toBeUndefined();
@@ -88,8 +90,11 @@ describe("operation notices (D10 · D12)", () => {
       throw new Error("plugin gone");
     });
     const stop = onFileNotice(heard);
+    const errors = vi.spyOn(logger, "error").mockImplementation(() => {});
     expect(() => notifyDeleted("/v/a.md", false)).not.toThrow();
     expect(heard).toHaveBeenCalledTimes(1);
+    expect(errors).toHaveBeenCalledTimes(1);
+    errors.mockRestore();
     stopThrowing();
     stop();
   });
