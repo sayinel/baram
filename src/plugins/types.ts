@@ -289,7 +289,7 @@ export interface IndexLink {
   /** Only when `resolution` is `"resolved"`: the file the link leads to — a non-note file too (`[[Paper.pdf]]`). */
   path: null | string;
   resolution: "otherVault" | "resolved" | "unresolved";
-  /** The name inside the brackets, without alias, heading or display text. */
+  /** The name inside the brackets as the editor reads it, without alias, heading or display text; a block reference's or embed's escapes undone (`%29` is `)`). */
   target: string;
   type: IndexLinkType;
   /** Only when `resolution` is `"otherVault"`: the vault alias the link names. */

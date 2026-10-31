@@ -97,7 +97,8 @@ pub(super) struct LinkRow {
     path: Option<String>,
     /// `resolved` · `unresolved` · `otherVault`.
     resolution: &'static str,
-    /// The name inside the brackets, without alias, heading or display text.
+    /// The name inside the brackets as the editor reads it, without alias, heading or display
+    /// text; a block reference's or embed's escapes undone (`%29` is `)`).
     target: String,
     #[serde(rename = "type")]
     kind: &'static str,

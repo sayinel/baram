@@ -54,7 +54,7 @@ interface IndexLink {
   line: number;
   path: string | null;   // when resolution is "resolved" — attachments too, as in [[Paper.pdf]]
   resolution: "otherVault" | "resolved" | "unresolved";
-  target: string;        // the name in the brackets, without alias, heading or display text
+  target: string;        // the name in the brackets as the editor reads it, without alias, heading or display text — a block reference's escapes undone (%29 is ")")
   type: IndexLinkType;   // "wikilink" | "blockRef" | "blockEmbed"
   vault: string | null;  // when resolution is "otherVault": the vault alias the link names
 }

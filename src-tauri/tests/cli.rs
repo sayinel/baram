@@ -1789,6 +1789,28 @@ fn backlinks_of_an_attachment_go_by_its_path_and_its_whole_name() {
     assert_eq!(stem.stdout, "1\twikilink\tPaper\tunresolved\t\n");
 }
 
+#[test]
+fn links_print_a_block_references_target_as_the_editor_reads_it() {
+    // The editor writes a PDF highlight reference's `)` as `%29` (`escapeBlockRefTarget`),
+    // and the index reads the target with the escape undone, so `links` prints the note's
+    // name and resolves it — an output change of `LinkRow::target`, which `baram mcp`'s
+    // `outgoing_links` shares. What fails this: reading the target as written — it prints
+    // `highlights/papers/BERT (2019%29`, unresolved.
+    let sb = sandbox();
+    write(&sb.vault, "highlights/papers/BERT (2019).md", "quote ^h1\n");
+    write(
+        &sb.vault,
+        "r.md",
+        "((highlights/papers/BERT (2019%29#^h1))\n",
+    );
+    let vault = vault_arg(&sb);
+    let ran = baram(&sb, &sb.home, &["--vault", &vault, "links", "r.md"]);
+    assert_eq!(
+        ran.stdout,
+        "1\tblockRef\thighlights/papers/BERT (2019)\tresolved\thighlights/papers/BERT (2019).md\n"
+    );
+}
+
 // ── the contract, end to end ──────────────────────────────────────────────────────
 
 /// One vault every command is run over: tags, tasks in each state, links that resolve,
