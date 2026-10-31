@@ -153,12 +153,16 @@ impl LinkIndex {
     /// `None` unless `normalize_target` stripped a note extension from `full`
     /// (`full != normalized`), so a target with none — `[[Paper]]`,
     /// `[[Paper.pdf]]` — takes exactly the chain in `resolve_target_from_map`,
-    /// and the §278 order stays. The guard is needed: `file_map` is not only
-    /// notes, since a save that rewrites the file registers
-    /// whatever path it is given (`update_file_index_inner` → `update_file_unless_held`
-    /// → `write_note` → `register_file_path`), and an
-    /// extension-less file's name equals its key, so `[[architecture]]` would
-    /// match `architecture` by name. With no candidate, `[[foo.markdown]]`
+    /// and the §278 order stays. `file_map` holds notes: the build registers
+    /// the `.md` and `.markdown` files it collects, and a save, a sync or a
+    /// rename writes a file through `write_note` (→ `register_file_path`) only
+    /// when its path passes the note rule (`is_note`) — any other file is a
+    /// link target (`Mutation::Target`), in `name_map` alone. The guard is
+    /// still needed because that rule reads the path as given while the index
+    /// registers the file it resolves to (`Mutation::update` canonicalises):
+    /// a note `link.md` that is a symbolic link to `architecture` puts the
+    /// extension-less `architecture` in `file_map`, whose name equals its key,
+    /// so `[[architecture]]` would match it by name. With no candidate, `[[foo.markdown]]`
     /// beside only `foo.md` falls through to the stem `foo`: the note, not the
     /// ghost `foo.markdown.md`.
     fn spelled_note_name(&self, full: &str, normalized: &str) -> Option<String> {

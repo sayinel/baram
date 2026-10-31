@@ -1017,8 +1017,8 @@ pub(super) mod tests {
         // back. A reference already escaped is read as its name: `((t (1%29#^a))`
         // names `t (1).md`, and is rewritten too.
         // What fails this: writing the stem as it is — `((note (draft)#^a))`
-        // ends its target at the `)`; reading the captured target unescaped —
-        // `((t (1%29#^a))` is not the renamed file's.
+        // ends its target at the `)`; reading the captured target as written,
+        // its escapes kept — `((t (1%29#^a))` is not the renamed file's.
         let content = "see ((old#^a)) and {{embed ((old#^a))}}";
         for (stem, written) in [
             ("note (draft)", "note (draft%29"),

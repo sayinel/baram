@@ -121,8 +121,10 @@ impl LinkKind {
 impl LinkKind {
     /// One reference of this kind to `target`, as prose spells it — what the
     /// count test builds its fixture from, kind by kind over `ALL`; a block
-    /// reference's target escaped as the frontend and a rename write it
-    /// (`block_ref_escape::spell_block_ref_target`). No `_` arm: a new kind
+    /// reference's or embed's target spelled as a rename writes it
+    /// (`block_ref_escape::spell_block_ref_target`: escaped only where it would
+    /// not read back otherwise — `t (1)` as `t (1%29`, `target` as it is). No
+    /// `_` arm: a new kind
     /// must say how it is spelled before the suite compiles.
     pub(crate) fn spelled(self, target: &str, id: &str) -> String {
         let block = block_ref_escape::spell_block_ref_target(target);
@@ -682,7 +684,8 @@ mod tests {
         // A name holding `)` is written escaped in a block reference
         // (`t (1%29`), so the count runs for `t (1)` too. What fails that
         // half: reading a block reference's target as written in
-        // `extract_links` — 1 != 3; or in `visit_block_references_to` — 3 != 1.
+        // `extract_links` — 1 != 3 (one filed, three expected); or in
+        // `visit_block_references_to` — 1 != 3 (one visited, three filed).
         for (old_path, name, new_path) in [
             ("/vault/target.md", "target", "/vault/renamed.md"),
             ("/vault/target.txt", "target.txt", "/vault/renamed.txt"),

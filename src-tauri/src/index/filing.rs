@@ -14,11 +14,12 @@
 //! - `file_key` calls: `name_key` here; `normalize_file_path` in
 //!   `normalizer.rs`; and `link_reads_back_as_the_file` in `rewriter.rs`.
 //! - `name_key` calls — the name a bare link to a file is filed under, a
-//!   note's stem or any other file's whole name: `keys_for`,
-//!   `backlink_keys_for` here; `RenameTarget::judge`, `refers_behind_alias`,
-//!   `expected_key` in `judgement.rs`; `rename_file_with_links_inner` in
-//!   `rename/file.rs` (the old key, the same-stem predicate, and
-//!   `stem_unchanged`); and the same-stem predicate inside
+//!   note's stem or any other file's whole name: `keys_for` and
+//!   `backlink_keys_for` here; `RenameTarget::judge`,
+//!   `whole_name_is_a_note_stem`, `refers_behind_alias` and `expected_key` in
+//!   `judgement.rs`; `rename_file` (the old key, the same-stem predicate, and
+//!   `stem_unchanged`) and `another_note_shares_the_stem` in `rename/file.rs`;
+//!   `known_paths_of` in `rename/scope.rs`; and the same-stem predicate inside
 //!   `rename_block_id_inner` in `rename/block_id.rs`. `RenameTarget::new_stem`
 //!   spells the same name (`bare_name`), unfolded.
 //! - `root_relative_key` calls: `keys_for` here; `RenameTarget::judge`,
@@ -54,8 +55,9 @@
 //! The two count gates in `mod.rs` catch different things.
 //! `every_reference_the_index_files_under_a_stem_is_visited_by_one_rewrite_pass`
 //! builds its fixture from `LinkKind::ALL`, so a new **kind** enters on its
-//! own, but it counts the `Stem` bucket only, with two spellings: a note's
-//! stem and another file's whole name (`target.txt`). Its pair,
+//! own, but it counts the `Stem` bucket only, with three spellings: a note's
+//! stem (`target`), another file's whole name (`target.txt`), and a stem
+//! holding `)` that a block reference writes escaped (`t (1)`). Its pair,
 //! `every_reference_the_index_files_under_a_path_is_visited_by_one_rewrite_pass`,
 //! counts the `Path` and `Foreign` buckets, but its spellings are a
 //! hand-written list (`dir/target` and `./target` for each kind, and
@@ -148,7 +150,10 @@ pub(crate) fn bare_name(path: &str, windows: bool) -> &str {
 /// under: `file_key` of its `bare_name` — `note` for `Note.md`, `paper.pdf`
 /// for `Paper.pdf`. It is what `normalize_target` makes of a link that
 /// spells that name (`[[Note]]`, `[[note.md]]`, `[[Paper.pdf]]`) — except
-/// for a note whose stem itself ends in `.md` (`x.md.md`, see `file_key`).
+/// for a note whose stem itself ends in `.md` or `.markdown` (`x.md.md`,
+/// `x.markdown.md`: the link rule strips that ending too, see `file_key`), and
+/// for a name with whitespace at either end (` x .md`: the link rule trims it,
+/// `normalize_target`).
 pub(crate) fn name_key(path: &str, windows: bool) -> String {
     file_key(bare_name(path, windows))
 }

@@ -117,8 +117,9 @@ pub(crate) async fn update_file_index_inner(
         return Ok(());
     }
     // The build's note rule (`filing::is_note`, `crate::fs::is_note_name`): a
-    // saved file whose name is no note's — an `.mdx`, a `.MD`, a name with no
-    // extension, which the editor opens as markdown (`isMarkdownFile`) — is
+    // saved file whose name is no note's — an `.mdx`, a `.MD`, which the editor
+    // opens as markdown (`isMarkdownFile` in `src/utils/file-type.ts` takes the
+    // extensions `md`, `markdown` and `mdx` in any case) — is
     // filed as a build files it, a link target whose links are not read
     // (`Mutation::Target`). Filed as a note, its links would count as
     // backlinks and graph edges until the next build dropped them, and a

@@ -71,8 +71,9 @@ pub(crate) fn strip_note_extension(name: &str) -> &str {
 /// `filing::name_key`, which is this for a note and the whole name for any
 /// other file. Read `file_key` before reaching for this or for
 /// `normalize_target`: they agree on a note and part ways on one whose stem
-/// itself ends in `.md`, and picking the link rule for a file is how a
-/// rename once claimed another note's links.
+/// itself ends in `.md` or `.markdown`, and on one whose stem has whitespace
+/// at either end (`normalize_target` trims), and picking the link rule for a
+/// file is how a rename once claimed another note's links.
 pub(crate) fn normalize_file_path(path: &str) -> String {
     let file_name = Path::new(path)
         .file_stem()
@@ -85,8 +86,10 @@ pub(crate) fn normalize_file_path(path: &str) -> String {
 /// (`filing::bare_name`, a note's stem or another file's whole name): folded
 /// by `fold_name`, nothing stripped. For a note it is what its links
 /// normalize to (`[[Note]]`, `[[note.md]]` → `note`); for a note whose stem
-/// itself ends in `.md` (`x.md.md` → `x.md`) it is not — `normalize_target`
-/// would strip that `.md` and hand back the NOTE `x.md`'s key. A rename that
+/// itself ends in `.md` or `.markdown` (`x.md.md` → `x.md`) it is not —
+/// `normalize_target` would strip that ending and hand back the NOTE `x.md`'s
+/// key — nor for a stem with whitespace at either end, which
+/// `normalize_target` trims and this keeps. A rename that
 /// asks which links name a file must ask by this key, or it claims the
 /// note's links.
 pub(crate) fn file_key(stem: &str) -> String {

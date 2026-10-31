@@ -101,8 +101,10 @@ pub enum RootNotes {
 /// root's note under that path, or a second note of one root that folds to
 /// the same path key (`read_as_another_note`); or a file rename's bare
 /// reference spells a whole name that is also a note's stem
-/// (`KnownPaths::note_stems`). An ambiguous reference is left as written and
-/// its file is reported: rewriting it would break the other reading.
+/// (`KnownPaths::note_stems`); or, in a rename carried along with a PDF
+/// (`KnownPaths::bare_name_shared`), a bare reference to the carried note
+/// whose stem another note shares. An ambiguous reference is left as written
+/// and its file is reported: rewriting it would break the other reading.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Judgement<M> {
     Ours(M),
