@@ -28,10 +28,15 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 // PluginFileViewerContext = { assetUrl: string; filePath: string;
 //   refreshKey: number; zoomLevel: number; edit?: PluginFileViewerEdit }
 // PluginFileViewerEdit = { tabId: string; text: string; markChanged(): void }
+
+setFileDecorations(updates: FileDecorationUpdate[]): Promise<void>;
+clearFileDecorations(): Promise<void>;
+defineFileIcon(name: string, svg: string): Promise<void>;
+// see File tree decorations
 ```
 
 `context.ui` itself is available whenever the manifest declares `sidebar`,
-`statusbar`, `settings`, or `viewer` (any one unlocks the object), but each
+`statusbar`, `settings`, `viewer` or `filetree` (any one unlocks the object), but each
 method has its own per-method gate:
 
 | Method               | Requires capability                                    |
@@ -40,6 +45,7 @@ method has its own per-method gate:
 | `addSidebarPanel`    | `sidebar`                                              |
 | `addSettingsTab`     | `settings`                                             |
 | `registerFileViewer` | `viewer` (and `files` for `editable: true`)            |
+| `setFileDecorations` · `clearFileDecorations` · `defineFileIcon` | `filetree` |
 | `showNotification`   | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 | `addStyle`           | any of `sidebar` / `statusbar` / `settings` / `viewer` |
 
@@ -48,6 +54,9 @@ For a quick pick or an input box that answers back, see
 
 A sandboxed plugin has no `addSidebarPanel`: it declares its panels in the manifest and sends their
 content — see [Sidebar panels](/en/docs/plugin-dev/sidebar-panels/).
+
+Both tiers have the three file tree methods, with absolute paths in the trusted tier and paths relative
+to a context in the sandboxed one — see [File tree decorations](/en/docs/plugin-dev/file-tree/).
 
 Notes:
 
