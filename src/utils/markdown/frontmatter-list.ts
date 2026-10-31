@@ -11,6 +11,7 @@
 // a plain scalar cannot begin with `#`, and after a space `#` begins a comment, so the flow list
 // never closes.
 
+import { endsInOpenValue } from "./frontmatter-fields";
 import { yamlString } from "./yaml-scalar";
 
 /** One list field as the YAML spells it. */
@@ -58,10 +59,16 @@ export interface FrontmatterListLine {
 /**
  * Appends `line` to the front matter `yaml` at column 0, after everything in it — a key put
  * after the first line could land inside that line's value (a block list, a `|` scalar). A
- * front matter that ended with a line break still does.
+ * front matter that ended with a line break still does. A front matter whose last value holds
+ * a quote or flow bracket that never closes (`endsInOpenValue`) is returned unchanged: the line
+ * would be read as part of that value. Every writer that appends goes through here:
+ * `writeFrontmatterList` for a key it does not find (the tag bar, the Properties panel's
+ * chips), `addYamlProperty` (the panel's Add property) and `setYamlPropertyValue` for a key not
+ * there. The tag bar and the panel's add say why nothing was written.
  */
 export function appendFrontmatterLine(yaml: string, line: string): string {
   if (yaml === "") return line;
+  if (endsInOpenValue(yaml)) return yaml;
   const newline = yaml.includes("\r\n") ? "\r\n" : "\n";
   return yaml.endsWith("\n") ? yaml + line + newline : yaml + newline + line;
 }

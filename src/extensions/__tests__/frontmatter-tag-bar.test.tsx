@@ -95,6 +95,19 @@ describe("front-matter tag bar (§56m)", () => {
     expect(transactions).toBe(0);
   });
 
+  // What turns this red: appending `tags: [...]` after a value that never closes — the line
+  // became part of that value, and the add looked done.
+  it("adds no tags field after a value that never closes, and says why", async () => {
+    const { editor, view } = await mount("a: 1\nk: [p,");
+    useUIStore.setState({ toast: null });
+    const input = typeTag(view, "x");
+    expect(frontmatterText(editor)).toBe("a: 1\nk: [p,");
+    expect(input.value).toBe("x");
+    expect(useUIStore.getState().toast?.message).toBe(
+      "These tags can't be changed here. Edit them in the front matter YAML.",
+    );
+  });
+
   // The toast's sibling: an empty name, or one already there, is no refusal to explain.
   it("says nothing for an empty name or one the list has", async () => {
     const { editor, view } = await mount("tags: [a]");

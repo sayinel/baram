@@ -787,6 +787,7 @@
   "plugin.trust.trusted": "완전한 신뢰",
   "properties.addItem": "항목 추가",
   "properties.addProperty": "속성 추가",
+  "properties.cannotAddProperty": "여기서는 속성을 추가할 수 없습니다. 프론트매터의 한 값이 닫히지 않았습니다. YAML 원문에서 고쳐 주세요.",
   "properties.deleteKey": "\"{key}\" 삭제",
   "properties.listNotEditable": "이 목록은 여기서 바꿀 수 없습니다. YAML 원문에서 고쳐 주세요.",
   "properties.removeItem": "제거",

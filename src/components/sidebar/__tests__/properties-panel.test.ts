@@ -467,6 +467,27 @@ describe("values that run on past their key's line (§72)", () => {
   });
 });
 
+describe("appending after a value that never closes (§72)", () => {
+  // What turns this red: appending anyway — the new line landed inside the open value, and the
+  // panel never showed it (`c:` added twice became two lines of `k`'s list).
+  const OPEN = "a: 1\nk: [p,\nb: 1";
+
+  it("leaves the front matter as it was, whichever writer appends", () => {
+    expect(addYamlProperty(OPEN, "c", "string")).toBe(OPEN);
+    expect(addYamlProperty(OPEN, "c", "array")).toBe(OPEN);
+    expect(setYamlPropertyValue(OPEN, "c", "x")).toBe(OPEN);
+    expect(setYamlPropertyItems(OPEN, "tags", ["x"])).toBe(OPEN);
+  });
+
+  // The sibling: a front matter whose values close still takes the line.
+  it("still appends after values that close", () => {
+    expect(addYamlProperty("a: 1\nk: [p,\nq]", "c", "string")).toBe(
+      "a: 1\nk: [p,\nq]\nc:",
+    );
+    expect(setYamlPropertyItems("a: 1", "tags", ["x"])).toBe("a: 1\ntags: [x]");
+  });
+});
+
 describe("isWritableYamlValue (§72)", () => {
   const DOC = [
     "title: t",

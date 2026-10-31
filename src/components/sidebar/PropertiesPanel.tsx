@@ -21,6 +21,7 @@ import {
   extractFrontmatter,
   withFrontmatterYaml,
 } from "../../utils/markdown/frontmatter";
+import { endsInOpenValue } from "../../utils/markdown/frontmatter-fields";
 import {
   addYamlProperty,
   ARRAY_KEYS,
@@ -246,6 +247,13 @@ export function PropertiesPanel() {
           ? "array"
           : "string";
       if (yaml === null) return;
+      // A value that never closes would take the new key into it (`appendFrontmatterLine`).
+      if (endsInOpenValue(yaml)) {
+        useUIStore
+          .getState()
+          .showToast(t("properties.cannotAddProperty"), "info");
+        return;
+      }
       setLastAddedKey(key);
       applyYamlDirectly(addYamlProperty(yaml, key, type));
     },

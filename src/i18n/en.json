@@ -787,6 +787,7 @@
   "plugin.trust.trusted": "Full trust",
   "properties.addItem": "Add item",
   "properties.addProperty": "Add property",
+  "properties.cannotAddProperty": "A property can't be added here: a value in the front matter never closes. Fix it in the source YAML.",
   "properties.deleteKey": "Delete \"{key}\"",
   "properties.listNotEditable": "This list can't be changed here. Edit it in the source YAML.",
   "properties.removeItem": "Remove",

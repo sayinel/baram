@@ -131,6 +131,26 @@ describe("PropertiesPanel edits (§72)", () => {
     );
   });
 
+  // What turns this red: adding after a value that never closes — the key landed inside that
+  // value, the panel never showed it, and nothing said why.
+  it("adds no property after a value that never closes, and says why", () => {
+    const open = "---\na: 1\nk: [p,\nb: 1\n---\nbody";
+    useFileStore.setState({ openFiles: new Map([[PATH, open]]) });
+    useUIStore.setState({ toast: null });
+    render(<PropertiesPanel />);
+    fireEvent.click(screen.getByText("Add property"));
+    const keyInput = screen.getByPlaceholderText("key 이름 입력 후 Enter");
+    fireEvent.change(keyInput, { target: { value: "c" } });
+    fireEvent.keyDown(keyInput, { key: "Enter" });
+    expect(fileContent()).toBe(open);
+    expect((screen.getByLabelText("Undo") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(useUIStore.getState().toast?.message).toBe(
+      "A property can't be added here: a value in the front matter never closes. Fix it in the source YAML.",
+    );
+  });
+
   // N1 What turns this red: writing each keystroke without the value's type at the start —
   // typing `-12` and back to `-1` left the string `"-1"`.
   it("writes back the original when a typed value is typed back", () => {
