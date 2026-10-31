@@ -139,6 +139,9 @@ describe("writeFrontmatterList", () => {
     "title: t\ntags:\n  - a long\n    tag\ndate: d",
     'title: t\ntags: ["a]b", c]\ndate: d',
     "title: t\ntags: [[a], b]\ndate: d",
+    // A quote that never closes: the rest of the list is one item to the reader.
+    'title: t\ntags: ["a, b]\ndate: d',
+    "title: t\ntags: ['a, b]\ndate: d",
   ])("leaves a list it did not read to its end alone: %j", (yaml) => {
     expect(write(yaml, (n) => [...n, "x"])).toBe(yaml);
     expect(write(yaml, (n) => [...n, "yes"])).toBe(yaml);

@@ -337,6 +337,18 @@
         "a\\\", b"
       ],
       "frontendWhy": "the frontend reader skips an escaped quote while it looks for the end of a quoted entry, and reads no escape in the name; YAML reads a\", b"
+    },
+    {
+      "frontmatter": "tags: [\"a, b]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a quote that never closes is a character like any other: the split, then the quotes stripped, read a and b",
+      "frontendTags": [
+        "a, b"
+      ],
+      "frontendWhy": "the frontend reader looks for the end of the quoted entry and finds none, so the rest of the list is that one entry; it marks the list not read to its end, and its writers leave the field alone. YAML does not parse the line"
     }
   ],
   "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and it has a base character (not every character is default-ignorable or a combining mark). For an accepted name, `bare` is how it is written into a bare list entry (no quote character, no leading `#`) by `frontmatter::yaml_string`: plain only when the plain-spelling rule allows it (a letter, digit or `_` first, then letters, marks, digits and `_-./`) and no YAML reader would read it as something other than text; quoted otherwise. These rows are the contract any copy of the rule is held to, in Rust or another language; the Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads them. Every row uses characters old enough to be in every Unicode table the two languages ship.",
