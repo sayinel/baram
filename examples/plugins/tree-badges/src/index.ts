@@ -10,17 +10,21 @@ import type {
  * Puts a blue badge with the number of open tasks (todo and doing) on the notes `ctx.index.tasks()`
  * returns for the active vault, counted when the plugin starts and again on every `vault:changed`. Every
  * count sends a badge for every counted note, so a call that was refused is repaired by the next count
- * (Baram keeps an equal decoration as it is). A note that loses its last open task gets `null`: the
- * plugin remembers every path it may have decorated (`sent`) and clears the ones the count no longer has.
- * Baram does not keep decorations, so `activate` sends them each time the plugin starts.
+ * whose calls are accepted (Baram keeps an equal decoration as it is). A note that loses its last open
+ * task gets `null`: the plugin remembers the paths it may have decorated in the vault the counts read
+ * (`sent`) and clears the ones the count no longer has. Baram does not keep decorations, so `activate`
+ * sends them each time the plugin starts.
  *
- * A note whose name holds a backslash cannot be badged: the tree folds either separator in a row's key, so
- * the badge could not reach the right row, and `setFileDecorations` refuses the whole call that carries it.
+ * A note whose path holds a backslash cannot be badged: a sandboxed path takes no "\"
+ * (`SandboxFileDecorationUpdate`), and `setFileDecorations` refuses the whole call that carries one.
+ * (The tree folds "\" into "/" in a row's key, so `a\b.md` would share a key with `a/b.md`.)
  *
  * Neither call names a context, so both read the active vault — `ctx.index` the one the backend holds
  * active, `setFileDecorations` the one the app shows. The two can differ for a moment while the user
  * switches vaults. A vault the user left keeps the badges last sent to it, and the new vault's badges
- * appear at its first `vault:changed`.
+ * appear at its first `vault:changed`. A note in a vault the user left that loses its tasks by an outside
+ * edit keeps its stale badge even after the user returns and that vault changes, because `sent` no
+ * longer holds it.
  */
 
 /** Updates one `setFileDecorations` call may carry. */
@@ -40,7 +44,7 @@ function decoration(count: number): FileDecoration {
 }
 
 export function activate(ctx: SandboxContext): void {
-  /** Every path this plugin may have decorated: it can hold more than the tree shows (a refused call). */
+  /** The paths this plugin may have decorated in the vault the counts read: more than the tree shows after a refused call. */
   let sent = new Set<string>();
   /** Counts runs, so an answer that lands after a newer run started is dropped. */
   let runs = 0;
@@ -58,7 +62,7 @@ export function activate(ctx: SandboxContext): void {
     for (const [path, count] of counts) {
       updates.push({ decoration: decoration(count), path });
     }
-    // Added before sending: a call that fails may still have been applied in part.
+    // Added before sending: the calls below may fail after some of them were applied.
     for (const path of counts.keys()) sent.add(path);
     for (const path of sent) {
       if (!counts.has(path)) updates.push({ decoration: null, path });

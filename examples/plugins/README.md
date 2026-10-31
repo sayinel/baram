@@ -86,11 +86,13 @@ pattern, and copy `community-template/` to publish your own.
 `tree-badges/` is the example for **file tree decorations** (§395): a sandboxed plugin that puts the
 number of open tasks on the notes `ctx.index.tasks()` returns as a blue badge (`9+` above nine), counted
 again on `vault:changed`. Every count sends a badge for every counted note, so a refused call is repaired
-by the next count, and it sends `null` for a note whose last open task closed. It sends everything again in
-`activate`, because Baram does not keep decorations. A note whose name holds a backslash cannot be badged.
-It reads the active vault only, so after a vault switch the new vault's badges appear at that vault's first
-change, and the vault left keeps the badges last sent to it. It is not published — read it for the
-pattern, and copy `community-template/` to publish your own.
+by the next count whose calls are accepted, and it sends `null` for a note whose last open task closed. It
+sends everything again in `activate`, because Baram does not keep decorations. A note whose path holds a
+backslash cannot be badged: a sandboxed path takes no `\`, and `setFileDecorations` refuses the whole call
+that carries one. It reads the active vault only, so after a vault switch the new vault's badges appear at
+that vault's first change, and the vault left keeps the badges last sent to it. A note in that vault that
+loses its tasks by an outside edit keeps its stale badge even after the user returns and the vault
+changes. It is not published — read it for the pattern, and copy `community-template/` to publish your own.
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
 fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING
