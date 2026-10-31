@@ -162,6 +162,22 @@ describe("PropertiesPanel edits (§72)", () => {
     expect(input.getAttribute("aria-invalid")).toBeNull();
   });
 
+  // What turns this red: keeping the unwritten text once the input loses focus — the input
+  // went on showing `{a: ` over a file that holds `{a: 1}`.
+  it("drops the unwritten YAML text when the input loses focus", () => {
+    useFileStore.setState({
+      openFiles: new Map([[PATH, "---\nm: {a: 1}\n---\nbody"]]),
+    });
+    render(<PropertiesPanel />);
+    const input = screen.getByDisplayValue("{a: 1}") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "{a: " } });
+    expect(input.value).toBe("{a: ");
+    fireEvent.blur(input);
+    expect(input.value).toBe("{a: 1}");
+    expect(input.getAttribute("aria-invalid")).toBeNull();
+    expect(fileContent()).toBe("---\nm: {a: 1}\n---\nbody");
+  });
+
   // M1 What turns this red: reading the field's type from what the last keystroke wrote —
   // emptied, `m:` reads as a string, and `{a: 3}` typed next was written as the string
   // `"{a: 3}"`; or reading `m:` as an empty list, which put a chip list in the input's place.
