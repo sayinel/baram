@@ -279,11 +279,11 @@ async fn a_namespace_rename_drops_the_indexes_of_nested_contexts_it_moved_throug
         .unwrap();
     assert!(dir.path().join("sub/ns2/c.md").exists());
     // The parent's index is fresh, the child's is gone…
-    assert!(!outgoing_links(&state, &root)
-        .await
-        .values()
-        .flatten()
-        .any(|t| has_part(t, "ns")));
+    let parent = outgoing_links(&state, &root).await;
+    assert!(!parent.values().flatten().any(|t| has_part(t, "ns")));
+    // The pair: the respelled `[[./ns2/c]]` is a target under `ns2`, so `has_part` finds a
+    // part where there is one.
+    assert!(parent.values().flatten().any(|t| has_part(t, "ns2")));
     assert!(state.with_index_for(&sub, child, |i| i.is_none()).await);
     // …and the next rename inside the child rebuilds it through the gate.
     rename_file_with_links_inner(
@@ -295,11 +295,9 @@ async fn a_namespace_rename_drops_the_indexes_of_nested_contexts_it_moved_throug
     .await
     .unwrap();
     assert!(state.with_index_for(&sub, child, |i| i.is_some()).await);
-    assert!(!outgoing_links(&state, &sub)
-        .await
-        .values()
-        .flatten()
-        .any(|t| has_part(t, "ns")));
+    let rebuilt = outgoing_links(&state, &sub).await;
+    assert!(!rebuilt.values().flatten().any(|t| has_part(t, "ns")));
+    assert!(rebuilt.values().flatten().any(|t| has_part(t, "ns2")));
 }
 
 #[tokio::test]
