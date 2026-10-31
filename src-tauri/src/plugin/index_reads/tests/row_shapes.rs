@@ -166,8 +166,9 @@ async fn tag_rows_come_by_count_then_name() {
 }
 
 /// A leading `#` is dropped and case is not compared; a nested note's path takes `/`; path
-/// order; trusted rows absolute. What fails this: passing `#WORK` to `get_files_by_tag` as
-/// typed (it matches nothing), or the root-relative OS paths not passing `PathForm::write`.
+/// order; trusted rows absolute. What fails this: `#WORK` compared as typed — only when
+/// neither `notes_with_tag` nor `get_files_by_tag` drops its `#` (`tag::bare_tag`), as both
+/// do — or compared by case, or the root-relative OS paths not passing `PathForm::write`.
 #[tokio::test]
 async fn notes_with_a_tag_come_in_path_order() {
     let ctx = ContextManager::new();

@@ -1,6 +1,6 @@
 ---
 title: "명령줄 도구"
-sourceHash: "7f838a7993c6"
+sourceHash: "605e919dd861"
 ---
 
 편집기를 여는 바로 그 프로그램 `baram`은 터미널에서 볼트에 대한 질문에도 답합니다. 스크립트와 AI 에이전트를 위한 기능입니다. 앱을 열지 않고도 노트를 검색하고, 태스크를 나열하고, 링크를 따라갈 수 있습니다.
@@ -56,7 +56,7 @@ exec /Applications/Baram.app/Contents/MacOS/baram "$@"
 | `files [--folder <경로>]` | 볼트의 마크다운 파일(`.md`와 `.markdown`). |
 | `read <경로>` | 파일 하나를 디스크에 있는 그대로. UTF-8 텍스트가 아닌 파일은 `IO` 오류입니다. |
 | `search <질의> [--regex] [--case-sensitive] [--word] [--folder <경로>] [--limit N]` | `.md` 파일에서 일치하는 곳마다 한 항목. 한 줄에 두 번 일치하면 두 번 나옵니다. `--case-sensitive`를 주지 않으면 대소문자를 가리지 않습니다. `--word`는 일치하는 곳의 양 끝에 단어 경계(`\b`)를 둡니다. `--regex`와 함께 쓰면 그 경계가 식 전체를 감싸서, `a\|b`는 단어 `a`나 단어 `b`를 찾습니다. `--limit`를 주지 않으면 100건에서 멈춥니다. |
-| `tags` | 태그와 각각의 출현 횟수. |
+| `tags` | 태그와 각각의 출현 횟수. 프론트매터의 태그(`tags: ["#work"]`)는 앞의 `#`를 모두 뗀 이름이라 태그 `work`입니다. 본문의 `#work`와 함께 세고, `tag work`가 둘 다 찾습니다. |
 | `tag <이름>` | 그 태그가 달린 파일. 앞의 `#`는 있어도 없어도 됩니다. |
 | `tasks [--status open\|done\|cancelled\|all] [--file <경로>]` | 태스크. 기본값 `open`은 `todo`와 `doing`입니다. |
 | `backlinks <경로>` | 그 노트를 가리키는 링크. |

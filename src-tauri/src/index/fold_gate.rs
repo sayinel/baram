@@ -91,16 +91,6 @@ const ALLOWED: &[(&str, &str, &str)] = &[
     ),
     (
         "extractor.rs",
-        r#"Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]")"#,
-        "the front-matter key `tags`, not a name",
-    ),
-    (
-        "extractor.rs",
-        r#"Regex::new(r"(?i)^tags\s*:\s*$")"#,
-        "the front-matter key `tags`, not a name",
-    ),
-    (
-        "extractor.rs",
         r#"let pattern = format!(r"(?i)\b{}\b", escaped);"#,
         "find_unlinked_mentions: the note's name in prose in any case, as \
          typed (NFC) and as stored",

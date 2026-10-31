@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: 인덱스"
-sourceHash: "10773797cd43"
+sourceHash: "f516746a5b9b"
 ---
 
 ## `context.index` (`files` 또는 `files:readonly` 필요)
@@ -78,8 +78,9 @@ interface IndexSearchResult { items: { line: number; path: string; snippet: stri
   폴더는 거부됩니다.
 - **`links(path)`** — 노트가 있어야 하고, 노트(`.md`, `.markdown`)여야 하며, 볼트 걷기가 들어가는 곳이어야
   합니다 — 숨김 폴더나 `node_modules` 안은 거부됩니다.
-- **`tags()`와 `notesWithTag(tag)`** — 태그는 소문자로 비교하고 앞의 `#`는 모두 떼므로 `#Work`로 `work`를
-  찾습니다. 빈 태그는 거부됩니다.
+- **`tags()`와 `notesWithTag(tag)`** — 태그는 소문자로 비교하고 앞의 `#`는 모두 뗍니다. 넘기는 태그에서도,
+  `tags: ["#work"]` 같은 프론트매터 항목에서도 떼므로 그 항목은 태그 `work`입니다. `tags()`는 그것을 본문의
+  `#work`와 함께 세고, `notesWithTag("#Work")`는 둘 다 찾습니다. 빈 태그는 거부됩니다.
 - **`tasks(opts)`** — `status`의 기본값은 `"open"`(할 일과 진행 중)입니다. **설정 → 태스크 → 제외할
   폴더**에 적은 폴더는 여기서도 빠집니다. `file`을 주면 그 노트의 태스크만 나옵니다.
 - **`search(query, opts)`** — 앱의 전역 검색처럼 컨텍스트의 `.md` 파일을 읽습니다(`.markdown` 노트는 검색하지

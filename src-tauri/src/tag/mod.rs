@@ -1,7 +1,12 @@
 // §56m Vault-wide tag index — business logic
 
+mod frontmatter;
+
+pub(crate) use frontmatter::extract_frontmatter_tags;
+
 use crate::md::{
-    extract_inline_tags, is_fence_delimiter, is_tag_char, split_frontmatter, strip_code_blocks,
+    cut_frontmatter, extract_inline_tags, is_fence_delimiter, is_tag_char, split_frontmatter,
+    strip_code_blocks,
 };
 use regex::Regex;
 use serde::Serialize;
@@ -9,21 +14,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use thiserror::Error;
-
-// Frontmatter inline array: tags: [tag1, tag2, ...]
-// ‼️ `(?m)` — `extract_frontmatter_tags`는 한 줄씩 넣으므로 있으나 없으나 같지만,
-// `rename_frontmatter_list`는 파일 전체를 넣는다. 줄 앵커가 없으면 파일 첫 글자에서만
-// 맞아 프론트매터를 영영 못 찾는다.
-static FM_TAGS_INLINE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?im)^tags\s*:\s*\[([^\]]*)\]").unwrap());
-
-// Frontmatter block list header: tags:
-static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*$").unwrap());
-
-// Frontmatter block list item:   - tag
-static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
 
 #[derive(Debug, Error)]
 pub enum TagError {
@@ -45,56 +35,6 @@ pub struct TagEntry {
 pub struct RenameTagResult {
     pub files_modified: usize,
     pub occurrences_replaced: usize,
-}
-
-/// Extract tags from frontmatter string.
-/// Handles both:
-///   tags: [tag1, tag2]
-///   tags:
-///     - tag1
-///     - tag2
-fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
-    let mut tags = Vec::new();
-
-    let lines: Vec<&str> = frontmatter.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i];
-        if let Some(cap) = FM_TAGS_INLINE_RE.captures(line) {
-            let inner = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-            for part in inner.split(',') {
-                let t = part.trim().trim_matches('"').trim_matches('\'').to_string();
-                if !t.is_empty() {
-                    tags.push(t);
-                }
-            }
-        } else if FM_TAGS_BLOCK_HEADER_RE.is_match(line) {
-            // Consume following list items
-            i += 1;
-            while i < lines.len() {
-                if let Some(cap) = FM_TAGS_BLOCK_ITEM_RE.captures(lines[i]) {
-                    let t = cap
-                        .get(1)
-                        .map(|m| m.as_str())
-                        .unwrap_or("")
-                        .trim()
-                        .trim_matches('"')
-                        .trim_matches('\'')
-                        .to_string();
-                    if !t.is_empty() {
-                        tags.push(t);
-                    }
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-            continue;
-        }
-        i += 1;
-    }
-
-    tags
 }
 
 pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> {
@@ -150,19 +90,24 @@ pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> 
     Ok(entries)
 }
 
-/// §393 A tag name as the index keeps it: without the `#`s a user types in front — every
-/// leading one, the rule `baram tag` has always applied. Case is left alone; the walks compare
-/// lowercased.
+/// §393 A tag name as the index keeps it: without the `#`s in front — every leading one, the
+/// rule `baram tag` has always applied to the name typed. §56m The front-matter reader keeps a
+/// `tags:` entry the same way (`frontmatter::entry_name`), so `"#solo"` there and a body `#solo`
+/// are one tag `solo`. Case is left alone: the reading walks (`get_vault_tags`,
+/// `get_files_by_tag`) compare lowercased, and `rename_tag` compares as given.
 pub fn bare_tag(name: &str) -> &str {
     name.trim_start_matches('#')
 }
 
 /// Returns relative paths of .md files that contain the given tag (inline or frontmatter).
+/// §56m The tag is named as the index keeps it — every leading `#` off (`bare_tag`), whatever
+/// the caller passed — and compared lowercased; a name of only `#`s is empty and refused.
 pub async fn get_files_by_tag(root_path: &str, tag: &str) -> Result<Vec<String>, TagError> {
     let root = PathBuf::from(root_path);
     if !root.exists() {
         return Err(TagError::Custom("Root path does not exist".into()));
     }
+    let tag = bare_tag(tag);
     if tag.is_empty() {
         return Err(TagError::Custom("Tag must not be empty".into()));
     }
@@ -287,49 +232,39 @@ fn rename_inline_in_line(line: &str, old: &str, new: &str) -> (String, usize) {
     (out, count)
 }
 
-/// 프론트매터 인라인 배열 `tags: [a, old, b]` 안의 이름 하나를 바꾼다.
-///
-/// 대괄호 **안에서만** 바꾼다 — 본문에 우연히 같은 낱말이 있어도 건드리지 않는다.
-/// 여기서도 경계는 `md::is_tag_char`다: 원래의 `(?<!\w)`/`(?!\w)`는 lookaround라
-/// 컴파일되지 않았고, `\w`는 하이픈도 `/`도 태그 글자로 보지 않아 `deep-work`를
-/// `deep`으로 바꿔 놓았을 것이다.
-fn rename_frontmatter_list(content: &str, old: &str, new: &str) -> (String, usize) {
-    let mut out = String::with_capacity(content.len());
-    let mut count = 0usize;
-    let mut last = 0usize;
-    // 바꿀 것은 캡처 그룹(대괄호 **안**)뿐이므로 나머지는 그대로 흘려보낸다.
-    for caps in FM_TAGS_INLINE_RE.captures_iter(content) {
-        let inner = caps.get(1).unwrap();
-        out.push_str(&content[last..inner.start()]);
-        let (replaced, n) = rename_in_list(inner.as_str(), old, new);
-        out.push_str(&replaced);
-        count += n;
-        last = inner.end();
+/// A name with no base character: only default-ignorable code points (drawn as nothing — Hangul
+/// fillers, ZWNJ, ZWJ, variation selectors) and combining marks, which have nothing to sit on.
+static INVISIBLE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\A[\p{Default_Ignorable_Code_Point}\p{M}]*\z").unwrap());
+
+/// §56m Why `name` cannot be a new tag name, by the rule on `rename_tag`, or `None`.
+fn refusal(name: &str) -> Option<String> {
+    if extract_inline_tags(&format!("#{name}")) != [name] {
+        Some(format!("\"{name}\" is not a tag a note's body can spell"))
+    } else if name == "-" {
+        Some("\"-\" alone is not a tag name".to_string())
+    } else if INVISIBLE_RE.is_match(name) {
+        Some(format!("{name:?} has no base character"))
+    } else {
+        None
     }
-    out.push_str(&content[last..]);
-    (out, count)
 }
 
-/// 쉼표로 나열된 이름들 안에서 `old`를 통째로 만나는 자리마다 바꾼다.
-fn rename_in_list(list: &str, old: &str, new: &str) -> (String, usize) {
-    let mut out = String::with_capacity(list.len());
-    let mut count = 0usize;
-    let mut from = 0usize;
-    while let Some(rel) = list[from..].find(old) {
-        let start = from + rel;
-        let end = start + old.len();
-        let before_ok = start == 0 || !list[..start].ends_with(is_tag_char);
-        out.push_str(&list[from..start]);
-        if before_ok && ends_tag(list[end..].chars().next()) {
-            out.push_str(new);
-            count += 1;
-        } else {
-            out.push_str(old);
-        }
-        from = end;
-    }
-    out.push_str(&list[from..]);
-    (out, count)
+/// §56m One note's rename, cut where the readers cut it (`md::cut_frontmatter`): the front
+/// matter's tag lists (`frontmatter::rename_frontmatter_tags`) and the body's `#tags`
+/// (`rename_inline`). Neither writer sees the other's part — as neither reader does — so a
+/// `#old` in another front-matter field and a `- old` line in the body stay as uncounted as
+/// the readers leave them, and no entry is rewritten twice.
+fn rename_in_note(content: &str, old: &str, new: &str) -> (String, usize) {
+    let Some(cut) = cut_frontmatter(content) else {
+        return rename_inline(content, old, new);
+    };
+    let (matter, in_matter) = frontmatter::rename_frontmatter_tags(cut.matter, old, new);
+    let (body, in_body) = rename_inline(cut.body, old, new);
+    (
+        [cut.open, matter.as_str(), cut.close, body.as_str()].concat(),
+        in_matter + in_body,
+    )
 }
 
 /// Rename (or merge) a tag across all .md files in the vault.
@@ -339,6 +274,39 @@ fn rename_in_list(list: &str, old: &str, new: &str) -> (String, usize) {
 ///   - Frontmatter tags: block list `tags:\n  - tag1`
 ///
 /// Prefix rename: renaming `project` also renames `project/baram` → `new/baram`.
+///
+/// §56m Both names lose every leading `#` first (`bare_tag`), whatever the caller passed; a
+/// name of only `#`s is then empty and refused. Names are compared as written (case counts).
+///
+/// The new name must be one tag the body can spell, or nothing is written — it goes into the
+/// body as `#new` and between the quotes of a front-matter entry. After the `#`s are off, it is
+/// accepted when:
+/// 1. it is not empty;
+/// 2. every character is one the body's reader takes in a tag (`md::is_tag_char`, built from
+///    the reader's own class): a Unicode word character — Alphabetic, a mark, a decimal digit,
+///    connector punctuation (`_`, `‿`) or a join control (ZWNJ, ZWJ) — a Hangul-script
+///    character, `-` or `/`. Not a space, quote, comma, bracket, colon, `#`, `.`, nor a number
+///    of category No (`²`, `½`) — numbers of category Nl (`Ⅻ`) are Alphabetic and pass;
+/// 3. `/` only joins two non-empty parts — never first, never last, never two in a row;
+/// 4. it is not `-` alone. This is a choice, not a need of the writer, which would quote it:
+///    an unquoted `-` is a list marker to YAML (`tags: [-]` is rejected, `  - -` is a nested
+///    list), so a tag of that one name breaks every list written by hand that holds it;
+/// 5. it has a base character — one that is neither default-ignorable nor a combining mark. A
+///    name of only Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), ZWNJ, ZWJ, variation
+///    selectors or marks (a lone U+0301) shows as a blank or a stray mark. ZWNJ, ZWJ and marks
+///    inside a word with letters are fine.
+///
+/// Rules 1–3 are one question to the reader: does it read `#new` back as the whole name
+/// (`md::extract_inline_tags`)? The class is the `regex` crate's Unicode tables, so a copy
+/// outside Rust agrees where its own tables do; a character the standard library knows and
+/// those tables do not yet (U+A7CE on this toolchain) is refused.
+///
+/// Into a bare front-matter entry (no quote character, no leading `#`) the name is written as
+/// `frontmatter::yaml_string` spells it: plain only when the plain-spelling rule allows it — a
+/// letter, digit or `_` first, then letters, marks, digits and `_-./` — and no YAML reader would
+/// read it as something other than text, such as `null`, `true` or `123`; quoted otherwise. The
+/// `names` rows of `tag/fixtures/frontmatter-tags.json` are the contract a copy of this rule in
+/// any language is held to.
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
@@ -348,8 +316,12 @@ pub async fn rename_tag(
     if !root.exists() {
         return Err(TagError::Custom("Root path does not exist".into()));
     }
+    let (old_tag, new_tag) = (bare_tag(old_tag), bare_tag(new_tag));
     if old_tag.is_empty() || new_tag.is_empty() {
         return Err(TagError::Custom("Tag names must not be empty".into()));
+    }
+    if let Some(why) = refusal(new_tag) {
+        return Err(TagError::Custom(why));
     }
     if old_tag == new_tag {
         return Ok(RenameTagResult {
@@ -363,14 +335,6 @@ pub async fn rename_tag(
         .await
         .map_err(|e| TagError::Custom(e.to_string()))?;
 
-    // 프론트매터 블록 리스트 항목: `  - old_tag` (줄 전체). 이것만 정규식으로 남는다 —
-    // lookaround가 없고 줄 앵커만 쓰기 때문이다.
-    let fm_block_re = Regex::new(&format!(
-        r"(?m)^([ \t]+-[ \t]+)({})$",
-        regex::escape(old_tag)
-    ))
-    .map_err(|e| TagError::Custom(e.to_string()))?;
-
     let mut files_modified = 0usize;
     let mut occurrences_replaced = 0usize;
 
@@ -380,23 +344,7 @@ pub async fn rename_tag(
             Err(_) => continue,
         };
 
-        let mut count = 0usize;
-
-        // 본문의 `#old_tag`와 `#old_tag/child`
-        let (after_inline, n) = rename_inline(&content, old_tag, new_tag);
-        count += n;
-
-        // 프론트매터 인라인 배열 `tags: [..., old_tag, ...]`
-        let (after_fm_inline, n) = rename_frontmatter_list(&after_inline, old_tag, new_tag);
-        count += n;
-
-        // 프론트매터 블록 리스트 항목
-        let after_fm_block = fm_block_re.replace_all(&after_fm_inline, |caps: &regex::Captures| {
-            count += 1;
-            format!("{}{}", &caps[1], new_tag)
-        });
-
-        let new_content = after_fm_block.into_owned();
+        let (new_content, count) = rename_in_note(&content, old_tag, new_tag);
 
         if new_content != content {
             if let Err(e) = crate::fs::write_file(&file_path.to_string_lossy(), &new_content).await
@@ -562,6 +510,143 @@ mod tests {
         assert_eq!(read(&d).await, "---\ntags:\n  - focus\n---\n본문\n");
     }
 
+    /// §56m Every front-matter spelling the reader names `solo` is renamed, and only the
+    /// name changes: the user's quotes and `#` stay. Names are compared as written — the
+    /// reader names `"#Solo"` `Solo`, which this rename leaves. What fails this: the block-item writer
+    /// matching only a bare value that fills the line (the old `fm_block_re` — the three
+    /// quoted block rows stay `solo`).
+    #[tokio::test]
+    async fn every_front_matter_spelling_of_a_tag_is_renamed_keeping_its_quotes_and_hash() {
+        for (spelling, want) in [
+            ("tags: [\"#solo\"]", "tags: [\"#focus\"]"),
+            ("tags: [#solo]", "tags: [#focus]"),
+            ("tags: ['solo']", "tags: ['focus']"),
+            ("tags: [a, \"#solo\", b]", "tags: [a, \"#focus\", b]"),
+            ("tags:\n  - solo", "tags:\n  - focus"),
+            ("tags:\n  - \"#solo\"", "tags:\n  - \"#focus\""),
+            ("tags:\n  - '#solo'", "tags:\n  - '#focus'"),
+            ("tags:\n  - #solo", "tags:\n  - #focus"),
+            ("tags:\n  - \"solo\"", "tags:\n  - \"focus\""),
+        ] {
+            let (d, root) = vault(&format!("---\n{spelling}\n---\n본문\n")).await;
+            let r = rename_tag(&root, "solo", "focus").await.unwrap();
+            assert_eq!(r.occurrences_replaced, 1, "{spelling:?}");
+            assert_eq!(
+                read(&d).await,
+                format!("---\n{want}\n---\n본문\n"),
+                "{spelling:?}"
+            );
+        }
+    }
+
+    /// A child follows its parent in a block list as it does in an inline array and in the
+    /// body. What fails this: a block-item writer that matches the whole name only.
+    #[tokio::test]
+    async fn a_nested_child_in_a_front_matter_list_follows_its_renamed_parent() {
+        let (d, root) = vault(
+            "---\ntags:\n  - project/baram\n  - \"#project/x\"\n  - project-two\n---\n\
+             tags: [project/baram] 아님\n",
+        )
+        .await;
+        let r = rename_tag(&root, "project", "work").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags:\n  - work/baram\n  - \"#work/x\"\n  - project-two\n---\n\
+             tags: [project/baram] 아님\n"
+        );
+    }
+
+    /// The rename rewrites only what the readers count (the code-fence rule
+    /// above, applied to the front matter): an indented `- solo` in the body, a `- solo`
+    /// under another key, a `tags: [solo]` line in the body, `#solo` in another front-matter
+    /// field, and an entry the reader names something else (`solo.x`, `my solo`) are left
+    /// alone, while the `tags:` entries in the same note are renamed. What fails this:
+    /// running the front-matter writer over the whole note, or the body's writer over the
+    /// front matter (the old `rename_tag` did both — the body's `  - solo` became `  - focus`).
+    #[tokio::test]
+    async fn only_the_lines_a_reader_counts_are_rewritten() {
+        let (d, root) = vault(
+            "---\ntitle: about #solo\naliases:\n  - solo\ntags:\n  - solo\nkeywords: [solo.x, my solo]\n\
+             ---\n- list\n  - solo\ntags: [solo]\n본문 #solo\n",
+        )
+        .await;
+        let r = rename_tag(&root, "solo", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntitle: about #solo\naliases:\n  - solo\ntags:\n  - focus\nkeywords: [solo.x, my solo]\n\
+             ---\n- list\n  - solo\ntags: [solo]\n본문 #focus\n"
+        );
+    }
+
+    /// An inline-array entry is the tag the reader names, not every run of the name inside
+    /// the brackets. What fails this: matching the name by its tag-character boundaries in the
+    /// whole list (the old `rename_in_list`), which renamed `solo.x` and `my solo`.
+    #[tokio::test]
+    async fn an_inline_array_entry_naming_another_tag_is_left_alone() {
+        let body = "---\ntags: [solo.x, my solo, \"#solo\"]\n---\n";
+        let (d, root) = vault(body).await;
+        let r = rename_tag(&root, "solo", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 1);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags: [solo.x, my solo, \"#focus\"]\n---\n"
+        );
+    }
+
+    /// Renaming a tag to a child of itself rewrites each entry once. What fails this: two
+    /// writers over one entry — the old body writer turned `#solo` in `[a, #solo]` into
+    /// `#solo/x`, then the list writer found `solo` again and wrote `#solo/x/x`.
+    #[tokio::test]
+    async fn renaming_into_a_child_of_itself_rewrites_each_entry_once() {
+        let (d, root) = vault("---\ntags: [a, #solo]\n---\n본문 #solo\n").await;
+        let r = rename_tag(&root, "solo", "solo/x").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags: [a, #solo/x]\n---\n본문 #solo/x\n"
+        );
+    }
+
+    /// The front matter's last line keeps its `\r` (the cut ends at the `\n` before the
+    /// closing `---`); the name is renamed inside it and every CRLF survives. What fails
+    /// this: taking the `\r` into the entry's name (`"#solo"\r` would not name `solo`).
+    #[tokio::test]
+    async fn a_crlf_front_matter_is_renamed_byte_for_byte() {
+        let (d, root) = vault("---\r\ntags:\r\n  - \"#solo\"\r\n---\r\n본문 #solo\r\n").await;
+        let r = rename_tag(&root, "solo", "focus").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\r\ntags:\r\n  - \"#focus\"\r\n---\r\n본문 #focus\r\n"
+        );
+    }
+
+    /// An unindented block list is renamed like an indented one, each item keeping its
+    /// quotes and `#`, children following; a later key's unindented `- solo` and one before
+    /// `tags:` are left alone, and so is a CRLF note's every line ending. What fails this: an
+    /// item pattern that requires indentation (nothing in the list is renamed), or a list that
+    /// runs on past `related:` (its `- solo` becomes `- focus`).
+    #[tokio::test]
+    async fn an_unindented_block_list_is_renamed_keeping_its_spelling() {
+        for eol in ["\n", "\r\n"] {
+            let note = "---\naliases:\n- solo\ntags:\n- solo\n- \"#solo\"\n- '#solo/x'\n- #solo\n\
+                        related:\n- solo\n---\n본문\n"
+                .replace('\n', eol);
+            let (d, root) = vault(&note).await;
+            let r = rename_tag(&root, "solo", "focus").await.unwrap();
+            assert_eq!(r.occurrences_replaced, 4, "{eol:?}");
+            assert_eq!(
+                read(&d).await,
+                "---\naliases:\n- solo\ntags:\n- focus\n- \"#focus\"\n- '#focus/x'\n- #focus\n\
+                 related:\n- solo\n---\n본문\n"
+                    .replace('\n', eol),
+                "{eol:?}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn reports_nothing_changed_when_the_tag_is_absent() {
         let body = "아무 태그도 없다\n";
@@ -576,6 +661,300 @@ mod tests {
         let (d, root) = vault("메모 #project/baram 끝\n").await;
         rename_tag(&root, "project", "work").await.unwrap();
         assert_eq!(read(&d).await, "메모 #work/baram 끝\n");
+    }
+
+    async fn vault_of(files: &[(&str, &str)]) -> (TempDir, String) {
+        let d = TempDir::new().unwrap();
+        for (name, body) in files {
+            tokio::fs::write(d.path().join(name), body).await.unwrap();
+        }
+        let root = d.path().to_string_lossy().into_owned();
+        (d, root)
+    }
+
+    async fn rows(root: &str) -> Vec<(String, u32)> {
+        get_vault_tags(root)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|entry| (entry.tag, entry.count))
+            .collect()
+    }
+
+    async fn files_with(root: &str, tag: &str) -> Vec<String> {
+        let mut found = get_files_by_tag(root, tag).await.unwrap();
+        found.sort();
+        found
+    }
+
+    /// §56m Normalized at storage (decided in wiki `CLI-Decisions-and-history`): a front-matter
+    /// `"#solo"`, a front-matter `"#Solo"` and a body `#solo` are one tag `solo`, counted
+    /// together and found by its name. What fails this: the front-matter reader keeping the
+    /// `#` (rows `#solo 2` and `solo 1`, and `solo` finds only `body.md`).
+    #[tokio::test]
+    async fn a_front_matter_hash_tag_and_a_body_tag_are_one_tag() {
+        let (_d, root) = vault_of(&[
+            ("fm.md", "---\ntags: [\"#solo\"]\n---\nfront only\n"),
+            ("upper.md", "---\ntags: [\"#Solo\"]\n---\nfront upper\n"),
+            ("body.md", "body #solo here\n"),
+        ])
+        .await;
+        assert_eq!(rows(&root).await, [("solo".to_string(), 3)]);
+        assert_eq!(
+            files_with(&root, "solo").await,
+            ["body.md", "fm.md", "upper.md"]
+        );
+    }
+
+    /// A nested tag in the front matter, `"#a/b"`, is the body's `#a/b` — one row, counted
+    /// twice. What fails this: the same `#` kept (rows `#a/b 1` and `a/b 1`).
+    #[tokio::test]
+    async fn a_nested_front_matter_hash_tag_is_the_bodys_nested_tag() {
+        let (_d, root) = vault_of(&[("n.md", "---\ntags: [\"#a/b\"]\n---\nbody #a/b\n")]).await;
+        assert_eq!(rows(&root).await, [("a/b".to_string(), 2)]);
+        assert_eq!(files_with(&root, "a/b").await, ["n.md"]);
+    }
+
+    /// An unindented block list counts and is found like an indented one, and a later key's
+    /// unindented list is not tags. What fails this: an item pattern that requires indentation
+    /// (no `solo` row, and `files_with("solo")` is empty), or a list that runs on past
+    /// `related:` (a `notatag` row).
+    #[tokio::test]
+    async fn an_unindented_block_list_is_counted_and_found() {
+        let (_d, root) = vault_of(&[(
+            "u.md",
+            "---\ntags:\n- solo\n- '#Solo'\nrelated:\n- notatag\n---\n본문\n",
+        )])
+        .await;
+        assert_eq!(rows(&root).await, [("solo".to_string(), 2)]);
+        assert_eq!(files_with(&root, "solo").await, ["u.md"]);
+        assert!(files_with(&root, "notatag").await.is_empty());
+    }
+
+    /// The app may hand over a name with `#`s: the tag panel's old name is its row's name (a
+    /// front-matter row was `#solo` while the reader kept the `#`), and its new name loses one
+    /// `#` only (`TagPanel.tsx`, `replace(/^#/, "")`). `rename_tag` strips both itself
+    /// (`bare_tag`), so `#solo` → `#focus` renames the tag `solo` in the body and in the front
+    /// matter alike and writes no `##focus`. What fails this: `rename_tag` using the names as
+    /// given (the body's `#solo` is looked for as `##solo` and stays, and a `solo` → `#focus`
+    /// rename writes `##focus`).
+    #[tokio::test]
+    async fn a_rename_takes_either_name_with_or_without_its_hash() {
+        for (old, new) in [("#solo", "#focus"), ("solo", "#focus"), ("##solo", "focus")] {
+            let (d, root) = vault("---\ntags: [\"#solo\", solo]\n---\n본문 #solo\n").await;
+            let r = rename_tag(&root, old, new).await.unwrap();
+            assert_eq!(r.occurrences_replaced, 3, "{old} → {new}");
+            assert_eq!(
+                read(&d).await,
+                "---\ntags: [\"#focus\", focus]\n---\n본문 #focus\n",
+                "{old} → {new}"
+            );
+        }
+    }
+
+    /// A name that is only `#`s is empty once bare, and refused — as `baram tag '#'` is.
+    /// What fails this: checking emptiness before stripping (`#` passes and the walk runs).
+    /// The pair: the same rename by a real name succeeds.
+    #[tokio::test]
+    async fn a_rename_to_or_from_only_hashes_is_refused() {
+        let (_d, root) = vault("본문 #solo\n").await;
+        assert!(rename_tag(&root, "#", "focus").await.is_err());
+        assert!(rename_tag(&root, "solo", "##").await.is_err());
+        assert!(rename_tag(&root, "solo", "focus").await.is_ok());
+    }
+
+    /// A query names a tag as `baram tag '#Solo'` does: every leading `#` off, case not
+    /// compared — inside `get_files_by_tag`, whoever calls it. What fails this: comparing the
+    /// name as given (`#solo` matches no stored tag, since none keeps its `#`).
+    #[tokio::test]
+    async fn files_by_tag_take_the_name_with_or_without_its_hash() {
+        let (_d, root) = vault_of(&[
+            ("fm.md", "---\ntags: [\"#solo\"]\n---\n"),
+            ("body.md", "본문 #solo\n"),
+            ("other.md", "본문 #other\n"),
+        ])
+        .await;
+        for name in ["#Solo", "solo", "##solo"] {
+            assert_eq!(
+                files_with(&root, name).await,
+                ["body.md", "fm.md"],
+                "{name}"
+            );
+        }
+        assert!(get_files_by_tag(&root, "#").await.is_err());
+    }
+
+    /// §56m A rename writes the new name into the body as `#new` and into front-matter entries
+    /// between the user's quotes, so a name the body cannot spell as one tag is refused before
+    /// anything is written. The rows: characters outside the reader's alphabet (quote, comma,
+    /// bracket, colon, space, `@`, `.`, `'`), a `/` at an end or doubled, numbers of category No
+    /// (`²`, `½`), and a letter the `regex` crate's tables do not have yet (U+A7CE) — the last
+    /// three `char::is_alphanumeric` accepts. What fails this: writing the name
+    /// unchecked (`- "#solo"` becomes `- "#a"b"`, which yaml 2.9.1 and js-yaml 4.3.2 both
+    /// reject).
+    #[tokio::test]
+    async fn a_rename_to_a_name_the_body_cannot_spell_is_refused_before_any_write() {
+        assert!('\u{A7CE}'.is_alphanumeric() && '½'.is_alphanumeric());
+        let note = "---\ntags:\n  - \"#solo\"\n  - 'solo'\n---\n본문 #solo\n";
+        for bad in [
+            "a\"b", "x, y", "x]", "a: b", "a #b", "a b", "@at", "a.b", "dad's", "/a", "a/", "a//b",
+            "a²", "½", "\u{A7CE}",
+        ] {
+            let (d, root) = vault(note).await;
+            let refused = rename_tag(&root, "solo", bad).await;
+            assert!(refused.is_err(), "{bad:?}");
+            assert_eq!(read(&d).await, note, "{bad:?}");
+        }
+        for (good, written) in [
+            ("focus", "focus"),
+            ("#Focus2", "Focus2"),
+            ("project/x", "project/x"),
+            ("할-일", "할-일"),
+            ("deep_work", "deep_work"),
+        ] {
+            let (d, root) = vault(note).await;
+            let r = rename_tag(&root, "solo", good).await.unwrap();
+            assert_eq!(r.occurrences_replaced, 3, "{good:?}");
+            assert_eq!(
+                read(&d).await,
+                format!("---\ntags:\n  - \"#{written}\"\n  - '{written}'\n---\n본문 #{written}\n"),
+                "{good:?}"
+            );
+        }
+    }
+
+    /// §56m Renaming a tag leaves a longer tag that only starts with it: `#น้ำ` is one tag to the
+    /// reader (U+0E49 is a mark, and marks are tag characters), so renaming `น` must not touch
+    /// it, nor renaming `हिन` touch `#हिन्दी` (virama U+094D). What fails this: a body writer
+    /// whose idea of a tag character is not the reader's — with `char::is_alphanumeric` it
+    /// wrote `#x้ำ #y्दी`. The pair: the same renames find `#น` and `#हिन` standing alone.
+    #[tokio::test]
+    async fn renaming_a_tag_leaves_a_longer_tag_that_starts_with_it() {
+        let body = "본문 #น้ำ #हिन्दी\n";
+        let (d, root) = vault(body).await;
+        assert_eq!(
+            rename_tag(&root, "น", "x")
+                .await
+                .unwrap()
+                .occurrences_replaced,
+            0
+        );
+        assert_eq!(
+            rename_tag(&root, "हिन", "y")
+                .await
+                .unwrap()
+                .occurrences_replaced,
+            0
+        );
+        assert_eq!(read(&d).await, body);
+
+        let (d, root) = vault("본문 #น #हिन\n").await;
+        rename_tag(&root, "น", "x").await.unwrap();
+        rename_tag(&root, "हिन", "y").await.unwrap();
+        assert_eq!(read(&d).await, "본문 #x #y\n");
+    }
+
+    /// §56m A word the body's reader reads as one tag is a name a rename may write, whatever
+    /// its script: a virama (`हिन्दी`), a Thai tone mark (`น้ำ`), a decomposed accent or sound
+    /// mark (NFD `cafe\u{301}`, `は\u{309a}`) and a zero-width non-joiner inside a Persian word.
+    /// What fails this: checking the name against a narrower alphabet than the reader's (all
+    /// five were refused while the check used `char::is_alphanumeric`). The ZWNJ word is quoted
+    /// in the bare entry: `yaml_string` keeps plain only letters, marks, digits and `_-./`.
+    #[tokio::test]
+    async fn a_rename_writes_a_word_the_reader_reads_as_one_tag_in_any_script() {
+        for (name, entry) in [
+            ("हिन्दी", "हिन्दी"),
+            ("น้ำ", "น้ำ"),
+            ("cafe\u{301}", "cafe\u{301}"),
+            ("は\u{309a}", "は\u{309a}"),
+            ("می\u{200c}خواهم", "\"می\u{200c}خواهم\""),
+        ] {
+            let (d, root) = vault("---\ntags: [solo]\n---\n본문 #solo\n").await;
+            let r = rename_tag(&root, "solo", name).await;
+            assert_eq!(r.map(|r| r.occurrences_replaced).ok(), Some(2), "{name:?}");
+            assert_eq!(
+                read(&d).await,
+                format!("---\ntags: [{entry}]\n---\n본문 #{name}\n"),
+                "{name:?}"
+            );
+            assert_eq!(extract_inline_tags(&format!("#{name}")), [name], "{name:?}");
+        }
+    }
+
+    /// §56m Two kinds of name the body's reader reads are still refused. `-` alone, by choice:
+    /// unquoted it is a list marker to YAML — `tags: [-]` is rejected and `  - -` is a nested
+    /// list (yaml 2.9.1, js-yaml 4.3.2) — so hand-written lists holding it break. And a name of
+    /// only Hangul fillers (U+3164, U+FFA0, U+115F, U+1160), other default-ignorable code points
+    /// such as ZWNJ, ZWJ or a variation selector, or combining marks (a lone U+0301): it has no
+    /// base character and shows as a blank tag or a stray mark. What fails this: the read-back
+    /// check alone, which takes all of them. The pair: a ZWNJ, a filler or a mark next to a
+    /// letter is fine.
+    #[tokio::test]
+    async fn a_rename_to_a_dash_or_to_nothing_visible_is_refused() {
+        let note = "---\ntags: [solo]\n---\n본문 #solo\n";
+        for bad in [
+            "-",
+            "\u{3164}",
+            "\u{FFA0}",
+            "\u{115F}\u{1160}",
+            "\u{200C}",
+            "\u{200D}",
+            "\u{FE0F}",
+            "\u{301}",
+            "\u{301}\u{200C}",
+        ] {
+            assert_eq!(extract_inline_tags(&format!("#{bad}")), [bad], "{bad:?}");
+            let (d, root) = vault(note).await;
+            assert!(rename_tag(&root, "solo", bad).await.is_err(), "{bad:?}");
+            assert_eq!(read(&d).await, note, "{bad:?}");
+        }
+        for good in ["a\u{200C}b", "\u{3164}a", "-x", "e\u{301}"] {
+            let (_d, root) = vault(note).await;
+            assert!(rename_tag(&root, "solo", good).await.is_ok(), "{good:?}");
+        }
+    }
+
+    /// §56m A name YAML would read as something other than text — `null`, `true`, a number —
+    /// is written double-quoted into a bare entry, so YAML still reads the string
+    /// (`frontmatter::yaml_string`); an entry the user quoted, or
+    /// spelled with `#`, keeps its spelling. What fails this: writing the name bare (`tags:
+    /// [null]` is null to YAML, and `- 123` a number).
+    #[tokio::test]
+    async fn a_name_yaml_would_retype_is_quoted_in_a_bare_entry() {
+        for (name, bare, child) in [
+            ("null", "\"null\"", "null/x"),
+            ("True", "\"True\"", "True/x"),
+            ("123", "\"123\"", "123/x"),
+            ("0x1F", "\"0x1F\"", "0x1F/x"),
+            ("-x", "\"-x\"", "\"-x/x\""),
+            ("focus", "focus", "focus/x"),
+        ] {
+            let note = "---\ntags: [solo, 'solo', \"#solo\"]\ntags:\n  - solo\n- solo\n  - #solo\n  - solo/x\n---\n";
+            let (d, root) = vault(note).await;
+            rename_tag(&root, "solo", name).await.unwrap();
+            assert_eq!(
+                read(&d).await,
+                format!(
+                    "---\ntags: [{bare}, '{name}', \"#{name}\"]\ntags:\n  - {bare}\n- {bare}\n  - #{name}\n  - {child}\n---\n"
+                ),
+                "{name:?}"
+            );
+        }
+    }
+
+    /// §56m An entry with a quote anywhere in it is not bare, so the writer leaves its spelling
+    /// as the user has it rather than adding quotes around a name that already sits next to
+    /// one: a stray trailing quote (`solo"`) renamed to `null` gives `null"`, not `"null""`.
+    /// What fails this: deciding "bare" by the entry's first character only.
+    #[tokio::test]
+    async fn an_entry_with_a_stray_quote_is_not_bare() {
+        let (d, root) = vault("---\ntags: [solo\", a]\ntags:\n  - solo'\n---\n").await;
+        let r = rename_tag(&root, "solo", "null").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 2);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags: [null\", a]\ntags:\n  - null'\n---\n"
+        );
     }
 
     /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match
