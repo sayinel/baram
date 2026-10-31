@@ -134,6 +134,41 @@ describe("rename (use-file-tree-rename)", () => {
     expect(seenAtRead).toBe("1");
   });
 
+  /** §33 · D10 — a PDF's rename carries its highlight note and sidecar along (`moved`), and each carried
+   *  file is an in-app rename too: one notice per file in the hook's order (the PDF, then `moved` as the
+   *  result lists it), each decoration moved, all before the held echo. What fails this: telling the
+   *  renamed file alone — the two carried notices are missing and their decorations stay at the old
+   *  paths. */
+  it("tells a rename for each file a PDF's rename carries along", async () => {
+    const note = "/vault/highlights/papers/Paper.md";
+    const sidecar = "/vault/.baram/pdf-highlights/papers/Paper.json";
+    const movedNote = "/vault/highlights/papers/Survey.md";
+    const movedSidecar = "/vault/.baram/pdf-highlights/papers/Survey.json";
+    decorate(note);
+    decorate(sidecar);
+    ipc.renameFileWithLinks.mockImplementation(
+      echoing({
+        moved: [
+          { from: note, to: movedNote },
+          { from: sidecar, to: movedSidecar },
+        ],
+        skippedFiles: [],
+        updatedFiles: [],
+      }),
+    );
+    await rename("/vault/papers/Paper.pdf", "Survey.pdf");
+    expect(recorder.events).toEqual([
+      "rename /vault/papers/Paper.pdf → /vault/papers/Survey.pdf",
+      `rename ${note} → ${movedNote}`,
+      `rename ${sidecar} → ${movedSidecar}`,
+      "vault ctx-v",
+    ]);
+    expect(badgeAt(movedNote)).toBe("1");
+    expect(badgeAt(movedSidecar)).toBe("1");
+    expect(badgeAt(note)).toBeUndefined();
+    expect(badgeAt(sidecar)).toBeUndefined();
+  });
+
   /** D10 — `renameNamespace` is the folder branch: `isDir` true, the keys under the folder move. */
   it("renames a folder as a folder", async () => {
     decorate("/vault/ns/x.md");
