@@ -81,14 +81,18 @@ describe("defineIcon (D6)", () => {
     }
   });
 
-  /** §7 — one svg root, whitespace beside it only. What fails this: taking the first element, or any
-   *  element as the root. */
+  /** §7 — one svg root, whitespace beside it only. `<g>` is refused because the sanitizer empties it
+   *  (the null-root path); `<p>` and `<div>` survive sanitizing, so only the element-type check refuses
+   *  them. What fails this: taking the first element, or any element as the root. */
   it("refuses two roots, a root that is not svg, and text outside the root", () => {
     expect(defineIcon("p", "a", `${SHAPE}${SHAPE}`)).toBe(SVG_ROOT_MESSAGE);
     expect(defineIcon("p", "b", '<g><path d="M0 0"/></g>')).toBe(
       SVG_ROOT_MESSAGE,
     );
     expect(defineIcon("p", "c", `x${SHAPE}`)).toBe(SVG_ROOT_MESSAGE);
+    // A root that survives sanitizing at top level and is not svg: only the element-type check refuses it.
+    expect(defineIcon("p", "e", "<p>x</p>")).toBe(SVG_ROOT_MESSAGE);
+    expect(defineIcon("p", "f", "<div></div>")).toBe(SVG_ROOT_MESSAGE);
     expect(sheet()).toBe("");
     expect(defineIcon("p", "d", `\n  ${SHAPE}\n`)).toBeNull();
   });
@@ -112,27 +116,58 @@ describe("defineIcon (D6)", () => {
     expect(defineIcon("q", "i0", SHAPE)).toBeNull(); // another plugin has its own 64
   });
 
-  /** §7 — the style text is the host's class and the URL only. The SVG carries `"`, `}`, `\`, a
-   *  newline and `</` in an attribute; none appears as written. What fails this: the URL built without
-   *  `encodeURIComponent`, or a URL in an unquoted `url(…)`. */
+  /** §7 — the style text is the host's class and the URL only. The sanitizer keeps a text node's `"`,
+   *  `}`, `\`, a newline and `</style>`, so they reach the URL (the positive assertion); none appears as
+   *  written in the style text. What fails this: the URL built without `encodeURIComponent`, or one that
+   *  leaves `\`, a newline or `"` raw. (An attribute holding `</style` is dropped by the sanitizer, so the
+   *  payload rides in a text node.) */
   it("lets nothing the plugin wrote end the string, the rule or the style", () => {
     defineIcon(
       "p",
       "q",
-      '<svg><path d="M0 0" data-x="&quot;}\\ \n&lt;/style&gt;"/></svg>',
+      '<svg><text>"}\\ \n&lt;/style&gt;</text><path d="M0 0"/></svg>',
     );
+    // The characters reached the URL ...
+    expect(svgOf(iconClassOf("p", "q")!)).toContain('"}\\ \n&lt;/style&gt;');
+    // ... and the style text holds none of them as written.
     expect(sheet()).toMatch(RULE);
     expect(sheet()).not.toContain("</");
     expect(sheet()).not.toContain("\\");
     expect(sheet()).not.toContain("\n");
   });
 
+  /** M1 — `encodeURIComponent` throws on a lone surrogate; the definition changes nothing. */
+  it("throws a URIError for a lone surrogate and leaves everything as it was", () => {
+    expect(defineIcon("p", "keep", SHAPE)).toBeNull();
+    const before = sheet();
+    expect(() =>
+      defineIcon("p", "s", "<svg><text>\uDC00</text></svg>"),
+    ).toThrow(URIError);
+    expect(iconClassOf("p", "s")).toBeUndefined();
+    expect(sheet()).toBe(before);
+  });
+
+  /** A refused redefinition keeps the old rule and class. */
+  it("keeps the old icon when a redefinition is refused", () => {
+    defineIcon("p", "a", SHAPE);
+    const className = iconClassOf("p", "a")!;
+    const before = sheet();
+    expect(defineIcon("p", "a", "<p>x</p>")).toBe(SVG_ROOT_MESSAGE);
+    expect(iconClassOf("p", "a")).toBe(className);
+    expect(sheet()).toBe(before);
+  });
+
   it("removes a plugin's rules on release, and the style element with the last one", () => {
     defineIcon("p", "a", SHAPE);
     defineIcon("q", "a", SHAPE);
+    const pClass = iconClassOf("p", "a")!;
+    const qClass = iconClassOf("q", "a")!;
     releaseIcons("p");
     expect(iconClassOf("p", "a")).toBeUndefined();
     expect(iconClassOf("q", "a")).toBeDefined();
+    expect(svgOf(pClass)).toBe("");
+    expect(svgOf(qClass)).not.toBe("");
+    expect(sheet().split("\n")).toHaveLength(1);
     releaseIcons("q");
     expect(
       document.head.querySelector("style[data-baram-file-icons]"),

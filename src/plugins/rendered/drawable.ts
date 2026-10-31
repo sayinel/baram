@@ -1,9 +1,9 @@
 // §394 spec 0073 D8 · D9 · §7 "계획 B" — a plugin's result made drawable. Both plugin-rendered areas
 // draw through it — a code block's render (`render-queue.ts`) and a sandboxed panel's painter
-// (`panel-painter.ts`) — and, outside tests, it is the only caller of `sanitize-css.ts` and one
-// of the two callers of `sanitize-markup.ts`: §395's file icons (`file-decorations/icons.ts`)
-// sanitize an SVG through it too (corpus: `src` outside `__tests__`, a grep for
-// `sanitizePluginMarkup(`). Moved out of `render-queue.ts` (`toDrawable`) by plan 0126
+// (`panel-painter.ts`) — and, outside tests, it is the only caller of `sanitizePluginCss` and one
+// of the two callers of `sanitizePluginMarkup`: §395's file icons (`file-decorations/icons.ts`)
+// sanitize an SVG through it too (corpus: `src` outside `__tests__`, `git grep -n
+// 'sanitizePluginCss('` and the same for `sanitizePluginMarkup(`). Moved out of `render-queue.ts` (`toDrawable`) by plan 0126
 // P3 with its behaviour, its refusals and its console line unchanged. How a result is read and checked
 // is `readRenderedContent`'s (`limits.ts`), which the sandbox also runs before it sends one.
 

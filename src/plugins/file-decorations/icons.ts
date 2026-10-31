@@ -8,7 +8,7 @@
 //
 // What reaches the style text from a plugin: the percent-encoded URL alone, inside a double-quoted CSS
 // string. `encodeURIComponent` leaves A–Z a–z 0–9 and - _ . ! ~ * ' ( ) as they are — none of them ends a
-// double-quoted string, and `)` does not end a quoted `url("…")` — and encodes every other character.
+// double-quoted string, and `)` does not end a quoted `url("…")` — and encodes every other character, except that it throws a `URIError` on a lone surrogate instead of encoding it.
 import { usePluginStore } from "../../stores/system/plugin";
 import { sanitizePluginMarkup } from "../rendered/sanitize-markup";
 import { MAX_FILE_ICONS } from "./limits";
@@ -42,7 +42,7 @@ export function __resetFileIcons(): void {
 /**
  * Define or redefine icon `name` of `pluginId` from `svg`; the refusal's sentence, or `null`. The caller
  * judged `name` and the byte size (`iconCallProblem`). A redefinition keeps its class, so a row drawing
- * the icon does not re-render — only the rule's URL changes. Throws what the sanitizer throws.
+ * the icon does not re-render — only the rule's URL changes. Throws what the sanitizer throws, and a `URIError` for a lone surrogate in the SVG (a refusal sentence for it is the spec's to add).
  */
 export function defineIcon(
   pluginId: string,
