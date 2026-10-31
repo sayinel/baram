@@ -640,8 +640,8 @@ describe("isWritableYamlValue (§72)", () => {
     },
   );
 
-  // A key in a flow mapping is a quoted scalar too. yaml reports an open quote inside a flow
-  // collection itself, so this holds the behaviour, not the check that also covers it.
+  // A behaviour pin, not a test of `quotesCloseWithin`: an open quote in a flow mapping key is
+  // refused by the diagnostics, as yaml reports it there (`MISSING_CHAR`).
   it("refuses a flow mapping key quoted as YAML leaves open", () => {
     const yaml = "title: t\nflow: {a: 1}\nnext: 'x'\nlast: z";
     expect(isWritableYamlValue(yaml, "flow", "{''': 1}")).toBe(false);

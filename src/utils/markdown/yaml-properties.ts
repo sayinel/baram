@@ -325,13 +325,14 @@ function diagnostics(yaml: string): [string, number, number][] {
 }
 
 /**
- * Whether every quoted scalar that starts in `candidate` between `start` and `end` (the span
+ * Whether every quoted value that starts in `candidate` between `start` and `end` (the span
  * the edit rewrote) is closed as YAML 1.2.2 closes one: single-quoted, with `''` for a quote
  * inside (§7.3.2); double-quoted, with `\` escaping the next character (§7.3.1). The quoted
- * tokens are the ones `yaml`'s own parser finds, in a flow collection too, but their closing is
- * judged here: its lexer takes `'''` for a whole scalar and lets `"\"` run on to a quote on the
- * next line. Inside a flow collection its lexer leaves such a quote open and reports an error
- * (`MISSING_CHAR`), so in every case measured only a value outside a collection needs this. A
+ * tokens are the values `yaml`'s own parser finds, but their closing is judged here: its lexer
+ * takes `'''` for a whole scalar and lets `"\"` run on to a quote on the next line. Keys are not
+ * looked at: the edited line's own key is one the field reader already read as closed, and
+ * inside a flow collection the lexer leaves such a quote open and reports an error
+ * (`MISSING_CHAR`) — in every case measured only a value outside a collection needs this. A
  * token that runs past the edited line is not checked for that here: in every case measured,
  * `yaml` also reports an error for it, which `diagnostics` refuses.
  */
@@ -344,17 +345,15 @@ function quotesCloseWithin(
   for (const doc of new Parser().parse(candidate)) {
     if (doc.type !== "document") continue;
     CST.visit(doc, (item) => {
-      for (const token of [item.key, item.value]) {
-        if (!token || token.offset < start || token.offset > end) continue;
-        const spec =
-          token.type === "single-quoted-scalar"
-            ? /^'(?:[^']|'')*'$/
-            : token.type === "double-quoted-scalar"
-              ? /^"(?:[^"\\]|\\.)*"$/
-              : null;
-        if (!spec || !("source" in token)) continue;
-        if (!spec.test(token.source)) closed = false;
-      }
+      const token = item.value;
+      if (!token || token.offset < start || token.offset > end) return;
+      const spec =
+        token.type === "single-quoted-scalar"
+          ? /^'(?:[^']|'')*'$/
+          : token.type === "double-quoted-scalar"
+            ? /^"(?:[^"\\]|\\.)*"$/
+            : null;
+      if (spec && "source" in token && !spec.test(token.source)) closed = false;
     });
   }
   return closed;
