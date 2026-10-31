@@ -195,6 +195,8 @@ describe("carriedTagField", () => {
     ["tags:[a, b]", "tags: [a, b]"],
     ["tags:\u00a0[a, b]", "tags: [a, b]"],
     ["tags\u00a0: [a, b]", "tags: [a, b]"],
+    ["tags:\u3000\n  - a\n  - b", "tags: [a, b]"],
+    ["tags:\u00a0\n  - a\n  - b", "tags: [a, b]"],
   ])(
     "carries %j, which YAML reads otherwise, as a new flow list",
     (field, carried) => {
@@ -210,17 +212,20 @@ describe("carriedTagField", () => {
     "tags:\n- a\n- b",
     "tags:\n  -\ta\n  - b",
     "tags:\n    - a # c\n    -  \n    - b",
+    "tags: \t\n  - a\n  - b",
   ])("carries %j as written", (field) => {
     expect(carriedTagField(`---\n${field}\n---\n`)).toBe(field);
   });
 
   it("carries only a field YAML reads as the tags the app reads", () => {
     const keys = ["tags:", "tags :", "tags\t:", "Tags:", "tags\u00a0:"];
-    const gaps = ["", " ", "\t", "\u00a0", " \u00a0"];
+    const gaps = ["", " ", "\t", "\u00a0", " \u00a0", "\u3000"];
     const leads = ["- ", "  - ", "  -\t", "\t- ", "\u00a0 - ", "  - \u00a0"];
     const fields: string[] = [];
     for (const key of keys) {
-      for (const gap of gaps) fields.push(`${key}${gap}[a, "#b"]`);
+      for (const gap of gaps) {
+        fields.push(`${key}${gap}[a, "#b"]`, `${key}${gap}\n  - a\n  - "#b"`);
+      }
       for (const first of leads) {
         for (const second of leads) {
           fields.push(`${key}\n${first}a\n${second}"#b"`);

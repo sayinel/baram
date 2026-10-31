@@ -105,13 +105,15 @@ export function sanitizeZettelTitle(title: string): string {
  * indented alike. Measured with yaml 2.9.1 and js-yaml 4.3.2, which agree: `tags:[a, b]` and
  * `tags:` + U+00A0 + `[a]` are a plain scalar, not a key; a tab or a U+00A0 in the indentation
  * does not parse; `- ` + U+00A0 + `a` is an item that starts with U+00A0; `  - a` then
- * `    - b` is the one item `a - b`, and `    - a` then `  - b` does not parse.
+ * `    - b` is the one item `a - b`, and `    - a` then `  - b` does not parse. After a block
+ * list's `tags:` only spaces or tabs may end the line: `tags:` + U+3000 or U+00A0 makes the key
+ * line and the items one plain scalar, which beside other keys does not parse.
  */
 function carriesAsWritten(yaml: string, list: FrontmatterList): boolean {
   if (!/^tags[ \t]*:$/i.test(list.key)) return false;
-  if (list.form === "inline") {
-    return /^[ \t]+$/.test(yaml.slice(list.start + list.key.length, list.open));
-  }
+  const afterColon = yaml.slice(list.start + list.key.length, list.open);
+  if (list.form === "inline") return /^[ \t]+$/.test(afterColon);
+  if (!/^[ \t]*$/.test(afterColon)) return false;
   const indents = new Set<number>();
   for (const line of list.lines) {
     const lead = /^( *)-[ \t]+$/.exec(line.item ? line.item.lead! : line.text);
