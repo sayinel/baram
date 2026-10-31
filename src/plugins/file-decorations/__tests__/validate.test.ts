@@ -68,6 +68,21 @@ describe("cleanDecoration — badge (D4 · D14)", () => {
     );
   });
 
+  /** What fails this: `checkGlyph` skipping `sanitizePluginText` — a bidi override (U+202E) would reach the row. */
+  it("sanitizes a badge before keeping it", () => {
+    expect(cleanDecoration({ badge: "\u202E1" })).toEqual({ badge: "1" });
+  });
+
+  /** What fails this: testing `BLANK_ICON` on the raw text — a space or newline is not default-ignorable, so only sanitizing empties it. */
+  it("refuses a badge that sanitizes to nothing", () => {
+    expect(cleanDecoration({ badge: " " })).toBe(
+      "decoration.badge draws nothing",
+    );
+    expect(cleanDecoration({ badge: "\n" })).toBe(
+      "decoration.badge draws nothing",
+    );
+  });
+
   it("refuses a badge that is not a string", () => {
     expect(cleanDecoration({ badge: 3 })).toBe(
       "decoration.badge must be a string",
@@ -82,12 +97,19 @@ describe("cleanDecoration — color (D5)", () => {
 
   /** What fails this: case-insensitive names, `#rgb`, CSS functions, or a value that carries a
    *  second declaration into a style. */
-  it.each(["Red", "#abc", "rgb(0,0,0)", "var(--x)", "red;x:y", "constructor"])(
-    "refuses %s",
-    (color) => {
-      expect(cleanDecoration({ color })).toBe(COLOR_MESSAGE);
-    },
-  );
+  it.each([
+    "Red",
+    "#abc",
+    "rgb(0,0,0)",
+    "var(--x)",
+    "red;x:y",
+    "constructor",
+    "#a1b2c3;x:y",
+    "#a1b2c3ff",
+    "#a1b2c3 ",
+  ])("refuses %s", (color) => {
+    expect(cleanDecoration({ color })).toBe(COLOR_MESSAGE);
+  });
 });
 
 describe("cleanDecoration — icon (D4 · D6)", () => {
@@ -98,6 +120,13 @@ describe("cleanDecoration — icon (D4 · D6)", () => {
     expect(cleanDecoration({ icon: { glyph: "ab" } })).toBe(
       "decoration.icon.glyph must be one character",
     );
+  });
+
+  /** What fails this: a glyph kept as sent — U+200B survives the 16-unit and grapheme checks but sanitizing drops it. */
+  it("sanitizes a glyph before keeping it", () => {
+    expect(cleanDecoration({ icon: { glyph: "\u200B\u2605" } })).toEqual({
+      icon: { glyph: "\u2605" },
+    });
   });
 
   it("keeps an icon name and refuses a name outside the charset", () => {
