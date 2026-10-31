@@ -36,7 +36,7 @@ backlinks and as a node in the Graph View — a plain markdown link to the same 
 
 ## Auto-Rename
 
-When you rename a file in the file tree (select a file and press `F2`), the wikilinks and block references pointing to that file are updated across your workspace. Markdown links and images (`[text](Paper.pdf)`, `![](image.png)`) are not rewritten: when a note holds one that the rename leaves pointing at the old name, the rename warns that some files may still link to the old name, and the log names them. Renaming a PDF also renames its highlights note and moves its highlight data with it.
+When you rename a file in the file tree (select a file and press `F2`), the wikilinks and block references pointing to that file are updated across your workspace. Markdown links and images (`[text](Paper.pdf)`, `![](image.png)`) and HTML images, videos and audio (`<img src="image.png">`) are not rewritten: when a note holds one that the rename leaves pointing at the old name, the rename warns that some files may still link to the old name, and the log names them. Renaming a PDF also renames its highlights note and moves its highlight data with it. Renaming the folder that holds a PDF does neither: its highlights stay under the old name.
 
 ## Tags
 

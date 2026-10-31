@@ -33,8 +33,10 @@ companion note is an ordinary markdown file: you can open it, read the highlight
 list, and write around them.
 
 Renaming the PDF in the file tree takes both along: the companion note is renamed, and links to it
-are updated as for any note, and the geometry file moves with it. If a new name is already taken,
-that file keeps its old name and the rename warns you.
+are updated as for any note, and the geometry file moves with it. A bare `[[Paper]]` is left
+as written when another note is also named `Paper`, since it may mean that note, and the rename
+warns you. If a new name is already taken, that file keeps its old name and
+the rename warns you. Renaming the folder that holds the PDF takes neither along.
 
 A malformed entry in the sidecar is dropped on its own rather than taking the whole file with it,
 so one bad record cannot cost you every highlight in a document.

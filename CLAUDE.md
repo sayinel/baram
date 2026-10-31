@@ -163,12 +163,18 @@ baram/
   링크는 링크). 프런트 `block-id-rename-markdown.ts` 와의 계약은 `src-tauri/src/md/fixtures/literal-regions.json` 이 양쪽에서 읽힌다.
   tag·task 스캐너의 느슨한 fence 규칙은 별개 계약이라 여기 얹지 말 것
 - **파일 rename 은 index 가 세는 것을 전부 고치거나, 못 고친 것을 보고한다 (#678)**: 불변식 셋이다 — ① index 가 세는 것 = rename 이 고치는 것, ② 문법이 쓸 수 없는 이름은 쓰지 말고
-  남긴다, ③ 남긴 것은 보고한다. ③ 은 index 가 세지 않는 마크다운 문법에도 걸린다 — `[t](x)`·`![a](x)`·정의 `[id]: x` 가 rename 된 파일을 가리킨 채 남는 노트는
-  고치지 않고 보고한다(`index/markdown_links.rs` 의 `markdown_link_dangles` — 에디터가 링크·이미지를 해석하는 규칙을 옮긴 것이다, `rename/markdown_referrers.rs`). 이 문법을 색인하거나
-  고쳐 쓰지 말 것. PDF 를 rename 하면 그 하이라이트 사이드카와 짝 노트가 따라간다(`rename/pdf_highlights.rs` — 짝 노트는 노트 rename 으로, 경로 규칙은 프런트와
-  `index/fixtures/pdf-highlight-paths.json` 을 함께 읽는다). 따라가지 못한 조각은 옛 경로로 보고하고, 옮긴 조각은 `RenameResult::moved` 에 담는다 —
-  프런트(`use-file-tree-rename.ts`)가 rename 된 파일과 같은 방식으로 탭 · 트리 · 캐시를 옮긴다. 옛 경로에 남은 탭은 다음 저장에서 그 파일을 되살린다(`write_file` 은 없는 파일을 만든다).
-  rename 이 다른 파일을 옮기게 되면 그 파일도 `moved` 에 넣을 것.
+  남긴다, ③ 남긴 것은 보고한다. ③ 은 index 가 세지 않는 마크다운 문법과 HTML 에도 걸린다 — `[t](x)`·`![a](x)`·정의 `[id]: x`, 그리고 HTML 미디어 태그의
+  `src`·`poster`(`<img src="x">` — 어떤 태그를 어떻게 읽는지는 `index/html_media.rs` 모듈 doc)가 rename 된 파일을 가리킨 채 남는 노트는 고치지 않고 보고한다
+  (`index/markdown_links.rs` 의 `markdown_link_dangles` — 경로 해석은 에디터의 규칙을 옮긴 것이다: 링크는 `planLocalLinkNavigation`, 이미지와 HTML 태그는
+  `resolveMediaSrc`). 읽는 노트는 index 가 가진 노트뿐이다(`rename/markdown_referrers.rs` 의 doc 이 빠지는 것을 적는다). 이 문법을 색인하거나 고쳐 쓰지 말 것.
+  **파일** rename 으로 PDF 의 이름을 바꾸면 그 하이라이트 사이드카와 짝 노트가 따라간다(`rename/pdf_highlights.rs` — 짝 노트는 노트 rename 으로, 경로 규칙은 프런트와
+  `index/fixtures/pdf-highlight-paths.json` 을 함께 읽는다). 폴더 rename(`rename/namespace.rs`)은 둘 다 하지 않는다 — 폴더 안 PDF 의 사이드카 · 짝 노트는 옛 경로에
+  남고, 마크다운 · HTML 링크도 보고하지 않는다. 따라가지 못한 조각은 옛 경로로 보고하고, 옮긴 조각은 `RenameResult::moved` 에 담으며, 결과의 두 파일 목록도 옮긴 뒤의
+  경로로 적는다 — 프런트(`use-file-tree-rename.ts`)가 rename 된 파일과 같은 방식으로 탭 · 트리 · 캐시를 옮긴 다음 그 경로로 열린 탭을 맞춘다. 옛 경로에 남은 탭은 다음
+  저장에서 그 파일을 되살린다(`write_file` 은 없는 파일을 만든다). rename 이 다른 파일을 옮기게 되면 그 파일도 `moved` 에 넣을 것. 블록 참조 · embed 의 대상은
+  에디터처럼 읽고 쓴다 — 에디터는 PDF 하이라이트 참조의 `)`·`#`·`|`·`%` 를 퍼센트로 싸서 쓰고(`use-pdf-highlights.ts` 의 `escapeBlockRefTarget`, 쌍은
+  `src/pipeline/block-id.ts` 의 `TARGET_ESCAPE_PAIRS`) 대상을 열 때 푼다. index 도 풀어서 읽고, rename 은 그 글자가 든 이름을 싸서 쓴다(`index/block_ref_escape.rs` —
+  두 언어가 `index/fixtures/block-ref-target-escape.json` 을 함께 읽는다).
   - ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을 `filing_key` 가 준 키 아래 담으므로 새 종류는 추출되는
     순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의 합집합이다. 그래서 종류는 문자열이 아니라 `mod.rs` 의 `LinkKind` 다 — `link_kinds!` 한 목록이 enum 과 테스트용
     `ALL` 을 함께 만들고, `LinkKind::pass()` 가 `_` 없는 `match` 로 종류마다 패스를 지정하며, `rewriter.rs` 의 후보 필터 둘은 그 `pass()` 를 읽는다. 변형을 더하면

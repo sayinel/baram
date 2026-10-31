@@ -12,6 +12,12 @@ use super::super::state::LinkIndexState;
 /// itself, which may link to itself so, is named by its new path, as it is reported for its
 /// wikilinks. A note that cannot be read now is passed over: whether it holds such a link
 /// cannot be told, and the index never named it for one.
+///
+/// Only the notes an index holds are read: a file named `….md` or `….markdown`, in that case
+/// (`crate::fs::is_note_name`), that the build walks to. A file outside that rule (`.mdx`,
+/// `.MD`), a note in a folder the walk skips (a hidden one, or a `SKIP_DIRS` name), and
+/// every note of a context whose index is not built (`with_index_for` hands over none) are
+/// not read, so a link in one of them is not reported.
 pub(super) async fn markdown_referrers(
     state: &LinkIndexState,
     dirs: &[Registered],

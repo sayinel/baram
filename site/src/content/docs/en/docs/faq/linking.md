@@ -58,7 +58,7 @@ Type `#tag` inline (with autocomplete) or add a `tags:` list to YAML frontmatter
 
 ## What happens when I rename a file?
 
-When you rename a file in the file tree (press `F2`), the wikilinks and block references pointing to that file are updated across your workspace. Markdown links and images (`[text](Paper.pdf)`, `![](image.png)`) are not rewritten; when a rename leaves one pointing at the old name, it warns that some files may still link to the old name.
+When you rename a file in the file tree (press `F2`), the wikilinks and block references pointing to that file are updated across your workspace. Markdown links and images (`[text](Paper.pdf)`, `![](image.png)`) and HTML images, videos and audio (`<img src="image.png">`) are not rewritten; when a rename leaves one pointing at the old name, it warns that some files may still link to the old name.
 
 ## How do I navigate between recently viewed files?
 
