@@ -10,6 +10,7 @@ import { Tooltip } from "../../components/Tooltip";
 import { useEditorChrome } from "../../hooks/use-editor-chrome";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   frontmatterListItems,
   writeFrontmatterList,
@@ -47,8 +48,14 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       const pos = getPos();
       if (typeof pos !== "number") return false;
       const newYaml = updateFrontmatterTags(node.textContent, newTags);
-      // A `tags:` field the bar cannot rewrite comes back unchanged.
-      if (newYaml === node.textContent) return false;
+      // A `tags:` field the bar cannot rewrite comes back unchanged — say so, rather than
+      // ignore the click.
+      if (newYaml === node.textContent) {
+        useUIStore
+          .getState()
+          .showToast(t("frontmatter.tagsNotEditable"), "info");
+        return false;
+      }
       const { tr } = editor.view.state;
       const nodeStart = pos + 1;
       const nodeEnd = pos + node.nodeSize - 1;
@@ -65,7 +72,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       editor.view.dispatch(tr);
       return true;
     },
-    [editor, getPos, node],
+    [editor, getPos, node, t],
   );
 
   const removeTag = useCallback(
@@ -81,11 +88,17 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const addTag = useCallback(
     (raw: string) => {
       const tag = tagName(raw.trim());
-      if (!isBodyTagName(tag) || tags.includes(tag)) return;
+      if (tag === "" || tags.includes(tag)) return;
+      if (!isBodyTagName(tag)) {
+        useUIStore
+          .getState()
+          .showToast(t("journal.capture.error.tagName", { tag }), "info");
+        return;
+      }
       // The typed text stays when nothing was written, rather than vanish as if it had been.
       if (applyTags([...tags, tag], "island")) setInputValue("");
     },
-    [applyTags, tags],
+    [applyTags, t, tags],
   );
 
   const handleKeyDown = useCallback(

@@ -161,6 +161,19 @@ export function PropertiesPanel() {
     setSourceMode((v) => !v);
   };
 
+  /**
+   * §72 Writes a list edit, or — when the list writer left the front matter as it was (a scalar
+   * `tags:`, a list it did not read to its end, a second key of that name) — says why nothing
+   * changed instead of changing nothing in silence.
+   */
+  function applyListEdit(newYaml: string) {
+    if (newYaml === yaml) {
+      useUIStore.getState().showToast(t("properties.listNotEditable"), "info");
+      return;
+    }
+    applyYamlDirectly(newYaml);
+  }
+
   // ── field handlers ───────────────────────────────────────────────────────
 
   /** Sets or clears (`null`) the `yaml` text kept for `key` while it is not valid YAML. */
@@ -227,7 +240,7 @@ export function PropertiesPanel() {
       const entry = entries.find((e) => e.key === key);
       if (yaml === null || !entry) return;
       const items = (entry.value as string[]).filter((_, i) => i !== idx);
-      applyYamlDirectly(setYamlPropertyItems(yaml, key, items));
+      applyListEdit(setYamlPropertyItems(yaml, key, items));
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,8 +256,18 @@ export function PropertiesPanel() {
         // §56m A tag chip takes a tag name, and only one a note's body can spell — the rule of
         // the tag bar, whose list writer this edit goes through.
         const item = key === "tags" ? tagName(typed) : typed;
-        if (key === "tags" && !isBodyTagName(item)) return;
-        applyYamlDirectly(
+        // A chip shows each value once (`parseYamlProperties`): a second one is already there.
+        if (item === "" || (entry.value as string[]).includes(item)) return;
+        if (key === "tags" && !isBodyTagName(item)) {
+          useUIStore
+            .getState()
+            .showToast(
+              t("journal.capture.error.tagName", { tag: item }),
+              "info",
+            );
+          return;
+        }
+        applyListEdit(
           setYamlPropertyItems(yaml, key, [...(entry.value as string[]), item]),
         );
       })();

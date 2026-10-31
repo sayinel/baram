@@ -13,6 +13,7 @@ import { EditorContent } from "@tiptap/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
+import { useUIStore } from "../../stores/ui/ui";
 import { createBaramExtensions } from "../index";
 
 const editors: Editor[] = [];
@@ -82,11 +83,25 @@ describe("front-matter tag bar (§56m)", () => {
       transactions += 1;
     });
     for (const typed of ["a b", 'a"b', "[x]"]) {
+      useUIStore.setState({ toast: null });
       const input = typeTag(view, typed);
       expect(input.value).toBe(typed);
+      // M3: and says why.
+      expect(useUIStore.getState().toast?.message).toBe(
+        `#${typed} cannot be a tag: a tag holds only letters, digits, _, - and /.`,
+      );
     }
     expect(frontmatterText(editor)).toBe("tags: [a]");
     expect(transactions).toBe(0);
+  });
+
+  // The toast's sibling: an empty name, or one already there, is no refusal to explain.
+  it("says nothing for an empty name or one the list has", async () => {
+    const { editor, view } = await mount("tags: [a]");
+    useUIStore.setState({ toast: null });
+    for (const typed of ["", "#", "a", "#a"]) typeTag(view, typed);
+    expect(useUIStore.getState().toast).toBeNull();
+    expect(frontmatterText(editor)).toBe("tags: [a]");
   });
 
   // What turns this red: writing a `tags: [...]` line beside a `tags:` the bar cannot read —
@@ -98,9 +113,14 @@ describe("front-matter tag bar (§56m)", () => {
       transactions += 1;
     });
 
+    useUIStore.setState({ toast: null });
     const input = typeTag(view, "x");
     expect(frontmatterText(editor)).toBe("tags: solo");
     expect(transactions).toBe(0);
     expect(input.value).toBe("x");
+    // M3: and says why, rather than ignore the add.
+    expect(useUIStore.getState().toast?.message).toBe(
+      "These tags can't be changed here. Edit them in the front matter YAML.",
+    );
   });
 });

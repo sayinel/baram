@@ -97,9 +97,10 @@ describe("PropertiesPanel edits (§72)", () => {
 
   // F50 What turns this red: recording a write that changed nothing — a refused edit pushed
   // an undo step and marked the tab dirty although the file stayed as it was.
-  it("records nothing when the list cannot be edited", async () => {
+  it("records nothing and says why when the list cannot be edited", async () => {
     const scalarTags = "---\ntags: solo\ntitle: t\n---\nbody";
     useFileStore.setState({ openFiles: new Map([[PATH, scalarTags]]) });
+    useUIStore.setState({ toast: null });
     render(<PropertiesPanel />);
     showPrompt.mockResolvedValueOnce("x");
     await act(async () => {
@@ -109,6 +110,9 @@ describe("PropertiesPanel edits (§72)", () => {
     expect(useEditorStore.getState().tabs[0].isDirty).toBe(false);
     expect((screen.getByLabelText("Undo") as HTMLButtonElement).disabled).toBe(
       true,
+    );
+    expect(useUIStore.getState().toast?.message).toBe(
+      "This list can't be changed here. Edit it in the source YAML.",
     );
   });
 
@@ -239,15 +243,38 @@ describe("PropertiesPanel edits (§72)", () => {
     expect(fileContent()).toBe("---\nv: 6\n---\nbody");
   });
 
+  // What turns this red: handing a value the list shows to the list writer — it writes
+  // nothing for it, and the panel took that for a refusal and said the list could not be
+  // changed.
+  it("adds nothing, and says nothing, for a value the list has", async () => {
+    const list = "---\naliases: [p]\n---\nbody";
+    useFileStore.setState({ openFiles: new Map([[PATH, list]]) });
+    useUIStore.setState({ toast: null });
+    render(<PropertiesPanel />);
+    showPrompt.mockResolvedValueOnce("p");
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Add item"));
+    });
+    expect(fileContent()).toBe(list);
+    expect((screen.getByLabelText("Undo") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(useUIStore.getState().toast).toBeNull();
+  });
+
   // What turns this red: adding the typed text as it is — `my tag` is a tag only in front
   // matter, which the body's `#` cannot reach.
   it("adds a tags chip only for a name a body tag can spell", async () => {
     render(<PropertiesPanel />);
+    useUIStore.setState({ toast: null });
     showPrompt.mockResolvedValueOnce("my tag");
     await act(async () => {
       fireEvent.click(screen.getByLabelText("Add item"));
     });
     expect(fileContent()).toBe(NOTE);
+    expect(useUIStore.getState().toast?.message).toBe(
+      "#my tag cannot be a tag: a tag holds only letters, digits, _, - and /.",
+    );
 
     showPrompt.mockResolvedValueOnce("#new");
     await act(async () => {

@@ -106,10 +106,11 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
       list.start === field.start &&
       (list.form === "inline" || list.items.length > 0)
     ) {
+      // Each value once: removing a chip removes every item that holds it.
       entries.push({
         key: field.key,
         type: "array",
-        value: list.items.map((i) => i.value),
+        value: [...new Set(list.items.map((i) => i.value))],
       });
       continue;
     }

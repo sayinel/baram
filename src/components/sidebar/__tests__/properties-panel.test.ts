@@ -415,6 +415,12 @@ describe("values the panel shows as YAML text (§72)", () => {
       value: "",
     });
   });
+
+  it("a list shows each value once, and removing it removes every item holding it", () => {
+    const yaml = "aliases: [p, p, q]";
+    expect(parseYamlProperties(yaml)[0].value).toEqual(["p", "q"]);
+    expect(setYamlPropertyItems(yaml, "aliases", ["q"])).toBe("aliases: [q]");
+  });
 });
 
 describe("isWritableYamlValue (§72)", () => {
