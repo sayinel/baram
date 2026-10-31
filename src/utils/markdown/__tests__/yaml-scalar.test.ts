@@ -199,6 +199,17 @@ describe("quotedScalar with characters outside YAML's printable set (M5)", () =>
     },
   );
 
+  // JSON leaves DEL and the C1 controls unescaped, so a value with nothing else to escape is
+  // written in double quotes as it is, before the printable check is reached. A `"` sends it
+  // past that: then only the printable check keeps it out of single quotes.
+  it.each(['a"\u007fb', 'a"\u0080b', 'a"\u0001b'])(
+    "writes %j, which needs an escape, as a JSON string YAML reads back",
+    (value) => {
+      expect(quotedScalar(value)).toBe(JSON.stringify(value));
+      expect(parse(`v: ${quotedScalar(value)}`)).toEqual({ v: value });
+    },
+  );
+
   it("keeps a tab and NEL in single quotes, which YAML can hold", () => {
     for (const value of ['a\tb"c', 'a\u0085b"c']) {
       expect(quotedScalar(value)).toBe(`'${value}'`);
