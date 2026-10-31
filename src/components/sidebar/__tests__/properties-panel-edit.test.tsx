@@ -289,7 +289,7 @@ describe("PropertiesPanel edits (§72)", () => {
     });
     expect(fileContent()).toBe(NOTE);
     expect(useUIStore.getState().toast?.message).toBe(
-      "#my tag cannot be a tag: a tag holds no spaces and no punctuation except - and connectors like _, uses / only between two parts, and is not - alone or blank.",
+      "#my tag cannot be a tag: a tag holds only letters, marks, digits, ZWJ and ZWNJ, - and connectors like _; uses / only between two parts; is not - alone; and holds more than marks and invisible characters.",
     );
 
     showPrompt.mockResolvedValueOnce("#new");
