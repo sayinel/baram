@@ -159,7 +159,6 @@
   width: 6px;
   height: 6px;
   margin-right: var(--space-1);
-  margin-left: auto;
   border-radius: 50%;
 }
 
@@ -173,6 +172,62 @@
 
 .file-tree-git-badge-dir {
   background: var(--color-text-muted);
+}
+
+/* §395 spec 0074 D8 · D9 — the leaf of a tree row (file-tree-row-body.tsx): icon, name and the right
+   group, in one box beside the chevron. It must shrink (min-width: 0), or the name inside never
+   truncates: a nested flex item's min-width defaults to its content. */
+.file-tree-row-body {
+  display: flex;
+  flex: 1;
+  gap: var(--space-1);
+  align-items: center;
+  min-width: 0;
+}
+
+/* The right group carries the margin-left: auto the git dot used to carry, so plugin badges sit before
+   the dot and the dot stays right-most. */
+.file-tree-row-end {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: var(--space-1);
+  align-items: center;
+  margin-left: auto;
+}
+
+/* D8 — a badge is a chip: a border and a minimum width, so even a one-character badge never takes the
+   shape of the borderless 6 px git dot beside it. Its colour is the decoration's (inline), else muted. */
+.file-tree-plugin-badge {
+  min-width: 1.4em;
+  padding: 0 var(--space-1);
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: var(--color-text-muted);
+  text-align: center;
+  white-space: nowrap;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-full);
+}
+
+/* D8 — a one-character icon is clipped to the icon box. */
+.file-tree-plugin-glyph {
+  overflow: hidden;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/* D6 · §5.2 — a plugin SVG icon: the icon box painted through the mask its fd-icon-N class sets
+   (file-decorations/icons.ts), in the decoration's colour or the row's text colour. */
+.file-tree-plugin-mask {
+  width: 100%;
+  height: 100%;
+  background-color: currentcolor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 /* §365 배경 대비(스펙 0059) — 크롬(사이드바·액티비티 바·오른쪽 패널)과 바 위에 놓인
