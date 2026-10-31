@@ -302,7 +302,8 @@ function propertySpelling(value: string, original: string): string {
 /**
  * Whether the panel can show a one-line value as text and write its text back: a whole
  * double-quoted scalar whose escapes JSON reads, a whole single-quoted one, or a plain one with
- * no comment.
+ * no comment — a `#` at the start (`key: # note`, which YAML reads as null) or after
+ * whitespace begins one.
  */
 function readsAsText(raw: string): boolean {
   if (/^"(?:[^"\\]|\\.)*"$/.test(raw)) {
@@ -314,7 +315,7 @@ function readsAsText(raw: string): boolean {
     }
   }
   if (/^'(?:[^']|'')*'$/.test(raw)) return true;
-  return !/^["']/.test(raw) && !/\s#/.test(raw);
+  return !/^["'#]/.test(raw) && !/\s#/.test(raw);
 }
 
 /** A one-line value as text: without the quotes around it, a plain value as it is. */

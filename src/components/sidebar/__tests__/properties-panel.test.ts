@@ -398,6 +398,8 @@ describe("values the panel shows as YAML text (§72)", () => {
     ["comment: a # c", "a # c"],
     ['fold: "a\\x41"', '"a\\x41"'],
     ['q: "a" # c', '"a" # c'],
+    // m1: a comment with no value before it — YAML reads null, not the text `# note`.
+    ["note: # note", "# note"],
   ])("%j is yaml text", (yaml, text) => {
     expect(parseYamlProperties(yaml)[0]).toMatchObject({
       type: "yaml",
