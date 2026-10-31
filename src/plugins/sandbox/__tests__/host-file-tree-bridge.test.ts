@@ -108,12 +108,15 @@ describe("filetree host requests — paths (D7)", () => {
 });
 
 describe("filetree host requests — the gate (§6 · P24)", () => {
-  /** What fails this: no gate, or the gate's "requires one of" sentence instead of the trusted tier's. */
+  /** What fails this: no gate, or the gate's "requires one of" sentence instead of the trusted tier's.
+   *  "Nothing applied" is real: a decoration seeded by a handler that holds `filetree` must survive the
+   *  refused call, and the update in the refused set is not applied. */
   it.each([
     ["filetree_clear_decorations", "clearFileDecorations"],
     ["filetree_define_icon", "defineFileIcon"],
     ["filetree_set_decorations", "setFileDecorations"],
   ] as const)("refuses %s without filetree", async (kind, method) => {
+    await set(handler(), "seed.md");
     const requests = {
       filetree_clear_decorations: { kind: "filetree_clear_decorations" },
       filetree_define_icon: {
@@ -123,13 +126,22 @@ describe("filetree host requests — the gate (§6 · P24)", () => {
       },
       filetree_set_decorations: {
         kind: "filetree_set_decorations",
-        updates: [],
+        updates: [{ decoration: { badge: "2" }, path: "other.md" }],
       },
     };
     const h = handler(["sidebar"]);
     await expect(h(requests[kind] as Parameters<typeof h>[0])).rejects.toThrow(
       fileTreeCapabilityMessage(method),
     );
+    expect(keys()).toEqual(["/v/seed.md"]);
+  });
+
+  /** The positive twins: with `filetree` the same requests go through. */
+  it("accepts clear and define with filetree", async () => {
+    const h = handler();
+    await set(h, "seed.md");
+    await h({ kind: "filetree_define_icon", name: "a", svg: "<svg/>" });
+    await h({ kind: "filetree_clear_decorations" });
     expect(keys()).toEqual([]);
   });
 });

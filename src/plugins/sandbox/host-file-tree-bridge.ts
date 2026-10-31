@@ -5,6 +5,10 @@
 // resolved here to an absolute path when the request arrives — a left-out `context` is the context the
 // app shows at that moment (D7, read from `useContextStore`, which can differ from the backend's active
 // context that `ctx.files` reads without a context).
+// Unlike the trusted tier, this one needs no released switch: `SandboxSession.dispose` sets `disposed` and
+// calls `offMessage()`, so `onHostRequest` returns early, and it runs before `unregisterPluginUI` ->
+// `releaseFileTree` on unload — in the same synchronous span on rollback (no `await` between them in
+// `plugin-loader`). Inserting an await there would reopen the hole `decoration-host` closed for trusted.
 import type { PluginCapability } from "../types";
 import type { FileTreeRequest } from "./protocol";
 
@@ -24,7 +28,7 @@ import { absoluteInContext } from "../locate-in-context";
 import { pluginSourceLabel } from "../plugin-text";
 
 export interface FileTreeRequestHandlerOptions {
-  /** The context a `context`-less update resolves against. Injectable for tests; the app's active context by default. */
+  /** The context a `context`-less update resolves against. The app's active context by default. */
   activeContextId?: () => null | string;
   /** Grants recorded at install, as the manifest declared them. */
   capabilities: readonly PluginCapability[];

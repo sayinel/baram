@@ -47,4 +47,15 @@ describe("absoluteInContext (D7)", () => {
     expect(absoluteInContext("ctx-f", "x.md")).toBeNull();
     expect(absoluteInContext("ctx-zz", "x.md")).toBeNull();
   });
+
+  /** The filesystem root: its `contextRootOf` is `""`, so the join must still give the tree's key. */
+  it('keys a root-"/" context the way the tree does', () => {
+    useContextStore.setState({
+      contexts: [{ contextType: "vault", id: "ctx-r", path: "/" }] as never,
+    });
+    expect(absoluteInContext("ctx-r", "a.md")).toBe("/a.md");
+    expect(decorationKey(absoluteInContext("ctx-r", "")!)).toBe(
+      decorationKey("/"),
+    );
+  });
 });

@@ -219,8 +219,9 @@ export type SandboxHostRequest =
       kind: "ui_set_panel";
     }
   | {
-      // §395 spec 0074 D6 — `ui.defineFileIcon`. The host judges the name, the UTF-8 size, and the SVG
-      // after sanitizing (`file-decorations/icons.ts`).
+      // §395 spec 0074 D6 — `ui.defineFileIcon`. The host judges the name and the UTF-8 size
+      // (`iconCallProblem` in `file-decorations/validate.ts`, via `decoration-host.ts`) and the SVG after
+      // sanitizing (`file-decorations/icons.ts`).
       kind: "filetree_define_icon";
       name: string;
       svg: string;

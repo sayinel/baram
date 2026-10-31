@@ -1,5 +1,6 @@
 // §395 spec 0074 D14 · D15 · §5.3 — the one place a plugin's file tree call is judged, paced and applied,
-// whichever tier made it: the trusted `ctx.ui` (`trusted/ui-api.ts`) calls these functions directly, and the sandboxed tier's host bridge (`sandbox/host-file-tree-bridge.ts`) calls them for its `filetree_*` requests.
+// whichever tier made it: the trusted `ctx.ui` (`trusted/ui-api.ts`) calls these functions directly, and the
+// sandboxed tier's host bridge (`sandbox/host-file-tree-bridge.ts`) calls them for its `filetree_*` requests.
 // Each plugin has ONE line for its three methods: first called, first applied, so calls made together
 // (`Promise.all`) are applied in turn and none is refused for coming early. Two token buckets pace the
 // line — `setFileDecorations` and `clearFileDecorations` take from the decoration bucket

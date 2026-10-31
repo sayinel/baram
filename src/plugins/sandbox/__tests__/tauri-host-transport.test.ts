@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import {
   MAX_DECORATION_UPDATES,
+  MAX_FILE_ICON_NAME_CHARS,
   MAX_FILE_ICON_SVG_BYTES,
 } from "../../file-decorations/limits";
 import { CODE_BLOCK_LANG } from "../../manifest-code-blocks";
@@ -458,7 +459,13 @@ describe("createHostTransport (§260 host end)", () => {
         updates: Array.from({ length: MAX_DECORATION_UPDATES + 1 }, () => ({})),
       },
       { kind: "filetree_define_icon", svg: "<svg/>" },
-      { kind: "filetree_define_icon", name: "a".repeat(65), svg: "<svg/>" },
+      { kind: "filetree_define_icon", name: "a" },
+      { kind: "filetree_define_icon", name: "a", svg: ["<svg/>"] },
+      {
+        kind: "filetree_define_icon",
+        name: "a".repeat(MAX_FILE_ICON_NAME_CHARS + 1),
+        svg: "<svg/>",
+      },
       {
         kind: "filetree_define_icon",
         name: "a",

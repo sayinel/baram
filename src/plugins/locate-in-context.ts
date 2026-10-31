@@ -44,7 +44,10 @@ export function locateInContext(absolutePath: string): null | PluginFileEvent {
  * file context and `relative` is not `""` (a file context IS the file, §89). Joined at the same boundary
  * `locateInContext` slices at (`contextRootOf`), with "/" — the row's key folds either separator
  * (`decorationKey`), so a Windows root needs no backslash here. `relative` was checked to be
- * `locateInContext`'s form (`relativeLocate`); nothing here resolves `..`.
+ * Precondition: `relative` is one `relativeLocate` accepted — its one caller today is
+ * `sandbox/host-file-tree-bridge.ts`. Nothing here resolves `..`; a `..`, or a leading "/" or "\\", would be
+ * joined as written. The result is a key source for `decorationKey`, not a path for IPC (for the filesystem
+ * root it is `""`).
  */
 export function absoluteInContext(
   contextId: string,
