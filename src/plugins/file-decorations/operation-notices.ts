@@ -3,7 +3,7 @@
 // gate before its first disk IPC (`beginFileOperation`, as the first statement of the `try` around it),
 // calls `notifyRenamed` / `notifyDeleted` once that IPC succeeded — where it updates the tree, in the same
 // synchronous span — and releases in the `finally`. A notice moves or drops the decoration keys first and
-// then tells its listeners, so the held `vault:changed` the release lets out comes after it. Changes made
+// then tells its listeners (`file-notice-delivery.ts` installs one per plugin that may hear it), so the held `vault:changed` the release lets out comes after it. Changes made
 // outside the app are never told here (D13).
 import { holdVaultChanges } from "../../services/vault-changes";
 import { contextsContaining } from "../../stores/context/contexts-containing";

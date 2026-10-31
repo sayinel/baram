@@ -172,6 +172,17 @@ export interface EventsAPI {
      * either the subscription is accepted and never fires.
      */
     on(event: "vault:changed", handler: (change: VaultChange) => void): Disposable;
+    /**
+     * §395 Baram renamed or moved a file or folder (spec 0074 D11): its own rename, move, journal migration
+     * or zettel promotion — never a change made outside Baram, which only `vault:changed` reports. Absolute
+     * paths; a folder is one notice, and what it held moved with it. Comes before the same change's
+     * `vault:changed` (except in a vault registered through a symlink or another spelling of its folder).
+     * Needs `files` or `files:readonly`, not `events`; without either the subscription is accepted and
+     * never fires.
+     */
+    on(event: "file:rename", handler: (oldPath: string, newPath: string, isDir: boolean) => void): Disposable;
+    /** §395 Baram deleted (moved to the trash) a file or folder — see `on("file:rename")`. */
+    on(event: "file:delete", handler: (path: string, isDir: boolean) => void): Disposable;
     on(event: string, handler: (...args: unknown[]) => void): Disposable;
 }
 export interface ExtensionContext {
@@ -504,6 +515,10 @@ export interface PluginFetchResponse {
     headers: Record<string, string>;
     status: number;
 }
+/** §395 What `file:delete` carries in the sandboxed tier (spec 0074 §4): where the entry was, and whether it was a folder. */
+export interface PluginFileDelete extends PluginFileEvent {
+    isDir: boolean;
+}
 /**
  * §260 Phase 4a — what a sandboxed plugin is told when a file event fires. Carries a
  * VAULT-RELATIVE path and the context to resolve it against; no absolute path ever
@@ -514,6 +529,12 @@ export interface PluginFetchResponse {
 export interface PluginFileEvent {
     context: string;
     path: string;
+}
+/** §395 What `file:rename` carries in the sandboxed tier (spec 0074 §4). */
+export interface PluginFileRename {
+    from: PluginFileEvent;
+    isDir: boolean;
+    to: PluginFileEvent;
 }
 /**
  * What the host tells a file viewer when it mounts or updates. `assetUrl` is
@@ -938,6 +959,13 @@ export interface SandboxContext {
         emit(event: string, ...args: unknown[]): void;
         /** §393 See `EventsAPI.on("vault:changed")` — the same event, the same payload. */
         on(event: "vault:changed", handler: (change: VaultChange) => void): void;
+        /**
+         * §395 See `EventsAPI.on("file:rename")`. `from` and `to` are each relative to their own context — a
+         * move between nested vaults names two. Not sent when either path is in no registered context.
+         */
+        on(event: "file:rename", handler: (rename: PluginFileRename) => void): void;
+        /** §395 See `EventsAPI.on("file:delete")`. Not sent for a path in no registered context. */
+        on(event: "file:delete", handler: (deletion: PluginFileDelete) => void): void;
         /**
          * §260 Phase 4a — overloaded so the file events' payload actually reaches plugin
          * code as `PluginFileEvent` (code review nit): with only the `unknown[]` signature an

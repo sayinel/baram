@@ -45,7 +45,9 @@ export type {
   PluginFetchResponse,
   // §260 Phase 6 — the sandboxed tier's payload for `file:open`/`file:save`; the only way
   // that tier learns a path at all.
+  PluginFileDelete,
   PluginFileEvent,
+  PluginFileRename,
   PluginFileViewerContext,
   PluginFileViewerEdit,
   PluginFileViewerOptions,

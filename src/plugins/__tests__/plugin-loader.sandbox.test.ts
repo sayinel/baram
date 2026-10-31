@@ -21,9 +21,14 @@ import type { PluginManifest } from "../types";
 
 import { type Locale, t as lookup } from "../../i18n";
 import { publishVaultChange } from "../../services/vault-changes";
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { executePluginCommand } from "../extension-context";
+import {
+  notifyDeleted,
+  notifyRenamed,
+} from "../file-decorations/operation-notices";
 import { PluginLoader } from "../plugin-loader";
 import { legacyInstallMessage } from "../plugin-trust";
 import { usePluginUIStore } from "../plugin-ui-store";
@@ -842,6 +847,68 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
       await loader.unloadPlugin("demo");
       f.deliverEvent.mockClear();
       publishVaultChange("ctx-1");
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("file:rename · file:delete (§395)", () => {
+    beforeEach(() => {
+      useContextStore.setState({
+        contexts: [{ contextType: "vault", id: "ctx-1", path: "/v" }] as never,
+      });
+    });
+    afterEach(() => {
+      useContextStore.setState({ contexts: [] } as never);
+    });
+
+    /** The loader's own lines. What fails this: no watcher next to `watchVaultChanges`. */
+    it("delivers relative paths to a sandboxed plugin with files:readonly", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "files:readonly"] }),
+      );
+      f.deliverEvent.mockClear();
+      notifyRenamed("/v/a.md", "/v/b.md", false);
+      notifyDeleted("/v/b.md", false);
+      expect(f.deliverEvent.mock.calls).toEqual([
+        [
+          "file:rename",
+          [
+            {
+              from: { context: "ctx-1", path: "a.md" },
+              isDir: false,
+              to: { context: "ctx-1", path: "b.md" },
+            },
+          ],
+        ],
+        ["file:delete", [{ context: "ctx-1", isDir: false, path: "b.md" }]],
+      ]);
+    });
+
+    it("does not deliver to a sandboxed plugin without a file capability", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "events"] }),
+      );
+      f.deliverEvent.mockClear();
+      notifyRenamed("/v/a.md", "/v/b.md", false);
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+
+    it("stops delivering after unload", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "files"] }),
+      );
+      await loader.unloadPlugin("demo");
+      f.deliverEvent.mockClear();
+      notifyDeleted("/v/a.md", false);
       expect(f.deliverEvent).not.toHaveBeenCalled();
     });
   });
