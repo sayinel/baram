@@ -21,7 +21,7 @@ import {
   releaseFileTree,
   setFileDecorationsFor,
 } from "../file-decorations/decoration-host";
-import { trustedLocate } from "../file-decorations/validate";
+import { RELEASED_MESSAGE, trustedLocate } from "../file-decorations/validate";
 import { pluginSourceLabel } from "../plugin-text";
 import { usePluginUIStore } from "../plugin-ui-store";
 import { clearPromptGate } from "../prompt-gate";
@@ -30,6 +30,14 @@ import { releasePanels } from "../rendered/panel-contents";
 import { UI_CAPABILITIES } from "../types";
 
 let uiItemCounter = 0;
+
+/**
+ * §395 spec 0074 D15 — per plugin id, the "released" switch of every `createUIAPI` instance made for it.
+ * `unregisterPluginUI` flips and drops them, so a late file tree call on an unloaded instance's
+ * `ctx.ui` is rejected instead of opening a new line for a plugin that is gone (or landing in a
+ * re-loaded instance's map, both being keyed by plugin id).
+ */
+const releaseSwitches = new Map<string, Set<() => void>>();
 
 export function createUIAPI(
   pluginId: string,
@@ -62,20 +70,33 @@ export function createUIAPI(
     );
   };
   const label = pluginSourceLabel(displayName, pluginId);
+  // §395 D15 — the three file tree methods only; the other surfaces keep their behaviour after unload.
+  let released = false;
+  const switches = releaseSwitches.get(pluginId) ?? new Set<() => void>();
+  switches.add(() => {
+    released = true;
+  });
+  releaseSwitches.set(pluginId, switches);
+  // The capability refusal comes first (§6, P24): a plugin without `filetree` meets that sentence
+  // whether or not it was released.
+  const fileTreeGate = (method: string) => {
+    require("filetree", method);
+    if (released) throw new Error(RELEASED_MESSAGE);
+  };
   return {
     // §395 spec 0074 §5.3 — judged, paced and applied by the tier-neutral host (`decoration-host.ts`).
     // Async, so a missing `filetree` rejects the call's promise, as the sandboxed bridge's refusal does
     // (§6 — the same sentence, `fileTreeCapabilityMessage`).
     async clearFileDecorations(): Promise<void> {
-      require("filetree", "clearFileDecorations");
+      fileTreeGate("clearFileDecorations");
       return clearFileDecorationsFor(pluginId);
     },
     async defineFileIcon(name: string, svg: string): Promise<void> {
-      require("filetree", "defineFileIcon");
+      fileTreeGate("defineFileIcon");
       return defineFileIconFor(pluginId, name, svg);
     },
     async setFileDecorations(updates): Promise<void> {
-      require("filetree", "setFileDecorations");
+      fileTreeGate("setFileDecorations");
       return setFileDecorationsFor(pluginId, label, updates, trustedLocate);
     },
     showNotification(
@@ -198,13 +219,16 @@ export function createUIAPI(
 /**
  * Unregister the per-plugin host state a plugin leaves behind: status-bar items, injected
  * styles, an open prompt and its gate state (§385), its code block languages, renderers and
- * cached renders (§394 — plan 0125 P24), its sandboxed panels' content (§394 — plan 0126 P9), its file decorations, file icons and their rules, rejecting its waiting decoration calls (§395 — spec 0074 D15), and the refs it read (§388 — spec 0067 §7.4). Called
+ * cached renders (§394 — plan 0125 P24), its sandboxed panels' content (§394 — plan 0126 P9), its file decorations, file icons and their rules, rejecting its waiting file tree calls and every later one on its old `ctx.ui` (§395 — spec 0074 D15), and the refs it read (§388 — spec 0067 §7.4). Called
  * on every unload path (`plugin-loader.ts`, `plugin-lifecycle.ts`).
  */
 export function unregisterPluginUI(pluginId: string): void {
   clearPromptGate(pluginId);
   releaseCodeBlocks(pluginId);
   releasePanels(pluginId);
+  // Flip the old instances' switches BEFORE the sweep, so no call slips in between.
+  for (const flip of releaseSwitches.get(pluginId) ?? []) flip();
+  releaseSwitches.delete(pluginId);
   releaseFileTree(pluginId);
   dropAnchors(pluginId);
   usePluginUIStore.getState().unregisterPlugin(pluginId);

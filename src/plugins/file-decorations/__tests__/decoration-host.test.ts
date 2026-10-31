@@ -56,14 +56,16 @@ afterEach(() => {
 });
 
 describe("the line and its buckets (D14)", () => {
-  /** §7 — the ninth call made in turn resolves one interval after the first spend, not before. What
-   *  fails this: no bucket (the ninth applies at once), a refusal instead of a wait, or a refill counted
-   *  from the ninth call (it would resolve later than the interval). */
-  it("applies eight decoration calls at once and the ninth an interval later", async () => {
+  /** §7 — the refill is counted from the first spend, not from the call that waits: the ninth call made
+   *  100 ms after the first eight resolves 150 ms later, at 250 ms after the first spend. What fails
+   *  this: no bucket (the ninth applies at once), a refusal instead of a wait, or a refill restarted at
+   *  the ninth call (it would resolve at 100 + 250 ms, so it is still pending at 150 ms). */
+  it("applies eight decoration calls at once and the ninth an interval after the first spend", async () => {
     for (let i = 0; i < DECORATION_BURST; i += 1) await set(String(i));
     expect(badgeAt()).toBe(String(DECORATION_BURST - 1));
+    await vi.advanceTimersByTimeAsync(100);
     const ninth = watch(set("9"));
-    await vi.advanceTimersByTimeAsync(DECORATION_INTERVAL_MS - 1);
+    await vi.advanceTimersByTimeAsync(DECORATION_INTERVAL_MS - 100 - 1);
     expect(ninth.done).toBe(false);
     expect(badgeAt()).toBe(String(DECORATION_BURST - 1));
     await vi.advanceTimersByTimeAsync(1);
@@ -150,9 +152,10 @@ describe("what is judged when (P26)", () => {
 
 describe("a call that throws when applied", () => {
   /** A lone surrogate in the SVG makes `encodeURIComponent` throw a `URIError` inside `defineIcon`. The
-   *  call is rejected with that error's message and the line keeps moving: the call behind it is applied
-   *  and its own token was spent once. What fails this: a throw that escapes `pump` (the queued call
-   *  behind it never settles), or a head left in the queue (it is retried and rejects again). */
+   *  call is rejected with that same error object and the call behind it is applied. This row pins
+   *  only the pass-through (a rejection built from the message alone is not a `URIError`) and that the
+   *  line continues; a throw escaping `pump` is caught by the Promise executor on this path and stays
+   *  green here — "a call that throws on a refill" below pins the catch. */
   it("rejects the call, then applies the one behind it", async () => {
     const bad = defineFileIconFor(
       "p",
@@ -170,8 +173,9 @@ describe("a call that throws when applied", () => {
 describe("a call that throws on a refill", () => {
   /** The same throw, but the call waits for a token, so it is applied from the refill timer, where
    *  nothing catches an escape. The call behind it is still applied after the next refill. What fails
-   *  this: a throw out of the timer's `pump` (the rejection is lost and the line stops with a token
-   *  spent for nothing). */
+   *  this: no `catch` in `pump` — the rejection of `bad` is lost (it stays pending) and the throw
+   *  fake timers re-raise out of `advanceTimersByTimeAsync` fails the row (probe: the catch replaced
+   *  by `finally {}`). */
   it("rejects the waiting call and keeps the line moving", async () => {
     const fill = Array.from({ length: ICON_BURST }, (_, i) =>
       defineFileIconFor("p", `i${i}`, SHAPE),
@@ -209,6 +213,7 @@ describe("clearing and releasing (D15)", () => {
     await defineFileIconFor("p", "star", SHAPE);
     for (let i = 0; i < DECORATION_BURST; i += 1) await set("1");
     const waiting = set("2");
+    expect(vi.getTimerCount()).toBe(2);
     releaseFileTree("p");
     await expect(waiting).rejects.toThrow(RELEASED_MESSAGE);
     expect(badgeAt()).toBeUndefined();
@@ -216,5 +221,31 @@ describe("clearing and releasing (D15)", () => {
     expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(DECORATION_INTERVAL_MS * 4);
     expect(badgeAt()).toBeUndefined();
+  });
+
+  /** Refills stop once a bucket is full: after burst × interval nothing is pending. The pair of the
+   *  `toBe(0)` above — that count is 2 while the buckets are not full. */
+  it("stops refilling once the bucket is full", async () => {
+    for (let i = 0; i < DECORATION_BURST; i += 1) await set("1");
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(
+      DECORATION_BURST * DECORATION_INTERVAL_MS,
+    );
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  /** A load after a release starts with a full bucket the old refill does not touch: the first eight
+   *  calls resolve at once, and the ninth waits the whole interval — had the old timer (due 150 ms after
+   *  the release) survived, it would have given the ninth a token early. */
+  it("starts a re-load clean", async () => {
+    for (let i = 0; i < DECORATION_BURST; i += 1) await set("1");
+    await vi.advanceTimersByTimeAsync(100);
+    releaseFileTree("p");
+    for (let i = 0; i < DECORATION_BURST; i += 1) await set("2");
+    const ninth = watch(set("3"));
+    await vi.advanceTimersByTimeAsync(DECORATION_INTERVAL_MS - 1);
+    expect(ninth.done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ninth.done).toBe(true);
   });
 });

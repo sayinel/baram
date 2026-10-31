@@ -1167,7 +1167,7 @@ export interface UIAPI {
     /**
      * §395 Define or redefine icon `name` for `FileDecoration.icon.svg` (spec 0074 D6). `name` is 1–64
      * of A–Z, a–z, 0–9, `_` and `-`; `svg` is at most 8 KiB of UTF-8 and must be one `<svg>` element once
-     * Baram has sanitized it. Drawn as a one-colour mask in the decoration's colour; 64 icons a plugin.
+     * Baram has sanitized it. Drawn as a one-colour mask in the decoration's colour, or the row's text colour when the decoration has none (D5); 64 icons a plugin.
      * Needs `filetree`. Up to 64 calls are taken at once, then one every 250 ms — a call beyond that waits.
      */
     defineFileIcon(name: string, svg: string): Promise<void>;
@@ -1175,7 +1175,7 @@ export interface UIAPI {
     /**
      * §395 Set, or with `decoration: null` remove, this plugin's decoration of each absolute `path`
      * (spec 0074 D2 · D4). At most 1,000 updates a call and 20,000 decorated paths a plugin; an update
-     * over a limit refuses the whole call. Needs `filetree`. The three file tree methods of one plugin are
+     * over a limit, or a malformed one, refuses the whole call and nothing is applied (D14). Needs `filetree`. The three file tree methods of one plugin are
      * applied in the order called — eight decoration calls at once, then one every 250 ms; a call beyond
      * that waits and is not refused — so they may be called together. Baram does not keep decorations:
      * set them again in `activate`.
@@ -1190,9 +1190,10 @@ export interface VaultChange {
 }
 /**
  * Capabilities that admit the `ui` surface. Shared by both tiers on purpose: the
- * trusted tier hands out a `UIAPI` when a plugin holds any of these, and the sandboxed
- * tier answers `ui` requests under the same rule (§260 Phase 4a). One list, so "may this
- * plugin use the `ui` surface?" cannot come to two different answers. (§385 `prompts`
+ * trusted `showNotification` and `addStyle` need one of these, and the sandboxed tier
+ * answers `ui` requests under the same rule (§260 Phase 4a). One list, so "may this
+ * plugin use the `ui` surface?" cannot come to two different answers. (`filetree` also
+ * opens the trusted `UIAPI` object, for its three file tree methods only — §395.) (§385 `prompts`
  * reach the screen without any of these — their bound is the prompt gate, spec 0061 D2.)
  */
 export declare const UI_CAPABILITIES: readonly PluginCapability[];

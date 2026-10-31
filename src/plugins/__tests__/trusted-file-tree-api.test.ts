@@ -13,6 +13,7 @@ import { iconClassOf } from "../file-decorations/icons";
 import {
   fileTreeCapabilityMessage,
   PATH_NOT_ABSOLUTE_MESSAGE,
+  RELEASED_MESSAGE,
 } from "../file-decorations/validate";
 import { unregisterPluginUI } from "../trusted/ui-api";
 
@@ -91,6 +92,7 @@ describe("ctx.ui file tree methods — trusted (§395)", () => {
     expect(() =>
       context("s1", ["statusbar"]).ui.showNotification("x"),
     ).not.toThrow();
+    expect(() => context("s2", ["statusbar"]).ui.addStyle("p{}")).not.toThrow();
   });
 
   /** §6 · P24 — refused when called, with the sentence the sandboxed bridge uses. */
@@ -126,12 +128,60 @@ describe("unregisterPluginUI and file decorations (D15)", () => {
     await ctx.ui.setFileDecorations([
       { decoration: { icon: { svg: "star" } }, path: "/v/a.md" },
     ]);
+    expect(
+      document.head.querySelector("style[data-baram-file-icons]"),
+    ).not.toBeNull();
     unregisterPluginUI("tb");
     expect(useFileDecorationStore.getState().merged.size).toBe(0);
     expect(iconClassOf("tb", "star")).toBeUndefined();
     expect(
       document.head.querySelector("style[data-baram-file-icons]"),
     ).toBeNull();
+  });
+
+  /** D15 — "꺼진 플러그인의 장식이 남을 자리가 없다": a late call on the unloaded instance's `ctx.ui` (an
+   *  in-flight refresh) is rejected and never reaches the host; an instance made by a re-load works, and
+   *  the old one stays rejected beside it. What fails this: no released flag (the late call opens a new
+   *  line and decorates an unloaded plugin until restart, or lands in the new instance's map). */
+  it("rejects a released instance's three methods and leaves a re-created one working", async () => {
+    const old = context("tb", ["filetree"]);
+    unregisterPluginUI("tb");
+    await expect(
+      old.ui.setFileDecorations([
+        { decoration: { badge: "1" }, path: "/v/a.md" },
+      ]),
+    ).rejects.toThrow(RELEASED_MESSAGE);
+    await expect(old.ui.clearFileDecorations()).rejects.toThrow(
+      RELEASED_MESSAGE,
+    );
+    await expect(
+      old.ui.defineFileIcon("star", "<svg><path d='M0 0'/></svg>"),
+    ).rejects.toThrow(RELEASED_MESSAGE);
+    expect(useFileDecorationStore.getState().merged.size).toBe(0);
+    expect(iconClassOf("tb", "star")).toBeUndefined();
+
+    const fresh = context("tb", ["filetree"]);
+    await fresh.ui.setFileDecorations([
+      { decoration: { badge: "2" }, path: "/v/b.md" },
+    ]);
+    expect(
+      useFileDecorationStore.getState().merged.get("/v/b.md")?.badges[0]?.text,
+    ).toBe("2");
+    await expect(
+      old.ui.setFileDecorations([
+        { decoration: { badge: "3" }, path: "/v/c.md" },
+      ]),
+    ).rejects.toThrow(RELEASED_MESSAGE);
+    expect(useFileDecorationStore.getState().merged.has("/v/c.md")).toBe(false);
+  });
+
+  /** §6 order — a plugin without `filetree` meets the capability sentence even after release. */
+  it("keeps the capability refusal first on a released instance", async () => {
+    const { ui } = context("sb", ["sidebar"]);
+    unregisterPluginUI("sb");
+    await expect(ui.clearFileDecorations()).rejects.toThrow(
+      fileTreeCapabilityMessage("clearFileDecorations"),
+    );
   });
 
   /** spec 0074 §2 "해제" — every unload path reaches the sweep above: `unloadPlugin`,
