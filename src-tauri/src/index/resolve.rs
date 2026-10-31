@@ -1207,8 +1207,10 @@ mod outgoing_tests {
                         (at("deep/er/c.md").as_str(), true)
                     )
                 }
+                // The ghost node is `resolve_target`'s: the root and the link text joined
+                // with `/` on every host, not a path the walk spelled.
                 LinkResolution::Unresolved => {
-                    assert_eq!(edge.to, path_in(&root, "nothing.md"), "{}", entry.target)
+                    assert_eq!(edge.to, format!("{root}/nothing.md"), "{}", entry.target)
                 }
             }
         }
