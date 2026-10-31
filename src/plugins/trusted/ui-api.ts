@@ -15,11 +15,19 @@ import type {
 
 import { dropAnchors } from "../../extensions/plugins/selection-anchors";
 import { useUIStore } from "../../stores/ui/ui";
+import {
+  clearFileDecorationsFor,
+  defineFileIconFor,
+  releaseFileTree,
+  setFileDecorationsFor,
+} from "../file-decorations/decoration-host";
+import { trustedLocate } from "../file-decorations/validate";
 import { pluginSourceLabel } from "../plugin-text";
 import { usePluginUIStore } from "../plugin-ui-store";
 import { clearPromptGate } from "../prompt-gate";
 import { releaseCodeBlocks } from "../rendered/code-blocks-api";
 import { releasePanels } from "../rendered/panel-contents";
+import { UI_CAPABILITIES } from "../types";
 
 let uiItemCounter = 0;
 
@@ -43,14 +51,39 @@ export function createUIAPI(
       );
     }
   };
+  // §395 plan 0127 P25 — `filetree` opens `ctx.ui` too (`extension-context.ts`), but not the surfaces the
+  // object used to stand for: the toast and injected styles keep needing one of `UI_CAPABILITIES`, the
+  // rule the sandboxed `ui_notify` gate and the docs' table state.
+  const requireUISurface = (method: string) => {
+    if (UI_CAPABILITIES.some((cap) => capabilities.has(cap))) return;
+    throw new Error(
+      `Plugin requires one of ${UI_CAPABILITIES.map((cap) => `"${cap}"`).join(", ")} capability to call ui.${method}. ` +
+        `Add one to the capabilities array in baram-plugin.json.`,
+    );
+  };
+  const label = pluginSourceLabel(displayName, pluginId);
   return {
+    // §395 spec 0074 §5.3 — judged, paced and applied by the tier-neutral host (`decoration-host.ts`).
+    // Async, so a missing `filetree` rejects the call's promise, as the sandboxed bridge's refusal does
+    // (§6 — the same sentence, `fileTreeCapabilityMessage`).
+    async clearFileDecorations(): Promise<void> {
+      require("filetree", "clearFileDecorations");
+      return clearFileDecorationsFor(pluginId);
+    },
+    async defineFileIcon(name: string, svg: string): Promise<void> {
+      require("filetree", "defineFileIcon");
+      return defineFileIconFor(pluginId, name, svg);
+    },
+    async setFileDecorations(updates): Promise<void> {
+      require("filetree", "setFileDecorations");
+      return setFileDecorationsFor(pluginId, label, updates, trustedLocate);
+    },
     showNotification(
       message: string,
       type?: "error" | "info" | "warning",
     ): void {
-      useUIStore
-        .getState()
-        .showToast(message, type, pluginSourceLabel(displayName, pluginId));
+      requireUISurface("showNotification");
+      useUIStore.getState().showToast(message, type, label);
     },
     showStatusBarItem(
       text: string,
@@ -106,6 +139,7 @@ export function createUIAPI(
     // Injects into document.head (light DOM); does NOT reach Shadow-DOM panel
     // content — plugins style shadow content from inside onMount(el).
     addStyle(css: string): Disposable {
+      requireUISurface("addStyle");
       const el = document.createElement("style");
       el.setAttribute("data-baram-plugin", pluginId);
       el.textContent = css;
@@ -164,13 +198,14 @@ export function createUIAPI(
 /**
  * Unregister the per-plugin host state a plugin leaves behind: status-bar items, injected
  * styles, an open prompt and its gate state (§385), its code block languages, renderers and
- * cached renders (§394 — plan 0125 P24), its sandboxed panels' content (§394 — plan 0126 P9), and the refs it read (§388 — spec 0067 §7.4). Called
+ * cached renders (§394 — plan 0125 P24), its sandboxed panels' content (§394 — plan 0126 P9), its file decorations, file icons and their rules, rejecting its waiting decoration calls (§395 — spec 0074 D15), and the refs it read (§388 — spec 0067 §7.4). Called
  * on every unload path (`plugin-loader.ts`, `plugin-lifecycle.ts`).
  */
 export function unregisterPluginUI(pluginId: string): void {
   clearPromptGate(pluginId);
   releaseCodeBlocks(pluginId);
   releasePanels(pluginId);
+  releaseFileTree(pluginId);
   dropAnchors(pluginId);
   usePluginUIStore.getState().unregisterPlugin(pluginId);
   document.head

@@ -389,10 +389,12 @@ export function createExtensionContext(
   // §260 Phase 4a code review (M5) — the SHARED list, not a second inline copy of it.
   // `UI_CAPABILITIES` claimed to be the one rule both tiers use while this chain was
   // still hand-written here; a comment that says "one list" over two lists is how one
-  // gets fixed and the other forgotten.
-  const ui: UIAPI = UI_CAPABILITIES.some(hasCapability)
-    ? createUIAPI(manifest.id, capabilities, disposables, manifest.name)
-    : (createDeniedProxy("ui", "sidebar") as UIAPI);
+  // gets fixed and the other forgotten. §395 plan 0127 P25 — `filetree` opens the object too, for its
+  // three file tree methods; it is not added to `UI_CAPABILITIES`, which also gates the sandboxed toast.
+  const ui: UIAPI =
+    UI_CAPABILITIES.some(hasCapability) || hasCapability("filetree")
+      ? createUIAPI(manifest.id, capabilities, disposables, manifest.name)
+      : (createDeniedProxy("ui", "sidebar") as UIAPI);
 
   // §0054 — the trusted tier's half of `settings:changed`. Installed HERE rather than on the
   // load path for one reason: `disposables` is `context.subscriptions`, so the watcher is torn

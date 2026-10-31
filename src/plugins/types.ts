@@ -262,6 +262,12 @@ export interface FileDecoration {
 export type FileDecorationPaletteColor =
   "accent" | "blue" | "gray" | "green" | "orange" | "purple" | "red" | "yellow";
 
+/** §395 One update for the trusted `UIAPI.setFileDecorations`: an absolute path, and its decoration or `null`. */
+export interface FileDecorationUpdate {
+  decoration: FileDecoration | null;
+  path: string;
+}
+
 export interface FilesAPI {
   listDir(path: string): Promise<string[]>;
   readFile(path: string): Promise<string>;
@@ -1279,7 +1285,25 @@ export interface UIAPI {
   addSettingsTab(opts: PluginSettingsTabOptions): Disposable;
   addSidebarPanel(opts: PluginSidebarPanelOptions): Disposable;
   addStyle(css: string): Disposable;
+  /** §395 Remove every decoration this plugin set (spec 0074 D15); its icons stay defined. Needs `filetree`. */
+  clearFileDecorations(): Promise<void>;
+  /**
+   * §395 Define or redefine icon `name` for `FileDecoration.icon.svg` (spec 0074 D6). `name` is 1–64
+   * of A–Z, a–z, 0–9, `_` and `-`; `svg` is at most 8 KiB of UTF-8 and must be one `<svg>` element once
+   * Baram has sanitized it. Drawn as a one-colour mask in the decoration's colour; 64 icons a plugin.
+   * Needs `filetree`. Up to 64 calls are taken at once, then one every 250 ms — a call beyond that waits.
+   */
+  defineFileIcon(name: string, svg: string): Promise<void>;
   registerFileViewer(opts: PluginFileViewerOptions): Disposable;
+  /**
+   * §395 Set, or with `decoration: null` remove, this plugin's decoration of each absolute `path`
+   * (spec 0074 D2 · D4). At most 1,000 updates a call and 20,000 decorated paths a plugin; an update
+   * over a limit refuses the whole call. Needs `filetree`. The three file tree methods of one plugin are
+   * applied in the order called — eight decoration calls at once, then one every 250 ms; a call beyond
+   * that waits and is not refused — so they may be called together. Baram does not keep decorations:
+   * set them again in `activate`.
+   */
+  setFileDecorations(updates: FileDecorationUpdate[]): Promise<void>;
   showNotification(message: string, type?: "error" | "info" | "warning"): void;
   showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
 }

@@ -23,6 +23,7 @@ export type {
   // §395 — what a plugin puts on a file tree row, in both tiers (spec 0074 §4).
   FileDecoration,
   FileDecorationPaletteColor,
+  FileDecorationUpdate,
   FilesAPI,
   // §393 — `ctx.index` for both tiers (spec 0072 §4) and its rows.
   IndexAPI,
