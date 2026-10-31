@@ -20,9 +20,13 @@
 //! What it reads that the editor does not load — reported though nothing breaks: a tag inside
 //! a formula, inside a raw-text element (`<textarea>`) or inside one the sanitizer removes
 //! with its content (`<template>`), an `<image>` inside `<svg>`, an `<input>` of a type that
-//! loads no image, and an inline tag in a paragraph the editor does not keep as HTML
-//! (`convertInlineChildren` in `src/pipeline/convert-inline.ts` reads `<u>`, `<mark>`,
-//! `<sub>` and `<sup>` as marks and drops every other inline tag).
+//! fetches nothing (`<input type="text" src="x.png">`), and an inline tag in a paragraph the
+//! editor does not keep as HTML. md-to-pm keeps a paragraph as HTML only for an `<img>` or
+//! `<video>` with a `src` in it (`inlineMediaParagraphSource`), so an `<audio>`, `<source>`,
+//! `<track>` or `<input>` written inline in a paragraph is dropped, and so is any tag in a
+//! paragraph that also holds other inline content (`convertInlineChildren` in
+//! `src/pipeline/convert-inline.ts` reads `<u>`, `<mark>`, `<sub>` and `<sup>` as marks and
+//! drops every other inline tag).
 //!
 //! What it does not read that the editor may load: a character reference the HTML parser
 //! decodes without its `;` (`&amp` before a space), and markup the editor reads as HTML where

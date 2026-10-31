@@ -173,7 +173,8 @@ baram/
   경로로 적는다 — 프런트(`use-file-tree-rename.ts`)가 rename 된 파일과 같은 방식으로 탭 · 트리 · 캐시를 옮긴 다음 그 경로로 열린 탭을 맞춘다. 옛 경로에 남은 탭은 다음
   저장에서 그 파일을 되살린다(`write_file` 은 없는 파일을 만든다). rename 이 다른 파일을 옮기게 되면 그 파일도 `moved` 에 넣을 것. 블록 참조 · embed 의 대상은
   에디터처럼 읽고 쓴다 — 에디터는 PDF 하이라이트 참조의 `)`·`#`·`|`·`%` 를 퍼센트로 싸서 쓰고(`use-pdf-highlights.ts` 의 `escapeBlockRefTarget`, 쌍은
-  `src/pipeline/block-id.ts` 의 `TARGET_ESCAPE_PAIRS`) 대상을 열 때 푼다. index 도 풀어서 읽고, rename 은 그 글자가 든 이름을 싸서 쓴다(`index/block_ref_escape.rs` —
+  `src/pipeline/block-id.ts` 의 `TARGET_ESCAPE_PAIRS`) 대상을 열 때 푼다. index 도 풀어서 읽고, rename 은 싸지 않으면 되읽히지 않는 이름만 싸서 쓴다 — `)`·`#`·`|` 가 든 이름, 또는 풀면 다른 이름이 되는 `%29` 같은 글자가 든
+  이름이고, `50% off` 는 그대로 쓴다(`index/block_ref_escape.rs` 의 `spell_block_ref_target` —
   두 언어가 `index/fixtures/block-ref-target-escape.json` 을 함께 읽는다).
   - ‼️ **링크 종류를 더하면 ①이 먼저 깨진다** — `mod.rs` 의 `incoming` 은 `extract_links` 가 내는 **모든** 항목을 `filing_key` 가 준 키 아래 담으므로 새 종류는 추출되는
     순간 바구니에 들어오는데, `rewriter.rs` 의 치환은 문법별 패스의 합집합이다. 그래서 종류는 문자열이 아니라 `mod.rs` 의 `LinkKind` 다 — `link_kinds!` 한 목록이 enum 과 테스트용

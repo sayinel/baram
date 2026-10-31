@@ -4,9 +4,15 @@
 //! (`escapeBlockRefTarget` in `src/pipeline/block-id.ts`: a PDF highlight's
 //! `((highlights/papers/BERT (2019%29#^h1))`), and undoes it wherever a target is read as a
 //! path (`unescapeBlockRefTarget`). The index reads every block reference's target the same
-//! way (`extract_links`), and a rename writes one the same way (`spell_block_ref_target`).
-//! Both languages test the rule against `index/fixtures/block-ref-target-escape.json`.
-//! A wikilink's target is not escaped by either side here.
+//! way (`extract_links`). A rename escapes a name only where it would not read back
+//! otherwise (`spell_block_ref_target`): `C# notes` is written `C%23 notes`, `50% off` as it
+//! is. Both languages test the rule against `index/fixtures/block-ref-target-escape.json`.
+//!
+//! A wikilink's target is written unescaped by both sides, but the two read it apart: the
+//! editor's `resolveWikilinkTarget` (`src/utils/editor/wikilink-nav.ts`) undoes these
+//! escapes in every target it resolves, a wikilink's too, while the index reads a wikilink's
+//! target as written. A hand-written `[[a%29b]]` opens `a)b.md` and is no backlink of it —
+//! a known gap, left for the backlog.
 
 use std::borrow::Cow;
 
