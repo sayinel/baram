@@ -198,6 +198,27 @@ export interface ExtensionContext {
     subscriptions: Disposable[];
     ui: UIAPI;
 }
+/**
+ * §395 What a plugin puts on one file tree row (spec 0074 D4). Every field is optional, and a
+ * decoration with none left after the limits below is the same as `null`: no decoration. The
+ * colour reaches the badge and the icon, never the file name.
+ */
+export interface FileDecoration {
+    /** One or two characters (grapheme clusters), at most 16 UTF-16 units: a chip at the row's right end, before the git dot. */
+    badge?: string;
+    /** The badge's and the icon's colour: a palette name, which follows the theme, or `#rrggbb`. */
+    color?: `#${string}` | FileDecorationPaletteColor;
+    /** Replaces the default file or folder icon: one character, or the name of an icon `defineFileIcon` defined. */
+    icon?: {
+        glyph: string;
+    } | {
+        svg: string;
+    };
+    /** One line, cut at 120 characters; the row's hover text shows `{plugin name}: {tooltip}`. */
+    tooltip?: string;
+}
+/** §395 The palette names (spec 0074 D5). Each is drawn with a theme colour, so it follows the theme. */
+export type FileDecorationPaletteColor = "accent" | "blue" | "gray" | "green" | "orange" | "purple" | "red" | "yellow";
 export interface FilesAPI {
     listDir(path: string): Promise<string[]>;
     readFile(path: string): Promise<string>;
