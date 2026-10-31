@@ -145,6 +145,12 @@ describe("writeFrontmatterList", () => {
     expect(write(yaml, (n) => n.slice(1))).toBe(yaml);
   });
 
+  // The writer's doc: an inline list comes back with its items joined by `, `, and what
+  // follows its `]` stays.
+  it("rewrites an inline list with its own spacing normalised", () => {
+    expect(write("tags: [ a ,b ] # c", (n) => n)).toBe("tags: [a, b] # c");
+  });
+
   // A name the writer quoted around a `]` is read back only up to that `]`: the next write
   // must leave the list rather than cut the item.
   it("leaves a list alone once an item holds a `]`", () => {

@@ -155,8 +155,8 @@ export function addYamlProperty(
 /**
  * Whether writing `text` as the `yaml` property `key`, as typed, leaves `yaml` valid YAML: one
  * line; not a sequence entry, a complex key or a mapping (`- y`, `? x`, `a: b`), which YAML does
- * not take as a key's one-line value; a quote that closes; no reserved or directive indicator
- * (`@`, `` ` ``, `%`) to start; no syntax error in the whole front matter by the YAML grammar
+ * not take as a key's one-line value; a quote that closes; no reserved indicator (`@`,
+ * `` ` ``) or directive indicator (`%`) to start; no syntax error in the whole front matter by the YAML grammar
  * the editor's code blocks use (`@codemirror/lang-yaml`); and every alias naming an anchor set
  * before it. Typed one key at a time, a `yaml` value passes through texts that are none of
  * these; the panel writes only those that are.

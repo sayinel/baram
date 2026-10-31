@@ -84,8 +84,8 @@ export function frontmatterListItems(
  * (`yamlString`). An item that was read keeps its spelling unless YAML cannot read it: in a
  * flow list, unless it is quoted or reads as one plain scalar (of whatever type — `123` and
  * `null` stay as they are); in a block list, unless it starts with `#` (a comment), a reserved
- * indicator (`@`, `` ` ``, `%`) or a quote that does not close. Then its value is written as a
- * new one.
+ * indicator (`@`, `` ` ``), the directive indicator `%` or a quote that does not close. Then its
+ * value is written as a new one.
  */
 export function listItemSpelling(
   item: FrontmatterListItem | string,
@@ -195,8 +195,10 @@ export function readFrontmatterLists(
  * cannot read is respelled (`listItemSpelling`). A name no item has is added at the end, in the
  * list's form and lead, with its line break. A block list this edit leaves with nothing is
  * written `field: []`.
- * The lines an edit does not touch stay byte for byte, so writing back the names a list already
- * has changes nothing but the respelling of items YAML cannot read.
+ * In a block list the lines an edit does not touch stay byte for byte, so writing back the names
+ * the list already has changes nothing but the respelling of items YAML cannot read. An inline
+ * list is rewritten whole, its items joined by `, ` between the brackets — `[a,b]` and
+ * `[ a , b ]` come back `[a, b]`, whatever the edit; what follows the `]` stays.
  *
  * Without a `field` key, `field: [...]` is appended at the end (`appendFrontmatterLine`). The
  * field is left alone, and `yaml` returned unchanged, when it is there in a form this cannot
@@ -311,8 +313,9 @@ function blockEndsAt(lines: Line[], i: number): boolean {
 
 /**
  * Whether YAML cannot read a block item as written: it starts with `#` (a comment, read as
- * null), with a reserved indicator (`@`, `` ` ``, `%`), or with a quote that does not close —
- * a closed quote may be followed by a comment.
+ * null), with a reserved indicator (`@`, `` ` ``) or the directive indicator `%` — none of
+ * which may begin a plain scalar — or with a quote that does not close; a closed quote may be
+ * followed by a comment.
  */
 function blockItemUnreadable(raw: string): boolean {
   if (/^[#@`%]/.test(raw)) return true;
