@@ -88,7 +88,7 @@ describe("front-matter tag bar (§56m)", () => {
       expect(input.value).toBe(typed);
       // M3: and says why.
       expect(useUIStore.getState().toast?.message).toBe(
-        `#${typed} cannot be a tag: a tag holds only letters, digits, _, - and /.`,
+        `#${typed} cannot be a tag: a tag holds no spaces and no punctuation except - and connectors like _, uses / only between two parts, and is not - alone or blank.`,
       );
     }
     expect(frontmatterText(editor)).toBe("tags: [a]");
