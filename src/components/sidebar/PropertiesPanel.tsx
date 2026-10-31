@@ -26,7 +26,6 @@ import {
   ARRAY_KEYS,
   ENUM_KEYS,
   ENUM_VALUES,
-  isWritableYamlValue,
   parseYamlProperties,
   removeYamlProperty,
   setYamlPropertyItems,
@@ -35,6 +34,7 @@ import {
 import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
 import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 import { getSkillSections } from "./skill-panel-registry";
+import { usePropertyInputEdits } from "./use-property-input-edits";
 // §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";
 import "./SkillLintSection";
@@ -43,30 +43,6 @@ import "./SkillOptimizeSection";
 
 // ─── Types re-exported for backward compatibility ─────────────────────────────
 // (types and parse/serialize functions now live in ../../utils/yaml-properties)
-
-/**
- * §72 A value input's edit in progress. The input writes on every keystroke, and typing must
- * not change the value's type on the way (`-1` → `-` → `-1`), so each write is spelled against
- * the value as the edit found it (`setYamlPropertyValue`'s `original`), not as the previous
- * keystroke left it. The edit ends when the input loses focus, or when the front matter is no
- * longer what it left (`after`) — another file, an undo, an edit from elsewhere.
- */
-interface InputEdit {
-  after: string;
-  /** The field was a `yaml` one when the edit began: emptying it does not make it a string. */
-  asYaml: boolean;
-  file: string;
-  /** The value's spelling when the edit began. */
-  raw: string;
-}
-
-/** §72 `yaml` text typed that is not valid YAML there: shown in the input, not written. */
-interface YamlDraft {
-  file: string;
-  text: string;
-  /** The front matter it was typed on; another one drops the draft. */
-  yaml: string;
-}
 
 export function PropertiesPanel() {
   const { t } = useTranslation();
@@ -89,12 +65,6 @@ export function PropertiesPanel() {
   const undoStackRef = useRef<string[]>([]);
   const redoStackRef = useRef<string[]>([]);
   const [, forceRender] = useState(0);
-  /** §72 Each value input's edit in progress, by key (`InputEdit`). */
-  const inputEditsRef = useRef(new Map<string, InputEdit>());
-  /** §72 `yaml` text typed that is not valid YAML yet, by key (`YamlDraft`). */
-  const [yamlDrafts, setYamlDrafts] = useState<ReadonlyMap<string, YamlDraft>>(
-    () => new Map(),
-  );
 
   const activeTab = useMemo(
     () => tabs.find((t) => t.id === activeTabId),
@@ -114,6 +84,7 @@ export function PropertiesPanel() {
       parsed: p ?? null,
     };
   }, [content]);
+  const inputEdits = usePropertyInputEdits(yaml, filePath);
 
   // ── write-back helpers ───────────────────────────────────────────────────
 
@@ -176,54 +147,13 @@ export function PropertiesPanel() {
 
   // ── field handlers ───────────────────────────────────────────────────────
 
-  /** Sets or clears (`null`) the `yaml` text kept for `key` while it is not valid YAML. */
-  const setYamlDraft = (key: string, draft: null | YamlDraft) =>
-    setYamlDrafts((drafts) => {
-      if (draft === null && !drafts.has(key)) return drafts;
-      const next = new Map(drafts);
-      if (draft === null) next.delete(key);
-      else next.set(key, draft);
-      return next;
-    });
-
-  /** The `yaml` text an input shows instead of its value: a draft typed on this front matter. */
-  const draftOf = (key: string): string | undefined => {
-    const draft = yamlDrafts.get(key);
-    return draft && draft.file === filePath && draft.yaml === yaml
-      ? draft.text
-      : undefined;
-  };
-
   // Each edit rewrites only its own property's lines (`yaml-properties.ts`).
   const handleStringChange = useCallback(
     (key: string, val: string) => {
       const entry = entries.find((e) => e.key === key);
-      if (yaml === null || filePath === null || !entry) return;
-      const edits = inputEditsRef.current;
-      let edit = edits.get(key);
-      if (!edit || edit.file !== filePath || edit.after !== yaml) {
-        edit = {
-          after: yaml,
-          asYaml: entry.type === "yaml",
-          file: filePath,
-          raw: entry.raw ?? "",
-        };
-        edits.set(key, edit);
-      }
-      let newYaml: string;
-      if (edit.asYaml) {
-        // YAML text (`{a: 1}`, `&a x`) is written as typed, and only once it is valid YAML.
-        if (!isWritableYamlValue(yaml, key, val)) {
-          setYamlDraft(key, { file: filePath, text: val, yaml });
-          return;
-        }
-        setYamlDraft(key, null);
-        newYaml = setYamlPropertyValue(yaml, key, val, { asYaml: true });
-      } else {
-        newYaml = setYamlPropertyValue(yaml, key, val, { original: edit.raw });
-      }
-      edit.after = newYaml;
-      applyYamlDirectly(newYaml);
+      if (!entry) return;
+      const newYaml = inputEdits.change(entry, val);
+      if (newYaml !== null) applyYamlDirectly(newYaml);
     },
     // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -407,20 +337,21 @@ export function PropertiesPanel() {
 
                 {(entry.type === "string" || entry.type === "yaml") && (
                   <input
-                    aria-invalid={draftOf(entry.key) !== undefined || undefined}
+                    aria-invalid={
+                      inputEdits.draftOf(entry.key) !== undefined || undefined
+                    }
                     autoFocus={entry.key === lastAddedKey}
                     className="properties-input"
-                    onBlur={() => {
-                      inputEditsRef.current.delete(entry.key);
-                      setYamlDraft(entry.key, null);
-                    }}
+                    onBlur={() => inputEdits.end(entry.key)}
                     onChange={(e) =>
                       handleStringChange(entry.key, e.target.value)
                     }
                     onFocus={() => {
                       if (entry.key === lastAddedKey) setLastAddedKey(null);
                     }}
-                    value={draftOf(entry.key) ?? (entry.value as string)}
+                    value={
+                      inputEdits.draftOf(entry.key) ?? (entry.value as string)
+                    }
                   />
                 )}
 
