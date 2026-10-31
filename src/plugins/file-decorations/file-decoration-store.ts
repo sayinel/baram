@@ -1,12 +1,12 @@
-import type { FileDecoration } from "../types";
-import type { PreparedUpdate } from "./validate";
-
 // §395 spec 0074 D2 · D8 · D9 · D10 · §5.1 — the decorations plugins pushed, and what the file tree
 // draws for each path. Two layers: `byPlugin`, what each plugin last set (module state — nothing renders
 // it), and the store's `merged`, one merged decoration per key, which the file tree's row leaves read
 // (one key each). Every write goes through `commit`, which re-merges only the
 // keys it is handed, keeps a result equal to the previous one as the SAME object, and calls `set` only
-// when some key changed — so a write wakes the leaves whose decoration changed and no others.
+// when some key changed — so a write re-renders the leaves whose decoration changed and no others.
+import type { FileDecoration } from "../types";
+import type { PreparedUpdate } from "./validate";
+
 import { create } from "zustand";
 
 import { toBadgeKey } from "../../stores/system/git-badges";
@@ -130,7 +130,9 @@ export function dropDecorations(path: string, isDir: boolean): void {
  * D10 — the app renamed or moved `from` to `to`: every plugin's key at `from` (and, for a folder, under
  * `from + "/"`) moves to the same place under `to`. The destination is cleared first — its key and every
  * key under `to + "/"` (plan 0127 P30) — because a key left there by a change outside the app (D13) would
- * otherwise land on the moved entry. Scans every key of every plugin (P27).
+ * otherwise land on the moved entry. Scans every key of every plugin (P27). Precondition: a path is never
+ * moved into its own subtree or onto its ancestor (`/v/a` → `/v/a/b`, `/v/a/b` → `/v/a` would drop keys) —
+ * `rename(2)` fails with EINVAL, the IPC fails, and D10 sends no notice for a failed rename.
  */
 export function moveDecorations(
   from: string,

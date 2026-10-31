@@ -1,7 +1,7 @@
-import type { FileDecoration } from "../../types";
-
 // §395 spec 0074 D8 · D9 · D10 · D14 · §5.1 · §7 "합치기" — the store the tree's leaves read: one merged
 // decoration per key, in plugin id order, equal results kept as the same object, writes refused whole.
+import type { FileDecoration } from "../../types";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -152,6 +152,9 @@ describe("limits and atomicity (D6 · D14 · §6)", () => {
         at(["/v/absent.md", null], ["/v/extra.md", { badge: "1" }]),
       ),
     ).toBe(TOO_MANY_PATHS_MESSAGE);
+    // Force a re-merge of the refused key through another plugin: a half-applied refusal shows here.
+    applyDecorations("q", "Q", at(["/v/extra.md", { tooltip: "q" }]));
+    expect(merged("/v/extra.md")?.title).toBe("Q: q");
     expect(
       applyDecorations(
         "p",
@@ -159,6 +162,17 @@ describe("limits and atomicity (D6 · D14 · §6)", () => {
         at(["/v/n0.md", null], ["/v/extra.md", { badge: "1" }]),
       ),
     ).toBeNull();
+  });
+
+  /** What fails this: the first update of a path winning, or `/v/a` and `/v/a/` counted as two paths. */
+  it("lets a later update of the same path win, and counts `/v/a` and `/v/a/` once", () => {
+    applyDecorations(
+      "p",
+      "P",
+      at(["/v/a", { badge: "1" }], ["/v/a/", { badge: "2" }]),
+    );
+    expect(useFileDecorationStore.getState().merged.size).toBe(1);
+    expect(merged("/v/a")?.badges[0]?.text).toBe("2");
   });
 
   /** §7 "원자성" — a refused call leaves the store exactly as it was. */
@@ -173,6 +187,10 @@ describe("limits and atomicity (D6 · D14 · §6)", () => {
       ),
     ).toBe(undefinedIconMessage("nope"));
     expect(useFileDecorationStore.getState().merged).toBe(before);
+    // Force a re-merge through another plugin: p's own map must be untouched by the refused call.
+    applyDecorations("q", "Q", at(["/v/a.md", { tooltip: "q" }]));
+    expect(merged("/v/a.md")?.title).toBe("P: 1\nQ: q");
+    expect(merged("/v/b.md")).toBeUndefined();
   });
 });
 
@@ -200,7 +218,23 @@ describe("following the app (D10)", () => {
     expect(merged("/v/b")?.badges[0]?.text).toBe("F");
     expect(merged("/v/b/x.md")?.badges[0]?.text).toBe("1");
     expect(merged("/v/a/x.md")).toBeUndefined();
+    expect(merged("/v/a")).toBeUndefined();
     expect(merged("/v/ab.md")?.badges[0]?.text).toBe("2");
+  });
+
+  it("leaves a sibling with the same prefix when a file moves, and keeps a self-move", () => {
+    applyDecorations(
+      "p",
+      "P",
+      at(["/v/a.md", { badge: "1" }], ["/v/a.md2", { badge: "2" }]),
+    );
+    moveDecorations("/v/a.md", "/v/b.md", false);
+    expect(merged("/v/b.md")?.badges[0]?.text).toBe("1");
+    expect(merged("/v/a.md2")?.badges[0]?.text).toBe("2");
+    moveDecorations("C:\\v\\b.md", "C:/v/b.md", false);
+    applyDecorations("p", "P", at(["C:/v/b.md", { badge: "3" }]));
+    moveDecorations("C:\\v\\b.md", "C:/v/b.md", false);
+    expect(merged("C:/v/b.md")?.badges[0]?.text).toBe("3");
   });
 
   /** D10 — a key left at the destination by a change outside the app is cleared first. What fails
@@ -209,12 +243,17 @@ describe("following the app (D10)", () => {
     applyDecorations(
       "q",
       "Q",
-      at(["/v/new.md", { badge: "x" }], ["/v/new.md/stale", { badge: "y" }]),
+      at(
+        ["/v/new.md", { badge: "x" }],
+        ["/v/new.md/stale", { badge: "y" }],
+        ["/v/new.md2", { badge: "z" }],
+      ),
     );
     applyDecorations("p", "P", at(["/v/old.md", { badge: "1" }]));
     moveDecorations("/v/old.md", "/v/new.md", false);
     expect(merged("/v/new.md")?.title).toBe("P: 1");
     expect(merged("/v/new.md/stale")).toBeUndefined();
+    expect(merged("/v/new.md2")?.title).toBe("Q: z");
     expect(merged("/v/old.md")).toBeUndefined();
   });
 
@@ -230,6 +269,9 @@ describe("following the app (D10)", () => {
     );
     dropDecorations("/v/b.md", false);
     expect(merged("/v/b.md")).toBeUndefined();
+    dropDecorations("/v/a", false);
+    expect(merged("/v/a")).toBeUndefined();
+    expect(merged("/v/a/x.md")?.badges[0]?.text).toBe("1");
     dropDecorations("/v/a", true);
     expect(useFileDecorationStore.getState().merged.size).toBe(0);
   });
