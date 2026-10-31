@@ -11,7 +11,7 @@ function decoration(count) {
   };
 }
 function activate(ctx) {
-  let shown = /* @__PURE__ */ new Map();
+  let sent = /* @__PURE__ */ new Set();
   let runs = 0;
   const recount = async () => {
     const run = ++runs;
@@ -19,18 +19,17 @@ function activate(ctx) {
     if (run !== runs) return;
     const counts = /* @__PURE__ */ new Map();
     for (const task of tasks) {
+      if (task.path.includes("\\")) continue;
       counts.set(task.path, (counts.get(task.path) ?? 0) + 1);
     }
     const updates = [];
     for (const [path, count] of counts) {
-      if (shown.get(path) !== count) {
-        updates.push({ decoration: decoration(count), path });
-      }
+      updates.push({ decoration: decoration(count), path });
     }
-    for (const path of shown.keys()) {
+    for (const path of counts.keys()) sent.add(path);
+    for (const path of sent) {
       if (!counts.has(path)) updates.push({ decoration: null, path });
     }
-    shown = counts;
     await Promise.all(
       Array.from(
         { length: Math.ceil(updates.length / PER_CALL) },
@@ -39,6 +38,7 @@ function activate(ctx) {
         )
       )
     );
+    if (run === runs) sent = new Set(counts.keys());
   };
   const recountQuietly = () => {
     recount().catch((err) => {

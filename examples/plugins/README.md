@@ -84,10 +84,13 @@ Baram clips a rendered block's output at the block's width. It is not published 
 pattern, and copy `community-template/` to publish your own.
 
 `tree-badges/` is the example for **file tree decorations** (§395): a sandboxed plugin that puts the
-number of open tasks on each note in the file tree as a blue badge, counted with `ctx.index.tasks()` and
-counted again on `vault:changed`. It remembers what it showed and sends `null` for a note whose last open
-task closed, and it sends everything again in `activate`, because Baram does not keep decorations. It is
-not published — read it for the pattern, and copy `community-template/` to publish your own.
+number of open tasks on the notes `ctx.index.tasks()` returns as a blue badge (`9+` above nine), counted
+again on `vault:changed`. Every count sends a badge for every counted note, so a refused call is repaired
+by the next count, and it sends `null` for a note whose last open task closed. It sends everything again in
+`activate`, because Baram does not keep decorations. A note whose name holds a backslash cannot be badged.
+It reads the active vault only, so after a vault switch the new vault's badges appear at that vault's first
+change, and the vault left keeps the badges last sent to it. It is not published — read it for the
+pattern, and copy `community-template/` to publish your own.
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
 fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING

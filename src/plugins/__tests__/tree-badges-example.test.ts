@@ -74,7 +74,7 @@ describe("baram-tree-badges — the reference file tree decorator (§395)", () =
     ).toBe(built);
   });
 
-  /** What fails this: no badge on `activate`, a count of more than two characters (12 must read "9+"),
+  /** What fails this: no badge on `activate`, a count above nine not reading "9+",
    *  no recount on `vault:changed`, or a note whose tasks all closed keeping its badge. */
   it("badges open-task counts, counts again on vault:changed, and clears a note left without any", async () => {
     let rows: { path: string }[] = [
@@ -123,6 +123,123 @@ describe("baram-tree-badges — the reference file tree decorator (§395)", () =
       timeout: 2_000,
     });
     expect(merged().get("/v/notes/b.md")?.badges[0]?.text).toBe("3");
+    session.dispose();
+  });
+
+  /** Starts the plugin against `rows`; `rejectSet` names the `setFileDecorations` calls (counted from 1)
+   *  the host refuses, as a refused call would be. */
+  async function start(
+    rows: () => { path: string }[],
+    options: { rejectSet?: number[] } = {},
+  ) {
+    const ops: PluginOp[] = [];
+    const broker = async (op: PluginOp) => {
+      ops.push(op);
+      if (op.kind === "source_read") return "// module injected directly";
+      if (op.kind === "index_tasks") return JSON.stringify(rows());
+      throw new Error(`unexpected op ${op.kind}`);
+    };
+    const mod = (await import(
+      pathToFileURL(resolve(DIR, manifest.main)).href
+    )) as { activate: (ctx: SandboxContext) => void };
+    const { host, sandbox } = createChannelPair();
+    startSandboxClient(sandbox, async () => mod, broker);
+    const inner = createHostRequestHandler({
+      capabilities: manifest.capabilities,
+      declaredSettings: [],
+      declaredStatusBarIds: [],
+      pluginId: manifest.id,
+      pluginName: manifest.name,
+    });
+    let sets = 0;
+    const session = new SandboxSession(host, (request, onToken) => {
+      if (request.kind === "filetree_set_decorations") {
+        sets += 1;
+        if (options.rejectSet?.includes(sets)) {
+          return Promise.reject(new Error("injected host refusal"));
+        }
+      }
+      return inner(request, onToken);
+    });
+    await session.activate(manifest.id, manifest.contributions ?? {});
+    return { ops, session };
+  }
+  const merged = () => useFileDecorationStore.getState().merged;
+
+  /** What fails this (I1): a recount that sends only what changed leaves the tree without the badges of
+   *  a refused call for good. */
+  it("repairs a refused call on the next count", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const rows = [{ path: "notes/a.md" }, { path: "notes/b.md" }];
+    const { session } = await start(() => rows, { rejectSet: [1] });
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled(), { timeout: 2_000 });
+    expect(merged().size).toBe(0);
+    session.deliverEvent("vault:changed", [{ context: "ctx-1" }]);
+    await vi.waitFor(
+      () => {
+        expect(merged().get("/v/notes/a.md")?.badges[0]?.text).toBe("1");
+        expect(merged().get("/v/notes/b.md")?.badges[0]?.text).toBe("1");
+      },
+      { timeout: 2_000 },
+    );
+    warn.mockRestore();
+    session.dispose();
+  });
+
+  /** What fails this (I1): narrowing the sent set before the call resolved — a `null` that was refused
+   *  would never be sent again. */
+  it("sends the clearing null again when its call was refused", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let rows = [{ path: "notes/a.md" }, { path: "notes/b.md" }];
+    // The second call — the one that carries a's `null` — is refused; the third must carry it again.
+    const { session } = await start(() => rows, { rejectSet: [2] });
+    await vi.waitFor(() => expect(merged().size).toBe(2), { timeout: 2_000 });
+    rows = [{ path: "notes/b.md" }];
+    session.deliverEvent("vault:changed", [{ context: "ctx-1" }]);
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled(), { timeout: 2_000 });
+    expect(merged().has("/v/notes/a.md")).toBe(true);
+    session.deliverEvent("vault:changed", [{ context: "ctx-1" }]);
+    await vi.waitFor(() => expect(merged().has("/v/notes/a.md")).toBe(false), {
+      timeout: 2_000,
+    });
+    warn.mockRestore();
+    session.dispose();
+  });
+
+  /** What fails this (I2): a `\` in a note's name refuses the whole call it travels in. */
+  it("skips a note whose name holds a backslash and badges the rest", async () => {
+    const rows = [
+      { path: "notes/a.md" },
+      { path: "notes/we\\ird.md" },
+      { path: "notes/b.md" },
+    ];
+    const { session } = await start(() => rows);
+    await vi.waitFor(
+      () => {
+        expect(merged().get("/v/notes/a.md")?.badges[0]?.text).toBe("1");
+        expect(merged().get("/v/notes/b.md")?.badges[0]?.text).toBe("1");
+      },
+      { timeout: 2_000 },
+    );
+    session.dispose();
+  });
+
+  /** What fails this (M2): the cap off by one, a plural "1 open tasks", or a count that asks for more than
+   *  the open tasks. */
+  it("reads 9 as 9 and 10 as 9+, says '1 open task', and asks for the default (open) tasks", async () => {
+    const rows = [
+      ...Array.from({ length: 9 }, () => ({ path: "nine.md" })),
+      ...Array.from({ length: 10 }, () => ({ path: "ten.md" })),
+      { path: "one.md" },
+    ];
+    const { ops, session } = await start(() => rows);
+    await vi.waitFor(() => expect(merged().size).toBe(3), { timeout: 2_000 });
+    expect(merged().get("/v/nine.md")?.badges[0]?.text).toBe("9");
+    expect(merged().get("/v/ten.md")?.badges[0]?.text).toBe("9+");
+    expect(merged().get("/v/one.md")?.title).toBe("Tree Badges: 1 open task");
+    const read = ops.find((op) => op.kind === "index_tasks");
+    expect(read).toBeDefined();
+    expect((read as { status?: unknown }).status).toBeUndefined();
     session.dispose();
   });
 });
