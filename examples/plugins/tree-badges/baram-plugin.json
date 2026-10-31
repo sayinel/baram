@@ -1,0 +1,14 @@
+{
+  "id": "baram-tree-badges",
+  "name": "Tree Badges",
+  "description": "Puts the number of open tasks on each note in the file tree. The reference file tree decorator.",
+  "version": "1.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "dist/index.mjs",
+  "engines": { "baram": ">=0.7.7" },
+  "trust": "sandboxed",
+  "capabilities": ["filetree", "files:readonly"],
+  "icon": "☐",
+  "keywords": ["tasks", "file tree", "example"]
+}
