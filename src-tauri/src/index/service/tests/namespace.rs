@@ -108,6 +108,7 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
         .await
         .unwrap();
     assert!(graph.nodes.contains(&at(&root, &["a.md"])));
+    assert!(graph.nodes.iter().any(|n| has_part(n, "ns2")));
     assert!(!graph.nodes.iter().any(|n| has_part(n, "ns")));
 }
 

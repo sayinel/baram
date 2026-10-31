@@ -711,11 +711,12 @@ fn through_a_symlink(dir: &std::path::Path, elsewhere: &std::path::Path) -> Stri
 
 /// Renames `/v/a/old.md` to `/v/a/new.md` beside a child over `/v/sub`
 /// spelled by `child`, with `sub/r.md` holding `[[a/old]]` and `[[old]]` and
-/// `extra` files; the referrer's text after, and the files reported.
+/// `extra` files; the referrer's text after, the files reported exactly as
+/// the rename spelled them, and the parent's root.
 async fn rename_the_parents_note_beside_a_child(
     extra: &[(&str, &str)],
     child: impl FnOnce(&std::path::Path, &std::path::Path) -> String,
-) -> (String, Vec<String>) {
+) -> (String, Vec<String>, String) {
     let ctx = ContextManager::new();
     let mut files = vec![("a/old.md", "t\n"), ("sub/r.md", "[[a/old]]\n[[old]]\n")];
     files.extend_from_slice(extra);
@@ -729,14 +730,10 @@ async fn rename_the_parents_note_beside_a_child(
     )
     .await
     .unwrap();
-    let skipped = result
-        .skipped_files
-        .iter()
-        .map(|f| relative_to(&root, f))
-        .collect();
     (
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
-        skipped,
+        result.skipped_files,
+        root,
     )
 }
 
@@ -751,8 +748,10 @@ async fn a_child_registered_through_a_symlink_reads_the_referrer_as_its_own() {
     // What fails this: reading a root that cannot place the referrer as
     // spelled as `unplaced` whatever its notes (no `spelled` mapping in
     // `holding_contexts`) — `[[a/old]]` is left and `sub/r.md` reported.
+    let (text, skipped, _root) =
+        rename_the_parents_note_beside_a_child(&[], through_a_symlink).await;
     assert_eq!(
-        rename_the_parents_note_beside_a_child(&[], through_a_symlink).await,
+        (text, skipped),
         ("[[a/new]]\n[[new]]\n".to_string(), vec![])
     );
 }
@@ -773,8 +772,9 @@ async fn a_child_registered_in_the_canonical_spelling_reads_the_referrer_as_its_
         let sub = dir.join("sub").canonicalize().unwrap();
         sub.to_str().unwrap().to_string()
     };
+    let (text, skipped, _root) = rename_the_parents_note_beside_a_child(&[], canonical).await;
     assert_eq!(
-        rename_the_parents_note_beside_a_child(&[], canonical).await,
+        (text, skipped),
         ("[[a/new]]\n[[new]]\n".to_string(), vec![])
     );
 }
@@ -797,8 +797,9 @@ async fn a_child_registered_in_another_case_reads_the_referrer_as_its_own() {
     }
     let other_case =
         |dir: &std::path::Path, _: &std::path::Path| dir.join("SUB").to_str().unwrap().to_string();
+    let (text, skipped, _root) = rename_the_parents_note_beside_a_child(&[], other_case).await;
     assert_eq!(
-        rename_the_parents_note_beside_a_child(&[], other_case).await,
+        (text, skipped),
         ("[[a/new]]\n[[new]]\n".to_string(), vec![])
     );
 }
@@ -813,11 +814,13 @@ async fn a_symlinked_child_still_reads_a_conflict_through_its_own_spelling() {
     // What fails this: skipping a root that cannot place the referrer as
     // spelled instead of reading it through the mapping — `[[a/new]]` is
     // written.
+    let (text, skipped, root) =
+        rename_the_parents_note_beside_a_child(&[("sub/a/new.md", "u\n")], through_a_symlink).await;
     assert_eq!(
-        rename_the_parents_note_beside_a_child(&[("sub/a/new.md", "u\n")], through_a_symlink).await,
+        (text, skipped),
         (
             "[[a/old]]\n[[new]]\n".to_string(),
-            vec!["sub/r.md".to_string()]
+            vec![at(&root, &["sub", "r.md"])]
         )
     );
 }

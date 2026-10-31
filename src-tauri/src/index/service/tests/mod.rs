@@ -20,19 +20,6 @@ fn has_part(path: &str, name: &str) -> bool {
         .any(|part| part.as_os_str() == name)
 }
 
-/// `path` under `root` as `/`-separated parts, the inverse of `at`; `path` as it is when it is
-/// not under `root`.
-fn relative_to(root: &str, path: &str) -> String {
-    match std::path::Path::new(path).strip_prefix(root) {
-        Ok(relative) => relative
-            .components()
-            .map(|part| part.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/"),
-        Err(_) => path.to_string(),
-    }
-}
-
 mod alias;
 mod attachments;
 mod block_id;

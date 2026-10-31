@@ -879,13 +879,13 @@ async fn both_renames_refuse_a_path_with_a_parent_component() {
 
 /// Where case is kept: a vault aliased `p` holding `files`, indexed, and the
 /// text `r.md` holds after `old` is renamed to `new` under it, with the
-/// files the rename reported (relative to the vault). None where the file
-/// system folds case.
+/// files the rename reported, exactly as it spelled them, and the vault's
+/// root. None where the file system folds case.
 async fn rename_beside_a_case_variant_behind_an_alias(
     files: &[(&str, &str)],
     old: &str,
     new: &str,
-) -> Option<(String, Vec<String>)> {
+) -> Option<(String, Vec<String>, String)> {
     let dir = tempfile::tempdir().unwrap();
     if folds_case(dir.path()) {
         return None;
@@ -902,14 +902,10 @@ async fn rename_beside_a_case_variant_behind_an_alias(
     )
     .await
     .unwrap();
-    let skipped = result
-        .skipped_files
-        .iter()
-        .map(|f| relative_to(&root, f))
-        .collect();
     Some((
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
-        skipped,
+        result.skipped_files,
+        root,
     ))
 }
 
@@ -925,7 +921,7 @@ async fn a_path_link_behind_an_alias_is_judged_for_case_variants_as_one_without(
     // alias root's note counts (`RenameTarget::judge`'s alias branch) — the
     // alias link is respelled while the one beside it stays; or reading the
     // old key alone (`alias_root_reads_another_note`) — the second case.
-    let Some(old_key) = rename_beside_a_case_variant_behind_an_alias(
+    let Some((old_text, old_skipped, old_root)) = rename_beside_a_case_variant_behind_an_alias(
         &[
             ("A/old.md", "t\n"),
             ("a/old.md", "u\n"),
@@ -940,13 +936,13 @@ async fn a_path_link_behind_an_alias_is_judged_for_case_variants_as_one_without(
         return;
     };
     assert_eq!(
-        old_key,
+        (old_text, old_skipped),
         (
             "[[p::A/old]]\n[[A/old]]\n".to_string(),
-            vec!["r.md".to_string()]
+            vec![at(&old_root, &["r.md"])]
         )
     );
-    let new_key = rename_beside_a_case_variant_behind_an_alias(
+    let (new_text, new_skipped, new_root) = rename_beside_a_case_variant_behind_an_alias(
         &[
             ("a/old.md", "t\n"),
             ("a/New.md", "u\n"),
@@ -958,10 +954,10 @@ async fn a_path_link_behind_an_alias_is_judged_for_case_variants_as_one_without(
     .await
     .unwrap();
     assert_eq!(
-        new_key,
+        (new_text, new_skipped),
         (
             "[[p::a/old]]\n[[a/old]]\n".to_string(),
-            vec!["r.md".to_string()]
+            vec![at(&new_root, &["r.md"])]
         )
     );
 }

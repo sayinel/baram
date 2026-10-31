@@ -448,6 +448,12 @@ async fn a_hidden_nested_root_is_indexed_by_the_gate_not_covered_by_the_enclosin
         "see [[2026-09-08]]"
     );
     assert_eq!(state.build_root(&journal).await, Some(journal.clone()));
+    // The pair of the first assertion: the nested index's own keys do hold the part the
+    // enclosing index lacks, so `has_part` finds it where it is.
+    assert!(outgoing_links(&state, &journal)
+        .await
+        .keys()
+        .any(|k| has_part(k, ".journal")));
 }
 
 #[tokio::test]
