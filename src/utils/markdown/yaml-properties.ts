@@ -17,6 +17,7 @@ import {
 } from "./frontmatter-list";
 import {
   coreScalarKind,
+  hasNonPrintable,
   quotedScalar,
   yamlPropertyValue,
   yamlString,
@@ -153,24 +154,40 @@ export function addYamlProperty(
 }
 
 /**
- * Whether writing `text` as the `yaml` property `key`, as typed, keeps `yaml` YAML: `text` is
- * one line; it does not start a block scalar (`|`, `>`, after any anchor or tag) — whose
- * content would be the lines after it, and which the panel does not show; and the `yaml`
- * package's `parseDocument` finds no error or warning in the front matter with `text` in
- * place that it did not find before the edit. A diagnostic on the edited line always refuses;
- * one elsewhere refuses unless the front matter already had it (the same code, at the same
- * place once the edit's change in length is taken off), so a line the edit does not touch
- * that YAML already could not read does not block every edit. A warning refuses as an error
- * does: `!!int x` and `!x y` are warnings to `yaml` (`TAG_RESOLVE_FAILED`) and errors to
- * js-yaml. Typed one key at a time, a `yaml` value passes through texts that are not YAML; the
- * panel writes only those that are.
+ * Whether writing `text` as the `yaml` property `key`, as typed, keeps `yaml` YAML. Typed one
+ * key at a time, a `yaml` value passes through texts that are not YAML; the panel writes only
+ * those that are. `text` is refused when:
+ *
+ * - it is more than one line, or holds a character outside YAML's printable set
+ *   (`hasNonPrintable` — a stream may hold no other, YAML 1.2.2 §5.1), which `yaml` reads
+ *   without complaint;
+ * - it starts a block scalar (`|`, `>`, after any anchor or tag), whose content would be the
+ *   lines after it and which the panel does not show;
+ * - the front matter with `text` in place has a diagnostic it did not have before the edit:
+ *   an error or a warning from the `yaml` package's `parseDocument`, or an alias naming no
+ *   anchor set before it (`diagnostics`). A warning refuses as an error does: `!!int x` and
+ *   `!x y` are warnings to `yaml` (`TAG_RESOLVE_FAILED`) and errors to js-yaml.
+ *
+ * What counts as the edit's is decided by the position the parser reports. A diagnostic whose
+ * range touches the rewritten span — the key's line, or the line appended for a new key —
+ * refuses. One reported elsewhere refuses unless the front matter already had a diagnostic
+ * with the same code at the same offset once the edit's change in length is taken off, so a
+ * line the edit does not touch that YAML already could not read does not block every edit.
+ * The comparison is of sets, not counts: while a field that is already broken is edited, a
+ * diagnostic the edit causes but the parser reports on a later line can land where an old one
+ * was and pass.
+ *
+ * Accepted on purpose: redefining an anchor that an alias elsewhere names (`&a y` where `ref:
+ * *a` follows) is valid YAML and changes what that alias reads, with no diagnostic. Known
+ * difference: `{}: `, `[]: `, `{?}` and `[?]` give `yaml` nothing to report and are written,
+ * though js-yaml rejects them.
  */
 export function isWritableYamlValue(
   yaml: string,
   key: string,
   text: string,
 ): boolean {
-  if (/[\n\r]/.test(text)) return false;
+  if (/[\n\r]/.test(text) || hasNonPrintable(text)) return false;
   // The value after any anchor and tag in front of it.
   if (/^[|>]/.test(text.trim().replace(/^(?:[&!]\S*\s+)+/, ""))) return false;
   const candidate = setYamlPropertyValue(yaml, key, text, { asYaml: true });

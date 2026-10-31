@@ -78,7 +78,7 @@ export function quotedScalar(value: string): string {
  * §5.1), which a single-quoted scalar cannot hold: a C0 control but tab, line feed and carriage
  * return; DEL; a C1 control but NEL; a lone surrogate; U+FFFE or U+FFFF.
  */
-function hasNonPrintable(value: string): boolean {
+export function hasNonPrintable(value: string): boolean {
   for (const c of value) {
     const cp = c.codePointAt(0)!;
     if (

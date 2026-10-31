@@ -555,6 +555,32 @@ describe("isWritableYamlValue (§72)", () => {
     expect(isWritableYamlValue(DOC, "flow", text)).toBe(false);
   });
 
+  // What turns this red: leaving a raw control character to the parser — `yaml` reads it with
+  // no error or warning, though a YAML stream may hold only printable characters (§5.1) and
+  // js-yaml rejects it.
+  it.each(["x\u0007y", '"x\u0001"', "{a: x\u001b}", "x\u007fy", "x\u009fy"])(
+    "refuses %j, which holds a character outside YAML's printable set",
+    (text) => {
+      expect(isWritableYamlValue(DOC, "flow", text)).toBe(false);
+    },
+  );
+
+  it.each(["x\ty", "x\u0085y"])(
+    "lets through %j, which YAML can hold",
+    (text) => {
+      expect(isWritableYamlValue(DOC, "flow", text)).toBe(true);
+    },
+  );
+
+  // What turns this red: trusting `parseDocument` alone — 100 aliases to one anchor report no
+  // error or warning, and `toJS` refuses them ("Excessive alias count").
+  it("refuses a value that toJS cannot read though the parser reports nothing", () => {
+    const aliases = (n: number) => `[${Array(n).fill("*a").join(", ")}]`;
+    // `ref: *a` is one more: 100 in all, then 99.
+    expect(isWritableYamlValue(DOC, "flow", aliases(99))).toBe(false);
+    expect(isWritableYamlValue(DOC, "flow", aliases(98))).toBe(true);
+  });
+
   // The sibling: valid YAML, if unusual, is still written.
   it.each([
     "!!int 0x1F",
