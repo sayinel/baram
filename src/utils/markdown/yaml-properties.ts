@@ -6,7 +6,7 @@
 // dropped block lists (their `- a` lines have no colon), comments and nested maps, and wrote a
 // typed `#new` chip as `tags: [..., #new]`, which YAML cannot parse.
 
-import { yamlLanguage } from "@codemirror/lang-yaml";
+import { parseDocument, visit } from "yaml";
 
 import { tagName } from "../tags/tag-name";
 import {
@@ -153,13 +153,17 @@ export function addYamlProperty(
 }
 
 /**
- * Whether writing `text` as the `yaml` property `key`, as typed, leaves `yaml` valid YAML: one
- * line; not a sequence entry, a complex key or a mapping (`- y`, `? x`, `a: b`), which YAML does
- * not take as a key's one-line value; a quote that closes; no reserved indicator (`@`,
- * `` ` ``) or directive indicator (`%`) to start; no syntax error in the whole front matter by the YAML grammar
- * the editor's code blocks use (`@codemirror/lang-yaml`); and every alias naming an anchor set
- * before it. Typed one key at a time, a `yaml` value passes through texts that are none of
- * these; the panel writes only those that are.
+ * Whether writing `text` as the `yaml` property `key`, as typed, keeps `yaml` YAML: `text` is
+ * one line; it does not start a block scalar (`|`, `>`, after any anchor or tag) — whose
+ * content would be the lines after it, and which the panel does not show; and the `yaml`
+ * package's `parseDocument` finds no error or warning in the front matter with `text` in
+ * place that it did not find before the edit. A diagnostic on the edited line always refuses;
+ * one elsewhere refuses unless the front matter already had it (the same code, at the same
+ * place once the edit's change in length is taken off), so a line the edit does not touch
+ * that YAML already could not read does not block every edit. A warning refuses as an error
+ * does: `!!int x` and `!x y` are warnings to `yaml` (`TAG_RESOLVE_FAILED`) and errors to
+ * js-yaml. Typed one key at a time, a `yaml` value passes through texts that are not YAML; the
+ * panel writes only those that are.
  */
 export function isWritableYamlValue(
   yaml: string,
@@ -168,27 +172,20 @@ export function isWritableYamlValue(
 ): boolean {
   if (/[\n\r]/.test(text)) return false;
   // The value after any anchor and tag in front of it.
-  const rest = text.trim().replace(/^(?:[&!]\S*\s+)+/, "");
-  if (/^(?:[-?:](?:\s|$)|[@`%])/.test(rest)) return false;
-  if (rest.startsWith('"')) {
-    if (!/^"(?:[^"\\]|\\.)*"(?:\s+#.*)?$/.test(rest)) return false;
-  } else if (rest.startsWith("'")) {
-    if (!/^'(?:[^']|'')*'(?:\s+#.*)?$/.test(rest)) return false;
-  } else if (!/^[[{]/.test(rest)) {
-    if (/:(?:\s|$)/.test(rest.replace(/\s#.*$/, ""))) return false;
-  }
+  if (/^[|>]/.test(text.trim().replace(/^(?:[&!]\S*\s+)+/, ""))) return false;
   const candidate = setYamlPropertyValue(yaml, key, text, { asYaml: true });
-  const anchors = new Set<string>();
-  let valid = true;
-  yamlLanguage.parser.parse(candidate).iterate({
-    enter: (node) => {
-      const name = candidate.slice(node.from + 1, node.to);
-      if (node.type.isError) valid = false;
-      else if (node.name === "Anchor") anchors.add(name);
-      else if (node.name === "Alias" && !anchors.has(name)) valid = false;
-    },
+  // The span the edit rewrote: the key's line, or the line appended for a new key.
+  const field = topLevelFields(yaml).find((f) => f.key === key);
+  const start = field ? field.start : yaml.length;
+  const shift = candidate.length - yaml.length;
+  const end = (field ? field.end : yaml.length) + shift;
+  const before = new Set(
+    diagnostics(yaml).map(([code, at]) => `${code}@${at}`),
+  );
+  return diagnostics(candidate).every(([code, at, to]) => {
+    if (to >= start && at <= end) return false;
+    return before.has(`${code}@${at > end ? at - shift : at}`);
   });
-  return valid;
 }
 
 /** Removes the property `key` — its key line and every line under it — and one line break. */
@@ -275,6 +272,35 @@ const YAML_SYNTAX = /^[[{&*!]/;
  */
 const KEY_LINE =
   /^((?:"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^\s#\-"'?:][^\n]*?)[ \t]*:)(?:[ \t]+([^\n]*)|[ \t]*)$/;
+
+/**
+ * Every error and warning `parseDocument` reports for `yaml` (its code and offset range), and
+ * every alias naming no anchor set before it (YAML 1.2.2 §7.1), which `parseDocument` does not
+ * report — only `toJS` throws on it. When nothing else is found, a throw from `toJS` is one
+ * diagnostic with no place (`-1`).
+ */
+function diagnostics(yaml: string): [string, number, number][] {
+  const doc = parseDocument(yaml);
+  const found: [string, number, number][] = [
+    ...doc.errors,
+    ...doc.warnings,
+  ].map((d) => [d.code, d.pos[0], d.pos[1]]);
+  visit(doc, {
+    Alias: (_, alias) => {
+      if (!alias.resolve(doc) && alias.range) {
+        found.push(["UNRESOLVED_ALIAS", alias.range[0], alias.range[1]]);
+      }
+    },
+  });
+  if (found.length === 0) {
+    try {
+      doc.toJS();
+    } catch {
+      found.push(["TO_JS", -1, -1]);
+    }
+  }
+  return found;
+}
 
 /**
  * How to write `value` for a property whose value was spelled `original` when the edit began,

@@ -489,6 +489,7 @@ describe("isWritableYamlValue (§72)", () => {
         const out = setYamlPropertyValue(DOC, key, text, { asYaml: true });
         const doc = parseDocument(out, { uniqueKeys: true });
         expect(doc.errors, `${key}: ${JSON.stringify(text)}`).toEqual([]);
+        expect(doc.warnings, `${key}: ${JSON.stringify(text)}`).toEqual([]);
         expect(
           () => doc.toJS(),
           `${key}: ${JSON.stringify(text)}`,
@@ -506,9 +507,95 @@ describe("isWritableYamlValue (§72)", () => {
     expect(isWritableYamlValue(DOC, "flow", "")).toBe(true);
   });
 
-  // The cases the YAML grammar alone lets through.
   it.each(["a: b", "- y", "?", ":", "-", '"', "'"])("refuses %j", (text) => {
     expect(isWritableYamlValue(DOC, "flow", text)).toBe(false);
+  });
+
+  // What turns these red: judging the text by the editor's YAML grammar
+  // (`@codemirror/lang-yaml`), which took all of them — an escape YAML does not have, an anchor
+  // with no name, a tag `yaml` cannot resolve (a warning there, an error to js-yaml), and a
+  // block scalar header, which reads the lines after it and takes the field out of the panel.
+  it.each(["!!int x", "!x y", '"a\\q"', "&", "|", ">", "|-"])(
+    "refuses %j under every key",
+    (text) => {
+      for (const key of ["anchor", "ref", "flow", "typed", "comment"]) {
+        expect(isWritableYamlValue(DOC, key, text), key).toBe(false);
+      }
+    },
+  );
+
+  it.each(["|", ">", "|-", ">+", "|2", ">-1", "&b |", "!!str >"])(
+    "refuses the block scalar header %j",
+    (text) => {
+      expect(isWritableYamlValue(DOC, "flow", text)).toBe(false);
+    },
+  );
+
+  // Kinds the grammar let through, found by joining tokens three at a time.
+  it.each([
+    // a tag or an anchor with no space before what follows
+    '!!int"x',
+    "&b[]",
+    "&b{}",
+    // an anchor or an alias with no name
+    "[&]",
+    "{a: &}",
+    "*",
+    "[*]",
+    // a comment with no space before it
+    "[]#",
+    "{}#",
+    // an invalid escape inside a collection
+    '{a: "\\q"}',
+    '["\\q"]',
+    // a tag yaml cannot resolve inside a collection
+    "[!!int x]",
+    "{a: !x y}",
+  ])("refuses %j", (text) => {
+    expect(isWritableYamlValue(DOC, "flow", text)).toBe(false);
+  });
+
+  // The sibling: valid YAML, if unusual, is still written.
+  it.each([
+    "!!int 0x1F",
+    "!!float .inf",
+    "!!null ~",
+    "!!bool True",
+    "!<tag:yaml.org,2002:str> x",
+    '"\\u00e9\\x41\\t"',
+    "'it''s'",
+    '[1, "two", {c: d}, *a]',
+    "&b [x, y]",
+    "{a: [1, {b: 2}]} # c",
+    "~",
+    "''",
+  ])("lets through %j", (text) => {
+    expect(isWritableYamlValue(DOC, "flow", text)).toBe(true);
+  });
+
+  // What turns this red: judging the whole front matter — a line the edit does not touch that
+  // YAML already could not read refused every edit.
+  it("judges what the edit changes, not a line it leaves as it was", () => {
+    const broken = `${DOC}\nbad: !!int x\nworse: "\\q"`;
+    // Longer than `{a: 1}`: the lines after it move, and their diagnostics with them.
+    expect(isWritableYamlValue(broken, "flow", "{a: 333}")).toBe(true);
+    expect(isWritableYamlValue(broken, "flow", "[a")).toBe(false);
+    expect(isWritableYamlValue(broken, "flow", "!!int y")).toBe(false);
+    // With other diagnostics about, `toJS` is not asked; the alias is still checked.
+    expect(isWritableYamlValue(broken, "flow", "*b")).toBe(false);
+    // A key the front matter does not have is appended: its line is the edit.
+    expect(isWritableYamlValue(broken, "added", "!!int y")).toBe(false);
+    expect(isWritableYamlValue(broken, "added", "{a: 3}")).toBe(true);
+  });
+
+  it("refuses an edit to a line YAML already could not read that leaves it unreadable", () => {
+    const yaml = "title: t\nflow: {a\nlast: z";
+    expect(isWritableYamlValue(yaml, "flow", "{a: ")).toBe(false);
+    expect(isWritableYamlValue(yaml, "flow", "{a: 1}")).toBe(true);
+    // The same diagnostic at the same place as before: still the edited line's, so refused.
+    const tagged = "title: t\nflow: !!int x\nlast: z";
+    expect(isWritableYamlValue(tagged, "flow", "!!int y")).toBe(false);
+    expect(isWritableYamlValue(tagged, "flow", "!!int 5")).toBe(true);
   });
 
   it("refuses an alias to an anchor the front matter does not set before it", () => {
