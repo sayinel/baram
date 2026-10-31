@@ -581,6 +581,44 @@ describe("isWritableYamlValue (§72)", () => {
     expect(isWritableYamlValue(DOC, "flow", aliases(98))).toBe(true);
   });
 
+  // What turns this red: trusting `yaml` to close a quoted scalar — it takes `'''` for a whole
+  // scalar and lets `"\\"` run on, so with the matching quote on the next key's line it read
+  // that line as the next key and reported nothing, where YAML 1.2.2 leaves the scalar open
+  // (js-yaml throws). An unclosed collection runs on too.
+  it.each(["'''", '"\\"', "'a", '"a', "[a,", "{a: 1,", "[''']", '{a: "\\"}'])(
+    "refuses %j whatever the next line holds",
+    (text) => {
+      for (const next of [
+        "next: 'x'",
+        'next: "x"',
+        "next: ]",
+        "next: }",
+        "next: [b]",
+      ]) {
+        const yaml = `title: t\nflow: {a: 1}\n${next}\nlast: z`;
+        expect(isWritableYamlValue(yaml, "flow", text), next).toBe(false);
+      }
+    },
+  );
+
+  // The sibling: a quoted scalar or a collection that closes on its line is still written,
+  // whatever the next line holds.
+  it.each([
+    "''",
+    "'it''s'",
+    '""',
+    '"a\\"b"',
+    "'a' # c",
+    '[a, "b"]',
+    "{a: 'x'}",
+    "x",
+  ])("lets through %j whatever the next line holds", (text) => {
+    for (const next of ["next: 'x'", 'next: "x"', "next: [b]"]) {
+      const yaml = `title: t\nflow: {a: 1}\n${next}\nlast: z`;
+      expect(isWritableYamlValue(yaml, "flow", text), next).toBe(true);
+    }
+  });
+
   // The sibling: valid YAML, if unusual, is still written.
   it.each([
     "!!int 0x1F",

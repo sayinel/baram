@@ -6,7 +6,7 @@
 // dropped block lists (their `- a` lines have no colon), comments and nested maps, and wrote a
 // typed `#new` chip as `tags: [..., #new]`, which YAML cannot parse.
 
-import { parseDocument, visit } from "yaml";
+import { CST, parseDocument, Parser, visit } from "yaml";
 
 import { tagName } from "../tags/tag-name";
 import {
@@ -177,6 +177,10 @@ export function addYamlProperty(
  * diagnostic the edit causes but the parser reports on a later line can land where an old one
  * was and pass.
  *
+ * - a quoted scalar the edit wrote does not close on the edited line (`quotesCloseWithin`).
+ *   `yaml` closes `'''` and `"\"` where YAML does not, and when the next line holds the
+ *   matching quote it reads that line as the next key, with nothing to report.
+ *
  * Accepted on purpose: redefining an anchor that an alias elsewhere names (`&a y` where `ref:
  * *a` follows) is valid YAML and changes what that alias reads, with no diagnostic. Known
  * difference: `{}: `, `[]: `, `{?}` and `[?]` give `yaml` nothing to report and are written,
@@ -196,6 +200,7 @@ export function isWritableYamlValue(
   const start = field ? field.start : yaml.length;
   const shift = candidate.length - yaml.length;
   const end = (field ? field.end : yaml.length) + shift;
+  if (!quotesCloseWithin(candidate, start, end)) return false;
   const before = new Set(
     diagnostics(yaml).map(([code, at]) => `${code}@${at}`),
   );
@@ -317,6 +322,40 @@ function diagnostics(yaml: string): [string, number, number][] {
     }
   }
   return found;
+}
+
+/**
+ * Whether every quoted scalar that starts in `candidate` between `start` and `end` (the span
+ * the edit rewrote) is closed as YAML 1.2.2 closes one: single-quoted, with `''` for a quote
+ * inside (§7.3.2); double-quoted, with `\` escaping the next character (§7.3.1). The quoted
+ * tokens are the ones `yaml`'s own parser finds, in a flow collection too, but their closing is
+ * judged here: its lexer takes `'''` for a whole scalar and lets `"\"` run on to a quote on the
+ * next line. A token that runs past the edited line is not checked for that here: in every
+ * case measured, `yaml` also reports an error for it, which `diagnostics` refuses.
+ */
+function quotesCloseWithin(
+  candidate: string,
+  start: number,
+  end: number,
+): boolean {
+  let closed = true;
+  for (const doc of new Parser().parse(candidate)) {
+    if (doc.type !== "document") continue;
+    CST.visit(doc, (item) => {
+      for (const token of [item.key, item.value]) {
+        if (!token || token.offset < start || token.offset > end) continue;
+        const spec =
+          token.type === "single-quoted-scalar"
+            ? /^'(?:[^']|'')*'$/
+            : token.type === "double-quoted-scalar"
+              ? /^"(?:[^"\\]|\\.)*"$/
+              : null;
+        if (!spec || !("source" in token)) continue;
+        if (!spec.test(token.source)) closed = false;
+      }
+    });
+  }
+  return closed;
 }
 
 /**
