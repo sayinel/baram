@@ -272,7 +272,7 @@ jobs:
   #
   # No `tauri build` here for the same reason the ubuntu rust job has none
   # outside a release call: nothing in a PR exercises the release profile, on
-  # either platform. Clippy already compiles --all-targets.
+  # either platform. Clippy already checks --all-targets.
   macos:
     needs: [changes]
     if: needs.changes.outputs.rust == 'true'
@@ -308,8 +308,9 @@ jobs:
       # filesystem by default, and this crate is mostly paths — vault roots,
       # registered contexts, link-index keys. A test that distinguishes `Notes`
       # from `notes` passes on ubuntu and is meaningless here, which is the kind
-      # of difference only running them on both can show. Clippy above already
-      # compiled --all-targets, so this is the run, not another build.
+      # of difference only running them on both can show. Clippy above only
+      # type-checks --all-targets; this step compiles and links the test binaries
+      # as well as running them, and is the longer of the two.
       - name: Cargo test
         run: npm run rust:_test
 
@@ -329,12 +330,16 @@ jobs:
   #      ubuntu and macOS never see it
   #   3. the tests still mean something where the path separator is `\`, a path
   #      starts with a drive letter, and `canonicalize` answers with a verbatim
-  #      `\\?\C:\…` path. This crate is mostly paths, and the `cfg!(windows)`
-  #      arms in the link index and the rename are taken only here.
+  #      `\\?\C:\…` path. This crate is mostly paths, and its `cfg!(windows)`
+  #      arms are taken only here — outside tests, today: the link index
+  #      (index/mod.rs, relative_links.rs, service/query.rs, and rename/
+  #      block_id.rs, destination.rs, file.rs, scope.rs), the CLI and MCP path
+  #      handling (cli/paths.rs, cli/spelling.rs, cli/mcp/scope.rs),
+  #      plugin/vault_path.rs and export/pandoc.rs.
   #
   # What it deliberately does NOT do:
   #   - no `tauri build`, for the same reason the macos job has none: nothing in
-  #     a PR exercises the release profile. Clippy already compiles --all-targets.
+  #     a PR exercises the release profile. Clippy already checks --all-targets.
   #   - no rustfmt, literal parity or pandoc smoke: their answers do not depend on
   #     the platform, and the ubuntu rust job owns them.
   windows:
@@ -356,7 +361,7 @@ jobs:
           toolchain: stable
           components: clippy
 
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri -> target
           shared-key: windows
@@ -375,8 +380,10 @@ jobs:
 
       # Not a duplicate of the ubuntu run, for point 3 above: a test that spells a
       # path as `/vault/a.md`, or compares a path with a string, passes on ubuntu
-      # and macOS and asks a different question here. Clippy above already
-      # compiled --all-targets, so this is the run, not another build.
+      # and macOS and asks a different question here. Clippy above only
+      # type-checks --all-targets; this step compiles and links the test binaries
+      # as well as running them (run 40303137646, no cache: Clippy 4m58s, this
+      # step 7m42s).
       - name: Cargo test
         shell: bash
         run: npm run rust:_test
