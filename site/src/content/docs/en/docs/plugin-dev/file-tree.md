@@ -66,52 +66,61 @@ is muted and an icon takes the row's text color.
 
 `defineFileIcon(name, svg)` defines an icon for `icon: { svg: name }`. The name is 1–64 of `A–Z`, `a–z`,
 `0–9`, `_` and `-`; the SVG is at most 8 KiB of UTF-8. Baram sanitizes it — among other things, scripts,
-event handlers, `<style>` and `style` attributes, `<use>`, `<foreignObject>` and references to anything
-outside the SVG go — and what is left must be one `<svg>` element. It is drawn as a one-color mask in the
-decoration's color, so draw the shape in any opaque color. A plugin defines at most 64 icons; defining a
-name again replaces that icon wherever it is used. A decoration naming an icon you have not defined
-refuses the whole call — a `defineFileIcon` you called earlier is applied first, even one still waiting
-its turn.
+event handlers, `<style>` and `style` attributes, `<use>`, `<foreignObject>` and anything that would
+load a resource from outside the SVG go — and what is left must be one `<svg>` element. It is drawn as
+a one-color mask in the decoration's color, so draw the shape in any opaque color. A plugin defines at
+most 64 icons; defining a name again replaces that icon wherever it is used. A decoration naming an
+icon you have not defined refuses the whole call — a `defineFileIcon` you called earlier is applied
+first, even one still waiting its turn.
 
 ### Paths
 
 A path is at most 4,096 UTF-16 units. Trusted plugins use absolute paths. Sandboxed plugins use a path
 relative to a context root: names joined by `/` — no leading `/`, no empty, `.` or `..` name, no `\` —
-such as `"notes/a.md"`, or `""` for the root itself (a single-file context takes only `""`). So a
-sandboxed plugin cannot decorate a file whose path holds `\`: an update naming one refuses the whole call.
+such as `"notes/a.md"`, or `""` for the root itself (a single-file context takes only `""`). A sandboxed
+update whose path holds `\` refuses the whole call.
 
 A sandboxed update's `context` names a registered context. Leave it out and the path is read against
-the context the app shows when the call arrives — while the user switches vaults that can differ from the one `ctx.files`
-uses without a context, so pass the `context` of a `PluginFileEvent` or a `VaultChange` to be exact.
+the context the app shows when the call arrives — while the user switches vaults that can differ from
+the one `ctx.files` uses without a context, so pass the `context` of a `PluginFileEvent` or a
+`VaultChange` to be exact.
 While the app shows a single-file context, a call without `context` takes only `""`.
 
-Baram matches a decoration to a row by comparing paths byte for byte, with no Unicode normalization and
-no case folding: a decomposed (NFD) and a composed (NFC) spelling of the same name are two different
-paths, so keep a name as Baram spelled it — do not normalize it. In a trusted path, `\` and `/` count
-as the same separator and a trailing separator is ignored.
+To match a decoration to a row, Baram turns every `\` into `/` and drops a trailing separator — in your
+path and in each row's path, in both tiers — and then compares the two byte for byte, with no Unicode
+normalization and no case folding. So a file whose name holds `\` takes the decoration of the path with
+`/` in its place, and a decomposed (NFD) and a composed (NFC) spelling of the same name are two different
+paths: keep a name as Baram spelled it — do not normalize it.
 
 ### Limits and pacing
 
 - At most 1,000 updates in one call, and 20,000 decorated paths per plugin.
 - A badge is one or two characters (grapheme clusters) and at most 16 UTF-16 units; a glyph icon is one
-  character within the same bound. One that draws nothing (invisible characters only) is refused. A
-  tooltip is put on one line, and one over 120 UTF-16 units is cut, ending in `…`.
+  character within the same bound. One left blank by cleaning is refused: cleaning trims whitespace from
+  both ends, and blank means empty or default-ignorable characters only (zero-width joiners, variation
+  selectors). A tooltip is put on one line, and one over 120 UTF-16 units is cut, ending in `…`.
 - An update over a limit, or a malformed one, refuses the **whole** call; nothing of it is applied.
 - Your three methods are applied one after another, in the order you call them. Eight decoration calls
   (`setFileDecorations`, `clearFileDecorations`) are taken at once, then one every 250 ms; 64
   `defineFileIcon` calls at once, then one every 250 ms. A call beyond that **waits** — it is not
   refused — so calling them together with `Promise.all` is fine.
 - Batch: one `setFileDecorations` call takes up to 1,000 updates, while decoration calls past the eighth
-  go through four a second — send a few large calls rather than many small ones.
+  are applied four a second — send a few large calls rather than many small ones.
+- Waiting counts against the time your caller has: `activate` must finish within 5 seconds (a sandboxed
+  plugin gets 15 in a development build of Baram), and a sandboxed command within 30. So awaiting more
+  than about two dozen decoration calls in `activate`, or about 120 in a command, fails it. Batch them,
+  or start them in `activate` without awaiting them and handle their rejection — the `tree-badges`
+  example plugin in the Baram repository does that.
 - A sandboxed call that is malformed, holds a lone surrogate (half of an emoji), or is too large for
   Baram's IPC (about 8 MiB of JSON) is refused before it is sent.
 
 ### Decorations are not saved
 
 Baram does not keep decorations or icons when the plugin stops or the app quits: define and set them
-again in `activate`. When the plugin is turned off or reloaded, its decorations and icons are removed and
-its calls still waiting their turn are rejected; a trusted plugin's old `ctx.ui` rejects the three
-methods from then on. `clearFileDecorations()` removes your decorations and keeps your icons.
+again in `activate`, within its time limit (see above). When the plugin is turned off or reloaded, its
+decorations and icons are removed and its calls still waiting their turn are rejected; a trusted
+plugin's old `ctx.ui` rejects the three methods from then on. `clearFileDecorations()` removes your
+decorations and keeps your icons.
 
 ## `file:rename` and `file:delete` (requires `files` or `files:readonly`)
 
@@ -140,5 +149,6 @@ ctx.events.on("file:delete", ({ context, path, isDir }) => {});
 - Nothing is told when the operation fails, for new files, for Baram's own git operations (switching
   branches, pulling, discarding changes), or for changes made outside Baram (another app, a terminal).
   Such changes reach you only as `vault:changed`. A decoration on a path deleted or renamed that way is
-  not removed: it still counts toward your 20,000 paths and shows again if a file appears at that path.
+  not removed: it still counts toward your 20,000 paths, and a file that later appears at that path shows
+  it — unless Baram's own rename or move put the file there, which clears it first.
   Use `vault:changed` and `listDir` to tidy up.
