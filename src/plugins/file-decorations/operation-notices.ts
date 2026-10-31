@@ -1,11 +1,13 @@
 // §395 spec 0074 D10 · D11 · D12 · §5.4 — the app's own rename, move and delete, told once each. An app
 // operation that renames, moves or deletes files through the five IPC wrappers (spec 0074 §2) raises the
-// gate before its first disk IPC (`beginFileOperation`, as the first statement of the `try` around it),
-// calls `notifyRenamed` / `notifyDeleted` once that IPC succeeded — where it updates the tree, in the same
-// synchronous span — and releases in the `finally`. A notice moves or drops the decoration keys first and
+// gate before its first IPC that changes the disk (`beginFileOperation`, as the first statement of the
+// `try` around it — a zettel promotion reads the inbox note first, outside it), calls `notifyRenamed` /
+// `notifyDeleted` once its IPCs succeeded — where it updates the tree, in the same synchronous span — and
+// releases in the `finally`. A notice moves or drops the decoration keys first and
 // then tells its listeners (`file-notice-delivery.ts` installs one per plugin that may hear it), so the
 // held `vault:changed` the release lets out comes after it. Changes made
 // outside the app are never told here (D13).
+// The callers are spec 0074 §2's six; `__tests__/file-operation-entries.test.ts` pins that set.
 import { holdVaultChanges } from "../../services/vault-changes";
 import { contextsContaining } from "../../stores/context/contexts-containing";
 import { logger } from "../../utils/logger";

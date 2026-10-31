@@ -7,6 +7,10 @@ import { ArrowUp, Inbox, StickyNote, X } from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { deleteFile } from "../../ipc/invoke";
+import {
+  beginFileOperation,
+  notifyDeleted,
+} from "../../plugins/file-decorations/operation-notices";
 import { promoteFleeting } from "../../services/zettelkasten-service";
 import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
@@ -52,12 +56,19 @@ export function ZettelInboxList({
       t("zettel.hub.delete.confirm", { title: item.title }),
     );
     if (!ok) return;
+    // §395 spec 0074 D10 · D12 — raised after the confirmation, as the first statement of the try whose
+    // finally releases it; plugins hear file:delete once the file is in the trash.
+    let release: (() => void) | undefined;
     try {
+      release = beginFileOperation([item.path]);
       await deleteFile(item.path);
+      notifyDeleted(item.path, false);
       useZettelIndexStore.getState().removeByPath(item.path);
       await onRefresh();
     } catch (err) {
       logger.error("[Zettel] delete inbox note failed:", err);
+    } finally {
+      release?.();
     }
   };
 
