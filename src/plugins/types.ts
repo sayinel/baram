@@ -443,6 +443,7 @@ export type PluginCapability =
   | "extensions"
   | "files"
   | "files:readonly"
+  | "filetree"
   | "network"
   | "settings"
   | "sidebar"
@@ -1376,4 +1377,5 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   storage: "플러그인 전용 저장소를 사용할 수 있습니다",
   viewer: "파일 형식별 커스텀 뷰어를 등록할 수 있습니다",
   codeblocks: "선언한 언어의 코드 블록을 그릴 수 있습니다",
+  filetree: "파일 트리에 아이콘 · 배지를 달고, 우클릭 메뉴에 항목을 더합니다",
 };

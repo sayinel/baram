@@ -371,7 +371,7 @@ export interface LoadedPlugin {
 export interface NetworkAPI {
     fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 }
-export type PluginCapability = "ai" | "codeblocks" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
+export type PluginCapability = "ai" | "codeblocks" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "filetree" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
 /**
  * §260 Phase 5 — a snapshot of what the user approved, taken at the moment they
  * approved it. Compared against a later version's request by `plugin-consent.ts`.

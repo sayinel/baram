@@ -646,6 +646,7 @@
   "plugin.capability.extensions": "Runs code inside the editor — can read and change the document",
   "plugin.capability.files": "Read and write files in the vault",
   "plugin.capability.files:readonly": "Read files in the vault (cannot write)",
+  "plugin.capability.filetree": "Show icons and badges on files in the file tree, and add items to its right-click menu",
   "plugin.capability.network": "Send network requests",
   "plugin.capability.settings": "Add options to Settings and read the values you set",
   "plugin.capability.sidebar": "Add a panel to the sidebar",
