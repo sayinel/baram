@@ -1,0 +1,35 @@
+{
+  "why": "§273 · §275 The PDF highlight files are named after the PDF's path under the vault root. The frontend writes them (sidecarPathFor, companionPathFor in src/components/editor/pdf/pdf-highlight-sidecar.ts) and a file rename moves them (index/service/rename/pdf_highlights.rs). Both read this file, so the two rules cannot drift.",
+  "cases": [
+    {
+      "pdf": "papers/attention.pdf",
+      "sidecar": ".baram/pdf-highlights/papers/attention.json",
+      "companion": "highlights/papers/attention.md",
+      "why": "a PDF in a folder keeps its folders"
+    },
+    {
+      "pdf": "attention.pdf",
+      "sidecar": ".baram/pdf-highlights/attention.json",
+      "companion": "highlights/attention.md",
+      "why": "a PDF at the root"
+    },
+    {
+      "pdf": "Survey.PDF",
+      "sidecar": ".baram/pdf-highlights/Survey.json",
+      "companion": "highlights/Survey.md",
+      "why": "the extension is matched without regard to ASCII case and replaced by a lower-case one"
+    },
+    {
+      "pdf": "a.pdf.pdf",
+      "sidecar": ".baram/pdf-highlights/a.pdf.json",
+      "companion": "highlights/a.pdf.md",
+      "why": "only the last .pdf is replaced"
+    },
+    {
+      "pdf": "논문/BERT (2019) #1.pdf",
+      "sidecar": ".baram/pdf-highlights/논문/BERT (2019) #1.json",
+      "companion": "highlights/논문/BERT (2019) #1.md",
+      "why": "any other character is kept as it is"
+    }
+  ]
+}

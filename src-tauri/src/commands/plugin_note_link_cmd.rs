@@ -142,13 +142,21 @@ mod tests {
         let app = app_with_states();
         let (_dir, root) = folder_with(&app, "ctx", NOTES).await;
         let handle = app.handle();
+        // The registered root, then the OS separator — the spelling the file tree lists.
+        let under_root = |name: &str| {
+            Path::new(&root)
+                .join("notes")
+                .join(name)
+                .to_string_lossy()
+                .into_owned()
+        };
         assert_eq!(
             note_link(handle, "ctx", "notes/a.md").await,
-            Ok(format!("{root}/notes/a.md"))
+            Ok(under_root("a.md"))
         );
         assert_eq!(
             note_link(handle, "ctx", "notes/b.markdown").await,
-            Ok(format!("{root}/notes/b.markdown"))
+            Ok(under_root("b.markdown"))
         );
     }
 

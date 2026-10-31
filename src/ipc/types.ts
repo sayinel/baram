@@ -340,7 +340,19 @@ export interface RecentMenuEntry {
 // §33 Rename result (file rename, block ID rename). `Err` from the command
 // means nothing changed on disk; what fails after the point of no return is
 // reported here (issue 594).
+/** §33 A file a rename moved besides the one it was asked to rename. */
+export interface MovedFile {
+  from: string;
+  to: string;
+}
+
 export interface RenameResult {
+  /** Every file the rename moved besides the one it was asked to rename — a
+   *  PDF's highlight note and sidecar — so what the app holds for each (an
+   *  open tab, the tree, cached content) can follow it: a tab left on the
+   *  old path would write the file back there on its next save. Empty for a
+   *  block ID rename. */
+  moved: MovedFile[];
   /** Files the rename cannot vouch for — each MAY still spell the old name:
    *  a referrer that could not be read, written or resolved; one the index
    *  named that holds nothing to rename now (issue 668). For a file rename
@@ -352,8 +364,11 @@ export interface RenameResult {
    *  second note folding to the same path where case is kept, reads it as
    *  another note (for a file rename, the respelled text too) — left as
    *  written. For a file rename, also a link behind the vault's own alias
-   *  when another vault carries that alias too. A block ID rename lists
-   *  referrers only. */
+   *  when another vault carries that alias too; a note holding a markdown
+   *  link, image or link definition (`[t](x)`, `![a](x)`, `[id]: x`) the
+   *  move leaves pointing at the old name, which is never rewritten; and,
+   *  for a PDF, a highlight sidecar or highlight note that could not follow
+   *  it, under its old path. A block ID rename lists referrers only. */
   skippedFiles: string[];
   /** Files rewritten on disk; a clean open surface of each follows the disk. */
   updatedFiles: string[];

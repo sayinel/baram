@@ -3,25 +3,53 @@
 //! rename/referrers.rs, result types and path helpers in rename/mod.rs.
 
 use crate::context::ContextManager;
-use crate::index::{keys_for, normalize_file_path, reads_a_link_under, RenameTarget};
+use crate::index::filing::{is_note, name_key};
+use crate::index::{keys_for, reads_a_link_under, RenameTarget};
 use std::collections::HashMap;
 
 use super::super::keys::{keys_of, local_aliases_of, OwnAliases};
 use super::super::mutation::Mutation;
 use super::super::state::LinkIndexState;
 use super::destination::{another_entry_at, check_destination, confined_both_ways};
+use super::markdown_referrers::markdown_referrers;
 use super::passes::{rewrite_renamed_note, LinkPasses};
+use super::pdf_highlights::carry_pdf_highlights;
 use super::referrers::{
     apply_queued, named_only_for_own_references, queue_rewritten, rewrite_referrers, Unchanged,
 };
 use super::scope::{Referrers, RenameScope};
-use super::{plain_absolute, push_for_keys, RenameResult};
+use super::{plain_absolute, push_for_keys, MovedFile, RenameResult};
 
 pub(crate) async fn rename_file_with_links_inner(
     state: &LinkIndexState,
     ctx_mgr: &ContextManager,
     old_path: &str,
     new_path: &str,
+) -> Result<RenameResult, String> {
+    rename_file(state, ctx_mgr, old_path, new_path, Origin::Asked).await
+}
+
+/// Whom a file rename is for: the file the user renamed, or a file another rename carries
+/// along (`pdf_highlights`: a PDF's highlight note).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Origin {
+    Asked,
+    Carried,
+}
+
+/// `rename_file_with_links_inner`, for a file of either `Origin`. A carried rename was not
+/// the user's choice of name: when another note in the file's contexts shares its stem, a bare
+/// link may mean that note — the user's literature note `notes/Paper.md` beside the highlight
+/// note `highlights/papers/Paper.md` — so a bare-name match is left and reported
+/// (`KnownPaths::bare_name_shared`), while a path link or a block reference into the note,
+/// which names it alone, is rewritten. A rename the user asked for follows the stem contract:
+/// a bare link names every note of that stem, and is rewritten.
+pub(super) async fn rename_file(
+    state: &LinkIndexState,
+    ctx_mgr: &ContextManager,
+    old_path: &str,
+    new_path: &str,
+    origin: Origin,
 ) -> Result<RenameResult, String> {
     plain_absolute(old_path)?;
     plain_absolute(new_path)?;
@@ -48,22 +76,27 @@ pub(crate) async fn rename_file_with_links_inner(
     let Referrers {
         named_lines,
         files: referring_files,
-        known_paths,
+        mut known_paths,
         holding_keys,
     } = scope
         .referrers(state, ctx_mgr, old_path, Some(new_path), |i| {
             i.referring_lines_to(old_path, &named_by)
         })
         .await?;
+    if origin == Origin::Carried {
+        known_paths.bare_name_shared =
+            another_note_shares_the_stem(state, &scope.dirs, old_path).await;
+    }
     // The keys a link behind an ambiguous own name is filed under that name
     // the old note and not the new one — `[[notes::old]]` for `old.md` →
-    // `new.md`, not for `old.md` → `old.txt`, whose stem the link still
-    // reads as. Set differences, so no key is told apart by its variant. A
-    // file whose links the passes leave holding one is reported, rewritten
-    // or not (`left_behind`), as for an ambiguous path link. `plain` takes
-    // out the stem key, under which a same-stem note's own `((#^id))` is
-    // filed — what fails this: dropping `!plain.contains(k)`, and the two
-    // same-stem exemption tests in `tests/same_stem.rs` report that note.
+    // `new.md`, not for `old.md` → `old.markdown`, whose name key (`name_key`)
+    // the link still reads as. Set differences, so no key is told apart by
+    // its variant. A file whose links the passes leave holding one is
+    // reported, rewritten or not (`left_behind`), as for an ambiguous path
+    // link. `plain` takes out the stem key, under which a same-stem note's
+    // own `((#^id))` is filed — what fails this: dropping
+    // `!plain.contains(k)`, and the two same-stem exemption tests in
+    // `tests/same_stem.rs` report that note.
     let windows = cfg!(windows);
     let behind_ambiguous_name = {
         let plain = keys_for(old_path, None, &local_aliases, windows);
@@ -75,32 +108,63 @@ pub(crate) async fn rename_file_with_links_inner(
     // The same-stem exemption (`named_only_for_own_references`), with the
     // stem compared to the old key: a referrer is exempt only under the name
     // being renamed away.
-    let old_key = normalize_file_path(old_path);
+    let old_key = name_key(old_path, windows);
     let named_for_its_own_references = |path: &str, content: &str| {
         named_only_for_own_references(path, content, &named_lines, None, |p| {
-            normalize_file_path(p) == old_key
+            name_key(p, windows) == old_key
         })
     };
-    // A rename that keeps the stem — `old.md` → `old.txt`, or `Note.md` →
-    // `note.md`, whose case the passes respell in every referrer — leaves no
-    // referrer stale: none the index named is news. A path link it does
-    // change (`[[a/old]]` → `[[a/old.txt]]`, issue 619) is rewritten, not
-    // left unchanged.
-    let stem_unchanged = normalize_file_path(new_path) == old_key;
+    // A rename that keeps the name key (`name_key`) — `Note.md` →
+    // `note.md`, whose case the passes respell in every referrer, or
+    // `old.md` → `old.markdown` — leaves no referrer stale: none the index
+    // named is news. A link it does change (`[[a/Note]]` → `[[a/note]]`) is
+    // rewritten, not left unchanged.
+    let stem_unchanged = name_key(new_path, windows) == old_key;
 
-    // The note is dropped under what the old path resolved to before the
+    // The file is dropped under what the old path resolved to before the
     // move (`RenameSource::identity`) and filed under what the new path
     // resolves to AFTER it (below).
     let remove_old = Mutation::Remove {
         path: source.identity.clone(),
     };
 
-    // The file's own content, read BEFORE it moves: it is what the index will
-    // hold under the new path. Unreadable here means nothing has changed yet,
-    // so this is an honest `Err` (not a file that vanishes from the index).
-    let renamed_content = tokio::fs::read_to_string(old_path)
-        .await
-        .map_err(|e| format!("{old_path} could not be read: {e}"))?;
+    // The file's own content, read BEFORE it moves, only where the index
+    // reads it as a note (`is_note`): under the old name, the index read its
+    // links, so its own references are rewritten below; under the new name,
+    // it is what the index will hold. A file that is a note under neither
+    // name — a PDF, an image — is never read: a build reads no link in it
+    // (`collect_md_files`) and its bytes need not be text. A note unreadable
+    // here means nothing has changed yet, so this is an honest `Err` (not a
+    // file that vanishes from the index). A file that only becomes a note
+    // (`x.txt` → `x.md`) and cannot be read as text still moves, and is
+    // filed as a build files a note it cannot read: under its stem and path,
+    // with no links (`Mutation::Target`, below).
+    let was_note = is_note(old_path, windows);
+    let becomes_note = is_note(new_path, windows);
+    let renamed_content = if was_note {
+        Some(
+            tokio::fs::read_to_string(old_path)
+                .await
+                .map_err(|e| format!("{old_path} could not be read: {e}"))?,
+        )
+    } else if becomes_note {
+        match tokio::fs::read_to_string(old_path).await {
+            Ok(content) => Some(content),
+            Err(e) => {
+                log::warn!(
+                    "rename: {old_path} could not be read as a note, so {new_path} is filed with no links: {e}"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Markdown-syntax links to the file — `[t](x)`, `![a](x)`, `[id]: x` — are no links
+    // the index files, so the passes do not rewrite them (invariant ③): the notes holding
+    // one the move leaves dangling are reported (`markdown_referrers`), read before it.
+    let markdown_left = markdown_referrers(state, &scope.dirs, old_path, new_path, windows).await;
 
     // `fs::rename` replaces an existing destination on Unix; a rename is not a
     // way to overwrite another note. Checked here, after every index build and
@@ -165,57 +229,126 @@ pub(crate) async fn rename_file_with_links_inner(
     } else {
         scope.keys.clone()
     };
-    //    Then the renamed note itself, which rewrite_referrers skips. Its
-    //    destination passes the gate every referrer passes right before it is
-    //    written: resolved again NOW — after the move and every referrer
-    //    write, not before them — it must still lie inside the file's
-    //    contexts. It is stale news on a referrer's terms: the index named it
-    //    under the old key for more than its own `((#^id))` references.
-    let renamed_content = rewrite_renamed_note(
-        new_path,
-        renamed_content,
-        |content, ref_path| rewrite(content, ref_path, &own_roots),
-        || confined_both_ways(new_path, &scope.dirs, source.parent.as_deref()),
-        |content| {
-            matches!(unchanged, Unchanged::Report { .. })
-                && named_lines.contains_key(old_path)
-                && !named_for_its_own_references(old_path, content)
-        },
-        &mut rewritten,
-    )
-    .await;
+    //    Then the renamed note itself, which rewrite_referrers skips — only
+    //    when it was a note: a build reads the links of notes alone
+    //    (`collect_md_files`), so it counted none of another file's references
+    //    (`x.txt` → `x.md` keeps its text).
+    //    Its destination passes the gate every referrer passes right before
+    //    it is written: resolved again NOW — after the move and every
+    //    referrer write, not before them — it must still lie inside the
+    //    file's contexts. It is stale news on a referrer's terms: the index
+    //    named it under the old key for more than its own `((#^id))`
+    //    references.
+    let renamed_content = match renamed_content {
+        Some(content) if was_note => Some(
+            rewrite_renamed_note(
+                new_path,
+                content,
+                |content, ref_path| rewrite(content, ref_path, &own_roots),
+                || confined_both_ways(new_path, &scope.dirs, source.parent.as_deref()),
+                |content| {
+                    matches!(unchanged, Unchanged::Report { .. })
+                        && named_lines.contains_key(old_path)
+                        && !named_for_its_own_references(old_path, content)
+                },
+                &mut rewritten,
+            )
+            .await,
+        ),
+        unread_or_not_a_note => unread_or_not_a_note,
+    };
 
-    // 4. Drop the old entry and add the renamed note in its owning indexes.
+    // 4. Drop the old entry and add the renamed file in its owning indexes.
     //    Re-index rewritten referrers from the content we already have in
     //    the holding indexes that cover each one, including indexes built
     //    for the judgement. Each index spells paths its own way (Mutation::apply_to).
-    //    The renamed note is filed under what its new path resolves to now,
+    //    The renamed file is filed under what its new path resolves to now,
     //    after the move and its own rewrite — the identity a save would file
-    //    it under (see `remove_old`). A note that no longer resolves (a link
-    //    whose target went since) is not filed. Reading it after the note's
-    //    own rewrite, not right after the move, matters only when that write
-    //    turns a symlinked note into a regular file (the atomic-write
-    //    followup): the note is then its own path.
+    //    it under (see `remove_old`): as a note with its links when its new
+    //    name is one and its content was read; otherwise as a build files a
+    //    file it reads no link in (`Mutation::Target`) — a link target, and
+    //    a note with no links under a note's name — so `old.md` → `old.txt`
+    //    leaves the notes. A file that no longer resolves (a link whose
+    //    target went since) is not filed. Reading it after the note's own rewrite, not
+    //    right after the move, matters only when that write turns a
+    //    symlinked note into a regular file (the atomic-write followup): the
+    //    note is then its own path.
     let new_identity = std::fs::canonicalize(new_path).ok();
     let mut per_key: HashMap<String, Vec<Mutation>> = HashMap::new();
     push_for_keys(&mut per_key, &scope.keys, &remove_old);
     queue_rewritten(&mut per_key, ctx_mgr, &holding_keys, rewritten.contents).await;
     if let Some(path) = new_identity {
-        push_for_keys(
-            &mut per_key,
-            &scope.keys,
-            &Mutation::Update {
-                path,
-                content: renamed_content,
-            },
-        );
+        let filed = match renamed_content {
+            Some(content) if becomes_note => Mutation::Update { path, content },
+            _ => Mutation::Target { path },
+        };
+        push_for_keys(&mut per_key, &scope.keys, &filed);
     }
     apply_queued(state, per_key).await;
 
+    // 5. A PDF's highlight files follow it (`carry_pdf_highlights`): its companion note is
+    //    renamed as any note is, and what that rename rewrote or left is this rename's too.
+    let carried =
+        carry_pdf_highlights(state, ctx_mgr, &scope.dirs, old_path, new_path, windows).await;
+    let mut updated = rewritten.updated;
+    updated.extend(carried.updated);
+    let mut skipped = rewritten.skipped;
+    skipped.extend(carried.skipped);
+    skipped.extend(markdown_left);
     Ok(RenameResult {
-        updated_files: rewritten.updated,
-        skipped_files: rewritten.skipped,
+        updated_files: where_they_are(updated, &carried.moved),
+        skipped_files: where_they_are(skipped, &carried.moved),
+        moved: carried.moved,
     })
+}
+
+/// `files` named where they are once the carry is done — a file the carry moved (the
+/// highlight note, which this rename may have rewritten or left as a referrer before it
+/// moved) by its new path — each once, in order. The frontend finds an open file by that
+/// path: it re-keys every moved file before it reads `updated_files`.
+fn where_they_are(files: Vec<String>, moved: &[MovedFile]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(files.len());
+    for file in files {
+        let file = match moved.iter().find(|pair| pair.from == file) {
+            Some(pair) => pair.to.clone(),
+            None => file,
+        };
+        if !out.contains(&file) {
+            out.push(file);
+        }
+    }
+    out
+}
+
+/// Whether a note other than the one at `path` has its stem in one of `dirs`' indexes —
+/// compared by what each path resolves to, since nested roots may spell one note twice.
+async fn another_note_shares_the_stem(
+    state: &LinkIndexState,
+    dirs: &[crate::context::manager::Registered],
+    path: &str,
+) -> bool {
+    use crate::context::manager::resolve_canonical;
+    let key = name_key(path, cfg!(windows));
+    // A note that cannot be resolved counts as another: left and reported, never assumed.
+    let Ok(this) = resolve_canonical(path) else {
+        return true;
+    };
+    for d in dirs {
+        let notes = state
+            .with_index_for(&d.info.path, d.incarnation, |index| {
+                index
+                    .map(|index| index.notes_with_stem(&key))
+                    .unwrap_or_default()
+            })
+            .await;
+        if notes
+            .iter()
+            .any(|note| resolve_canonical(note).map_or(true, |note| note != this))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// The folder `path` is in, as spelled — not resolved.

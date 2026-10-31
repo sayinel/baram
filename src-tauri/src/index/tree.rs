@@ -4,6 +4,7 @@
 //! through `Mutation::Target`, `Mutation::RemoveTree` and `Mutation::Update`.
 
 use super::extractor::{extract_file_tags, extract_links};
+use super::filing::is_note;
 use super::LinkIndex;
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
@@ -31,16 +32,21 @@ impl LinkIndex {
         true
     }
 
-    /// §278 · §393 Register `file_path` as a link target, as `build` does for every file it
-    /// finds — `[[Paper.pdf]]` resolves once this ran. Returns whether the index changed: `true`
-    /// when some key newly gained the path, `false` when the file was already a target (the
-    /// watcher's echo of a save to it) and for an index that was never built — without a root
-    /// there is no vault-relative key to give the file, so nothing is registered.
+    /// §278 · §393 Register `file_path` as `build` registers a file it finds before it reads
+    /// any: as a link target — `[[Paper.pdf]]` resolves once this ran — and, for a note
+    /// (`filing::is_note`), under its stem and its path in the note maps as well
+    /// (`register_file_path`), with no links read: what a build makes of a note it cannot read
+    /// (§33: a file renamed to a note's name whose content is not text). Returns whether the
+    /// index changed: `true` when some key newly gained the path, `false` when the file was
+    /// already registered (the watcher's echo of a save to it) and for an index that was never
+    /// built — without a root there is no vault-relative key to give the file, so nothing is
+    /// registered.
     pub(crate) fn add_link_target(&mut self, file_path: &str) -> bool {
-        match self.root_path.clone() {
-            Some(root) => self.register_link_target(file_path, &root),
-            None => false,
-        }
+        let Some(root) = self.root_path.clone() else {
+            return false;
+        };
+        let as_note = is_note(file_path, self.windows) && self.register_file_path(file_path, &root);
+        self.register_link_target(file_path, &root) || as_note
     }
 
     /// §393 Drop every note and link target at one of `dirs` or under it, comparing path

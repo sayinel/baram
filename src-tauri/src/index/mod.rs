@@ -3,11 +3,14 @@
 // 전략: Vault 열기 시 전체 .md 파일 스캔 → 인메모리 HashMap 저장
 //       파일 저장 시 해당 파일만 증분 업데이트
 
+mod block_ref_escape;
 mod extractor;
 mod filing;
 #[cfg(test)]
 mod fold_gate;
+mod html_media;
 mod judgement;
+mod markdown_links;
 mod normalizer;
 mod read_back;
 mod relative_links;
@@ -117,13 +120,18 @@ impl LinkKind {
 #[cfg(test)]
 impl LinkKind {
     /// One reference of this kind to `target`, as prose spells it — what the
-    /// count test builds its fixture from, kind by kind over `ALL`. No `_`
-    /// arm: a new kind must say how it is spelled before the suite compiles.
+    /// count test builds its fixture from, kind by kind over `ALL`; a block
+    /// reference's or embed's target spelled as a rename writes it
+    /// (`block_ref_escape::spell_block_ref_target`: escaped only where it would
+    /// not read back otherwise — `t (1)` as `t (1%29`, `target` as it is). No
+    /// `_` arm: a new kind
+    /// must say how it is spelled before the suite compiles.
     pub(crate) fn spelled(self, target: &str, id: &str) -> String {
+        let block = block_ref_escape::spell_block_ref_target(target);
         match self {
             LinkKind::Wikilink => format!("[[{target}]]"),
-            LinkKind::BlockRef => format!("(({target}#^{id}))"),
-            LinkKind::BlockEmbed => format!("{{{{embed (({target}#^{id}))}}}}"),
+            LinkKind::BlockRef => format!("(({block}#^{id}))"),
+            LinkKind::BlockEmbed => format!("{{{{embed (({block}#^{id}))}}}}"),
         }
     }
 }
@@ -139,22 +147,23 @@ pub enum RewritePass {
 }
 
 /// The in-memory link index
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LinkIndex {
     /// source_path → list of links found in that file
     outgoing: HashMap<String, Vec<LinkEntry>>,
-    /// The key a link is filed under (`filing_key`: its stem, its path under
+    /// The key a link is filed under (`filing_key`: its name, its path under
     /// `root_path`, or its vault alias with its target) → the links filed
     /// there. A file's backlinks are read under `backlink_keys`: `keys_for`
-    /// its path, plus the zettel id in its stem when it has one, bare and
-    /// behind each local alias.
+    /// its path, plus the zettel id in a note's stem when it has one, bare
+    /// and behind each local alias.
     incoming: HashMap<FilingKey, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
     /// Normalized file stem (folded by `fold_name`, no extension) → list of absolute file paths
     /// Used to resolve [[name]] style wikilinks to actual file locations in subdirectories
     file_map: HashMap<String, Vec<String>>,
-    /// Normalized relative path (folded by `fold_name`, no extension) → absolute file path
+    /// Relative path under the root (`root_relative_key`: components joined with `/`,
+    /// folded by `fold_name`, no extension) → absolute file path
     /// Used to resolve [[path/name]] style wikilinks (e.g., [[notes/architecture]])
     relative_map: HashMap<String, String>,
     /// Note id (12–14 digit filename prefix) → absolute file path (Zettelkasten `[[ID]]` links)
@@ -173,11 +182,44 @@ pub struct LinkIndex {
     name_map: HashMap<String, Vec<String>>,
     /// file_path → list of tags found in that file (for graph tag nodes)
     file_tags: HashMap<String, Vec<String>>,
+    /// Whether paths are read the Windows way — `\` a separator too, and
+    /// path components compared without ASCII case (`same_component`) — by
+    /// the keys this index's methods build: a link's (`file_incoming`), a
+    /// file's (`filing_keys_of`, `backlink_keys`, the path-key counts) and
+    /// the resolver's maps and the link text it reads them with
+    /// (`register_file_path`, `register_link_target`, `link_text`). Not by
+    /// `extract_links`, whose self-reference target is the stem `std::path`
+    /// reads on this host. This host's rule (`cfg!(windows)`) except in the
+    /// tests that pass `true` to `with_windows` (issue 595: the Windows shape
+    /// is tested by passing `windows = true`, never behind `cfg(windows)`).
+    windows: bool,
+}
+
+impl Default for LinkIndex {
+    fn default() -> Self {
+        Self::with_windows(cfg!(windows))
+    }
 }
 
 impl LinkIndex {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// An empty index that reads paths the Windows way when `windows`,
+    /// whatever the host (`LinkIndex::windows`).
+    pub(crate) fn with_windows(windows: bool) -> Self {
+        Self {
+            outgoing: HashMap::new(),
+            incoming: HashMap::new(),
+            root_path: None,
+            file_map: HashMap::new(),
+            relative_map: HashMap::new(),
+            id_map: HashMap::new(),
+            name_map: HashMap::new(),
+            file_tags: HashMap::new(),
+            windows,
+        }
     }
 
     /// Build the full index by scanning all .md files under root_path
@@ -253,7 +295,7 @@ impl LinkIndex {
         self.incoming.retain(|_, v| !v.is_empty());
 
         // Remove from file maps
-        let stem = normalize_file_path(file_path);
+        let stem = normalize_file_path(filing::file_name(file_path, self.windows));
         if let Some(paths) = self.file_map.get_mut(&stem) {
             paths.retain(|p| p != file_path);
             if paths.is_empty() {
@@ -278,50 +320,84 @@ impl LinkIndex {
             &entry.target,
             entry.target_vault_alias.as_deref(),
             self.root_path.as_deref(),
-            cfg!(windows),
+            self.windows,
         );
         self.incoming.entry(key).or_default().push(entry.clone());
     }
 
     /// The keys a link to `file_path` is filed under in this index
-    /// (`keys_for` under `root_path`): its stem, its path under the root,
-    /// and each of `local_aliases` paired with its stem and its path under
-    /// that alias's own root.
+    /// (`keys_for` under `root_path`): its name (`name_key` — a note's stem,
+    /// any other file's whole name), its path under the root, and each of
+    /// `local_aliases` paired with its name and its path under that alias's
+    /// own root.
     pub fn filing_keys_of(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
         keys_for(
             file_path,
             self.root_path.as_deref(),
             local_aliases,
-            cfg!(windows),
+            self.windows,
         )
     }
 
-    /// The `Path`-key text of every note this index holds under its root,
-    /// with how many of its notes fold to it: `root_relative_key` — the
-    /// function `keys_for` spells a file's path key with, so the shapes
-    /// agree — of each path in `file_map`, which holds each path once. Not
-    /// `relative_map`, whose keys keep the host's separators and hold one
-    /// path per key. Empty with no root. The rename reads it to tell whether
-    /// a path link names an existing note under a root that holds the
-    /// referrer, and whether more than one note there answers to it — on a
-    /// file system that keeps case, `A/note.md` and `a/note.md` both fold
-    /// to `a/note` (`judgement::KnownPaths`).
+    /// The `Path`-key text of every file this index holds under its root —
+    /// note or link target (`registered_files`) — with how many of its files
+    /// fold to it: `root_relative_key`, the function `keys_for` spells a
+    /// file's path key with, so the shapes agree. Not `relative_map`, which
+    /// holds notes alone, one path per key. Empty with no root. The rename
+    /// reads it to tell whether a path link names an existing file under a
+    /// root that holds the referrer — a PDF there as much as a note — and
+    /// whether more than one file there answers to it: on a file system that
+    /// keeps case, `A/note.md` and `a/note.md` both fold to `a/note`
+    /// (`judgement::KnownPaths`).
     pub fn registered_path_keys(&self) -> HashMap<String, usize> {
-        self.path_keys_of(self.file_map.values().flatten())
+        self.path_keys_of(self.registered_files())
     }
 
-    /// The `Path` keys two or more of this index's notes fold to, with how
-    /// many — `registered_path_keys` without the keys one note alone has,
+    /// Every file this index holds, each once: the notes (`file_map`) and
+    /// the link targets (`name_map`, which a build fills with every file it
+    /// finds, notes included, and a save of a note drops the note from).
+    fn registered_files(&self) -> impl Iterator<Item = &String> + '_ {
+        let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        self.file_map
+            .values()
+            .flatten()
+            .chain(self.name_map.values().flatten())
+            .filter(move |path| seen.insert(path.as_str()))
+    }
+
+    /// Every note this index read links from (`outgoing`'s keys): what a
+    /// file rename reads for markdown-syntax links to the renamed file
+    /// (`markdown_links::markdown_link_dangles`), which no key files.
+    pub(crate) fn note_paths(&self) -> impl Iterator<Item = &String> + '_ {
+        self.outgoing.keys()
+    }
+
+    /// The notes this index holds under the stem `key` (`file_map`'s key,
+    /// `normalize_file_path`) — what a carried rename asks of the note it
+    /// renames (`rename/file.rs`, `KnownPaths::bare_name_shared`).
+    pub(crate) fn notes_with_stem(&self, key: &str) -> Vec<String> {
+        self.file_map.get(key).cloned().unwrap_or_default()
+    }
+
+    /// Whether a note this index holds has the stem `key` (`file_map`'s
+    /// key, `normalize_file_path`) — what a file rename asks of a whole name
+    /// that is also a note's stem (`judgement::KnownPaths::note_stems`).
+    pub fn has_note_stem(&self, key: &str) -> bool {
+        self.file_map.contains_key(key)
+    }
+
+    /// The `Path` keys two or more of this index's files fold to, with how
+    /// many — `registered_path_keys` without the keys one file alone has,
     /// for a rename whose only holding root this is (`judgement::RootNotes::Sole`).
-    /// Two notes share a key only when they share its last component
-    /// (`filing::path_key_name`), so the notes are grouped by that first and
+    /// Two files share a key only when they share its last component
+    /// (`filing::path_key_name`), so the files are grouped by that first and
     /// a full key is spelled only for a group of two or more — none, in a
-    /// vault whose note names are all different.
+    /// vault whose file names are all different.
     pub fn colliding_path_keys(&self) -> HashMap<String, usize> {
         let mut by_name: HashMap<String, Vec<&String>> = HashMap::new();
-        for path in self.file_map.values().flatten() {
+        for path in self.registered_files() {
             by_name
-                .entry(filing::path_key_name(path, cfg!(windows)))
+                .entry(filing::path_key_name(path, self.windows))
                 .or_default()
                 .push(path);
         }
@@ -335,18 +411,16 @@ impl LinkIndex {
         keys
     }
 
-    /// How many of this index's notes fold to the `Path` key `key` — the
+    /// How many of this index's files fold to the `Path` key `key` — the
     /// one entry of `registered_path_keys` a file rename needs for its new
     /// name when this is its only holding root (`judgement::RootNotes::Sole`).
-    /// Spelled only for the notes whose name is the key's last component, as
+    /// Spelled only for the files whose name is the key's last component, as
     /// `colliding_path_keys` groups them.
     pub fn path_key_notes(&self, key: &str) -> usize {
         let name = key.rsplit('/').next().unwrap_or(key);
         let same_name = self
-            .file_map
-            .values()
-            .flatten()
-            .filter(|path| filing::path_key_name(path, cfg!(windows)) == name);
+            .registered_files()
+            .filter(|path| filing::path_key_name(path, self.windows) == name);
         self.path_keys_of(same_name).get(key).copied().unwrap_or(0)
     }
 
@@ -361,7 +435,7 @@ impl LinkIndex {
         for path in paths {
             #[cfg(test)]
             PATH_KEYS_SPELLED.with(|n| n.set(n.get() + 1));
-            if let Some(key) = filing::root_relative_key(root, path, cfg!(windows)) {
+            if let Some(key) = filing::root_relative_key(root, path, self.windows) {
                 *keys.entry(key).or_insert(0) += 1;
             }
         }
@@ -370,15 +444,15 @@ impl LinkIndex {
 
     /// The keys `get_backlinks` and `block_reference_lines` read for
     /// `file_path` (`backlink_keys_for` under `root_path`): `filing_keys_of`,
-    /// plus the zettel id inside its stem if it has one, under which a bare
-    /// `[[202607051530]]` is filed, and that id behind each of
+    /// plus the zettel id inside a note's stem if it has one, under which a
+    /// bare `[[202607051530]]` is filed, and that id behind each of
     /// `local_aliases` (`[[Zettel::202607051530]]`).
     pub fn backlink_keys(&self, file_path: &str, local_aliases: &[LocalAlias]) -> Vec<FilingKey> {
         filing::backlink_keys_for(
             file_path,
             self.root_path.as_deref(),
             local_aliases,
-            cfg!(windows),
+            self.windows,
         )
     }
 
@@ -407,7 +481,7 @@ impl LinkIndex {
     }
 
     /// §33 · issue 678: every `(file, line)` filed under the keys a link to
-    /// `file_path` is filed under (`filing_keys_of`: its stem — `file_key`,
+    /// `file_path` is filed under (`filing_keys_of`: its name — `name_key`,
     /// not `normalize_target`, which would read a stem ending in `.md` as
     /// another note's — and its path under the root) — wikilink, block
     /// reference and embed alike. NOT the zettel-id keys that `backlink_keys`
@@ -600,68 +674,93 @@ mod tests {
         // visits it. `((dir/target#^b1))` names another file's path (issue
         // 619): it is not in this bucket and no pass visits it for
         // `/vault/target.md` — the sibling test below counts the path bucket.
-        let mut content = LinkKind::ALL
-            .iter()
-            .map(|kind| kind.spelled("target", "b1"))
-            .collect::<Vec<_>>()
-            .join(" and ");
-        content.push_str("\n((dir/target#^b1))");
-        let content = content.as_str();
-        let mut index = LinkIndex::new();
-        index.update_file_from_content("/vault/r.md", content);
-        let filed = index
-            .incoming
-            .get(&FilingKey::Stem(file_key("target")))
-            .map_or(0, |entries| {
-                entries
-                    .iter()
-                    .filter(|e| e.source_path == "/vault/r.md")
-                    .count()
-            });
-        let target = RenameTarget {
-            old_path: "/vault/target.md",
-            new_path: "/vault/renamed.md",
-            local_aliases: &[],
-            known_paths: Default::default(),
-            windows: false,
-        };
-        let roots = ["/vault".to_string()];
-        assert_eq!(
-            replace_wikilink_target(content, "/vault/r.md", &roots, &target).matched
-                + replace_block_reference_target(content, "/vault/r.md", &roots, &target).matched,
-            filed,
-            "the index files a reference under this stem that neither rewrite pass visits"
-        );
+        //
+        // A file that is no note is filed under its whole name (`name_key`),
+        // so the same count runs for `target.txt`, spelled whole. Its bucket
+        // is named here as text, not by `name_key`, and must hold every kind:
+        // a key both sides took from one wrong function would agree on an
+        // empty bucket. What fails that half: judging the old name by its
+        // stem (`Path::file_stem`) in `RenameTarget::judge` — 0 != 3.
+        // A name holding `)` is written escaped in a block reference
+        // (`t (1%29`), so the count runs for `t (1)` too. What fails that
+        // half: reading a block reference's target as written in
+        // `extract_links` — 1 != 3 (one filed, three expected); or in
+        // `visit_block_references_to` — 1 != 3 (one visited, three filed).
+        for (old_path, name, new_path) in [
+            ("/vault/target.md", "target", "/vault/renamed.md"),
+            ("/vault/target.txt", "target.txt", "/vault/renamed.txt"),
+            ("/vault/t (1).md", "t (1)", "/vault/u (2).md"),
+        ] {
+            let mut content = LinkKind::ALL
+                .iter()
+                .map(|kind| kind.spelled(name, "b1"))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            content.push_str("\n((dir/target#^b1))");
+            let content = content.as_str();
+            let mut index = LinkIndex::new();
+            index.update_file_from_content("/vault/r.md", content);
+            let filed = index
+                .incoming
+                .get(&FilingKey::Stem(file_key(name)))
+                .map_or(0, |entries| {
+                    entries
+                        .iter()
+                        .filter(|e| e.source_path == "/vault/r.md")
+                        .count()
+                });
+            assert_eq!(filed, LinkKind::ALL.len(), "{old_path}");
+            let target = RenameTarget {
+                old_path,
+                new_path,
+                local_aliases: &[],
+                known_paths: Default::default(),
+                windows: false,
+            };
+            let roots = ["/vault".to_string()];
+            assert_eq!(
+                replace_wikilink_target(content, "/vault/r.md", &roots, &target).matched
+                    + replace_block_reference_target(content, "/vault/r.md", &roots, &target)
+                        .matched,
+                filed,
+                "the index files a reference to {old_path} under its name that neither rewrite \
+                 pass visits"
+            );
+        }
     }
 
     #[test]
-    fn the_colliding_path_keys_are_every_key_two_notes_share_and_no_other() {
-        // `A/note.md` and `a/note.md` fold to `a/note`. `a/x.txt` — a rename
-        // to `.txt` keeps the file in the index — and `a/x.txt.md` both
-        // fold to `a/x.txt` although their stems, `x` and `x.txt`, differ:
-        // the notes are grouped by the key's own last component, not by
-        // stem. `b/note.md` shares a name with the first pair but not a key.
-        // What fails this: grouping by `file_map`'s stem buckets instead of
-        // `path_key_name` — `a/x.txt` is missed; and keeping the keys only
-        // one note has — `b/note` appears.
+    fn the_colliding_path_keys_are_every_key_two_files_share_and_no_other() {
+        // `A/note.md` and `a/note.md` fold to `a/note`. The link target
+        // `a/x.txt` — registered as a build registers a file that is no note
+        // — and the note `a/x.txt.md` both fold to `a/x.txt` although only
+        // the second is a note and their stems, `x` and `x.txt`, differ: the
+        // files are grouped by the key's own last component, notes and link
+        // targets alike. `b/note.md` shares a name with the first pair but
+        // not a key.
+        // What fails this: reading the notes alone (`file_map`) instead of
+        // `registered_files` — `a/x.txt` is missed; grouping by `file_map`'s
+        // stem buckets instead of `path_key_name` — the same; and keeping the
+        // keys only one file has — `b/note` appears.
         let mut index = LinkIndex::new();
         index.root_path = Some("/v".to_string());
         for path in [
             "/v/A/note.md",
             "/v/a/note.md",
             "/v/b/note.md",
-            "/v/a/x.txt",
             "/v/a/x.txt.md",
             "/v/c/other.md",
         ] {
             index.update_file_from_content(path, "");
         }
+        index.register_link_target("/v/a/x.txt", "/v");
         let expected: HashMap<String, usize> =
             [("a/note".to_string(), 2), ("a/x.txt".to_string(), 2)].into();
         assert_eq!(index.colliding_path_keys(), expected);
         let all = index.registered_path_keys();
         assert_eq!(all.len(), 4, "{all:?}");
         assert_eq!(all.get("b/note"), Some(&1));
+        assert_eq!(index.path_key_notes("a/x.txt"), 2);
     }
 
     #[test]
@@ -831,6 +930,60 @@ mod tests {
     }
 
     #[test]
+    fn a_file_that_is_no_note_is_named_by_its_whole_name_and_its_path() {
+        // §278 A PDF is a backlink target by its whole name, whatever the
+        // case, display, heading or `!` around it, and by its path from the
+        // root or from the referrer's folder. The resolver sends the same
+        // links to it but the relative one — it has no relative step.
+        // `[[Paper]]` and `[[papers/Paper]]` name a note: the PDF's
+        // highlight companion, which shares the stem, answers the first.
+        // `[[Paper.pdf|Paper]]` is the link the backlinks panel's "link it"
+        // writes for an unlinked mention `Paper` on the PDF's tab
+        // (`linkifyMention`, given the tab's file name with `.md` cut only).
+        // A zettel id at the head of a file that is no note names nothing:
+        // `id_map` is filled from notes alone.
+        // What fails this: keying the file by its stem (`Path::file_stem`)
+        // in `name_key` — the whole-name lines leave the PDF and `[[Paper]]`
+        // joins it; dropping the `is_note` guard from `backlink_keys_for` —
+        // `[[202607051530]]` is a backlink of the scan.
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/v".to_string());
+        index.update_file_from_content("/v/highlights/papers/Paper.md", "quote ^h1\n");
+        index.update_file_from_content(
+            "/v/notes/b.md",
+            "[[Paper]]\n[[Paper.pdf]]\n[[papers/Paper.pdf]]\n[[papers/Paper]]\n\
+             ![[Paper.pdf]]\n[[paper.PDF]]\n[[Paper.pdf|shown]]\n[[Paper.pdf#page=3]]\n\
+             see [[Paper.pdf|Paper]] here\n[[202607051530]]\n",
+        );
+        index.update_file_from_content("/v/papers/r.md", "[[./Paper.pdf]]\n[[./Paper]]\n");
+        let lines = |file: &str| -> Vec<(String, u32)> {
+            index
+                .get_backlinks(file, &[])
+                .into_iter()
+                .map(|b| (b.source_path, b.line))
+                .collect()
+        };
+        let b = |line: u32| ("/v/notes/b.md".to_string(), line);
+        assert_eq!(
+            lines("/v/papers/Paper.pdf"),
+            vec![
+                b(2),
+                b(3),
+                b(5),
+                b(6),
+                b(7),
+                b(8),
+                b(9),
+                ("/v/papers/r.md".to_string(), 1)
+            ]
+        );
+        assert_eq!(lines("/v/highlights/papers/Paper.md"), vec![b(1)]);
+        assert!(lines("/v/202607051530 scan.pdf").is_empty());
+        // The positive partner: the id names a note that starts with it.
+        assert_eq!(lines("/v/202607051530 idea.md"), vec![b(10)]);
+    }
+
+    #[test]
     fn a_reference_that_escapes_the_root_is_nobodys_backlink() {
         // A relative target that climbs out of the root keeps its text as
         // its key, which no file under the root answers to.
@@ -972,6 +1125,26 @@ mod tests {
 
         index.remove_file("/vault/papers/attention.pdf");
         assert_eq!(index.resolve_target_from_map("attention.pdf"), None);
+    }
+
+    #[test]
+    fn removing_a_windows_path_drops_it_from_its_stem() {
+        // `remove_file` finds the stem bucket `register_file_path` filed the
+        // note in from the path's components, so a Windows path is dropped
+        // on any host.
+        // What fails this: reading the stem from the whole path
+        // (`normalize_file_path(file_path)`) — where `\` is no separator to
+        // the host that is `c:\v\d\x`, the bucket `x` keeps the path, and
+        // `[[x]]` still resolves to the removed note.
+        let mut index = LinkIndex::with_windows(true);
+        index.root_path = Some(r"C:\v".to_string());
+        index.register_file_path(r"C:\v\d\x.md", r"C:\v");
+        assert_eq!(
+            index.resolve_target_from_map("x"),
+            Some(r"C:\v\d\x.md".to_string())
+        );
+        index.remove_file(r"C:\v\d\x.md");
+        assert_eq!(index.resolve_target_from_map("x"), None);
     }
 
     #[test]

@@ -55,6 +55,9 @@ export const BLOCK_REF_RE =
 // Order matters both ways: `%` is escaped FIRST so the `%29`/`%23`/`%7C`
 // introduced by the later steps aren't themselves re-escaped, and unescaped
 // LAST so a decoded `)`/`#`/`|` can't be mistaken for part of a `%25`.
+// The Rust link index reads every block reference's target this way and a
+// rename writes one this way (`src-tauri/src/index/block_ref_escape.rs`); both
+// sides test the rule against `src-tauri/src/index/fixtures/block-ref-target-escape.json`.
 const TARGET_ESCAPE_PAIRS: readonly [raw: string, escaped: string][] = [
   ["%", "%25"],
   [")", "%29"],

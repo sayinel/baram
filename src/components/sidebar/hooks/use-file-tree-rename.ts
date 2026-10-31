@@ -1,7 +1,11 @@
 // §33 Inline rename with wikilink auto-update
 import { useCallback, useState } from "react";
 
-import type { NamespaceRenameResult, RenameResult } from "../../../ipc/types";
+import type {
+  MovedFile,
+  NamespaceRenameResult,
+  RenameResult,
+} from "../../../ipc/types";
 import type { FileEntry } from "../../../stores/file/file";
 
 import { type Locale, t } from "../../../i18n";
@@ -79,7 +83,13 @@ export function useFileTreeRename(
       // §395 spec 0074 D12 — the vault:changed of every context holding either
       // path waits until this rename has told plugins. Raised as the first
       // statement of the try whose finally releases it, so nothing thrown
-      // between here and the IPC leaves it raised.
+      // between here and the IPC leaves it raised. The files a PDF's rename
+      // carries along (`moved`) are known only from the IPC's result, but the
+      // backend carries them only under the root of a directory context
+      // holding the PDF (`carry_pdf_highlights`), so every context holding one
+      // holds the PDF too and is held here — except one registered at or
+      // inside that root's `highlights/` or `.baram/` that does not hold the
+      // PDF, whose vault:changed is then not held.
       let release: (() => void) | undefined;
       try {
         release = beginFileOperation([oldPath, newPath]);
@@ -117,18 +127,34 @@ export function useFileTreeRename(
         // name" would tell them to throw away the edit they are making.
         let renamedNoteHeldBack = false;
         try {
-          renameFileEntry(oldPath, newPath, newName);
-          // §395 spec 0074 D10 — in the tree update's synchronous span, before
-          // the first await below, so a row re-mounted under the new path finds
-          // its decoration already there. The branch taken decides `isDir`:
-          // `renameNamespace` moved a folder, `renameFileWithLinks` a file.
-          notifyRenamed(oldPath, newPath, isNamespaceRename);
+          // §395 spec 0074 D10 — the `notifyRenamed` in each branch of this if
+          // runs right after its `renameFileEntry`, in the tree update's
+          // synchronous span, before the first await below, so a row
+          // re-mounted under the new path finds its decoration already there.
+          // The branch taken decides `isDir`: `renameNamespace` moved a
+          // folder, `renameFileWithLinks` files — the renamed one and each one
+          // it carried along, every one an in-app rename plugins hear of.
           if (isNamespaceRename) {
+            renameFileEntry(oldPath, newPath, newName);
+            notifyRenamed(oldPath, newPath, true);
             useEditorStore.getState().renameDirInTabs(oldPath, newPath);
           } else {
-            renameTab(oldPath, newPath, newName);
+            // The renamed file, then §33 every file the rename carried along
+            // (`moved`: a PDF's highlight note and sidecar) — each followed the
+            // same way, or a tab left on the old path writes the file back
+            // there on its next save (`writeFile` creates a missing file).
+            const files: MovedFile[] = [
+              { from: oldPath, to: newPath },
+              ...("moved" in result ? result.moved : []),
+            ];
+            for (const { from, to } of files) {
+              const name = to === newPath ? newName : lastPathSegment(to);
+              renameFileEntry(from, to, name);
+              notifyRenamed(from, to, false);
+              renameTab(from, to, name);
+            }
           }
-          // The renamed file's cached content is already under newPath:
+          // Each moved file's cached content is already under its new path:
           // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
           // stores/file/file-tree-ops.ts). Read the map after it.
           const { openFiles } = useFileStore.getState();

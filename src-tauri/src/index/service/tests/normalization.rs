@@ -28,10 +28,10 @@ async fn a_vault_alias_stored_decomposed_answers_the_links_typed_composed() {
     .await;
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    let (old, referrer) = (format!("{root}/old.md"), format!("{root}/r.md"));
+    let (old, referrer) = (at(&root, &["old.md"]), at(&root, &["r.md"]));
     assert_eq!(backlink_lines(&state, &ctx, &old, &referrer).await, vec![1]);
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root}/new.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root, &["new.md"]))
         .await
         .unwrap();
     assert_eq!(result.updated_files, vec![referrer]);
@@ -69,10 +69,10 @@ async fn a_link_that_writes_the_alias_decomposed_is_respelled_and_read_back() {
     .await;
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    let (old, referrer) = (format!("{root}/old.md"), format!("{root}/r.md"));
+    let (old, referrer) = (at(&root, &["old.md"]), at(&root, &["r.md"]));
     assert_eq!(backlink_lines(&state, &ctx, &old, &referrer).await, vec![1]);
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root}/new.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root, &["new.md"]))
         .await
         .unwrap();
     assert_eq!(result.updated_files, vec![referrer]);
@@ -123,17 +123,14 @@ async fn a_rename_respells_the_links_typed_composed_and_writes_them_composed() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/{folder_on_disk}/{note_on_disk}.md"),
-        &format!("{root}/{folder_on_disk}/{renamed}.md"),
+        &at(&root, &[&folder_on_disk, &format!("{note_on_disk}.md")]),
+        &at(&root, &[&folder_on_disk, &format!("{renamed}.md")]),
     )
     .await
     .unwrap();
     let mut updated = result.updated_files.clone();
     updated.sort();
-    let mut expected = vec![
-        format!("{root}/r.md"),
-        format!("{root}/{folder_on_disk}/s.md"),
-    ];
+    let mut expected = vec![at(&root, &["r.md"]), at(&root, &[&folder_on_disk, "s.md"])];
     expected.sort();
     assert_eq!(updated, expected);
     assert!(
@@ -185,12 +182,12 @@ async fn a_rename_in_a_vault_whose_own_folder_is_stored_decomposed_keeps_its_pat
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/{note}.md"),
-        &format!("{root}/a/{renamed}.md"),
+        &at(&root, &["a", &format!("{note}.md")]),
+        &at(&root, &["a", &format!("{renamed}.md")]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -222,12 +219,12 @@ async fn a_rename_to_a_name_given_decomposed_writes_it_composed() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/{renamed_on_disk}.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &[&format!("{renamed_on_disk}.md")]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -262,12 +259,12 @@ async fn a_rename_to_a_name_whose_decomposed_form_reads_as_an_alias_is_judged_co
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/e\u{301}x::y.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["e\u{301}x::y.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -292,7 +289,7 @@ async fn a_block_id_rename_respells_the_references_typed_composed() {
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-nfd-block", true).await;
     std::fs::create_dir(dir.path().join(&folder_on_disk)).unwrap();
-    let target = format!("{root}/{folder_on_disk}/{note_on_disk}.md");
+    let target = at(&root, &[&folder_on_disk, &format!("{note_on_disk}.md")]);
     std::fs::write(&target, "para ^b1\n").unwrap();
     std::fs::write(
         dir.path().join("r.md"),
@@ -309,7 +306,7 @@ async fn a_block_id_rename_respells_the_references_typed_composed() {
     let result = rename_block_id_inner(&state, &ctx, &target, "b1", "b2")
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -339,13 +336,13 @@ async fn a_folder_rename_rewrites_the_links_typed_composed_into_it() {
     );
 
     let committed = commit_namespace_rename(
-        &format!("{root}/{folder_on_disk}"),
-        &format!("{root}/archive"),
+        &at(&root, &[&folder_on_disk]),
+        &at(&root, &["archive"]),
         &root,
     )
     .await
     .unwrap();
-    assert_eq!(committed.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(committed.updated_files, vec![at(&root, &["a.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
         "see [[./archive/c]]"
@@ -395,13 +392,13 @@ async fn a_normalization_only_rename_renames_the_file_itself_where_normalization
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/{note_on_disk}.md"),
-        &format!("{root}/{note}.md"),
+        &at(&root, &[&format!("{note_on_disk}.md")]),
+        &at(&root, &[&format!("{note}.md")]),
     )
     .await;
     if folds {
         let result = result.unwrap();
-        assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+        assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
         assert!(
             result.skipped_files.is_empty(),
             "{:?}",
@@ -418,11 +415,13 @@ async fn a_normalization_only_rename_renames_the_file_itself_where_normalization
             .with_index(&root, |idx| idx.unwrap().get_link_graph())
             .await;
         assert!(
-            graph.nodes.contains(&format!("{root}/{note}.md")),
+            graph.nodes.contains(&at(&root, &[&format!("{note}.md")])),
             "{graph:?}"
         );
         assert!(
-            !graph.nodes.contains(&format!("{root}/{note_on_disk}.md")),
+            !graph
+                .nodes
+                .contains(&at(&root, &[&format!("{note_on_disk}.md")])),
             "{graph:?}"
         );
     } else {
@@ -483,12 +482,12 @@ async fn two_notes_of_one_name_in_two_normalizations_keep_the_path_links_both_an
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/{note}.md"),
-        &format!("{root}/a/{renamed}.md"),
+        &at(&root, &["a", &format!("{note}.md")]),
+        &at(&root, &["a", &format!("{renamed}.md")]),
     )
     .await
     .unwrap();
-    let referrer = format!("{root}/r.md");
+    let referrer = at(&root, &["r.md"]);
     assert_eq!(result.updated_files, vec![referrer.clone()]);
     assert_eq!(result.skipped_files, vec![referrer]);
     assert_eq!(
@@ -515,8 +514,8 @@ async fn a_rename_that_changes_the_ascii_case_of_a_decomposed_name_still_goes_ah
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/E\u{301}lan.md"),
-        &format!("{root}/e\u{301}lan.md"),
+        &at(&root, &["E\u{301}lan.md"]),
+        &at(&root, &["e\u{301}lan.md"]),
     )
     .await
     .unwrap();
@@ -547,8 +546,8 @@ async fn a_rename_that_changes_only_non_ascii_case_is_still_refused_where_case_f
     let err = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/\u{C9}lan.md"),
-        &format!("{root}/\u{E9}lan.md"),
+        &at(&root, &["\u{C9}lan.md"]),
+        &at(&root, &["\u{E9}lan.md"]),
     )
     .await
     .unwrap_err();

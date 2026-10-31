@@ -34,6 +34,7 @@ vi.mock(
   }),
 );
 
+import type { RenameResult } from "../../../ipc/types";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { renameBlockId } from "../../../ipc/invoke";
@@ -201,6 +202,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
 
   it("applies the new ID — and the same-document references — once the backend agrees", async () => {
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
@@ -222,10 +224,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
   });
 
   it("finds the block by its ID, not by where the edit started", async () => {
-    let resolve!: (r: {
-      skippedFiles: string[];
-      updatedFiles: string[];
-    }) => void;
+    let resolve!: (r: RenameResult) => void;
     vi.mocked(renameBlockId).mockReturnValue(
       new Promise((r) => {
         resolve = r;
@@ -241,7 +240,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
         schema.node("paragraph", null, [schema.text("typed meanwhile")]),
       ),
     );
-    resolve({ skippedFiles: [], updatedFiles: [] });
+    resolve({ moved: [], skippedFiles: [], updatedFiles: [] });
     await flush();
 
     expect(blockIds(view)).toEqual([null, "fresh", null, "fresh"]);
@@ -251,10 +250,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     // The editor is one view for every tab: switching tabs swaps its doc and
     // caches the outgoing one. A block `^old` in the OTHER file must not be
     // renamed; the cached document of OUR tab must.
-    let resolve!: (r: {
-      skippedFiles: string[];
-      updatedFiles: string[];
-    }) => void;
+    let resolve!: (r: RenameResult) => void;
     vi.mocked(renameBlockId).mockReturnValue(
       new Promise((r) => {
         resolve = r;
@@ -274,7 +270,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     commitBlockIdEdit(view, 0, "fresh");
     activeTab("/vault/elsewhere.md");
     vi.mocked(loadedTabId).mockReturnValue("t2");
-    resolve({ skippedFiles: [], updatedFiles: [] });
+    resolve({ moved: [], skippedFiles: [], updatedFiles: [] });
     await flush();
 
     // The view (now the other file) is untouched; the cache entry moved on.
@@ -296,10 +292,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     // A tab switch changes `activeTabId` first and installs the document a
     // moment later. In between, the active tab is another file while the view
     // still holds ours — the rename must still land here, not be refused.
-    let resolve!: (r: {
-      skippedFiles: string[];
-      updatedFiles: string[];
-    }) => void;
+    let resolve!: (r: RenameResult) => void;
     vi.mocked(renameBlockId).mockReturnValue(
       new Promise((r) => {
         resolve = r;
@@ -310,7 +303,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     commitBlockIdEdit(view, 0, "fresh");
     activeTab("/vault/elsewhere.md"); // activeTabId flipped…
     vi.mocked(loadedTabId).mockReturnValue("t1"); // …but our doc is still in
-    resolve({ skippedFiles: [], updatedFiles: [] });
+    resolve({ moved: [], skippedFiles: [], updatedFiles: [] });
     await flush();
 
     expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
@@ -318,10 +311,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
   });
 
   it("a keep-alive editor keeps its own document — the rename lands even while its tab is in the background", async () => {
-    let resolve!: (r: {
-      skippedFiles: string[];
-      updatedFiles: string[];
-    }) => void;
+    let resolve!: (r: RenameResult) => void;
     vi.mocked(renameBlockId).mockReturnValue(
       new Promise((r) => {
         resolve = r;
@@ -339,7 +329,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     commitBlockIdEdit(view, 0, "fresh");
     activeTab("/vault/elsewhere.md");
     vi.mocked(loadedTabId).mockReturnValue("t2");
-    resolve({ skippedFiles: [], updatedFiles: [] });
+    resolve({ moved: [], skippedFiles: [], updatedFiles: [] });
     await flush();
 
     expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
@@ -348,10 +338,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
 
   it("warns when the block no longer carries the old ID by the time the backend answers", async () => {
     const warns = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    let resolve!: (r: {
-      skippedFiles: string[];
-      updatedFiles: string[];
-    }) => void;
+    let resolve!: (r: RenameResult) => void;
     vi.mocked(renameBlockId).mockReturnValue(
       new Promise((r) => {
         resolve = r;
@@ -363,7 +350,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
     view.dispatch(
       view.state.tr.setNodeMarkup(0, undefined, { blockId: "other" }),
     );
-    resolve({ skippedFiles: [], updatedFiles: [] });
+    resolve({ moved: [], skippedFiles: [], updatedFiles: [] });
     await flush();
 
     expect(blockIds(view)).toEqual(["other", null, "old"]);
@@ -374,6 +361,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
 
   it("keeps a backend-committed rename out of the undo history — the other files cannot be undone from here", async () => {
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
@@ -405,6 +393,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
   it("applies the rename but warns about referring files the backend could not rewrite", async () => {
     const warns = vi.spyOn(logger, "warn").mockImplementation(() => {});
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: ["/vault/ro/a.md", "/vault/ro/b.md"],
       updatedFiles: ["/vault/other.md"],
     });
@@ -424,10 +413,7 @@ describe("commitBlockIdEdit — the document follows the backend (issue 594)", (
 
 describe("commitBlockIdEdit — one rename of a block at a time", () => {
   it("refuses a second rename of the same block while the first is in flight", async () => {
-    let resolve!: (r: {
-      skippedFiles: string[];
-      updatedFiles: string[];
-    }) => void;
+    let resolve!: (r: RenameResult) => void;
     vi.mocked(renameBlockId).mockReturnValue(
       new Promise((r) => {
         resolve = r;
@@ -442,11 +428,12 @@ describe("commitBlockIdEdit — one rename of a block at a time", () => {
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast.mock.calls[0]![1]).toBe("warning");
 
-    resolve({ skippedFiles: [], updatedFiles: [] });
+    resolve({ moved: [], skippedFiles: [], updatedFiles: [] });
     await flush();
     expect(blockIds(view)).toEqual(["fresh", null, "fresh"]);
     // Settled: a new rename goes through.
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: [],
     });
@@ -499,6 +486,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only (iss
     // references by then — a failure toast here would be a lie.
     const errors = vi.spyOn(logger, "error").mockImplementation(() => {});
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
@@ -522,6 +510,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only (iss
     // `setFileContent` have their own "file may have been deleted" catch — so
     // this pins that swallow rather than the outer one.
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
@@ -538,6 +527,7 @@ describe("commitBlockIdEdit — the toast belongs to the IPC rejection only (iss
 
   it("CONTROL: a clean rename refreshes the cache and toasts nothing", async () => {
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: ["/vault/other.md"],
     });
@@ -558,6 +548,7 @@ describe("the edit widget commits once", () => {
     // commit waiting on the backend the block still says `old`, so a second
     // commit would be a second `rename_block_id` for the same pair.
     vi.mocked(renameBlockId).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: [],
     });

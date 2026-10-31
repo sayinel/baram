@@ -86,4 +86,46 @@ describe("§390 Backlinks handleLinkify", () => {
       ),
     );
   });
+
+  it("links an open PDF by its whole name, the name its backlinks are read under", async () => {
+    // A file that is no note is a backlink target by its whole name: the
+    // link index counts `[[Paper.pdf|Paper]]` for `papers/Paper.pdf` and not
+    // `[[Paper]]`, which names a note (`index/mod.rs`,
+    // `a_file_that_is_no_note_is_named_by_its_whole_name_and_its_path`,
+    // holds this very line). What fails this, in Backlinks.tsx: cutting any
+    // extension from the tab's file name, not `.md` alone — the panel
+    // writes `[[Paper]]`, and the mention leaves both of its lists.
+    useEditorStore.setState({
+      tabs: [
+        {
+          id: "t1",
+          filePath: "/r/papers/Paper.pdf",
+          title: "Paper.pdf",
+          isDirty: false,
+          isPinned: false,
+          contextId: "",
+        },
+      ],
+      activeTabId: "t1",
+    });
+    ipc.getUnlinkedMentions.mockResolvedValue([
+      {
+        sourcePath: "/r/notes/b.md",
+        line: 1,
+        context: "see Paper here",
+        matchText: "Paper",
+      },
+    ]);
+    ipc.readFile.mockResolvedValue("see Paper here\n");
+
+    render(<Backlinks />);
+    fireEvent.click(await screen.findByRole("button", { name: "Link" }));
+
+    await waitFor(() => expect(ipc.writeFile).toHaveBeenCalledTimes(1));
+    expect(ipc.writeFile).toHaveBeenCalledWith(
+      "/r/notes/b.md",
+      "see [[Paper.pdf|Paper]] here\n",
+    );
+    await waitFor(() => expect(ipc.updateFileIndex).toHaveBeenCalledTimes(1));
+  });
 });

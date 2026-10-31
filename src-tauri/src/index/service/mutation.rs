@@ -14,8 +14,11 @@ pub(super) enum Mutation {
     Update { path: PathBuf, content: String },
     /// A file is gone under this path (renamed away).
     Remove { path: PathBuf },
-    /// §393 A non-markdown file to register as a link target (§278) — the build registers
-    /// every file it finds; this is the one that appeared since.
+    /// §393 A file to register as the build registers one before it reads any
+    /// (`LinkIndex::add_link_target`): a link target (§278), and a note's stem and path too,
+    /// with no links. One that appeared since that is no note (`sync`), one the app saved that
+    /// is no note (`update_file_index_inner`), or a file a rename moved whose content the
+    /// index does not read — no note, or a note that is not text (`rename/file.rs`).
     Target { path: PathBuf },
     /// §393 Everything at or under each of these paths is gone — removed or replaced
     /// folders and files, as one change (one scan of the index however many paths).
@@ -140,7 +143,10 @@ fn canonical_entry(path: &str) -> Result<PathBuf, String> {
     }
 }
 
-#[cfg(test)]
+// Unix-only as a whole module, not per test: the test makes its link with
+// `std::os::unix::fs::symlink`, and with only the test gated, `use super::*` is unused on
+// Windows — which clippy's `-D warnings` refuses.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
@@ -149,7 +155,6 @@ mod tests {
     /// `a.md`, which is still there. On macOS, where a temporary directory sits under the
     /// `/var` → `/private/var` link, the expected path also pins the other half: the parent is
     /// canonicalised.
-    #[cfg(unix)]
     #[test]
     fn a_removed_link_is_named_by_its_own_spelling_not_by_its_target() {
         let dir = tempfile::tempdir().unwrap();

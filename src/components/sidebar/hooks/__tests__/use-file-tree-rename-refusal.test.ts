@@ -75,6 +75,7 @@ describe("a refused rename reaches the user (issue 263)", () => {
 
   it("CONTROL: a completed rename updates the tree and tabs without a toast", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: [],
     });
@@ -99,6 +100,7 @@ describe("a refused rename reaches the user (issue 263)", () => {
   // happened, and the user has no way to tell which story is true.
   it("does not toast a failure when a local update throws after a completed rename", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: [],
     });
@@ -121,6 +123,7 @@ describe("a refused rename reaches the user (issue 263)", () => {
 describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
   it("warns about referring files the backend could not rewrite, after updating the tree", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: ["/vault/ro/ref.md", "/vault/ro/other.md"],
       updatedFiles: ["/vault/a.md"],
     });
@@ -188,6 +191,7 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
 
   it("says so when a referrer with unsaved changes could not be brought in line on screen", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: ["/vault/a.md"],
     });
@@ -217,6 +221,7 @@ describe("post-commit outcomes reach the user as warnings (issue 594)", () => {
   // referrer sentence then appears and this one does not.
   it("says what a save will do when the renamed note itself has unsaved changes", async () => {
     vi.mocked(renameFileWithLinks).mockResolvedValue({
+      moved: [],
       skippedFiles: [],
       updatedFiles: ["/vault/c.md"],
     });

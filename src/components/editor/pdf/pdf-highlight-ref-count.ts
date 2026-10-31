@@ -6,24 +6,19 @@
 // (pdf-highlight-sidecar.ts의 deletedAt doc comment 참조). 그러니 확인 문구는
 // "몇 개를 끊는지"를 말할 수 있어야 한다.
 //
-// ‼️ **링크 인덱스로는 셀 수 없다.** 처음엔 getBacklinks(동반 노트 경로)로
-// 셌는데, 그 경로는 실앱에서 **항상 0**을 돌려준다 — 실기기 확인에서 드러났고,
-// getBacklinks를 vi.mock으로 덮은 테스트가 그 사실을 초록으로 가리고 있었다:
+// ‼️ **링크 인덱스로 세지 않는다.** 처음엔 getBacklinks(동반 노트 경로)로
+// 셌는데, 그때 실앱에서는 **항상 0**이었다 — 참조가 만드는 target은
+// `highlights/Paper`이고(§275.4가 동명이인을 피하려고 일부러 경로로 한정한다),
+// 그때의 인덱스는 경로로 쓴 참조를 그 경로의 파일에 잇지 않았다. 실기기
+// 확인에서 드러났고, getBacklinks를 vi.mock으로 덮은 테스트가 그 사실을 초록으로
+// 가리고 있었다.
 //
-//   • 참조가 만드는 target은 `highlights/Paper`다 (§275.4가 동명이인을 피하려고
-//     일부러 경로로 한정한다).
-//   • incoming 맵의 키는 normalize_target(target) = "highlights/paper"
-//     (index/mod.rs:165).
-//   • 그런데 get_backlinks는 normalize_file_path(파일경로) = **"paper"**로
-//     찾는다 (file_stem만, index/mod.rs:222).
-//
-// 두 키는 영영 만나지 않는다. 인덱스를 고치는 것이 근본이지만 그것은 Rust
-// 인덱스의 키 규칙 변경이라 별개 작업이다(backlog).
-//
-// 그래서 전문 검색으로 **직접** 센다. 우회가 아니라 더 정확하다:
+// 지금의 인덱스는 경로로 쓴 참조를 그 경로의 파일의 백링크로 센다
+// (index/filing.rs의 `FilingKey::Path`). 그래도 전문 검색으로 **직접** 센다.
+// 그쪽이 더 정확하다:
 //   • 매치마다 결과가 하나씩 나오므로(파일·줄·열), get_backlinks가 결과를
-//     `(source_path, line)`으로 접는 문제(index/mod.rs:233 — 한 줄에 참조가
-//     둘이면 뒤엣것이 사라진다)가 아예 없다.
+//     `(source_path, line)`으로 접는 문제(index/mod.rs의 `get_backlinks` — 한
+//     줄에 참조가 둘이면 뒤엣것이 사라진다)가 아예 없다.
 //   • 인덱스가 최신인지에 기대지 않는다. 방금 저장한 노트도 즉시 잡힌다.
 import { searchFiles } from "../../../ipc/search";
 import { useFileStore } from "../../../stores/file/file";

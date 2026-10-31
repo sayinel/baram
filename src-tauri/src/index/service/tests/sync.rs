@@ -68,19 +68,19 @@ async fn a_new_note_and_a_markdown_extension_note_are_indexed_and_announced() {
         &state,
         &ctx,
         &[
-            (&format!("{root}/c.md"), false),
-            (&format!("{root}/d.markdown"), false),
+            (&at(&root, &["c.md"]), false),
+            (&at(&root, &["d.markdown"]), false),
         ],
     )
     .await;
 
     assert_eq!(ids, vec!["ctx-a"]);
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
         vec![
-            format!("{root}/a.md"),
-            format!("{root}/c.md"),
-            format!("{root}/d.markdown")
+            at(&root, &["a.md"]),
+            at(&root, &["c.md"]),
+            at(&root, &["d.markdown"])
         ]
     );
 }
@@ -90,14 +90,14 @@ async fn an_attachment_that_appears_resolves_and_is_announced() {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("n.md", "see [[paper.pdf]]")]).await;
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/n.md");
+    let note = at(&root, &["n.md"]);
     assert_eq!(
         resolution_of(&state, &key, &note).await,
         crate::index::LinkResolution::Unresolved
     );
 
     std::fs::write(dir.path().join("paper.pdf"), "%PDF").unwrap();
-    let answer = answer(&state, &ctx, &[(&format!("{root}/paper.pdf"), false)]).await;
+    let answer = answer(&state, &ctx, &[(&at(&root, &["paper.pdf"]), false)]).await;
 
     assert_eq!(answer.contexts, vec!["ctx-a"]);
     assert!(
@@ -122,7 +122,7 @@ async fn the_echo_of_a_held_attachment_is_announced_but_leaves_the_link_index_al
     let ctx = ContextManager::new();
     let (_dir, root, state) = built(&ctx, &[("paper.pdf", "%PDF")]).await;
 
-    let answer = answer(&state, &ctx, &[(&format!("{root}/paper.pdf"), true)]).await;
+    let answer = answer(&state, &ctx, &[(&at(&root, &["paper.pdf"]), true)]).await;
 
     assert_eq!(answer.contexts, vec!["ctx-a"]);
     assert!(!answer.links_changed);
@@ -138,7 +138,7 @@ async fn a_directorys_own_metadata_change_touches_nothing_and_a_moved_in_folder_
     std::fs::create_dir(dir.path().join("sub")).unwrap();
     std::fs::write(dir.path().join("sub/e.md"), "see [[b]]").unwrap();
     std::fs::write(dir.path().join("sub/img.png"), "png").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
 
     let epoch = state.epoch(&key).await;
     assert!(sync(&state, &ctx, &[(&sub, true)]).await.is_empty());
@@ -152,8 +152,8 @@ async fn a_directorys_own_metadata_change_touches_nothing_and_a_moved_in_folder_
     assert_eq!(sync(&state, &ctx, &[(&sub, false)]).await, vec!["ctx-a"]);
     assert_eq!(walks(), before + 1, "the positive half of the walk counter");
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md"), format!("{root}/sub/e.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"]), at(&root, &["sub", "e.md"])]
     );
 }
 
@@ -162,20 +162,18 @@ async fn a_deleted_folder_takes_its_notes_with_it() {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("sub/e.md", "see [[b]]")]).await;
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md"))
-            .await
-            .len(),
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await.len(),
         2
     );
     std::fs::remove_dir_all(dir.path().join("sub")).unwrap();
 
     assert_eq!(
-        sync(&state, &ctx, &[(&format!("{root}/sub"), false)]).await,
+        sync(&state, &ctx, &[(&at(&root, &["sub"]), false)]).await,
         vec!["ctx-a"]
     );
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
 }
 
@@ -188,11 +186,11 @@ async fn a_folder_replaced_under_the_same_name_in_one_batch_loses_its_old_childr
     std::fs::create_dir(dir.path().join("sub")).unwrap();
     std::fs::write(dir.path().join("sub/new.md"), "see [[b]]").unwrap();
 
-    sync(&state, &ctx, &[(&format!("{root}/sub"), false)]).await;
+    sync(&state, &ctx, &[(&at(&root, &["sub"]), false)]).await;
 
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md"), format!("{root}/sub/new.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"]), at(&root, &["sub", "new.md"])]
     );
 }
 
@@ -267,10 +265,10 @@ async fn hidden_and_tool_paths_are_left_alone() {
         &state,
         &ctx,
         &[
-            (&format!("{root}/.DS_Store"), false),
-            (&format!("{root}/.obsidian/workspace.json"), false),
-            (&format!("{root}/node_modules/x.md"), false),
-            (&format!("{root}/node_modules"), false),
+            (&at(&root, &[".DS_Store"]), false),
+            (&at(&root, &[".obsidian", "workspace.json"]), false),
+            (&at(&root, &["node_modules", "x.md"]), false),
+            (&at(&root, &["node_modules"]), false),
         ],
     )
     .await;
@@ -279,8 +277,8 @@ async fn hidden_and_tool_paths_are_left_alone() {
     assert_eq!(state.epoch(&key).await, epoch);
     assert_eq!(walks(), before, "node_modules/ is not walked");
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
 }
 
@@ -297,12 +295,12 @@ async fn a_symlink_is_left_alone_and_its_target_keeps_its_links() {
     let (dir, root, state) = built(&ctx, &[]).await;
     std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("link.md")).unwrap();
 
-    assert!(sync(&state, &ctx, &[(&format!("{root}/link.md"), false)])
+    assert!(sync(&state, &ctx, &[(&at(&root, &["link.md"]), false)])
         .await
         .is_empty());
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
 }
 
@@ -320,10 +318,10 @@ async fn an_external_case_only_rename_leaves_only_the_new_spelling() {
     if !dir.path().join("note.md").exists() {
         return;
     }
-    let b = format!("{root}/b.md");
+    let b = at(&root, &["b.md"]);
     assert_eq!(
         sources_of(&state, &ctx, &b).await,
-        vec![format!("{root}/Note.md"), format!("{root}/a.md")]
+        vec![at(&root, &["Note.md"]), at(&root, &["a.md"])]
     );
     std::fs::rename(dir.path().join("Note.md"), dir.path().join("note.md")).unwrap();
 
@@ -331,8 +329,8 @@ async fn an_external_case_only_rename_leaves_only_the_new_spelling() {
         &state,
         &ctx,
         &[
-            (&format!("{root}/Note.md"), false),
-            (&format!("{root}/note.md"), false),
+            (&at(&root, &["Note.md"]), false),
+            (&at(&root, &["note.md"]), false),
         ],
     )
     .await;
@@ -340,7 +338,7 @@ async fn an_external_case_only_rename_leaves_only_the_new_spelling() {
     assert_eq!(ids, vec!["ctx-a"]);
     assert_eq!(
         sources_of(&state, &ctx, &b).await,
-        vec![format!("{root}/a.md"), format!("{root}/note.md")]
+        vec![at(&root, &["a.md"]), at(&root, &["note.md"])]
     );
 }
 
@@ -359,10 +357,10 @@ async fn an_external_case_only_rename_of_an_attachment_resolves_to_the_new_spell
         return;
     }
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/n.md");
+    let note = at(&root, &["n.md"]);
     assert_eq!(
         resolution_of(&state, &key, &note).await,
-        crate::index::LinkResolution::Resolved(format!("{root}/Paper.pdf"))
+        crate::index::LinkResolution::Resolved(at(&root, &["Paper.pdf"]))
     );
     std::fs::rename(dir.path().join("Paper.pdf"), dir.path().join("paper.pdf")).unwrap();
 
@@ -370,15 +368,15 @@ async fn an_external_case_only_rename_of_an_attachment_resolves_to_the_new_spell
         &state,
         &ctx,
         &[
-            (&format!("{root}/Paper.pdf"), false),
-            (&format!("{root}/paper.pdf"), false),
+            (&at(&root, &["Paper.pdf"]), false),
+            (&at(&root, &["paper.pdf"]), false),
         ],
     )
     .await;
 
     assert_eq!(
         resolution_of(&state, &key, &note).await,
-        crate::index::LinkResolution::Resolved(format!("{root}/paper.pdf"))
+        crate::index::LinkResolution::Resolved(at(&root, &["paper.pdf"]))
     );
 }
 
@@ -393,7 +391,7 @@ async fn a_context_without_an_index_is_announced_for_notes_and_removals() {
     std::fs::write(dir.path().join("c.md"), "x").unwrap();
 
     for path in ["c.md", "gone.md"] {
-        let answer = answer(&state, &ctx, &[(&format!("{root}/{path}"), false)]).await;
+        let answer = answer(&state, &ctx, &[(&at(&root, &[path]), false)]).await;
         assert_eq!(answer.contexts, vec!["ctx-a"], "{path}");
         assert!(answer.links_changed, "{path}");
     }
@@ -405,7 +403,7 @@ async fn a_context_without_an_index_is_announced_for_notes_and_removals() {
 async fn a_removed_path_the_live_index_never_knew_is_not_announced() {
     let ctx = ContextManager::new();
     let (_dir, root, state) = built(&ctx, &[]).await;
-    assert!(sync(&state, &ctx, &[(&format!("{root}/never.png"), false)])
+    assert!(sync(&state, &ctx, &[(&at(&root, &["never.png"]), false)])
         .await
         .is_empty());
 }
@@ -414,19 +412,19 @@ async fn a_removed_path_the_live_index_never_knew_is_not_announced() {
 async fn nested_contexts_are_each_updated_and_announced() {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("sub/keep.md", "x")]).await;
-    let inner = format!("{root}/sub");
+    let inner = at(&root, &["sub"]);
     ctx.add(info("ctx-inner", &inner, ContextType::Folder))
         .await
         .unwrap();
     refresh_index_inner(&state, &ctx, &inner).await.unwrap();
     std::fs::write(dir.path().join("sub/n.md"), "see [[keep]]").unwrap();
 
-    let ids = sync(&state, &ctx, &[(&format!("{inner}/n.md"), false)]).await;
+    let ids = sync(&state, &ctx, &[(&at(&inner, &["n.md"]), false)]).await;
 
     assert_eq!(ids, vec!["ctx-a", "ctx-inner"]);
     // What fails the second half: applying to one holding context only — the announcement
     // would still name both, so each slot is read.
-    let n = format!("{inner}/n.md");
+    let n = at(&inner, &["n.md"]);
     for key in [root.as_str(), inner.as_str()] {
         let known = state
             .with_index(key, |idx| idx.unwrap().outgoing_resolved(&n).is_some())
@@ -443,7 +441,7 @@ async fn an_empty_folder_that_appears_is_not_announced_with_a_live_index() {
     let (dir, root, state) = built(&ctx, &[]).await;
     std::fs::create_dir(dir.path().join("empty")).unwrap();
 
-    assert!(sync(&state, &ctx, &[(&format!("{root}/empty"), false)])
+    assert!(sync(&state, &ctx, &[(&at(&root, &["empty"]), false)])
         .await
         .is_empty());
 }
@@ -458,12 +456,12 @@ async fn a_folder_replaced_by_an_empty_one_is_announced_and_loses_its_notes() {
     std::fs::create_dir(dir.path().join("sub")).unwrap();
 
     assert_eq!(
-        sync(&state, &ctx, &[(&format!("{root}/sub"), false)]).await,
+        sync(&state, &ctx, &[(&at(&root, &["sub"]), false)]).await,
         vec!["ctx-a"]
     );
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
 }
 
@@ -477,7 +475,7 @@ async fn an_empty_folder_is_announced_when_there_is_no_live_index() {
     std::fs::create_dir(dir.path().join("empty")).unwrap();
 
     assert_eq!(
-        sync(&state, &ctx, &[(&format!("{root}/empty"), false)]).await,
+        sync(&state, &ctx, &[(&at(&root, &["empty"]), false)]).await,
         vec!["ctx-a"]
     );
 }
@@ -489,25 +487,22 @@ async fn an_empty_folder_is_announced_when_there_is_no_live_index() {
 async fn an_unreadable_note_keeps_what_the_index_knew_until_it_reads_again() {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("c.md", "see [[b]]")]).await;
-    let both = vec![format!("{root}/a.md"), format!("{root}/c.md")];
+    let both = vec![at(&root, &["a.md"]), at(&root, &["c.md"])];
     std::fs::write(dir.path().join("c.md"), [0xff, 0xfe, 0xfd]).unwrap();
 
-    assert!(sync(&state, &ctx, &[(&format!("{root}/c.md"), false)])
+    assert!(sync(&state, &ctx, &[(&at(&root, &["c.md"]), false)])
         .await
         .is_empty());
-    assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        both
-    );
+    assert_eq!(sources_of(&state, &ctx, &at(&root, &["b.md"])).await, both);
 
     std::fs::write(dir.path().join("c.md"), "plain").unwrap();
     assert_eq!(
-        sync(&state, &ctx, &[(&format!("{root}/c.md"), false)]).await,
+        sync(&state, &ctx, &[(&at(&root, &["c.md"]), false)]).await,
         vec!["ctx-a"]
     );
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
 }
 
@@ -518,14 +513,14 @@ async fn a_refilled_folder_keeps_an_unreadable_note_as_a_link_target() {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("n.md", "see [[bad]]"), ("dir/ok.md", "x")]).await;
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/n.md");
+    let note = at(&root, &["n.md"]);
     assert_eq!(
         resolution_of(&state, &key, &note).await,
         crate::index::LinkResolution::Unresolved
     );
     std::fs::write(dir.path().join("dir/bad.md"), [0xff, 0xfe, 0xfd]).unwrap();
 
-    sync(&state, &ctx, &[(&format!("{root}/dir"), false)]).await;
+    sync(&state, &ctx, &[(&at(&root, &["dir"]), false)]).await;
 
     assert!(matches!(
         resolution_of(&state, &key, &note).await,
@@ -539,11 +534,11 @@ async fn a_moved_in_folders_attachment_becomes_a_link_target() {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("n.md", "see [[img.png]]")]).await;
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/n.md");
+    let note = at(&root, &["n.md"]);
     std::fs::create_dir(dir.path().join("sub")).unwrap();
     std::fs::write(dir.path().join("sub/img.png"), "png").unwrap();
 
-    sync(&state, &ctx, &[(&format!("{root}/sub"), false)]).await;
+    sync(&state, &ctx, &[(&at(&root, &["sub"]), false)]).await;
 
     assert!(matches!(
         resolution_of(&state, &key, &note).await,
@@ -559,14 +554,14 @@ async fn a_deleted_folders_attachment_stops_resolving() {
     let (dir, root, state) =
         built(&ctx, &[("m.md", "see [[p.pdf]]"), ("docs/p.pdf", "%PDF")]).await;
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/m.md");
+    let note = at(&root, &["m.md"]);
     assert!(matches!(
         resolution_of(&state, &key, &note).await,
         crate::index::LinkResolution::Resolved(_)
     ));
     std::fs::remove_dir_all(dir.path().join("docs")).unwrap();
 
-    sync(&state, &ctx, &[(&format!("{root}/docs"), false)]).await;
+    sync(&state, &ctx, &[(&at(&root, &["docs"]), false)]).await;
 
     assert_eq!(
         resolution_of(&state, &key, &note).await,
@@ -595,8 +590,8 @@ async fn a_path_spelled_through_a_link_to_the_vault_is_still_held() {
 
     assert_eq!(ids, vec!["ctx-a"]);
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md"), format!("{root}/c.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"]), at(&root, &["c.md"])]
     );
 }
 
@@ -625,9 +620,9 @@ async fn a_batch_of_missing_paths_is_one_apply_per_context() {
         &state,
         &ctx,
         &[
-            (&format!("{root}/x/1.md"), false),
-            (&format!("{root}/x/2.md"), false),
-            (&format!("{root}/x/3.md"), false),
+            (&at(&root, &["x", "1.md"]), false),
+            (&at(&root, &["x", "2.md"]), false),
+            (&at(&root, &["x", "3.md"]), false),
         ],
     )
     .await;
@@ -639,8 +634,8 @@ async fn a_batch_of_missing_paths_is_one_apply_per_context() {
         "one apply for the whole batch"
     );
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
 }
 
@@ -660,7 +655,7 @@ async fn an_unchanged_note_is_announced_but_leaves_the_link_index_alone() {
     )
     .await;
     let key = active_index_key(&ctx).await.unwrap();
-    let r = format!("{root}/r.md");
+    let r = at(&root, &["r.md"]);
     let before = resolution_of(&state, &key, &r).await;
     let crate::index::LinkResolution::Resolved(first) = before.clone() else {
         panic!("[[n]] resolves: {before:?}");
@@ -679,7 +674,7 @@ async fn links_changed_by(content: &str) -> bool {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[]).await;
     std::fs::write(dir.path().join("a.md"), content).unwrap();
-    let answer = answer(&state, &ctx, &[(&format!("{root}/a.md"), true)]).await;
+    let answer = answer(&state, &ctx, &[(&at(&root, &["a.md"]), true)]).await;
     assert_eq!(answer.contexts, vec!["ctx-a"]);
     answer.links_changed
 }

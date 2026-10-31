@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use super::block_ref_escape::unescape_block_ref_target;
 use super::normalizer::nfc;
 use super::IndexError;
 use super::{LinkEntry, LinkKind};
@@ -171,11 +172,12 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Self-ref ((#^id)) → use current file stem as target
+            // Self-ref ((#^id)) → use current file stem as target; any other target is
+            // read as the editor reads it, its escapes undone (`block_ref_escape`).
             let target = if raw_target.is_empty() {
                 file_stem_from_path(file_path)
             } else {
-                raw_target.to_string()
+                unescape_block_ref_target(raw_target).into_owned()
             };
 
             entries.push(LinkEntry {
@@ -217,11 +219,12 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Self-ref ((#^id)) → use current file stem as target
+            // Self-ref ((#^id)) → use current file stem as target; any other target is
+            // read as the editor reads it, its escapes undone (`block_ref_escape`).
             let target = if raw_target.is_empty() {
                 file_stem_from_path(file_path)
             } else {
-                raw_target.to_string()
+                unescape_block_ref_target(raw_target).into_owned()
             };
 
             entries.push(LinkEntry {
@@ -678,10 +681,11 @@ mod tests {
     async fn an_unlinked_mention_inside_code_is_not_a_mention() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_string_lossy().to_string();
-        let note = format!("{root}/note.md");
+        // The walk's spelling of the note (the OS separator), the one the app hands in.
+        let note = dir.path().join("note.md").to_string_lossy().into_owned();
         tokio::fs::write(&note, "# note\n").await.unwrap();
         tokio::fs::write(
-            format!("{root}/other.md"),
+            dir.path().join("other.md"),
             "`note` in a span, then ```\n```\nnote in a fence\n```\n[[note]] linked, note here\n",
         )
         .await

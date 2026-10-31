@@ -314,6 +314,7 @@ dependencies = [
  "chromiumoxide_cdp",
  "clap",
  "dirs",
+ "embed-resource",
  "fontdb",
  "futures",
  "git2",
