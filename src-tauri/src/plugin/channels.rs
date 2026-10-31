@@ -52,8 +52,10 @@ impl SandboxChannels {
         // 2.11.5, this comment used to say another sandbox could.) Size does not change the order a
         // sandbox sees either: `channel_on` numbers every frame as `channel.send` takes it, and the
         // sandbox's `Channel` (@tauri-apps/api 2.12.4, `core.js`) hands frames to `onmessage` in that
-        // order, holding a later frame until an earlier fetched one has arrived. The warning below
-        // still calls the queue shared and guessable; its wording is plan (B)'s (spec 0074 D16).
+        // order, holding a later frame until an earlier fetched one has arrived. The host sends a
+        // sandbox's frames one at a time for that reason (`send-chain.ts`, spec 0074 D12). The
+        // warning below still calls the queue shared and guessable; its wording is plan (B)'s
+        // (spec 0074 D16).
         #[cfg(debug_assertions)]
         {
             // tauri's direct-eval path is `len < MAX_JSON_DIRECT_EXECUTE_THRESHOLD`,
