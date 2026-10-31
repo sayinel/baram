@@ -1,10 +1,13 @@
 // §56m How the app spells a value it writes into front matter.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 import { frontmatterListItems } from "../frontmatter-list";
 import {
   coreScalarKind,
+  hasNonPrintable,
   isCalendarDate,
   quotedScalar,
   yamlPropertyValue,
@@ -189,31 +192,59 @@ describe("isCalendarDate (M7)", () => {
 });
 
 describe("quotedScalar with characters outside YAML's printable set (M5)", () => {
-  // What turns this red: single-quoting them — a single-quoted scalar cannot hold a control
-  // character, and YAML rejects the text.
-  it.each(["a\u0001b", "a\u007fb", "a\u0080b", "a\u009fb", "x\u001b[0m"])(
-    "writes %j as a JSON string YAML reads back",
-    (value) => {
-      expect(quotedScalar(value)).toBe(JSON.stringify(value));
-      expect(parse(`v: ${quotedScalar(value)}`)).toEqual({ v: value });
-    },
-  );
+  // What turns this red: writing them as they are — a single-quoted scalar cannot hold a
+  // control character, and `JSON.stringify` leaves DEL, the C1 controls, U+FFFE and U+FFFF raw
+  // inside double quotes. yaml 2.9.1 and js-yaml read those back without complaint, but a YAML
+  // stream may hold only printable characters (§5.1), so each is written as an escape.
+  it.each([
+    ["a\u0001b", '"a\\u0001b"'],
+    ["x\u001b[0m", '"x\\u001b[0m"'],
+    ["a\u007fb", '"a\\u007Fb"'],
+    ["a\u0080b", '"a\\u0080b"'],
+    ["a\u0084b", '"a\\u0084b"'],
+    ["a\u0086b", '"a\\u0086b"'],
+    ["a\u009fb", '"a\\u009Fb"'],
+    ["a\ufffeb", '"a\\uFFFEb"'],
+    ["a\uffffb", '"a\\uFFFFb"'],
+    ["a\ud800b", '"a\\ud800b"'],
+    ["a\udc00b", '"a\\udc00b"'],
+    ['a"\u007fb', '"a\\"\\u007Fb"'],
+  ])("writes %j as %s, which YAML reads back", (value, written) => {
+    expect(quotedScalar(value)).toBe(written);
+    expect(hasNonPrintable(written)).toBe(false);
+    expect(parse(`v: ${written}`)).toEqual({ v: value });
+  });
 
-  // JSON leaves DEL and the C1 controls unescaped, so a value with nothing else to escape is
-  // written in double quotes as it is, before the printable check is reached. A `"` sends it
-  // past that: then only the printable check keeps it out of single quotes.
-  it.each(['a"\u007fb', 'a"\u0080b', 'a"\u0001b'])(
-    "writes %j, which needs an escape, as a JSON string YAML reads back",
-    (value) => {
-      expect(quotedScalar(value)).toBe(JSON.stringify(value));
-      expect(parse(`v: ${quotedScalar(value)}`)).toEqual({ v: value });
-    },
-  );
-
-  it("keeps a tab and NEL in single quotes, which YAML can hold", () => {
+  // The sibling: NEL and tab are printable, and a value with nothing to escape keeps them.
+  it("keeps a tab and NEL as they are, which YAML can hold", () => {
+    expect(quotedScalar("a\u0085b")).toBe('"a\u0085b"');
     for (const value of ['a\tb"c', 'a\u0085b"c']) {
       expect(quotedScalar(value)).toBe(`'${value}'`);
       expect(parse(`v: ${quotedScalar(value)}`)).toEqual({ v: value });
+    }
+  });
+
+  // Every spelling the writers give the shared fixture's names, and every character in the
+  // ranges the escape covers, is printable.
+  it("writes only printable characters", () => {
+    const { names } = JSON.parse(
+      readFileSync(
+        join(process.cwd(), "src-tauri/src/tag/fixtures/frontmatter-tags.json"),
+        "utf8",
+      ),
+    ) as { names: { name: string }[] };
+    const values = names.map((row) => row.name);
+    for (let cp = 0; cp <= 0xa0; cp++)
+      values.push(`a${String.fromCharCode(cp)}b`);
+    values.push("a\ufffeb", "a\uffffb", "a\ud800b", "a\udfffb");
+    for (const value of values) {
+      for (const written of [
+        quotedScalar(value),
+        yamlString(value),
+        yamlPropertyValue(value),
+      ]) {
+        expect(hasNonPrintable(written), JSON.stringify(value)).toBe(false);
+      }
     }
   });
 });

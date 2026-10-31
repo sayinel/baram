@@ -59,18 +59,32 @@ export function coreScalarKind(
  * which take quotes off without reading escapes (`readFrontmatterLists`, the backend's tag
  * reader, `parseNoteTitleInfo`). Double quotes when the value needs no escape; else single
  * quotes when it holds no `'`, no line break and no character outside YAML's printable set
- * (`hasNonPrintable`), which a single-quoted scalar cannot hold; else a JSON string, whose
- * escapes YAML reads and the quote-stripping readers do not. Those readers also take every
- * `'` off either end, so a value that starts or ends with one (`'q`, `q'`) reads back as `q`
- * there, whatever the quotes.
+ * (`hasNonPrintable`), which a single-quoted scalar cannot hold; else a double-quoted string
+ * with escapes (`doubleQuoted`), which YAML reads and the quote-stripping readers do not. Those
+ * readers also take every `'` off either end, so a value that starts or ends with one (`'q`,
+ * `q'`) reads back as `q` there, whatever the quotes. Every spelling written holds only
+ * printable characters (YAML 1.2.2 §5.1).
  */
 export function quotedScalar(value: string): string {
-  const json = JSON.stringify(value);
-  if (json === `"${value}"`) return json;
+  const quoted = doubleQuoted(value);
+  if (quoted === `"${value}"`) return quoted;
   if (!/['\n\r]/.test(value) && !hasNonPrintable(value)) {
     return `'${value}'`;
   }
-  return json;
+  return quoted;
+}
+
+/**
+ * `value` as a double-quoted scalar: `JSON.stringify`, whose escapes are YAML's too (§5.7), and
+ * which escapes `"`, `\`, the C0 controls and a lone surrogate. It leaves DEL, the C1 controls
+ * and U+FFFE and U+FFFF as they are, outside YAML's printable set; they are escaped here as
+ * `\uXXXX`. NEL (U+0085) is printable and stays.
+ */
+function doubleQuoted(value: string): string {
+  return JSON.stringify(value).replace(
+    /[\u007f-\u0084\u0086-\u009f\ufffe\uffff]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`,
+  );
 }
 
 /**
