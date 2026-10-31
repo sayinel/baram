@@ -346,9 +346,10 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.rust == 'true'
     runs-on: windows-2025
-    # Measured on windows-2025 (2026-10-26): 16m26s with no cache, the 2m20s cache
-    # save included; 5m08s with one. 30 is the macos job's figure and ~1.8x the
-    # cold run.
+    # Measured on windows-2025. No cache: 16m26s, the 2m20s cache save included
+    # (run 40303137646, 2026-10-26, a test step that failed on the old base). Warm
+    # cache, green: 4m54s (41176020871) and 5m52s (41177720641), 2026-10-31.
+    # 30 is the macos job's figure and ~1.8x the cold run.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
