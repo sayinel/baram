@@ -37,8 +37,8 @@ async fn a_vaults_own_alias_names_its_own_notes() {
     .await;
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    let old = format!("{root}/dir/old.md");
-    let (referrer, block_referrer) = (format!("{root}/r.md"), format!("{root}/b.md"));
+    let old = at(&root, &["dir", "old.md"]);
+    let (referrer, block_referrer) = (at(&root, &["r.md"]), at(&root, &["b.md"]));
     assert_eq!(
         backlink_lines(&state, &ctx, &old, &referrer).await,
         vec![1, 2]
@@ -59,7 +59,7 @@ async fn a_vaults_own_alias_names_its_own_notes() {
         "((old#^y))\n"
     );
 
-    let new = format!("{root}/dir/new.md");
+    let new = at(&root, &["dir", "new.md"]);
     let result = rename_file_with_links_inner(&state, &ctx, &old, &new)
         .await
         .unwrap();
@@ -106,16 +106,16 @@ async fn a_local_rename_leaves_a_link_into_another_vault_alone() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
     refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
-    let old = format!("{root_a}/old.md");
-    let foreign = format!("{root_a}/foreign.md");
+    let old = at(&root_a, &["old.md"]);
+    let foreign = at(&root_a, &["foreign.md"]);
     assert!(backlink_lines(&state, &ctx, &old, &foreign)
         .await
         .is_empty());
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root_a, &["new.md"]))
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root_a}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root_a, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -155,10 +155,10 @@ async fn an_alias_two_vaults_carry_is_foreign_to_both() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
     refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
-    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    let (old, referrer) = (at(&root_a, &["old.md"]), at(&root_a, &["r.md"]));
     assert_eq!(backlink_lines(&state, &ctx, &old, &referrer).await, vec![2]);
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root_a, &["new.md"]))
         .await
         .unwrap();
     assert_eq!(result.updated_files, vec![referrer.clone()]);
@@ -193,12 +193,12 @@ async fn a_referrer_behind_an_alias_two_vaults_carry_is_reported_not_rewritten()
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
     refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
-    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    let (old, referrer) = (at(&root_a, &["old.md"]), at(&root_a, &["r.md"]));
     assert!(backlink_lines(&state, &ctx, &old, &referrer)
         .await
         .is_empty());
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root_a, &["new.md"]))
         .await
         .unwrap();
     assert!(
@@ -234,7 +234,7 @@ async fn the_renamed_note_behind_an_alias_two_vaults_carry_is_reported() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
     refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
-    let (old, new) = (format!("{root_a}/old.md"), format!("{root_a}/new.md"));
+    let (old, new) = (at(&root_a, &["old.md"]), at(&root_a, &["new.md"]));
 
     let result = rename_file_with_links_inner(&state, &ctx, &old, &new)
         .await
@@ -268,12 +268,11 @@ async fn a_rename_that_keeps_the_name_key_leaves_a_link_behind_a_shared_alias_un
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
     refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
-    let old = format!("{root_a}/old.md");
+    let old = at(&root_a, &["old.md"]);
 
-    let result =
-        rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/old.markdown"))
-            .await
-            .unwrap();
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root_a, &["old.markdown"]))
+        .await
+        .unwrap();
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -309,13 +308,13 @@ async fn an_alias_is_local_again_once_the_other_vault_carrying_it_is_removed() {
     assert_eq!(ctx.resolve_alias("work").await, None);
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
-    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    let (old, referrer) = (at(&root_a, &["old.md"]), at(&root_a, &["r.md"]));
     assert_eq!(
         backlink_lines(&state, &ctx, &old, &referrer).await,
         vec![1, 2]
     );
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root_a, &["new.md"]))
         .await
         .unwrap();
     assert_eq!(result.updated_files, vec![referrer]);
@@ -355,7 +354,7 @@ async fn a_block_reference_never_carries_a_vault_alias() {
     .await;
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    let (note, referrer) = (format!("{root}/work::note.md"), format!("{root}/r.md"));
+    let (note, referrer) = (at(&root, &["work::note.md"]), at(&root, &["r.md"]));
     assert_eq!(
         backlink_lines(&state, &ctx, &note, &referrer).await,
         vec![1]
@@ -398,13 +397,13 @@ async fn nested_vaults_an_aliased_path_link_names_the_aliased_vaults_note() {
         ],
     )
     .await;
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(aliased("ctx-s", &sub, "s")).await.unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     refresh_index_inner(&state, &ctx, &sub).await.unwrap();
-    let (parent_old, child_old) = (format!("{root}/a/old.md"), format!("{sub}/a/old.md"));
-    let referrer = format!("{sub}/r.md");
+    let (parent_old, child_old) = (at(&root, &["a", "old.md"]), at(&sub, &["a", "old.md"]));
+    let referrer = at(&sub, &["r.md"]);
     assert_eq!(
         backlink_lines(&state, &ctx, &parent_old, &referrer).await,
         vec![1]
@@ -414,9 +413,10 @@ async fn nested_vaults_an_aliased_path_link_names_the_aliased_vaults_note() {
         vec![2]
     );
 
-    let result = rename_file_with_links_inner(&state, &ctx, &child_old, &format!("{sub}/a/new.md"))
-        .await
-        .unwrap();
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &child_old, &at(&sub, &["a", "new.md"]))
+            .await
+            .unwrap();
     assert_eq!(result.updated_files, vec![referrer]);
     assert!(
         result.skipped_files.is_empty(),
@@ -447,14 +447,14 @@ async fn rename_beside_a_case_colliding_alias(a_first: bool) {
     };
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
-    let (old, referrer) = (format!("{root_a}/old.md"), format!("{root_a}/r.md"));
+    let (old, referrer) = (at(&root_a, &["old.md"]), at(&root_a, &["r.md"]));
     assert_eq!(
         backlink_lines(&state, &ctx, &old, &referrer).await,
         vec![2],
         "a_first = {a_first}"
     );
 
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/new.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root_a, &["new.md"]))
         .await
         .unwrap();
     assert_eq!(
@@ -512,7 +512,7 @@ async fn a_journal_space_answers_to_its_canonical_name() {
         ("r.md", "see [[Journal::2026-09-01]]\n"),
         ("daily/2026-09-01.md", "day\n"),
     ]);
-    let space = format!("{root}/daily");
+    let space = at(&root, &["daily"]);
     let ctx = ContextManager::new();
     ctx.add(info("v", &root, ContextType::Vault)).await.unwrap();
     ctx.add(spaced("j", &space, VaultType::Journal))
@@ -521,13 +521,12 @@ async fn a_journal_space_answers_to_its_canonical_name() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     refresh_index_inner(&state, &ctx, &space).await.unwrap();
-    let (day, referrer) = (format!("{space}/2026-09-01.md"), format!("{root}/r.md"));
+    let (day, referrer) = (at(&space, &["2026-09-01.md"]), at(&root, &["r.md"]));
     assert_eq!(backlink_lines(&state, &ctx, &day, &referrer).await, vec![1]);
 
-    let result =
-        rename_file_with_links_inner(&state, &ctx, &day, &format!("{space}/2026-09-02.md"))
-            .await
-            .unwrap();
+    let result = rename_file_with_links_inner(&state, &ctx, &day, &at(&space, &["2026-09-02.md"]))
+        .await
+        .unwrap();
     assert_eq!(result.updated_files, vec![referrer]);
     assert!(
         result.skipped_files.is_empty(),
@@ -557,7 +556,7 @@ async fn an_explicit_alias_outranks_a_space_name() {
         ("work/x.md", "vault\n"),
         ("work/r.md", "[[Journal::x]]\n"),
     ]);
-    let vault = format!("{space}/work");
+    let vault = at(&space, &["work"]);
     let ctx = ContextManager::new();
     ctx.add(spaced("j", &space, VaultType::Journal))
         .await
@@ -566,8 +565,8 @@ async fn an_explicit_alias_outranks_a_space_name() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &space).await.unwrap();
     refresh_index_inner(&state, &ctx, &vault).await.unwrap();
-    let referrer = format!("{vault}/r.md");
-    let (spaces_x, vaults_x) = (format!("{space}/x.md"), format!("{vault}/x.md"));
+    let referrer = at(&vault, &["r.md"]);
+    let (spaces_x, vaults_x) = (at(&space, &["x.md"]), at(&vault, &["x.md"]));
     assert_eq!(
         backlink_lines(&state, &ctx, &vaults_x, &referrer).await,
         vec![1]
@@ -576,7 +575,7 @@ async fn an_explicit_alias_outranks_a_space_name() {
         .await
         .is_empty());
 
-    let result = rename_file_with_links_inner(&state, &ctx, &spaces_x, &format!("{space}/y.md"))
+    let result = rename_file_with_links_inner(&state, &ctx, &spaces_x, &at(&space, &["y.md"]))
         .await
         .unwrap();
     assert!(
@@ -618,13 +617,13 @@ async fn two_journal_spaces_make_the_canonical_name_foreign_to_both() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();
     refresh_index_inner(&state, &ctx, &root_b).await.unwrap();
-    let referrer = format!("{root_a}/r.md");
-    for x in [format!("{root_a}/x.md"), format!("{root_b}/x.md")] {
+    let referrer = at(&root_a, &["r.md"]);
+    for x in [at(&root_a, &["x.md"]), at(&root_b, &["x.md"])] {
         assert!(backlink_lines(&state, &ctx, &x, &referrer).await.is_empty());
     }
 
-    let old = format!("{root_a}/x.md");
-    let result = rename_file_with_links_inner(&state, &ctx, &old, &format!("{root_a}/y.md"))
+    let old = at(&root_a, &["x.md"]);
+    let result = rename_file_with_links_inner(&state, &ctx, &old, &at(&root_a, &["y.md"]))
         .await
         .unwrap();
     assert!(
@@ -659,8 +658,8 @@ async fn zettel_id_backlink_lines(vault: ContextInfo, alias: &str) -> Vec<u32> {
     .unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    let note = format!("{root}/notes/202607051530 Title.md");
-    backlink_lines(&state, &ctx, &note, &format!("{root}/r.md")).await
+    let note = at(&root, &["notes", "202607051530 Title.md"]);
+    backlink_lines(&state, &ctx, &note, &at(&root, &["r.md"])).await
 }
 
 #[tokio::test]

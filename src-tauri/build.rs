@@ -167,6 +167,51 @@ fn main() {
         "write_binary_file",
         "write_file",
     ]);
-    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(app_manifest))
-        .expect("failed to run tauri-build");
+    let mut attributes = tauri_build::Attributes::new().app_manifest(app_manifest);
+    if targets_windows_msvc() {
+        // tauri-build's resource still brings the icon and version info, but not the
+        // manifest: that comes from `embed_the_windows_manifest_in_every_target` instead,
+        // and two RT_MANIFEST resources with the same id would not link.
+        attributes = attributes
+            .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+        embed_the_windows_manifest_in_every_target();
+    }
+    tauri_build::try_build(attributes).expect("failed to run tauri-build");
+}
+
+/// Whether this build produces Windows MSVC binaries. A build script runs on the HOST,
+/// so `cfg!(windows)` here would describe the machine running it; cargo passes the
+/// target's configuration in these variables instead.
+fn targets_windows_msvc() -> bool {
+    std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+}
+
+/// Links the Common Controls 6.0 manifest (`windows-app-manifest.rc`) into every target
+/// the package links: the app, and also the test harnesses.
+///
+/// ‼️ Without it no test that links the library starts on Windows: the library's test
+/// harness and the `tests/*.rs` that call into the library exit with 0xC0000139
+/// (STATUS_ENTRYPOINT_NOT_FOUND) before running a test. tauri-build compiles its default
+/// manifest into a resource that `embed_resource::compile` passes with
+/// `cargo:rustc-link-arg-bins`, so only binaries carry it; a harness without it loads the
+/// system's default comctl32, which lacks `TaskDialogIndirect` — imported by
+/// tauri-runtime-wry, muda and rfd. Upstream: https://github.com/tauri-apps/tauri/issues/13419
+/// (still open), whose analysis is that `compile_for_everything`, which this calls, would
+/// reach the tests. `rustc-link-arg-tests` would not be enough: it reaches `tests/*.rs`
+/// but not the library's own harness (https://github.com/rust-lang/cargo/issues/10937).
+///
+/// A resource rather than the linker's `/MANIFEST:EMBED` + `/MANIFESTINPUT`, the
+/// workaround a maintainer posted in that issue, because the linker writes its own XML:
+/// the app exe would carry different manifest bytes from the ones it shipped with. This
+/// resource is the one tauri-build wrote, so the exe's manifest keeps its bytes.
+fn embed_the_windows_manifest_in_every_target() {
+    let resource = std::path::Path::new(
+        &std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"),
+    )
+    .join("windows-app-manifest.rc");
+    println!("cargo:rerun-if-changed={}", resource.display());
+    embed_resource::compile_for_everything(&resource, embed_resource::NONE)
+        .manifest_required()
+        .expect("failed to compile windows-app-manifest.rc");
 }

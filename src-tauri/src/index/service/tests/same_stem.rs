@@ -17,10 +17,10 @@ async fn a_block_id_rename_does_not_report_another_note_with_the_same_stem_for_i
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "b1", "b2")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["a", "note.md"]), "b1", "b2")
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/x.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["x.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -48,7 +48,7 @@ async fn a_block_id_rename_reports_a_same_stem_note_whose_reference_to_the_targe
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     std::fs::write(dir.path().join("b/note.md"), "the reference is gone\n").unwrap();
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "b1", "b2")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["a", "note.md"]), "b1", "b2")
         .await
         .unwrap();
     assert!(
@@ -56,7 +56,7 @@ async fn a_block_id_rename_reports_a_same_stem_note_whose_reference_to_the_targe
         "{:?}",
         result.updated_files
     );
-    assert_eq!(result.skipped_files, vec![format!("{root}/b/note.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["b", "note.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("b/note.md")).unwrap(),
         "the reference is gone\n"
@@ -84,7 +84,7 @@ async fn a_block_id_rename_reports_a_same_stem_note_whose_cross_reference_went_b
     let edited = "mine ^b1 ((#^b1))\nsee `((note#^b1))`\n";
     std::fs::write(dir.path().join("b/note.md"), edited).unwrap();
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "b1", "b2")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["a", "note.md"]), "b1", "b2")
         .await
         .unwrap();
     assert!(
@@ -92,7 +92,7 @@ async fn a_block_id_rename_reports_a_same_stem_note_whose_cross_reference_went_b
         "{:?}",
         result.updated_files
     );
-    assert_eq!(result.skipped_files, vec![format!("{root}/b/note.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["b", "note.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("b/note.md")).unwrap(),
         edited
@@ -121,12 +121,12 @@ async fn a_file_rename_does_not_report_a_same_stem_note_named_for_its_own_refere
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -156,7 +156,7 @@ async fn nested_roots_a_same_stem_note_is_named_once_for_a_line_two_indexes_hold
     std::fs::write(dir.path().join("sub/a/old.md"), "para\n").unwrap();
     std::fs::write(dir.path().join("sub/b/old.md"), "((#^x))\n").unwrap();
     std::fs::write(dir.path().join("sub/r.md"), "[[old]] [[a/old]]\n").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -167,8 +167,8 @@ async fn nested_roots_a_same_stem_note_is_named_once_for_a_line_two_indexes_hold
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{sub}/a/old.md"),
-        &format!("{sub}/a/new.md"),
+        &at(&sub, &["a", "old.md"]),
+        &at(&sub, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -182,10 +182,10 @@ async fn nested_roots_a_same_stem_note_is_named_once_for_a_line_two_indexes_hold
         "[[new]] [[a/new]]\n"
     );
     // Both links sit on one line of `r.md`, which is one backlink line.
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{sub}/a/new.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&sub, &["a", "new.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{sub}/r.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&sub, &["r.md"])]);
 }
 
 #[tokio::test]
@@ -219,12 +219,12 @@ async fn a_same_stem_note_whose_stem_ends_in_md_is_reported_for_a_stale_cross_re
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/foo.md.md"),
-        &format!("{root}/a/bar.md.md"),
+        &at(&root, &["a", "foo.md.md"]),
+        &at(&root, &["a", "bar.md.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.skipped_files, vec![format!("{root}/b/foo.md.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["b", "foo.md.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("b/foo.md.md")).unwrap(),
         stale
@@ -257,10 +257,10 @@ async fn a_same_stem_note_whose_stem_ends_in_md_is_reported_for_a_stale_cross_re
     let stale = "((#^b1))\n`((foo.md.md#^b1))`\n";
     std::fs::write(dir.path().join("b/foo.md.md"), stale).unwrap();
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/foo.md.md"), "b1", "b2")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["a", "foo.md.md"]), "b1", "b2")
         .await
         .unwrap();
-    assert_eq!(result.skipped_files, vec![format!("{root}/b/foo.md.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["b", "foo.md.md"])]);
     // Its own `^b1` self-reference is its own block, not the renamed one.
     assert_eq!(
         std::fs::read_to_string(dir.path().join("b/foo.md.md")).unwrap(),
@@ -323,8 +323,8 @@ async fn renaming_a_file_whose_stem_ends_in_md_leaves_the_notes_referrers_alone(
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/diagram.md.txt"),
-        &format!("{root}/chart.txt"),
+        &at(&root, &["diagram.md.txt"]),
+        &at(&root, &["chart.txt"]),
     )
     .await
     .unwrap();
@@ -343,13 +343,13 @@ async fn renaming_a_file_whose_stem_ends_in_md_leaves_the_notes_referrers_alone(
         "[[diagram]] ((diagram#^b1))\n"
     );
     assert!(dir.path().join("chart.txt").exists());
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/diagram.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["diagram.md"]))
         .await
         .unwrap();
     let mut from = sources(&backlinks);
     from.sort();
     from.dedup();
-    assert_eq!(from, vec![format!("{root}/r.md")]);
+    assert_eq!(from, vec![at(&root, &["r.md"])]);
 }
 
 #[tokio::test]
@@ -374,8 +374,8 @@ async fn a_rename_that_keeps_the_name_key_does_not_report_the_renamed_note_for_i
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/old.markdown"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["old.markdown"]),
     )
     .await
     .unwrap();
@@ -448,8 +448,8 @@ async fn a_file_rename_does_not_report_the_renamed_note_for_its_own_self_referen
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/new.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["new.md"]),
     )
     .await
     .unwrap();
@@ -499,8 +499,8 @@ async fn a_file_rename_reports_a_same_stem_note_named_for_more_than_its_own_refe
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -509,7 +509,7 @@ async fn a_file_rename_reports_a_same_stem_note_named_for_more_than_its_own_refe
         "{:?}",
         result.updated_files
     );
-    assert_eq!(result.skipped_files, vec![format!("{root}/b/old.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["b", "old.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("b/old.md")).unwrap(),
         edited
@@ -543,12 +543,12 @@ async fn a_same_stem_note_with_a_self_reference_has_its_link_to_the_renamed_file
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/b/old.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["b", "old.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",

@@ -11,19 +11,19 @@ async fn a_renamed_files_content_is_indexed_under_its_new_path() {
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a.md"),
-        &format!("{root}/renamed.md"),
+        &at(&root, &["a.md"]),
+        &at(&root, &["renamed.md"]),
     )
     .await
     .unwrap();
     assert!(dir.path().join("renamed.md").exists());
     assert_eq!(
         sources(
-            &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+            &get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
                 .await
                 .unwrap()
         ),
-        vec![format!("{root}/renamed.md")]
+        vec![at(&root, &["renamed.md"])]
     );
 }
 
@@ -40,30 +40,26 @@ async fn a_file_rename_reports_the_referrer_it_could_not_rewrite() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let locked = lock_directory(&dir.path().join("ro"));
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/b.md"),
-        &format!("{root}/c.md"),
-    )
-    .await;
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &at(&root, &["b.md"]), &at(&root, &["c.md"]))
+            .await;
     unlock_directory(&dir.path().join("ro"));
     let result = result.unwrap();
     assert!(dir.path().join("c.md").exists());
-    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["a.md"])]);
     if !locked {
         return; // root: every write succeeds, nothing to report
     }
-    assert_eq!(result.skipped_files, vec![format!("{root}/ro/ref.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["ro", "ref.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("ro/ref.md")).unwrap(),
         "also [[b]]"
     );
     // The index followed the files: a.md now links to c, ref.md still to b.
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/c.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["c.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
 }
 
 #[tokio::test]
@@ -94,13 +90,13 @@ async fn a_rename_in_a_single_vault_spells_path_keys_only_for_notes_that_share_a
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/new.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["new.md"]),
     )
     .await
     .unwrap();
     assert_eq!(crate::index::path_keys_spelled() - before, 2);
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
 }
 
 #[tokio::test]
@@ -129,18 +125,18 @@ async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikil
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/new.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["new.md"]),
     )
     .await
     .unwrap();
     assert_eq!(
         result.updated_files,
         vec![
-            format!("{root}/both.md"),
-            format!("{root}/e.md"),
-            format!("{root}/r.md"),
-            format!("{root}/w.md"),
+            at(&root, &["both.md"]),
+            at(&root, &["e.md"]),
+            at(&root, &["r.md"]),
+            at(&root, &["w.md"]),
         ]
     );
     assert!(
@@ -160,7 +156,7 @@ async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikil
         std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
         "[[new]] ((new#^b1)) and ((new#^b1|shown)) ((dir/old#^b1))\n"
     );
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/new.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["new.md"]))
         .await
         .unwrap();
     let mut from = sources(&backlinks);
@@ -169,10 +165,10 @@ async fn a_file_rename_rewrites_block_references_and_embeds_as_it_rewrites_wikil
     assert_eq!(
         from,
         vec![
-            format!("{root}/both.md"),
-            format!("{root}/e.md"),
-            format!("{root}/r.md"),
-            format!("{root}/w.md"),
+            at(&root, &["both.md"]),
+            at(&root, &["e.md"]),
+            at(&root, &["r.md"]),
+            at(&root, &["w.md"]),
         ]
     );
 }
@@ -195,13 +191,13 @@ async fn a_file_rename_reports_a_referrer_whose_reference_is_gone() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/new.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["new.md"]),
     )
     .await
     .unwrap();
     assert_eq!(result.updated_files, Vec::<String>::new());
-    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["r.md"])]);
 }
 
 #[tokio::test]
@@ -224,13 +220,13 @@ async fn a_rename_to_a_name_that_is_no_note_respells_a_bare_reference_with_the_w
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/old.txt"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["old.txt"]),
     )
     .await
     .unwrap();
     assert!(dir.path().join("old.txt").exists());
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -244,8 +240,8 @@ async fn a_rename_to_a_name_that_is_no_note_respells_a_bare_reference_with_the_w
         backlink_lines(
             &state,
             &ctx,
-            &format!("{root}/old.txt"),
-            &format!("{root}/r.md")
+            &at(&root, &["old.txt"]),
+            &at(&root, &["r.md"])
         )
         .await,
         vec![1]
@@ -282,12 +278,12 @@ async fn a_rename_to_a_name_that_is_no_note_respells_every_link_with_the_whole_n
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/old.txt"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "old.txt"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -297,7 +293,7 @@ async fn a_rename_to_a_name_that_is_no_note_respells_every_link_with_the_whole_n
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "[[old.txt]]\n[[a/old.txt]]\n[[a/old.txt]]\n[[old.txt]]\n"
     );
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.txt"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["a", "old.txt"]))
         .await
         .unwrap();
     assert_eq!(backlinks.len(), 4, "{backlinks:?}");
@@ -324,8 +320,8 @@ async fn a_rename_to_an_upper_case_extension_respells_as_for_any_non_note_name()
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.MD"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.MD"]),
     )
     .await
     .unwrap();
@@ -360,12 +356,12 @@ async fn a_file_rename_rewrites_the_renamed_notes_own_references_to_its_old_name
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/new.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["new.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/new.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["new.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -379,20 +375,20 @@ async fn a_file_rename_rewrites_the_renamed_notes_own_references_to_its_old_name
     let to_old = state
         .with_index(&key, |idx| {
             idx.unwrap()
-                .referring_lines_to(&format!("{root}/old.md"), &[])
+                .referring_lines_to(&at(&root, &["old.md"]), &[])
         })
         .await;
     assert!(to_old.is_empty(), "{to_old:?}");
     let to_new: Vec<String> = state
         .with_index(&key, |idx| {
             idx.unwrap()
-                .referring_lines_to(&format!("{root}/new.md"), &[])
+                .referring_lines_to(&at(&root, &["new.md"]), &[])
         })
         .await
         .into_iter()
         .map(|(source, _)| source)
         .collect();
-    assert_eq!(to_new, vec![format!("{root}/new.md")]);
+    assert_eq!(to_new, vec![at(&root, &["new.md"])]);
 }
 
 #[tokio::test]
@@ -415,19 +411,19 @@ async fn a_block_reference_in_a_notes_own_front_matter_is_not_a_backlink() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["note.md"]))
         .await
         .unwrap();
     let lines: Vec<(&str, u32)> = backlinks
         .iter()
         .map(|b| (b.source_path.as_str(), b.line))
         .collect();
-    assert_eq!(lines, vec![(format!("{root}/other.md").as_str(), 4)]);
+    assert_eq!(lines, vec![(at(&root, &["other.md"]).as_str(), 4)]);
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/note.md"), "b1", "b2")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["note.md"]), "b1", "b2")
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/other.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["other.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("other.md")).unwrap(),
         "---\nsee: ((note#^b1))\n---\nbody ((note#^b2))\n"
@@ -448,15 +444,15 @@ async fn a_reference_inside_a_code_fence_is_neither_a_backlink_nor_renamed() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["note.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/real.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["real.md"])]);
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/note.md"), "b1", "b2")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["note.md"]), "b1", "b2")
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/real.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["real.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("guide.md")).unwrap(),
         guide
@@ -466,12 +462,12 @@ async fn a_reference_inside_a_code_fence_is_neither_a_backlink_nor_renamed() {
         "see ((note#^b2))\n"
     );
     // A save that turns the example into prose, and back, follows the text.
-    let guide_path = format!("{root}/guide.md");
+    let guide_path = at(&root, &["guide.md"]);
     std::fs::write(&guide_path, "((note#^b2)) now real\n").unwrap();
     update_file_index_inner(&state, &ctx, &guide_path)
         .await
         .unwrap();
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["note.md"]))
         .await
         .unwrap();
     assert!(sources(&backlinks).contains(&guide_path.as_str()));
@@ -479,7 +475,7 @@ async fn a_reference_inside_a_code_fence_is_neither_a_backlink_nor_renamed() {
     update_file_index_inner(&state, &ctx, &guide_path)
         .await
         .unwrap();
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/note.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["note.md"]))
         .await
         .unwrap();
     assert!(!sources(&backlinks).contains(&guide_path.as_str()));
@@ -509,12 +505,12 @@ async fn a_file_rename_to_a_longer_stem_rewrites_both_grammars_on_one_line_befor
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/renamed.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["renamed.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/both.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["both.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -553,8 +549,8 @@ async fn a_file_rename_updates_the_path_qualified_references_the_index_filed_und
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -563,10 +559,10 @@ async fn a_file_rename_updates_the_path_qualified_references_the_index_filed_und
     assert_eq!(
         updated,
         vec![
-            format!("{root}/a/new.md"),
-            format!("{root}/a/s.md"),
-            format!("{root}/b/t.md"),
-            format!("{root}/r.md"),
+            at(&root, &["a", "new.md"]),
+            at(&root, &["a", "s.md"]),
+            at(&root, &["b", "t.md"]),
+            at(&root, &["r.md"]),
         ]
     );
     assert!(
@@ -582,7 +578,7 @@ async fn a_file_rename_updates_the_path_qualified_references_the_index_filed_und
     assert_eq!(read("r.md"), "[[a/new|x]] ((a/new#^x))\n");
     assert_eq!(read("a/s.md"), "[[./new]]\n");
     assert_eq!(read("b/t.md"), "[[new]]\n");
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/new.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["a", "new.md"]))
         .await
         .unwrap();
     assert_eq!(backlinks.len(), 4, "{backlinks:?}");
@@ -614,8 +610,8 @@ async fn a_rename_to_markdown_extension_keeps_every_link() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/old.markdown"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "old.markdown"]),
     )
     .await
     .unwrap();
@@ -629,7 +625,7 @@ async fn a_rename_to_markdown_extension_keeps_every_link() {
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "[[old.md]]\n[[a/old]]\n[[a/old.md]]\n"
     );
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.markdown"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["a", "old.markdown"]))
         .await
         .unwrap();
     assert_eq!(backlinks.len(), 3, "{backlinks:?}");

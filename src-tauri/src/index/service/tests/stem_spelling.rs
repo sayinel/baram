@@ -20,18 +20,18 @@ async fn a_rename_to_a_stem_no_wikilink_can_spell_leaves_the_links_and_reports_t
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/a^b.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["a^b.md"]),
     )
     .await
     .unwrap();
     assert_eq!(
         result.updated_files,
-        vec![format!("{root}/both.md"), format!("{root}/r.md")]
+        vec![at(&root, &["both.md"]), at(&root, &["r.md"])]
     );
     assert_eq!(
         result.skipped_files,
-        vec![format!("{root}/both.md"), format!("{root}/w.md")]
+        vec![at(&root, &["both.md"]), at(&root, &["w.md"])]
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
@@ -182,13 +182,13 @@ async fn a_file_rename_to_a_stem_a_referrers_line_makes_literal_leaves_that_file
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/a`b.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["a`b.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/w.md")]);
-    assert_eq!(result.skipped_files, vec![format!("{root}/pair.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["w.md"])]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["pair.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
         "see [[a`b]]\n"
@@ -218,8 +218,8 @@ async fn a_file_rename_to_a_stem_that_closes_a_code_span_around_itself_leaves_ev
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/a`b`c.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["a`b`c.md"]),
     )
     .await
     .unwrap();
@@ -230,7 +230,7 @@ async fn a_file_rename_to_a_stem_that_closes_a_code_span_around_itself_leaves_ev
     );
     assert_eq!(
         result.skipped_files,
-        vec![format!("{root}/both.md"), format!("{root}/a`b`c.md")]
+        vec![at(&root, &["both.md"]), at(&root, &["a`b`c.md"])]
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
@@ -263,8 +263,8 @@ async fn an_upper_case_suffix_that_belongs_to_the_stem_is_not_kept() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -272,7 +272,7 @@ async fn an_upper_case_suffix_that_belongs_to_the_stem_is_not_kept() {
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "see [[new]] and [[a/new]]\n"
     );
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",

@@ -192,6 +192,17 @@ mod tests {
         (dir, root)
     }
 
+    /// `relative` (`/`-separated) under `root` as a trusted row writes it (`PathForm::Absolute`):
+    /// the root as registered, each further part joined with the OS separator. On unix that is
+    /// `{root}/{relative}`.
+    fn absolute(root: &str, relative: &str) -> String {
+        relative
+            .split('/')
+            .fold(std::path::PathBuf::from(root), |path, part| path.join(part))
+            .to_string_lossy()
+            .into_owned()
+    }
+
     /// The `path` of each row of a rows array — the one helper for that shape in this module.
     fn paths(rows: serde_json::Value) -> Vec<String> {
         rows.as_array()
@@ -407,7 +418,7 @@ mod tests {
         );
         assert_eq!(
             backlinks("ctx-b").await.unwrap(),
-            json!([{ "blockId": null, "line": 1, "path": format!("{b_root}/a.md"), "snippet": "see [[b]] #t", "type": "wikilink" }])
+            json!([{ "blockId": null, "line": 1, "path": absolute(&b_root, "a.md"), "snippet": "see [[b]] #t", "type": "wikilink" }])
         );
     }
 
@@ -456,12 +467,12 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(paths(unnamed), [format!("{inner_root}/in.md")]);
+        assert_eq!(paths(unnamed), [absolute(&inner_root, "in.md")]);
         assert_eq!(
             paths(named),
             [
-                format!("{outer_root}/out.md"),
-                format!("{outer_root}/sub/in.md")
+                absolute(&outer_root, "out.md"),
+                absolute(&outer_root, "sub/in.md")
             ]
         );
     }
@@ -574,10 +585,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(paths(excluded), [format!("{root}/a.md")]);
+        assert_eq!(paths(excluded), [absolute(&root, "a.md")]);
         assert_eq!(
             paths(all),
-            [format!("{root}/a.md"), format!("{root}/archive/o.md")]
+            [absolute(&root, "a.md"), absolute(&root, "archive/o.md")]
         );
     }
 

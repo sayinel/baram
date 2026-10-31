@@ -8,6 +8,17 @@ use super::state::*;
 use super::sync::*;
 use crate::context::{ContextInfo, ContextManager, ContextType, VaultType};
 use crate::index::{BacklinkResult, IndexStats, LinkGraph, LinkIndex};
+// Every test module spells the paths it hands the index and the paths it expects
+// back with this: the walk's spelling, which is the app's (see `at`).
+use attachments::at;
+
+/// Whether `path` has a part named `name`: what `contains("/name/")` asks, with this host's
+/// separator.
+fn has_part(path: &str, name: &str) -> bool {
+    std::path::Path::new(path)
+        .components()
+        .any(|part| part.as_os_str() == name)
+}
 
 mod alias;
 mod attachments;

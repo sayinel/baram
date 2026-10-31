@@ -38,7 +38,7 @@ async fn a_link_read_builds_the_missing_index_then_answers() {
     .unwrap();
 
     assert_eq!(found.root, root);
-    assert_eq!(sources(&found.items), [format!("{root}/a.md").as_str()]);
+    assert_eq!(sources(&found.items), [at(&root, &["a.md"]).as_str()]);
     assert!(
         state.with_index(&root, |idx| idx.is_some()).await,
         "the read built it"
@@ -67,7 +67,7 @@ async fn links_are_asked_in_the_spelling_the_index_was_built_from() {
     assert_eq!(outgoing.len(), 1);
     assert_eq!(
         outgoing[0].1,
-        LinkResolution::Resolved(format!("{root}/b.md"))
+        LinkResolution::Resolved(at(&root, &["b.md"]))
     );
 }
 
@@ -102,9 +102,9 @@ async fn a_symlinked_root_answers_links_and_path_key_backlinks() {
     assert_eq!(links.root, root);
     assert_eq!(
         links.items.expect("a.md is in the index")[0].1,
-        LinkResolution::Resolved(format!("{root}/dir/note.md"))
+        LinkResolution::Resolved(at(&root, &["dir", "note.md"]))
     );
-    assert_eq!(sources(&backlinks.items), [format!("{root}/a.md").as_str()]);
+    assert_eq!(sources(&backlinks.items), [at(&root, &["a.md"]).as_str()]);
     let (by_canonical_links, by_canonical_backlinks) = state
         .with_index(&root, |idx| {
             let idx = idx.unwrap();
@@ -145,7 +145,7 @@ async fn an_index_built_from_another_spelling_is_asked_in_that_spelling() {
     assert_eq!(found.root, alias);
     assert_eq!(
         found.items.expect("a.md is in the index")[0].1,
-        LinkResolution::Resolved(format!("{alias}/b.md"))
+        LinkResolution::Resolved(at(&alias, &["b.md"]))
     );
 }
 
@@ -162,7 +162,7 @@ async fn nested_roots_answer_from_the_asked_context_only() {
     std::fs::write(outer.path().join("sub/in.md"), "[[n]]").unwrap();
     std::fs::write(outer.path().join("out.md"), "[[n]]").unwrap();
     let outer_root = outer.path().to_str().unwrap().to_string();
-    let inner_root = format!("{outer_root}/sub");
+    let inner_root = at(&outer_root, &["sub"]);
     ctx.add(info("ctx-outer", &outer_root, ContextType::Folder))
         .await
         .unwrap();
@@ -181,13 +181,13 @@ async fn nested_roots_answer_from_the_asked_context_only() {
 
     assert_eq!(
         sources(&inner.items),
-        [format!("{inner_root}/in.md").as_str()]
+        [at(&inner_root, &["in.md"]).as_str()]
     );
     assert_eq!(
         sources(&whole.items),
         [
-            format!("{outer_root}/out.md").as_str(),
-            format!("{outer_root}/sub/in.md").as_str()
+            at(&outer_root, &["out.md"]).as_str(),
+            at(&outer_root, &["sub", "in.md"]).as_str()
         ]
     );
 }
@@ -215,7 +215,7 @@ async fn a_read_for_a_replaced_registration_is_not_ready() {
         .unwrap();
 
     assert_eq!(refused, INDEX_NOT_READY);
-    assert_eq!(sources(&fresh.items), [format!("{root}/a.md").as_str()]);
+    assert_eq!(sources(&fresh.items), [at(&root, &["a.md"]).as_str()]);
 }
 
 /// A canonical path under no root this index covers is refused, not answered empty. The

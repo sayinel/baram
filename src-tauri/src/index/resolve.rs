@@ -1055,9 +1055,11 @@ mod outgoing_tests {
         (dir, root, index)
     }
 
+    /// `name` (`/`-separated) under `root`, each part joined with this host's separator — the
+    /// spelling the walk gives the paths `build` indexes.
     fn path_in(root: &str, name: &str) -> String {
-        std::path::Path::new(root)
-            .join(name)
+        name.split('/')
+            .fold(std::path::PathBuf::from(root), |path, part| path.join(part))
             .to_string_lossy()
             .to_string()
     }
@@ -1205,6 +1207,8 @@ mod outgoing_tests {
                         (at("deep/er/c.md").as_str(), true)
                     )
                 }
+                // The ghost node is `resolve_target`'s: the root and the link text joined
+                // with `/` on every host, not a path the walk spelled.
                 LinkResolution::Unresolved => {
                     assert_eq!(edge.to, format!("{root}/nothing.md"), "{}", entry.target)
                 }

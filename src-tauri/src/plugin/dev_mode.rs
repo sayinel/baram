@@ -601,15 +601,28 @@ mod tests {
     fn storage_that_cannot_be_read_counts_as_taken() {
         let plugins = tempfile::tempdir().unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let not_a_dir = dir.path().join("plugin-data");
-        std::fs::write(&not_a_dir, "x").unwrap();
+        // A storage root whose lookup fails for a reason other than absence. On unix a regular
+        // file where the directory should be does it (ENOTDIR). Windows answers that one with
+        // NotFound — measured on windows-2025, where this test then admitted — so there the
+        // root is a name the OS refuses to look up at all (`<` is not allowed in a file name).
+        #[cfg(unix)]
+        let unreadable = {
+            let not_a_dir = dir.path().join("plugin-data");
+            std::fs::write(&not_a_dir, "x").unwrap();
+            not_a_dir
+        };
+        #[cfg(windows)]
+        let unreadable = dir.path().join("plugin-data<");
+        // Fail on the cause: a fixture the OS reports as missing proves nothing here.
+        let lookup = std::fs::symlink_metadata(unreadable.join("dev-x")).unwrap_err();
+        assert_ne!(lookup.kind(), std::io::ErrorKind::NotFound, "{lookup}");
         assert_eq!(
             admit_manifest(
                 Build::release(),
                 &manifest("dev-x", Some("sandboxed")),
                 &DevModeState::default(),
                 plugins.path(),
-                &not_a_dir
+                &unreadable
             ),
             Err(DEV_PLUGIN_STORAGE_TAKEN.to_string())
         );

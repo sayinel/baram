@@ -681,10 +681,11 @@ mod tests {
     async fn an_unlinked_mention_inside_code_is_not_a_mention() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_string_lossy().to_string();
-        let note = format!("{root}/note.md");
+        // The walk's spelling of the note (the OS separator), the one the app hands in.
+        let note = dir.path().join("note.md").to_string_lossy().into_owned();
         tokio::fs::write(&note, "# note\n").await.unwrap();
         tokio::fs::write(
-            format!("{root}/other.md"),
+            dir.path().join("other.md"),
             "`note` in a span, then ```\n```\nnote in a fence\n```\n[[note]] linked, note here\n",
         )
         .await

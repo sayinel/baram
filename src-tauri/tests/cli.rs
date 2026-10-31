@@ -3,7 +3,8 @@
 //!
 //! Unix only. The child finds config.json through `dirs::data_dir()`, which reads HOME
 //! and XDG_DATA_HOME there; Windows asks the Known Folder API and ignores both, so the
-//! child would read the developer's real config. CI runs ubuntu and macOS.
+//! child would read the developer's real config. CI runs this file on ubuntu and macOS;
+//! on the windows job it compiles to no tests (.claude/docs/ci-contract.md).
 #![cfg(unix)]
 
 mod common;
