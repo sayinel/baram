@@ -979,7 +979,7 @@ export interface SandboxContext {
 export type SandboxEditorAPI = EditorAPI;
 /**
  * §395 One update for the sandboxed `SandboxUIAPI.setFileDecorations` (spec 0074 D7): `path` is names joined
- * by "/" — no leading "/", no empty, "." or ".." name, no "\" — the form `PluginFileEvent.path` carries
+ * by "/" — no leading "/", no empty, "." or ".." name, no "\"
  * (`""` is the context root itself, and the only path a single-file context takes); `context` is a
  * registered context id. Left out, it is the context the app shows when the call arrives. That can differ
  * from the one `ctx.files` reads without a context while the user switches vaults, and after the app
