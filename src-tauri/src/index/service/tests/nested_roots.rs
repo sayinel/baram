@@ -25,8 +25,8 @@ async fn a_nested_root_registered_through_a_symlink_gets_mutations_in_its_own_sp
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/sub/target.md"),
-        &format!("{root}/sub/renamed.md"),
+        &at(&root, &["sub", "target.md"]),
+        &at(&root, &["sub", "renamed.md"]),
     )
     .await
     .unwrap();
@@ -34,8 +34,8 @@ async fn a_nested_root_registered_through_a_symlink_gets_mutations_in_its_own_sp
     // name, the new name present, nothing spelled under the parent root.
     let child = outgoing_links(&state, &alias).await;
     assert_eq!(
-        child.get(&format!("{alias}/inner.md")),
-        Some(&vec![format!("{alias}/renamed.md")])
+        child.get(&at(&alias, &["inner.md"])),
+        Some(&vec![at(&alias, &["renamed.md"])])
     );
     assert!(!child.keys().any(|k| k.starts_with(&root)));
     let child_graph = get_link_index_inner(&state, &ctx, Some(alias.clone()))
@@ -43,10 +43,10 @@ async fn a_nested_root_registered_through_a_symlink_gets_mutations_in_its_own_sp
         .unwrap();
     assert!(!child_graph.nodes.iter().any(|n| n.ends_with("/target.md")));
     // And the merged backlinks name inner.md once, in the query's spelling.
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/sub/renamed.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["sub", "renamed.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/sub/inner.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["sub", "inner.md"])]);
 }
 
 #[tokio::test]
@@ -62,7 +62,7 @@ async fn nested_roots_a_rename_updates_each_index_only_with_the_files_it_covers(
         "outside [[target]]\nand ((target#^b1))",
     )
     .unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -81,18 +81,18 @@ async fn nested_roots_a_rename_updates_each_index_only_with_the_files_it_covers(
     assert!(!child_has_outside(&state, &ctx, &sub).await);
 
     // A block-id rename rewrites outside.md, which only the parent covers.
-    let result = rename_block_id_inner(&state, &ctx, &format!("{sub}/target.md"), "b1", "b2")
+    let result = rename_block_id_inner(&state, &ctx, &at(&sub, &["target.md"]), "b1", "b2")
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/outside.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["outside.md"])]);
     assert!(!child_has_outside(&state, &ctx, &sub).await);
 
     // So does a file rename.
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{sub}/target.md"),
-        &format!("{sub}/renamed.md"),
+        &at(&sub, &["target.md"]),
+        &at(&sub, &["renamed.md"]),
     )
     .await
     .unwrap();
@@ -101,8 +101,8 @@ async fn nested_roots_a_rename_updates_each_index_only_with_the_files_it_covers(
     let outgoing = outgoing_links(&state, &root).await;
     assert_eq!(
         outgoing
-            .get(&format!("{root}/outside.md"))
-            .map(|t| t.contains(&format!("{sub}/renamed.md"))),
+            .get(&at(&root, &["outside.md"]))
+            .map(|t| t.contains(&at(&sub, &["renamed.md"]))),
         Some(true)
     );
 }
@@ -114,7 +114,7 @@ async fn nested_roots_a_rename_builds_the_missing_enclosing_index_first() {
     std::fs::create_dir(dir.path().join("sub")).unwrap();
     std::fs::write(dir.path().join("sub/target.md"), "t").unwrap();
     std::fs::write(dir.path().join("outside.md"), "outside [[target]]").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -129,12 +129,12 @@ async fn nested_roots_a_rename_builds_the_missing_enclosing_index_first() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{sub}/target.md"),
-        &format!("{sub}/renamed.md"),
+        &at(&sub, &["target.md"]),
+        &at(&sub, &["renamed.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/outside.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["outside.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("outside.md")).unwrap(),
         "outside [[renamed]]"
@@ -159,7 +159,7 @@ async fn nested_roots_a_block_id_rename_leaves_a_colliding_child_relative_path_a
     std::fs::write(dir.path().join("sub/a/note.md"), "para ^x\n").unwrap();
     std::fs::write(dir.path().join("a/note.md"), "para ^x\n").unwrap();
     std::fs::write(dir.path().join("r.md"), "((note#^x))\n((a/note#^x))\n").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -167,10 +167,10 @@ async fn nested_roots_a_block_id_rename_leaves_a_colliding_child_relative_path_a
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     refresh_index_inner(&state, &ctx, &sub).await.unwrap();
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{sub}/a/note.md"), "x", "y")
+    let result = rename_block_id_inner(&state, &ctx, &at(&sub, &["a", "note.md"]), "x", "y")
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "((note#^y))\n((a/note#^x))\n"
@@ -203,7 +203,7 @@ async fn nested_roots_a_rename_leaves_the_parents_colliding_link_alone() {
     std::fs::write(dir.path().join("a/old.md"), "t\n").unwrap();
     std::fs::write(dir.path().join("r.md"), "[[old]]\n[[a/old]]\n").unwrap();
     std::fs::write(dir.path().join("sub/r.md"), "[[a/old]]\n[[sub/a/old]]\n").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -214,16 +214,16 @@ async fn nested_roots_a_rename_leaves_the_parents_colliding_link_alone() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{sub}/a/old.md"),
-        &format!("{sub}/a/new.md"),
+        &at(&sub, &["a", "old.md"]),
+        &at(&sub, &["a", "new.md"]),
     )
     .await
     .unwrap();
     assert_eq!(
         result.updated_files,
-        vec![format!("{root}/r.md"), format!("{sub}/r.md")]
+        vec![at(&root, &["r.md"]), at(&sub, &["r.md"])]
     );
-    assert_eq!(result.skipped_files, vec![format!("{sub}/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&sub, &["r.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "[[new]]\n[[a/old]]\n"
@@ -237,7 +237,7 @@ async fn nested_roots_a_rename_leaves_the_parents_colliding_link_alone() {
     // neither, since `sub/r.md`'s `[[a/old]]` was left and its
     // `[[sub/a/new]]` is another path under the child. `a/old.md` keeps
     // both links it had: `r.md`'s and `sub/r.md`'s `[[a/old]]`.
-    let new_path = format!("{sub}/a/new.md");
+    let new_path = at(&sub, &["a", "new.md"]);
     let backlinks_in = |key: &str, path: &str| {
         let (key, path) = (key.to_string(), path.to_string());
         let state = &state;
@@ -249,12 +249,12 @@ async fn nested_roots_a_rename_leaves_the_parents_colliding_link_alone() {
     };
     assert_eq!(backlinks_in(&root, &new_path).await, Some(2));
     assert_eq!(backlinks_in(&sub, &new_path).await, Some(0));
-    let colliding = get_backlinks_inner(&state, &ctx, &format!("{root}/a/old.md"))
+    let colliding = get_backlinks_inner(&state, &ctx, &at(&root, &["a", "old.md"]))
         .await
         .unwrap();
     assert_eq!(
         sources(&colliding),
-        vec![format!("{root}/r.md"), format!("{sub}/r.md")]
+        vec![at(&root, &["r.md"]), at(&sub, &["r.md"])]
     );
 }
 
@@ -274,7 +274,7 @@ async fn nested_roots_with_two_a_old_notes(
     for (path, content) in files {
         std::fs::write(dir.path().join(path), content).unwrap();
     }
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -308,13 +308,13 @@ async fn nested_roots_a_doubly_covered_referrer_keeps_a_path_link_another_root_r
         ],
     )
     .await;
-    let (referrer, blocks) = (format!("{sub}/r.md"), format!("{sub}/b.md"));
+    let (referrer, blocks) = (at(&sub, &["r.md"]), at(&sub, &["b.md"]));
 
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{sub}/a/old.md"),
-        &format!("{sub}/a/new.md"),
+        &at(&sub, &["a", "old.md"]),
+        &at(&sub, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -333,7 +333,7 @@ async fn nested_roots_a_doubly_covered_referrer_keeps_a_path_link_another_root_r
         "[[a/old]]\n[[new]]\n"
     );
     assert_eq!(
-        backlink_lines(&state, &ctx, &format!("{root}/a/old.md"), &referrer).await,
+        backlink_lines(&state, &ctx, &at(&root, &["a", "old.md"]), &referrer).await,
         vec![1]
     );
 }
@@ -351,13 +351,13 @@ async fn nested_roots_the_parents_rename_keeps_a_path_link_the_child_reads_as_an
     let (dir, root, sub, state) =
         nested_roots_with_two_a_old_notes(&ctx, "t\n", &[("sub/r.md", "[[a/old]]\n[[old]]\n")])
             .await;
-    let referrer = format!("{sub}/r.md");
+    let referrer = at(&sub, &["r.md"]);
 
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -375,7 +375,7 @@ async fn nested_roots_the_parents_rename_keeps_a_path_link_the_child_reads_as_an
     // the child index still names lines 1 and 2 (probed once). Not pinned
     // here.)
     assert!(
-        backlink_lines(&state, &ctx, &format!("{sub}/a/old.md"), &referrer)
+        backlink_lines(&state, &ctx, &at(&sub, &["a", "old.md"]), &referrer)
             .await
             .contains(&1)
     );
@@ -405,9 +405,9 @@ async fn nested_roots_a_block_id_rename_keeps_a_path_reference_another_root_read
         ],
     )
     .await;
-    let (referrer, mixed) = (format!("{sub}/r.md"), format!("{sub}/m.md"));
+    let (referrer, mixed) = (at(&sub, &["r.md"]), at(&sub, &["m.md"]));
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{sub}/a/old.md"), "x", "y")
+    let result = rename_block_id_inner(&state, &ctx, &at(&sub, &["a", "old.md"]), "x", "y")
         .await
         .unwrap();
     assert_eq!(result.updated_files, vec![mixed.clone()]);
@@ -450,12 +450,12 @@ async fn a_path_link_is_not_ambiguous_because_of_a_root_that_does_not_hold_the_r
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root_a}/a/old.md"),
-        &format!("{root_a}/a/new.md"),
+        &at(&root_a, &["a", "old.md"]),
+        &at(&root_a, &["a", "new.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root_a}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root_a, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",
@@ -482,7 +482,7 @@ async fn nested_roots_the_parents_block_id_rename_keeps_a_path_reference_the_chi
         nested_roots_with_two_a_old_notes(&ctx, "para ^x\n", &[("sub/r.md", "((a/old#^x))\n")])
             .await;
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/old.md"), "x", "y")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["a", "old.md"]), "x", "y")
         .await
         .unwrap();
     assert!(
@@ -490,7 +490,7 @@ async fn nested_roots_the_parents_block_id_rename_keeps_a_path_reference_the_chi
         "{:?}",
         result.updated_files
     );
-    assert_eq!(result.skipped_files, vec![format!("{sub}/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&sub, &["r.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
         "((a/old#^x))\n"
@@ -547,13 +547,13 @@ async fn nested_roots_a_child_registered_through_a_symlink_still_keeps_a_path_li
         &[("sub/r.md", "[[a/old]]\n[[old]]\n")],
     )
     .await;
-    let referrer = format!("{root}/sub/r.md");
+    let referrer = at(&root, &["sub", "r.md"]);
 
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -578,10 +578,10 @@ async fn nested_roots_a_child_registered_through_a_symlink_still_keeps_a_path_re
     )
     .await;
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/old.md"), "x", "y")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["a", "old.md"]), "x", "y")
         .await
         .unwrap();
-    assert_eq!(result.skipped_files, vec![format!("{root}/sub/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["sub", "r.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
         "((a/old#^x))\n"
@@ -607,12 +607,12 @@ async fn nested_roots_a_referrer_only_the_parent_holds_follows_the_rename() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.skipped_files, vec![format!("{sub}/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&sub, &["r.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "[[a/new]]\n"
@@ -645,7 +645,7 @@ async fn nested_roots_a_rename_does_not_respell_a_path_link_into_a_note_another_
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(file, text).unwrap();
     }
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -656,12 +656,12 @@ async fn nested_roots_a_rename_does_not_respell_a_path_link_into_a_note_another_
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.skipped_files, vec![format!("{sub}/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&sub, &["r.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
         "[[a/old]]\n"
@@ -724,15 +724,15 @@ async fn rename_the_parents_note_beside_a_child(
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
     let skipped = result
         .skipped_files
         .iter()
-        .map(|f| f.strip_prefix(&format!("{root}/")).unwrap_or(f).to_string())
+        .map(|f| relative_to(&root, f))
         .collect();
     (
         std::fs::read_to_string(dir.path().join("sub/r.md")).unwrap(),
@@ -842,7 +842,7 @@ async fn a_symlinked_child_holding_the_renamed_note_reads_it_as_the_renamed_note
     let ctx = ContextManager::new();
     let (dir, _elsewhere, root, _child, state) =
         parent_and_child_spelled(&ctx, &files, through_a_symlink).await;
-    let block = rename_block_id_inner(&state, &ctx, &format!("{root}/sub/a/old.md"), "x", "y")
+    let block = rename_block_id_inner(&state, &ctx, &at(&root, &["sub", "a", "old.md"]), "x", "y")
         .await
         .unwrap();
     assert!(block.skipped_files.is_empty(), "{:?}", block.skipped_files);
@@ -853,8 +853,8 @@ async fn a_symlinked_child_holding_the_renamed_note_reads_it_as_the_renamed_note
     let file = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/sub/a/old.md"),
-        &format!("{root}/sub/a/new.md"),
+        &at(&root, &["sub", "a", "old.md"]),
+        &at(&root, &["sub", "a", "new.md"]),
     )
     .await
     .unwrap();
@@ -880,7 +880,7 @@ async fn parent_indexed_child_unopened(
         std::fs::write(dir.path().join("sub/a/old.md"), "t\n").unwrap();
     }
     std::fs::write(dir.path().join("sub/r.md"), "[[a/old]]\n").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -903,13 +903,13 @@ async fn nested_roots_an_unopened_child_vault_still_guards_a_doubly_read_path_li
     // since an unbuilt root reads `Unknown`, but the child has no index.
     let ctx = ContextManager::new();
     let (dir, root, sub, state) = parent_indexed_child_unopened(&ctx, true).await;
-    let referrer = format!("{sub}/r.md");
+    let referrer = at(&sub, &["r.md"]);
 
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -936,13 +936,13 @@ async fn nested_roots_an_unopened_child_vault_without_the_colliding_note_lets_th
     // reported.
     let ctx = ContextManager::new();
     let (dir, root, sub, state) = parent_indexed_child_unopened(&ctx, false).await;
-    let referrer = format!("{sub}/r.md");
+    let referrer = at(&sub, &["r.md"]);
 
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -964,10 +964,10 @@ async fn a_rename_leaves_no_stale_index_for_a_nested_root_it_opened() {
     // `rename/file.rs` — the new child's `old.md` has `sub/r.md` as a backlink.
     let dir = tempfile::tempdir().unwrap();
     let v = dir.path().to_str().unwrap().to_string();
-    let sub = format!("{v}/sub");
+    let sub = at(&v, &["sub"]);
     std::fs::create_dir(&sub).unwrap();
-    std::fs::write(format!("{v}/old.md"), "target").unwrap();
-    std::fs::write(format!("{sub}/r.md"), "see [[old]]").unwrap();
+    std::fs::write(at(&v, &["old.md"]), "target").unwrap();
+    std::fs::write(at(&sub, &["r.md"]), "see [[old]]").unwrap();
     let ctx = ContextManager::new();
     ctx.add(info("ctx-v", &v, ContextType::Folder))
         .await
@@ -979,15 +979,15 @@ async fn a_rename_leaves_no_stale_index_for_a_nested_root_it_opened() {
     refresh_index_inner(&state, &ctx, &v).await.unwrap();
     // `/v/sub` has never been opened.
     assert!(state.with_index(&sub, |idx| idx.is_none()).await);
-    rename_file_with_links_inner(&state, &ctx, &format!("{v}/old.md"), &format!("{v}/new.md"))
+    rename_file_with_links_inner(&state, &ctx, &at(&v, &["old.md"]), &at(&v, &["new.md"]))
         .await
         .unwrap();
     assert_eq!(
-        std::fs::read_to_string(format!("{sub}/r.md")).unwrap(),
+        std::fs::read_to_string(at(&sub, &["r.md"])).unwrap(),
         "see [[new]]"
     );
     // A note named `old` made later under `/v/sub`: nothing links it.
-    let sub_old = format!("{sub}/old.md");
+    let sub_old = at(&sub, &["old.md"]);
     std::fs::write(&sub_old, "later").unwrap();
     let backlinks = get_backlinks_inner(&state, &ctx, &sub_old).await.unwrap();
     assert_eq!(sources(&backlinks), Vec::<&str>::new());
@@ -1001,10 +1001,10 @@ async fn a_rename_updates_a_nested_index_that_was_already_open() {
     // `rename/file.rs` — `named("old")` still contains `(sub/r.md, 1)`.
     let dir = tempfile::tempdir().unwrap();
     let v = dir.path().to_str().unwrap().to_string();
-    let sub = format!("{v}/sub");
+    let sub = at(&v, &["sub"]);
     std::fs::create_dir(&sub).unwrap();
-    std::fs::write(format!("{v}/old.md"), "target").unwrap();
-    std::fs::write(format!("{sub}/r.md"), "see [[old]]").unwrap();
+    std::fs::write(at(&v, &["old.md"]), "target").unwrap();
+    std::fs::write(at(&sub, &["r.md"]), "see [[old]]").unwrap();
     let ctx = ContextManager::new();
     ctx.add(info("ctx-v", &v, ContextType::Folder))
         .await
@@ -1015,12 +1015,12 @@ async fn a_rename_updates_a_nested_index_that_was_already_open() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &v).await.unwrap();
     refresh_index_inner(&state, &ctx, &sub).await.unwrap();
-    rename_file_with_links_inner(&state, &ctx, &format!("{v}/old.md"), &format!("{v}/new.md"))
+    rename_file_with_links_inner(&state, &ctx, &at(&v, &["old.md"]), &at(&v, &["new.md"]))
         .await
         .unwrap();
-    let referrer = format!("{sub}/r.md");
+    let referrer = at(&sub, &["r.md"]);
     let named = |name: &str| {
-        let path = format!("{sub}/{name}.md");
+        let path = at(&sub, &[&format!("{name}.md")]);
         state.with_index(&sub, move |idx| {
             idx.expect("the child index is built")
                 .referring_lines_to(&path, &[])
@@ -1036,10 +1036,10 @@ async fn a_block_id_rename_updates_the_index_of_a_nested_root_it_opened() {
     // `rename/block_id.rs` — `lines("b1")` still contains `(sub/r.md, 1)`.
     let dir = tempfile::tempdir().unwrap();
     let v = dir.path().to_str().unwrap().to_string();
-    let sub = format!("{v}/sub");
+    let sub = at(&v, &["sub"]);
     std::fs::create_dir(&sub).unwrap();
-    std::fs::write(format!("{v}/target.md"), "block ^b1\n").unwrap();
-    std::fs::write(format!("{sub}/r.md"), "((target#^b1))\n").unwrap();
+    std::fs::write(at(&v, &["target.md"]), "block ^b1\n").unwrap();
+    std::fs::write(at(&sub, &["r.md"]), "((target#^b1))\n").unwrap();
     let ctx = ContextManager::new();
     ctx.add(info("ctx-v", &v, ContextType::Folder))
         .await
@@ -1050,16 +1050,16 @@ async fn a_block_id_rename_updates_the_index_of_a_nested_root_it_opened() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &v).await.unwrap();
     assert!(state.with_index(&sub, |idx| idx.is_none()).await);
-    rename_block_id_inner(&state, &ctx, &format!("{v}/target.md"), "b1", "b2")
+    rename_block_id_inner(&state, &ctx, &at(&v, &["target.md"]), "b1", "b2")
         .await
         .unwrap();
     assert_eq!(
-        std::fs::read_to_string(format!("{sub}/r.md")).unwrap(),
+        std::fs::read_to_string(at(&sub, &["r.md"])).unwrap(),
         "((target#^b2))\n"
     );
-    let referrer = format!("{sub}/r.md");
+    let referrer = at(&sub, &["r.md"]);
     let lines = |id: &'static str| {
-        let path = format!("{sub}/target.md");
+        let path = at(&sub, &["target.md"]);
         state.with_index(&sub, move |idx| {
             idx.expect("the rename built the child index")
                 .block_reference_lines(&path, id)
@@ -1083,7 +1083,7 @@ async fn nested_roots_backlinks_come_in_source_path_order_across_both_indexes() 
     std::fs::write(dir.path().join("a.md"), "[[note]]").unwrap();
     std::fs::write(dir.path().join("sub/z.md"), "[[note]]").unwrap();
     let root = dir.path().to_str().unwrap().to_string();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     let ctx = ContextManager::new();
     ctx.add(info("ctx-parent", &root, ContextType::Folder))
         .await
@@ -1095,11 +1095,11 @@ async fn nested_roots_backlinks_come_in_source_path_order_across_both_indexes() 
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     refresh_index_inner(&state, &ctx, &sub).await.unwrap();
 
-    let sources: Vec<String> = get_backlinks_inner(&state, &ctx, &format!("{sub}/note.md"))
+    let sources: Vec<String> = get_backlinks_inner(&state, &ctx, &at(&sub, &["note.md"]))
         .await
         .unwrap()
         .into_iter()
         .map(|b| b.source_path)
         .collect();
-    assert_eq!(sources, vec![format!("{root}/a.md"), format!("{sub}/z.md")]);
+    assert_eq!(sources, vec![at(&root, &["a.md"]), at(&sub, &["z.md"])]);
 }

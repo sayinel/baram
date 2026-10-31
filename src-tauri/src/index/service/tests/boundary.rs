@@ -7,10 +7,10 @@ async fn a_rename_destination_outside_the_files_contexts_is_refused() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let elsewhere = tempfile::tempdir().unwrap();
-    let outside = format!("{}/taken.md", elsewhere.path().to_str().unwrap());
+    let outside = at(elsewhere.path().to_str().unwrap(), &["taken.md"]);
     // The source is in a vault; the destination would carry it out of every
     // context. Refused before a reference or the file is touched.
-    let err = rename_file_with_links_inner(&state, &ctx, &format!("{root}/b.md"), &outside)
+    let err = rename_file_with_links_inner(&state, &ctx, &at(&root, &["b.md"]), &outside)
         .await
         .unwrap_err();
     assert!(err.contains("outside the contexts"), "{err}");
@@ -21,12 +21,12 @@ async fn a_rename_destination_outside_the_files_contexts_is_refused() {
         "see [[b]]"
     );
     // A file opened on its own may only be renamed within its directory.
-    let note = format!("{}/note.md", elsewhere.path().to_str().unwrap());
+    let note = at(elsewhere.path().to_str().unwrap(), &["note.md"]);
     std::fs::write(&note, "n").unwrap();
     ctx.add(info("ctx-file", &note, ContextType::File))
         .await
         .unwrap();
-    let err = rename_file_with_links_inner(&state, &ctx, &note, &format!("{root}/moved.md"))
+    let err = rename_file_with_links_inner(&state, &ctx, &note, &at(&root, &["moved.md"]))
         .await
         .unwrap_err();
     assert!(err.contains("outside the contexts"), "{err}");
@@ -48,14 +48,10 @@ async fn a_referring_file_that_resolves_outside_the_vault_is_not_rewritten() {
     std::fs::write(&outside, "see [[b]]").unwrap();
     std::fs::remove_file(dir.path().join("a.md")).unwrap();
     std::os::unix::fs::symlink(&outside, dir.path().join("a.md")).unwrap();
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/b.md"),
-        &format!("{root}/c.md"),
-    )
-    .await
-    .unwrap();
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &at(&root, &["b.md"]), &at(&root, &["c.md"]))
+            .await
+            .unwrap();
     assert!(result.updated_files.is_empty());
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "see [[b]]");
     assert!(dir.path().join("c.md").exists());
@@ -68,14 +64,10 @@ async fn a_rename_onto_an_existing_file_or_directory_is_refused() {
     let state = LinkIndexState::new();
     // b.md exists; renaming a.md onto it would overwrite it (Unix `rename`
     // replaces). Refused, and a.md's references are untouched.
-    let err = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/a.md"),
-        &format!("{root}/b.md"),
-    )
-    .await
-    .unwrap_err();
+    let err =
+        rename_file_with_links_inner(&state, &ctx, &at(&root, &["a.md"]), &at(&root, &["b.md"]))
+            .await
+            .unwrap_err();
     assert!(err.contains("already exists"), "{err}");
     assert_eq!(
         std::fs::read_to_string(dir.path().join("b.md")).unwrap(),
@@ -88,8 +80,8 @@ async fn a_rename_onto_an_existing_file_or_directory_is_refused() {
     let err = rename_namespace_inner(
         &state,
         &ctx,
-        &format!("{root}/ns"),
-        &format!("{root}/taken"),
+        &at(&root, &["ns"]),
+        &at(&root, &["taken"]),
         &root,
     )
     .await
@@ -119,8 +111,8 @@ async fn a_rename_that_would_move_the_note_is_refused_before_anything_changes() 
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/note.md"),
-        &format!("{root}/sub/other.md"),
+        &at(&root, &["note.md"]),
+        &at(&root, &["sub", "other.md"]),
     )
     .await;
     assert_eq!(
@@ -159,8 +151,8 @@ async fn a_rename_whose_new_path_climbs_back_into_the_folder_is_refused_as_spell
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/../a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "..", "a", "new.md"]),
     )
     .await;
     assert_eq!(
@@ -198,8 +190,8 @@ async fn a_rename_through_a_symlinked_folder_is_refused_as_spelled() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/link/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["link", "new.md"]),
     )
     .await;
     assert_eq!(
@@ -244,14 +236,14 @@ async fn a_referrer_no_registered_context_covers_is_reported() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/old.markdown"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "old.markdown"]),
     )
     .await
     .unwrap();
     assert!(dir.path().join("a/old.markdown").exists());
     assert_eq!(result.updated_files, Vec::<String>::new());
-    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["r.md"])]);
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "[[a/old]]\n");
 }
 
@@ -288,8 +280,8 @@ async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/Note.md"),
-        &format!("{root}/note.md"),
+        &at(&root, &["Note.md"]),
+        &at(&root, &["note.md"]),
     )
     .await;
     if folds {
@@ -299,7 +291,7 @@ async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system
         // before the move (`resolve_canonical(new_path)` taken ahead of
         // `fs::rename`) — the graph then names `Note.md`.
         let result = result.unwrap();
-        assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+        assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
         assert!(
             result.skipped_files.is_empty(),
             "{:?}",
@@ -315,14 +307,8 @@ async fn a_case_only_rename_is_a_rename_of_the_file_itself_where_the_file_system
         let graph = state
             .with_index(&root, |idx| idx.unwrap().get_link_graph())
             .await;
-        assert!(
-            graph.nodes.contains(&format!("{root}/note.md")),
-            "{graph:?}"
-        );
-        assert!(
-            !graph.nodes.contains(&format!("{root}/Note.md")),
-            "{graph:?}"
-        );
+        assert!(graph.nodes.contains(&at(&root, &["note.md"])), "{graph:?}");
+        assert!(!graph.nodes.contains(&at(&root, &["Note.md"])), "{graph:?}");
     } else {
         // What fails this: taking any entry at the destination for the file
         // itself — the rename replaces `note.md`, whose text is lost.
@@ -366,8 +352,8 @@ async fn renaming_a_symlinked_note_keeps_the_index_on_the_notes_target() {
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/note.md"),
-        &format!("{root}/new.md"),
+        &at(&root, &["note.md"]),
+        &at(&root, &["new.md"]),
     )
     .await
     .unwrap();
@@ -380,12 +366,14 @@ async fn renaming_a_symlinked_note_keeps_the_index_on_the_notes_target() {
         .with_index(&root, |idx| idx.unwrap().get_link_graph())
         .await;
     assert!(
-        graph.nodes.contains(&format!("{root}/real/x.md")),
+        graph.nodes.contains(&at(&root, &["real", "x.md"])),
         "{graph:?}"
     );
     for phantom in ["new.md", "real/new.md"] {
         assert!(
-            !graph.nodes.contains(&format!("{root}/{phantom}")),
+            !graph
+                .nodes
+                .contains(&at(&root, &phantom.split('/').collect::<Vec<_>>())),
             "{phantom}: {graph:?}"
         );
     }
@@ -418,13 +406,9 @@ async fn a_rename_of_a_symlink_outside_every_context_is_refused_though_it_points
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let out = outside.path().to_str().unwrap();
 
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{out}/Link.md"),
-        &format!("{out}/link.md"),
-    )
-    .await;
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &at(out, &["Link.md"]), &at(out, &["link.md"]))
+            .await;
     assert_eq!(names_in(outside.path()), vec!["Link.md".to_string()]);
     assert!(std::fs::symlink_metadata(outside.path().join("Link.md"))
         .unwrap()
@@ -437,7 +421,10 @@ async fn a_rename_of_a_symlink_outside_every_context_is_refused_though_it_points
     let err = result.unwrap_err();
     assert_eq!(
         err,
-        format!("{out}/Link.md is outside the contexts that hold it")
+        format!(
+            "{} is outside the contexts that hold it",
+            at(out, &["Link.md"])
+        )
     );
 }
 
@@ -468,8 +455,8 @@ async fn a_case_only_rename_of_a_symlinked_note_keeps_the_index_on_the_notes_tar
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/Note.md"),
-        &format!("{root}/note.md"),
+        &at(&root, &["Note.md"]),
+        &at(&root, &["note.md"]),
     )
     .await
     .unwrap();
@@ -479,12 +466,14 @@ async fn a_case_only_rename_of_a_symlinked_note_keeps_the_index_on_the_notes_tar
         .with_index(&root, |idx| idx.unwrap().get_link_graph())
         .await;
     assert!(
-        graph.nodes.contains(&format!("{root}/real/x.md")),
+        graph.nodes.contains(&at(&root, &["real", "x.md"])),
         "{graph:?}"
     );
     for phantom in ["note.md", "Note.md", "real/note.md"] {
         assert!(
-            !graph.nodes.contains(&format!("{root}/{phantom}")),
+            !graph
+                .nodes
+                .contains(&at(&root, &phantom.split('/').collect::<Vec<_>>())),
             "{phantom}: {graph:?}"
         );
     }
@@ -512,8 +501,8 @@ async fn renaming_a_symlinked_note_onto_its_targets_name_is_refused_and_the_targ
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/note.md"),
-        &format!("{root}/x.md"),
+        &at(&root, &["note.md"]),
+        &at(&root, &["x.md"]),
     )
     .await;
     let x = std::fs::symlink_metadata(dir.path().join("x.md")).unwrap();
@@ -547,13 +536,9 @@ async fn a_rename_onto_a_hard_link_of_the_note_is_refused() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/x.md"),
-        &format!("{root}/y.md"),
-    )
-    .await;
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &at(&root, &["x.md"]), &at(&root, &["y.md"]))
+            .await;
     for name in ["x.md", "y.md"] {
         assert_eq!(
             std::fs::read_to_string(dir.path().join(name)).unwrap(),
@@ -590,22 +575,16 @@ async fn a_rename_that_spells_the_old_path_in_another_case_removes_the_note_as_i
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/NOTE.md"),
-        &format!("{root}/note.md"),
+        &at(&root, &["NOTE.md"]),
+        &at(&root, &["note.md"]),
     )
     .await
     .unwrap();
     let graph = state
         .with_index(&root, |idx| idx.unwrap().get_link_graph())
         .await;
-    assert!(
-        graph.nodes.contains(&format!("{root}/note.md")),
-        "{graph:?}"
-    );
-    assert!(
-        !graph.nodes.contains(&format!("{root}/Note.md")),
-        "{graph:?}"
-    );
+    assert!(graph.nodes.contains(&at(&root, &["note.md"])), "{graph:?}");
+    assert!(!graph.nodes.contains(&at(&root, &["Note.md"])), "{graph:?}");
 }
 
 #[cfg(unix)]
@@ -628,8 +607,8 @@ async fn a_rename_onto_a_symlink_to_the_note_itself_is_refused() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/link.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["link.md"]),
     )
     .await;
     assert!(std::fs::symlink_metadata(dir.path().join("link.md"))
@@ -684,18 +663,18 @@ async fn both_renames_refuse_a_relative_path_before_anything_changes() {
         rename_file_with_links_inner(
             &state,
             &ctx,
-            &format!("{root}/a/old.md"),
-            &format!("{rel}/a/new.md"),
+            &at(&root, &["a", "old.md"]),
+            &at(&rel, &["a", "new.md"]),
         )
         .await,
         rename_file_with_links_inner(
             &state,
             &ctx,
-            &format!("{rel}/a/old.md"),
-            &format!("{root}/a/new.md"),
+            &at(&rel, &["a", "old.md"]),
+            &at(&root, &["a", "new.md"]),
         )
         .await,
-        rename_block_id_inner(&state, &ctx, &format!("{rel}/a/old.md"), "x", "y").await,
+        rename_block_id_inner(&state, &ctx, &at(&rel, &["a", "old.md"]), "x", "y").await,
     ];
     for result in calls {
         let err = result.unwrap_err();
@@ -741,9 +720,9 @@ async fn two_notes_of_one_root_folding_to_one_path_keep_the_path_links_both_answ
     std::fs::write(dir.path().join("r.md"), text).unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    let referrer = format!("{root}/r.md");
+    let referrer = at(&root, &["r.md"]);
 
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/a/note.md"), "x", "y")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["a", "note.md"]), "x", "y")
         .await
         .unwrap();
     assert!(
@@ -760,8 +739,8 @@ async fn two_notes_of_one_root_folding_to_one_path_keep_the_path_links_both_answ
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/note.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "note.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -802,12 +781,12 @@ async fn a_rename_does_not_respell_a_path_link_onto_a_case_variant_of_the_new_na
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.skipped_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["r.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "[[a/old]]\n"
@@ -839,8 +818,8 @@ async fn a_case_only_rename_respells_a_path_link_to_the_note() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/Note.md"),
-        &format!("{root}/a/note.md"),
+        &at(&root, &["a", "Note.md"]),
+        &at(&root, &["a", "note.md"]),
     )
     .await
     .unwrap();
@@ -874,14 +853,20 @@ async fn both_renames_refuse_a_path_with_a_parent_component() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let block =
-        rename_block_id_inner(&state, &ctx, &format!("{root}/sub/../a/old.md"), "x", "y").await;
+    let block = rename_block_id_inner(
+        &state,
+        &ctx,
+        &at(&root, &["sub", "..", "a", "old.md"]),
+        "x",
+        "y",
+    )
+    .await;
     assert!(block.as_ref().is_err_and(|e| e.contains("..")), "{block:?}");
     let file = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/sub/../a/old.md"),
-        &format!("{root}/sub/../a/new.md"),
+        &at(&root, &["sub", "..", "a", "old.md"]),
+        &at(&root, &["sub", "..", "a", "new.md"]),
     )
     .await;
     assert!(file.as_ref().is_err_and(|e| e.contains("..")), "{file:?}");
@@ -912,15 +897,15 @@ async fn rename_beside_a_case_variant_behind_an_alias(
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/{old}"),
-        &format!("{root}/{new}"),
+        &at(&root, &old.split('/').collect::<Vec<_>>()),
+        &at(&root, &new.split('/').collect::<Vec<_>>()),
     )
     .await
     .unwrap();
     let skipped = result
         .skipped_files
         .iter()
-        .map(|f| f.strip_prefix(&format!("{root}/")).unwrap_or(f).to_string())
+        .map(|f| relative_to(&root, f))
         .collect();
     Some((
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
@@ -1002,8 +987,8 @@ async fn a_rename_onto_a_dangling_symlink_is_refused() {
     let err = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/new.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["new.md"]),
     )
     .await
     .unwrap_err();

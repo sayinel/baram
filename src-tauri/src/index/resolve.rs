@@ -1055,9 +1055,11 @@ mod outgoing_tests {
         (dir, root, index)
     }
 
+    /// `name` (`/`-separated) under `root`, each part joined with this host's separator — the
+    /// spelling the walk gives the paths `build` indexes.
     fn path_in(root: &str, name: &str) -> String {
-        std::path::Path::new(root)
-            .join(name)
+        name.split('/')
+            .fold(std::path::PathBuf::from(root), |path, part| path.join(part))
             .to_string_lossy()
             .to_string()
     }
@@ -1206,7 +1208,7 @@ mod outgoing_tests {
                     )
                 }
                 LinkResolution::Unresolved => {
-                    assert_eq!(edge.to, format!("{root}/nothing.md"), "{}", entry.target)
+                    assert_eq!(edge.to, path_in(&root, "nothing.md"), "{}", entry.target)
                 }
             }
         }

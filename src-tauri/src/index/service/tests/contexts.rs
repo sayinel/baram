@@ -12,14 +12,14 @@ async fn the_active_contexts_graph_is_found_when_its_id_is_nothing_like_its_path
     let key = active_index_key(&ctx).await.unwrap();
     let outgoing = outgoing_links(&state, &key).await;
     assert_eq!(
-        outgoing.get(&format!("{root}/a.md")),
-        Some(&vec![format!("{root}/b.md")])
+        outgoing.get(&at(&root, &["a.md"])),
+        Some(&vec![at(&root, &["b.md"])])
     );
     // The backlinks panel's view of the same index.
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
     // Before: the ranking side looked the map up under the id and got nothing.
     assert!(state.with_index("ctx-abc", |idx| idx.is_none()).await);
 }
@@ -35,19 +35,19 @@ async fn file_commands_use_the_files_own_context_not_the_active_one() {
 
     // A is active; a B file is saved (a non-active tab) and re-indexed.
     std::fs::write(dir_b.path().join("a.md"), "link removed").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root_b}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root_b, &["a.md"]))
         .await
         .unwrap();
     // B changed…
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root_b}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root_b, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
     // …and A did not.
-    let backlinks_a = get_backlinks_inner(&state, &ctx, &format!("{root_a}/b.md"))
+    let backlinks_a = get_backlinks_inner(&state, &ctx, &at(&root_a, &["b.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks_a), vec![format!("{root_a}/a.md")]);
+    assert_eq!(sources(&backlinks_a), vec![at(&root_a, &["a.md"])]);
 }
 
 #[tokio::test]
@@ -56,21 +56,19 @@ async fn a_file_opened_standalone_inside_an_open_folder_belongs_to_the_folders_i
     // Its containing folder is what has links to it.
     let ctx = ContextManager::new();
     let (_dir, root) = vault_with_a_link(&ctx, "ctx-folder", true).await;
-    ctx.add(info("ctx-file", &format!("{root}/b.md"), ContextType::File))
+    ctx.add(info("ctx-file", &at(&root, &["b.md"]), ContextType::File))
         .await
         .unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     assert_eq!(
-        owning_index_key(&ctx, &format!("{root}/b.md"))
-            .await
-            .unwrap(),
+        owning_index_key(&ctx, &at(&root, &["b.md"])).await.unwrap(),
         root
     );
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
 }
 
 #[tokio::test]
@@ -79,10 +77,10 @@ async fn file_commands_work_with_no_active_context_and_a_file_outside_every_cont
     let (_dir, root) = vault_with_a_link(&ctx, "ctx-b", false).await;
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
 
     // A path no context knows: nothing to report and nothing to index —
     // empty and a no-op, not errors the backlinks panel would render as a
@@ -90,7 +88,7 @@ async fn file_commands_work_with_no_active_context_and_a_file_outside_every_cont
     // it is refused — nothing is known about its references — and it is
     // no build root.
     let outside = tempfile::tempdir().unwrap();
-    let stray = format!("{}/x.md", outside.path().to_str().unwrap());
+    let stray = at(outside.path().to_str().unwrap(), &["x.md"]);
     std::fs::write(&stray, "stray").unwrap();
     assert!(get_backlinks_inner(&state, &ctx, &stray)
         .await
@@ -101,7 +99,7 @@ async fn file_commands_work_with_no_active_context_and_a_file_outside_every_cont
         &state,
         &ctx,
         &stray,
-        &format!("{}/y.md", outside.path().to_str().unwrap()),
+        &at(outside.path().to_str().unwrap(), &["y.md"]),
     )
     .await
     .unwrap_err();
@@ -136,7 +134,7 @@ async fn an_active_context_with_no_index_yet_answers_empty_and_a_save_is_a_no_op
     let ctx = ContextManager::new();
     let (_dir, root) = vault_with_a_link(&ctx, "ctx-abc", true).await;
     let state = LinkIndexState::new();
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -145,7 +143,7 @@ async fn an_active_context_with_no_index_yet_answers_empty_and_a_save_is_a_no_op
         .unwrap()
         .edges
         .is_empty());
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     let key = active_index_key(&ctx).await.unwrap();
@@ -162,15 +160,11 @@ async fn a_rename_before_the_initial_build_builds_the_index_first() {
     // path, then the rename rewrites the referring file. Renaming here used
     // to be refused (and, before that, to rewrite nothing at all).
     assert!(state.with_index(&root, |idx| idx.is_none()).await);
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/b.md"),
-        &format!("{root}/c.md"),
-    )
-    .await
-    .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &at(&root, &["b.md"]), &at(&root, &["c.md"]))
+            .await
+            .unwrap();
+    assert_eq!(result.updated_files, vec![at(&root, &["a.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
         "see [[c]]"
@@ -178,14 +172,14 @@ async fn a_rename_before_the_initial_build_builds_the_index_first() {
     assert!(dir.path().join("c.md").exists());
     // The index the gate built is the live one — it saw the rename too.
     assert_eq!(state.build_root(&root).await, Some(root.clone()));
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/c.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["c.md"]))
         .await
         .unwrap()
         .iter()
-        .any(|b| b.source_path == format!("{root}/a.md")));
+        .any(|b| b.source_path == at(&root, &["a.md"])));
     // A block-id rename in a context with no index goes the same way.
     std::fs::write(dir.path().join("a.md"), "see ((c#^old))").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     state
@@ -195,10 +189,10 @@ async fn a_rename_before_the_initial_build_builds_the_index_first() {
     ctx.add(info("ctx-abc", &root, ContextType::Folder))
         .await
         .unwrap();
-    let result = rename_block_id_inner(&state, &ctx, &format!("{root}/c.md"), "old", "new")
+    let result = rename_block_id_inner(&state, &ctx, &at(&root, &["c.md"]), "old", "new")
         .await
         .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["a.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
         "see ((c#^new))"
@@ -245,10 +239,10 @@ async fn update_file_index_edits_the_index_in_place() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     std::fs::write(dir.path().join("a.md"), "no link any more").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -298,7 +292,7 @@ async fn a_standalone_file_context_renames_with_no_cross_file_updates() {
     // backlinks are empty; none of it is an error. This note has no links
     // to its own name.
     let dir = tempfile::tempdir().unwrap();
-    let note = format!("{}/note.md", dir.path().to_str().unwrap());
+    let note = at(dir.path().to_str().unwrap(), &["note.md"]);
     std::fs::write(&note, "block ^b1").unwrap();
     let ctx = ContextManager::new();
     ctx.add(info("ctx-file", &note, ContextType::File))
@@ -313,7 +307,7 @@ async fn a_standalone_file_context_renames_with_no_cross_file_updates() {
         .await
         .unwrap();
     assert!(result.updated_files.is_empty());
-    let renamed = format!("{}/renamed.md", dir.path().to_str().unwrap());
+    let renamed = at(dir.path().to_str().unwrap(), &["renamed.md"]);
     let result = rename_file_with_links_inner(&state, &ctx, &note, &renamed)
         .await
         .unwrap();
@@ -328,7 +322,7 @@ async fn a_standalone_file_context_renames_with_no_cross_file_updates() {
 /// the manager, the directory, and the note's path.
 async fn standalone_note(content: &str) -> (ContextManager, tempfile::TempDir, String) {
     let dir = tempfile::tempdir().unwrap();
-    let note = format!("{}/note.md", dir.path().to_str().unwrap());
+    let note = at(dir.path().to_str().unwrap(), &["note.md"]);
     std::fs::write(&note, content).unwrap();
     let ctx = ContextManager::new();
     ctx.add(info("ctx-file", &note, ContextType::File))
@@ -343,7 +337,7 @@ async fn a_standalone_file_context_rename_rewrites_the_notes_own_links() {
     // `rewrite_renamed_note` — the content still names `note` in both links.
     let (ctx, dir, note) = standalone_note("see [[note]] and ((note#^b1))\n\nblock ^b1\n").await;
     let state = LinkIndexState::new();
-    let renamed = format!("{}/renamed.md", dir.path().to_str().unwrap());
+    let renamed = at(dir.path().to_str().unwrap(), &["renamed.md"]);
     let result = rename_file_with_links_inner(&state, &ctx, &note, &renamed)
         .await
         .unwrap();
@@ -373,7 +367,7 @@ async fn a_standalone_file_context_rename_reads_the_notes_own_links_under_its_fo
     )
     .unwrap();
     let state = LinkIndexState::new();
-    let renamed = format!("{}/renamed.md", dir.path().to_str().unwrap());
+    let renamed = at(dir.path().to_str().unwrap(), &["renamed.md"]);
     let result = rename_file_with_links_inner(&state, &ctx, &note, &renamed)
         .await
         .unwrap();
@@ -397,7 +391,7 @@ async fn a_standalone_file_context_rename_reports_a_link_the_new_name_cannot_be_
     // `rewrite_renamed_note` — the block target stays `note`, not `a^b`.
     let (ctx, dir, note) = standalone_note("see [[note]] and ((note#^b1))\n\nblock ^b1\n").await;
     let state = LinkIndexState::new();
-    let renamed = format!("{}/a^b.md", dir.path().to_str().unwrap());
+    let renamed = at(dir.path().to_str().unwrap(), &["a^b.md"]);
     let result = rename_file_with_links_inner(&state, &ctx, &note, &renamed)
         .await
         .unwrap();
@@ -423,7 +417,7 @@ async fn a_hidden_nested_root_is_indexed_by_the_gate_not_covered_by_the_enclosin
     std::fs::create_dir(dir.path().join(".journal")).unwrap();
     std::fs::write(dir.path().join(".journal/2026-09-07.md"), "entry").unwrap();
     std::fs::write(dir.path().join(".journal/index.md"), "see [[2026-09-07]]").unwrap();
-    let journal = format!("{root}/.journal");
+    let journal = at(&root, &[".journal"]);
     let ctx = ContextManager::new();
     ctx.add(info("ctx-vault", &root, ContextType::Folder))
         .await
@@ -437,18 +431,18 @@ async fn a_hidden_nested_root_is_indexed_by_the_gate_not_covered_by_the_enclosin
     assert!(!outgoing_links(&state, &root)
         .await
         .keys()
-        .any(|k| k.contains("/.journal/")));
+        .any(|k| has_part(k, ".journal")));
     assert!(state.with_index(&journal, |idx| idx.is_none()).await);
 
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{journal}/2026-09-07.md"),
-        &format!("{journal}/2026-09-08.md"),
+        &at(&journal, &["2026-09-07.md"]),
+        &at(&journal, &["2026-09-08.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{journal}/index.md")]);
+    assert_eq!(result.updated_files, vec![at(&journal, &["index.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join(".journal/index.md")).unwrap(),
         "see [[2026-09-08]]"
@@ -468,8 +462,8 @@ async fn the_graph_term_reaches_hybrid_ranking_and_changes_the_order() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let outgoing = graph_term_for_active(&state, &ctx).await;
     assert_eq!(
-        outgoing.get(&format!("{root}/a.md")),
-        Some(&vec![format!("{root}/b.md")])
+        outgoing.get(&at(&root, &["a.md"])),
+        Some(&vec![at(&root, &["b.md"])])
     );
     let chunks = |names: &[&str]| -> Vec<RankedChunk> {
         names
@@ -477,7 +471,7 @@ async fn the_graph_term_reaches_hybrid_ranking_and_changes_the_order() {
             .enumerate()
             .map(|(i, name)| RankedChunk {
                 id: format!("c{i}"),
-                file_path: format!("{root}/{name}.md"),
+                file_path: at(&root, &[&format!("{name}.md")]),
                 score: 0.9 - 0.01 * i as f32,
             })
             .collect()
@@ -488,7 +482,7 @@ async fn the_graph_term_reaches_hybrid_ranking_and_changes_the_order() {
     let contents: HashMap<String, String> = (0..5)
         .map(|i| (format!("c{i}"), "lorem ipsum".to_string()))
         .collect();
-    let current = format!("{root}/a.md");
+    let current = at(&root, &["a.md"]);
     let names = ["x", "y", "b", "z", "w"];
     let without = hybrid_rank(
         "release checklist",
@@ -508,8 +502,8 @@ async fn the_graph_term_reaches_hybrid_ranking_and_changes_the_order() {
         &outgoing,
         5,
     );
-    assert_eq!(without[0].file_path, format!("{root}/x.md"));
-    assert_eq!(with[0].file_path, format!("{root}/b.md"));
+    assert_eq!(without[0].file_path, at(&root, &["x.md"]));
+    assert_eq!(with[0].file_path, at(&root, &["b.md"]));
     // No active context: the term is empty, not an error.
     ctx.remove("ctx-abc").await.unwrap();
     assert!(graph_term_for_active(&state, &ctx).await.is_empty());

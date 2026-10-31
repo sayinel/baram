@@ -12,12 +12,12 @@ async fn a_save_that_lands_while_a_build_reads_is_replayed_onto_the_snapshot() {
     let (token, snapshot, stats) = staged_build(&state, &ctx, &key, &root).await;
     // …then the user removes the link and the save re-indexes the file.
     std::fs::write(dir.path().join("a.md"), "no link any more").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     // The snapshot is published WITH the save replayed: the newer state wins.
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -25,14 +25,14 @@ async fn a_save_that_lands_while_a_build_reads_is_replayed_onto_the_snapshot() {
     // And the other way round: a save that ADDS a link during a build.
     let (token, snapshot, stats) = staged_build(&state, &ctx, &key, &root).await;
     std::fs::write(dir.path().join("a.md"), "see [[b]] again").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
 }
 
 #[tokio::test]
@@ -47,12 +47,12 @@ async fn a_save_during_the_very_first_build_is_part_of_what_that_build_publishes
     // …a save lands while there is no index at all yet: nothing to apply
     // to, but it is journaled for the build.
     std::fs::write(dir.path().join("a.md"), "no link any more").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     assert!(state.with_index(&key, |idx| idx.is_none()).await);
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -81,7 +81,7 @@ async fn a_first_build_save_is_replayed_in_the_pending_symlink_roots_spelling() 
 
     // Snapshot: /alias/inner.md → /alias/target.md. The save removes the link.
     std::fs::write(dir.path().join("sub/inner.md"), "link removed").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/sub/inner.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["sub", "inner.md"]))
         .await
         .unwrap();
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
@@ -91,16 +91,16 @@ async fn a_first_build_save_is_replayed_in_the_pending_symlink_roots_spelling() 
     let graph = state
         .with_index(&key, |idx| idx.unwrap().get_link_graph())
         .await;
-    assert!(graph.nodes.contains(&format!("{alias}/inner.md")));
+    assert!(graph.nodes.contains(&at(&alias, &["inner.md"])));
     assert!(!graph
         .nodes
         .iter()
-        .any(|n| n.starts_with(&format!("{root}/sub/"))));
+        .any(|n| n.starts_with(&at(&root, &["sub", ""]))));
     assert!(graph.edges.is_empty());
     let stale = state
         .with_index(&key, |idx| {
             idx.unwrap()
-                .referring_lines_to(&format!("{alias}/target.md"), &[])
+                .referring_lines_to(&at(&alias, &["target.md"]), &[])
         })
         .await;
     assert!(stale.is_empty());
@@ -141,7 +141,7 @@ async fn an_in_flight_build_cannot_resurrect_a_forgotten_registration() {
 
     // A save after forget belongs to the new registration.
     std::fs::write(dir.path().join("a.md"), "link removed").unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     assert_eq!(state.version(&key).await.epoch, 1);
@@ -167,7 +167,7 @@ async fn an_in_flight_build_cannot_resurrect_a_forgotten_registration() {
     // could begin a build.)
     {
         use std::future::Future;
-        let (old_name, new_name) = (format!("{root}/b.md"), format!("{root}/c.md"));
+        let (old_name, new_name) = (at(&root, &["b.md"]), at(&root, &["c.md"]));
         let mut rename = Box::pin(rename_file_with_links_inner(
             &state, &ctx, &old_name, &new_name,
         ));
@@ -197,7 +197,7 @@ async fn an_in_flight_build_cannot_resurrect_a_forgotten_registration() {
             .await,
         Some(0)
     );
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -222,14 +222,10 @@ async fn forgetting_a_context_makes_the_next_registration_build_its_own_index() 
     ctx.add(info("ctx-abc", &root, ContextType::Folder))
         .await
         .unwrap();
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/b.md"),
-        &format!("{root}/c.md"),
-    )
-    .await
-    .unwrap();
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &at(&root, &["b.md"]), &at(&root, &["c.md"]))
+            .await
+            .unwrap();
     assert!(result.updated_files.is_empty());
     assert_eq!(
         std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
@@ -300,7 +296,7 @@ async fn forget_before_version_cannot_be_adopted_by_an_old_refresh() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     assert_eq!(state.build_root(&root).await, Some(root.clone()));
     assert_eq!(state.epoch(&root).await, 1);
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -367,7 +363,7 @@ async fn a_build_root_that_is_not_a_registration_never_rebuilds_its_parent() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let before = outgoing_links(&state, &root).await;
-    let err = refresh_index_inner(&state, &ctx, &format!("{root}/sub"))
+    let err = refresh_index_inner(&state, &ctx, &at(&root, &["sub"]))
         .await
         .unwrap_err();
     assert!(err.contains("not a registered context root"), "{err}");
@@ -426,17 +422,13 @@ async fn an_index_built_for_an_older_registration_does_not_satisfy_the_gate() {
     // The gate does not trust the old index: it rebuilds for the new
     // registration and the rename sees z.md. (With the old index, z.md would
     // have been left pointing at a file that no longer exists.)
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/b.md"),
-        &format!("{root}/c.md"),
-    )
-    .await
-    .unwrap();
+    let result =
+        rename_file_with_links_inner(&state, &ctx, &at(&root, &["b.md"]), &at(&root, &["c.md"]))
+            .await
+            .unwrap();
     assert_eq!(
         result.updated_files,
-        vec![format!("{root}/a.md"), format!("{root}/z.md")]
+        vec![at(&root, &["a.md"]), at(&root, &["z.md"])]
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("z.md")).unwrap(),
@@ -478,7 +470,7 @@ async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
     let (_dir, root) = vault_with_a_link(&ctx, "ctx-old", true).await;
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    assert!(!get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(!get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -490,7 +482,7 @@ async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
         .unwrap();
     ctx.set_active("ctx-new").await.unwrap();
     assert!(state.with_index(&root, |idx| idx.is_some()).await);
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -502,7 +494,7 @@ async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
     assert!(graph_term_for_active(&state, &ctx).await.is_empty());
     // Its own refresh makes the index count again.
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
-    assert!(!get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(!get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
@@ -516,31 +508,31 @@ async fn a_saved_file_that_cannot_be_read_leaves_the_index_instead_of_losing_its
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     assert_eq!(
         sources(
-            &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+            &get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
                 .await
                 .unwrap()
         ),
-        vec![format!("{root}/a.md")]
+        vec![at(&root, &["a.md"])]
     );
     // a.md vanishes between the save and the re-index call.
     std::fs::remove_file(dir.path().join("a.md")).unwrap();
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     // Removed from the index: no node, no backlink — rather than a node with
     // zero links standing in for a file that is not there.
-    assert!(get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    assert!(get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap()
         .is_empty());
     assert!(!outgoing_links(&state, &root)
         .await
-        .contains_key(&format!("{root}/a.md")));
+        .contains_key(&at(&root, &["a.md"])));
     assert!(!get_link_index_inner(&state, &ctx, None)
         .await
         .unwrap()
         .nodes
-        .contains(&format!("{root}/a.md")));
+        .contains(&at(&root, &["a.md"])));
 }
 
 #[test]
@@ -621,7 +613,7 @@ async fn an_unreadable_but_present_file_leaves_the_index_unchanged() {
     let a = dir.path().join("a.md");
     std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o000)).unwrap();
     let readable = std::fs::read_to_string(&a).is_ok(); // true only as root
-    update_file_index_inner(&state, &ctx, &format!("{root}/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["a.md"]))
         .await
         .unwrap();
     std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -629,11 +621,11 @@ async fn an_unreadable_but_present_file_leaves_the_index_unchanged() {
         // Not gone, not emptied: the index still knows a.md links to b.md.
         assert_eq!(
             sources(
-                &get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+                &get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
                     .await
                     .unwrap()
             ),
-            vec![format!("{root}/a.md")]
+            vec![at(&root, &["a.md"])]
         );
     }
 }
@@ -661,7 +653,7 @@ async fn a_suffixed_link_keeps_its_graph_target_across_saves() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     // A save moves the saved note to the end of its stem's list.
-    update_file_index_inner(&state, &ctx, &format!("{root}/x.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["x.md"]))
         .await
         .unwrap();
     let graph = get_link_index_inner(&state, &ctx, None).await.unwrap();
@@ -669,11 +661,11 @@ async fn a_suffixed_link_keeps_its_graph_target_across_saves() {
         graph
             .edges
             .iter()
-            .find(|e| e.from == format!("{root}/{from}"))
+            .find(|e| e.from == at(&root, &[from]))
             .map(|e| e.to.clone())
     };
-    assert_eq!(to("r.md"), Some(format!("{root}/x.md")));
-    assert_eq!(to("s.md"), Some(format!("{root}/x.md")));
+    assert_eq!(to("r.md"), Some(at(&root, &["x.md"])));
+    assert_eq!(to("s.md"), Some(at(&root, &["x.md"])));
 }
 
 /// What fails this: a `RemoveTree` that is applied to the live index but not journaled — the
@@ -689,15 +681,15 @@ async fn a_tree_removed_while_a_build_reads_is_gone_from_what_it_publishes() {
 
     let (token, snapshot, stats) = staged_build(&state, &ctx, &key, &root).await;
     std::fs::remove_dir_all(dir.path().join("sub")).unwrap();
-    let removal = Mutation::remove_tree(&format!("{root}/sub")).unwrap();
+    let removal = Mutation::remove_tree(&at(&root, &["sub"])).unwrap();
     // No live index yet: the caller is told it cannot know; the build's journal has it.
     assert_eq!(state.apply(&key, vec![removal]).await, None);
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
 
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/b.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
 }
 
 #[tokio::test]
@@ -713,7 +705,7 @@ async fn a_target_that_appears_while_a_build_reads_resolves_in_what_it_publishes
     state
         .apply(
             &key,
-            vec![Mutation::target(&format!("{root}/paper.pdf")).unwrap()],
+            vec![Mutation::target(&at(&root, &["paper.pdf"])).unwrap()],
         )
         .await;
     state.publish(&key, token, snapshot, stats).await.unwrap();
@@ -721,7 +713,7 @@ async fn a_target_that_appears_while_a_build_reads_resolves_in_what_it_publishes
     let resolved = state
         .with_index(&key, |idx| {
             idx.unwrap()
-                .outgoing_resolved(&format!("{root}/n.md"))
+                .outgoing_resolved(&at(&root, &["n.md"]))
                 .unwrap()
         })
         .await;
@@ -740,8 +732,8 @@ async fn the_live_index_reports_whether_a_tree_removal_found_anything() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let key = active_index_key(&ctx).await.unwrap();
 
-    let nothing = Mutation::remove_tree(&format!("{root}/no-such-dir")).unwrap();
+    let nothing = Mutation::remove_tree(&at(&root, &["no-such-dir"])).unwrap();
     assert_eq!(state.apply(&key, vec![nothing]).await, Some(false));
-    let a = Mutation::remove_tree(&format!("{root}/a.md")).unwrap();
+    let a = Mutation::remove_tree(&at(&root, &["a.md"])).unwrap();
     assert_eq!(state.apply(&key, vec![a]).await, Some(true));
 }

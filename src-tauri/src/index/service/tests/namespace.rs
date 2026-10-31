@@ -11,8 +11,8 @@ async fn rename_namespace_rebuilds_under_the_same_key_the_lookups_read() {
     let result = rename_namespace_inner(
         &state,
         &ctx,
-        &format!("{root}/ns"),
-        &format!("{root}/ns2"),
+        &at(&root, &["ns"]),
+        &at(&root, &["ns2"]),
         &root,
     )
     .await
@@ -22,15 +22,15 @@ async fn rename_namespace_rebuilds_under_the_same_key_the_lookups_read() {
     assert!(result.unchecked_files.is_empty());
     let key = active_index_key(&ctx).await.unwrap();
     let outgoing = outgoing_links(&state, &key).await;
-    assert!(outgoing.contains_key(&format!("{root}/ns2/c.md")));
-    assert!(!outgoing.contains_key(&format!("{root}/ns/c.md")));
+    assert!(outgoing.contains_key(&at(&root, &["ns2", "c.md"])));
+    assert!(!outgoing.contains_key(&at(&root, &["ns", "c.md"])));
 }
 
 /// A vault with a directory `ns/` and a relative wikilink into it.
 async fn namespace_fixture(ctx: &ContextManager) -> (tempfile::TempDir, String, String, String) {
     let (dir, root) = vault_with_a_link(ctx, "ctx-namespace", true).await;
-    let old_dir = format!("{root}/ns");
-    let new_dir = format!("{root}/ns2");
+    let old_dir = at(&root, &["ns"]);
+    let new_dir = at(&root, &["ns2"]);
     std::fs::create_dir(&old_dir).unwrap();
     std::fs::write(dir.path().join("ns/c.md"), "target").unwrap();
     std::fs::write(dir.path().join("a.md"), "see [[./ns/c]]").unwrap();
@@ -77,7 +77,7 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
     assert!(!settle_namespace_rebuild(&state, &key, rejected).await);
     let result = committed;
     assert_eq!(result.files_moved, 1);
-    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["a.md"])]);
     assert!(!dir.path().join("ns").exists());
     assert!(dir.path().join("ns2/c.md").exists());
     assert_eq!(
@@ -107,8 +107,8 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
     let graph = get_link_index_inner(&state, &ctx, Some(root.clone()))
         .await
         .unwrap();
-    assert!(graph.nodes.contains(&format!("{root}/a.md")));
-    assert!(!graph.nodes.iter().any(|n| n.contains("/ns/")));
+    assert!(graph.nodes.contains(&at(&root, &["a.md"])));
+    assert!(!graph.nodes.iter().any(|n| has_part(n, "ns")));
 }
 
 #[tokio::test]
@@ -203,8 +203,8 @@ async fn a_namespace_rebuild_never_coalesces_onto_a_snapshot_scanned_before_the_
     let graph = get_link_index_inner(&state, &ctx, Some(root.clone()))
         .await
         .unwrap();
-    assert!(graph.nodes.iter().any(|n| n.contains("/ns2/")));
-    assert!(!graph.nodes.iter().any(|n| n.contains("/ns/")));
+    assert!(graph.nodes.iter().any(|n| has_part(n, "ns2")));
+    assert!(!graph.nodes.iter().any(|n| has_part(n, "ns")));
     assert!(!dir.path().join("ns").exists());
 }
 
@@ -214,14 +214,14 @@ async fn a_namespace_rename_is_confined_to_its_root() {
     let (dir, root, old_dir, new_dir) = namespace_fixture(&ctx).await;
     let state = LinkIndexState::new();
     let elsewhere = tempfile::tempdir().unwrap();
-    let outside_dir = format!("{}/ns", elsewhere.path().to_str().unwrap());
+    let outside_dir = at(elsewhere.path().to_str().unwrap(), &["ns"]);
     std::fs::create_dir(&outside_dir).unwrap();
     // A directory outside the root cannot be moved on the root's authority…
     let err = rename_namespace_inner(
         &state,
         &ctx,
         &outside_dir,
-        &format!("{}/ns2", elsewhere.path().to_str().unwrap()),
+        &at(elsewhere.path().to_str().unwrap(), &["ns2"]),
         &root,
     )
     .await
@@ -233,7 +233,7 @@ async fn a_namespace_rename_is_confined_to_its_root() {
         &state,
         &ctx,
         &old_dir,
-        &format!("{}/escaped", elsewhere.path().to_str().unwrap()),
+        &at(elsewhere.path().to_str().unwrap(), &["escaped"]),
         &root,
     )
     .await
@@ -263,7 +263,7 @@ async fn a_namespace_rename_drops_the_indexes_of_nested_contexts_it_moved_throug
     std::fs::create_dir_all(dir.path().join("sub/ns")).unwrap();
     std::fs::write(dir.path().join("sub/ns/c.md"), "target").unwrap();
     std::fs::write(dir.path().join("sub/a.md"), "see [[./ns/c]]").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -273,29 +273,23 @@ async fn a_namespace_rename_drops_the_indexes_of_nested_contexts_it_moved_throug
     let child = incarnation_of(&ctx, "ctx-child").await;
     assert!(state.with_index_for(&sub, child, |i| i.is_some()).await);
 
-    rename_namespace_inner(
-        &state,
-        &ctx,
-        &format!("{sub}/ns"),
-        &format!("{sub}/ns2"),
-        &root,
-    )
-    .await
-    .unwrap();
+    rename_namespace_inner(&state, &ctx, &at(&sub, &["ns"]), &at(&sub, &["ns2"]), &root)
+        .await
+        .unwrap();
     assert!(dir.path().join("sub/ns2/c.md").exists());
     // The parent's index is fresh, the child's is gone…
     assert!(!outgoing_links(&state, &root)
         .await
         .values()
         .flatten()
-        .any(|t| t.contains("/ns/")));
+        .any(|t| has_part(t, "ns")));
     assert!(state.with_index_for(&sub, child, |i| i.is_none()).await);
     // …and the next rename inside the child rebuilds it through the gate.
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{sub}/ns2/c.md"),
-        &format!("{sub}/ns2/d.md"),
+        &at(&sub, &["ns2", "c.md"]),
+        &at(&sub, &["ns2", "d.md"]),
     )
     .await
     .unwrap();
@@ -304,7 +298,7 @@ async fn a_namespace_rename_drops_the_indexes_of_nested_contexts_it_moved_throug
         .await
         .values()
         .flatten()
-        .any(|t| t.contains("/ns/")));
+        .any(|t| has_part(t, "ns")));
 }
 
 #[tokio::test]
@@ -313,13 +307,13 @@ async fn a_namespace_rename_refuses_to_move_a_registered_folder_or_one_that_hold
     let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
     std::fs::create_dir_all(dir.path().join("outer/sub")).unwrap();
     std::fs::write(dir.path().join("outer/sub/n.md"), "n").unwrap();
-    let sub = format!("{root}/outer/sub");
+    let sub = at(&root, &["outer", "sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
     let state = LinkIndexState::new();
     // The registered folder itself…
-    let err = rename_namespace_inner(&state, &ctx, &sub, &format!("{root}/outer/sub2"), &root)
+    let err = rename_namespace_inner(&state, &ctx, &sub, &at(&root, &["outer", "sub2"]), &root)
         .await
         .unwrap_err();
     assert!(err.contains("registered folder"), "{err}");
@@ -328,8 +322,8 @@ async fn a_namespace_rename_refuses_to_move_a_registered_folder_or_one_that_hold
     let err = rename_namespace_inner(
         &state,
         &ctx,
-        &format!("{root}/outer"),
-        &format!("{root}/outer2"),
+        &at(&root, &["outer"]),
+        &at(&root, &["outer2"]),
         &root,
     )
     .await
@@ -353,7 +347,7 @@ async fn a_namespace_rename_drops_the_index_of_a_context_that_holds_the_destinat
     std::fs::create_dir_all(dir.path().join("dest")).unwrap();
     std::fs::write(dir.path().join("src/ns/c.md"), "target").unwrap();
     std::fs::write(dir.path().join("dest/d.md"), "plain").unwrap();
-    let dest = format!("{root}/dest");
+    let dest = at(&root, &["dest"]);
     ctx.add(info("ctx-dest", &dest, ContextType::Folder))
         .await
         .unwrap();
@@ -364,8 +358,8 @@ async fn a_namespace_rename_drops_the_index_of_a_context_that_holds_the_destinat
     rename_namespace_inner(
         &state,
         &ctx,
-        &format!("{root}/src/ns"),
-        &format!("{dest}/ns"),
+        &at(&root, &["src", "ns"]),
+        &at(&dest, &["ns"]),
         &root,
     )
     .await
@@ -387,22 +381,16 @@ async fn a_build_that_read_before_a_namespace_move_cannot_publish_after_the_drop
     let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
     std::fs::create_dir_all(dir.path().join("sub/ns")).unwrap();
     std::fs::write(dir.path().join("sub/ns/c.md"), "target").unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-child", &sub, ContextType::Folder))
         .await
         .unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let (token, snapshot, stats) = staged_build(&state, &ctx, &sub, &sub).await;
-    rename_namespace_inner(
-        &state,
-        &ctx,
-        &format!("{sub}/ns"),
-        &format!("{sub}/ns2"),
-        &root,
-    )
-    .await
-    .unwrap();
+    rename_namespace_inner(&state, &ctx, &at(&sub, &["ns"]), &at(&sub, &["ns2"]), &root)
+        .await
+        .unwrap();
     assert_eq!(state.publish(&sub, token, snapshot, stats).await, None);
     assert!(state.with_index(&sub, |i| i.is_none()).await);
 }
@@ -418,18 +406,14 @@ async fn a_reserved_subtree_refuses_registrations_until_the_move_is_over() {
         let err = ctx
             .add(info(
                 "ctx-late",
-                &format!("{root}/ns/inner"),
+                &at(&root, &["ns", "inner"]),
                 ContextType::Folder,
             ))
             .await
             .unwrap_err();
         assert!(err.contains("being renamed"), "{err}");
         let err = ctx
-            .add(info(
-                "ctx-late2",
-                &format!("{root}/ns"),
-                ContextType::Folder,
-            ))
+            .add(info("ctx-late2", &at(&root, &["ns"]), ContextType::Folder))
             .await
             .unwrap_err();
         assert!(err.contains("being renamed"), "{err}");
@@ -437,7 +421,7 @@ async fn a_reserved_subtree_refuses_registrations_until_the_move_is_over() {
         std::fs::create_dir_all(dir.path().join("other")).unwrap();
         ctx.add(info(
             "ctx-other",
-            &format!("{root}/other"),
+            &at(&root, &["other"]),
             ContextType::Folder,
         ))
         .await
@@ -446,7 +430,7 @@ async fn a_reserved_subtree_refuses_registrations_until_the_move_is_over() {
     // Released on drop.
     ctx.add(info(
         "ctx-late",
-        &format!("{root}/ns/inner"),
+        &at(&root, &["ns", "inner"]),
         ContextType::Folder,
     ))
     .await
@@ -466,8 +450,8 @@ async fn a_symlinked_directory_is_not_renamed_as_a_namespace() {
     let err = rename_namespace_inner(
         &state,
         &ctx,
-        &format!("{root}/alias"),
-        &format!("{root}/alias2"),
+        &at(&root, &["alias"]),
+        &at(&root, &["alias2"]),
         &root,
     )
     .await
@@ -498,7 +482,7 @@ async fn a_namespace_rename_moves_the_directory_before_it_writes_any_referrer() 
     assert!(!dir.path().join("ns").exists());
     assert!(dir.path().join("ns2/c.md").exists());
     assert_eq!(result.files_moved, 1);
-    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["a.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("a.md")).unwrap(),
         "see [[./ns2/c]]"
@@ -507,7 +491,7 @@ async fn a_namespace_rename_moves_the_directory_before_it_writes_any_referrer() 
     if !locked {
         return;
     }
-    assert_eq!(result.skipped_files, vec![format!("{root}/ro/d.md")]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["ro", "d.md"])]);
     assert!(result.unchecked_files.is_empty());
     assert_eq!(
         std::fs::read_to_string(dir.path().join("ro/d.md")).unwrap(),
@@ -535,10 +519,10 @@ async fn a_namespace_rename_reports_a_file_it_could_not_read_apart_from_a_referr
     std::fs::set_permissions(&unrelated, std::fs::Permissions::from_mode(0o644)).unwrap();
     let result = result.unwrap();
     assert!(dir.path().join("ns2/c.md").exists());
-    assert_eq!(result.updated_files, vec![format!("{root}/a.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["a.md"])]);
     assert!(result.skipped_files.is_empty());
     if readable {
         return;
     }
-    assert_eq!(result.unchecked_files, vec![format!("{root}/unrelated.md")]);
+    assert_eq!(result.unchecked_files, vec![at(&root, &["unrelated.md"])]);
 }
