@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
+import { parse, parseDocument } from "yaml";
 
 import { parseNoteTitleInfo } from "../parse-note-title";
 import {
@@ -179,6 +179,65 @@ describe("carriedTagField", () => {
     expect(carriedTagField("---\ntags:\n  - a long\n    tag\n---\n")).toBe(
       "tags: [a long]",
     );
+  });
+
+  // What turns these red: carrying as written a list the app reads but YAML does not — the
+  // readers take any whitespace around the colon and the `-` and as indentation, so a tab or a
+  // no-break space there, or ragged indentation, was copied into the new note as an error or
+  // as another value.
+  it.each([
+    ["tags:\n\t- a\n\t- b", "tags: [a, b]"],
+    ["tags:\n\u00a0 - a\n\u00a0 - b", "tags: [a, b]"],
+    ["tags:\n  - \u00a0a", "tags: [a]"],
+    ["tags:\n  - a\n    - b", "tags: [a, b]"],
+    ["tags:\n    - a\n  - b", "tags: [a, b]"],
+    ["tags:\n  - a\n  - \u00a0", "tags: [a]"],
+    ["tags:[a, b]", "tags: [a, b]"],
+    ["tags:\u00a0[a, b]", "tags: [a, b]"],
+    ["tags\u00a0: [a, b]", "tags: [a, b]"],
+  ])(
+    "carries %j, which YAML reads otherwise, as a new flow list",
+    (field, carried) => {
+      expect(carriedTagField(`---\n${field}\n---\n`)).toBe(carried);
+    },
+  );
+
+  // The sibling: the spacings YAML reads as the same list are carried as written.
+  it.each([
+    "tags:\t[a, b]",
+    "tags :\t[a, b]",
+    "tags\t: [a, b]",
+    "tags:\n- a\n- b",
+    "tags:\n  -\ta\n  - b",
+    "tags:\n    - a # c\n    -  \n    - b",
+  ])("carries %j as written", (field) => {
+    expect(carriedTagField(`---\n${field}\n---\n`)).toBe(field);
+  });
+
+  it("carries only a field YAML reads as the tags the app reads", () => {
+    const keys = ["tags:", "tags :", "tags\t:", "Tags:", "tags\u00a0:"];
+    const gaps = ["", " ", "\t", "\u00a0", " \u00a0"];
+    const leads = ["- ", "  - ", "  -\t", "\t- ", "\u00a0 - ", "  - \u00a0"];
+    const fields: string[] = [];
+    for (const key of keys) {
+      for (const gap of gaps) fields.push(`${key}${gap}[a, "#b"]`);
+      for (const first of leads) {
+        for (const second of leads) {
+          fields.push(`${key}\n${first}a\n${second}"#b"`);
+        }
+      }
+    }
+    for (const field of fields) {
+      const carried = carriedTagField(`---\n${field}\n---\n`);
+      const doc = parseDocument(carried, { uniqueKeys: true });
+      expect(doc.errors, JSON.stringify(field)).toEqual([]);
+      const read = doc.toJS() as Record<string, unknown>;
+      expect(Object.keys(read).map((k) => k.toLowerCase())).toEqual(["tags"]);
+      expect(Object.values(read)[0], JSON.stringify(field)).toEqual([
+        "a",
+        "#b",
+      ]);
+    }
   });
 });
 

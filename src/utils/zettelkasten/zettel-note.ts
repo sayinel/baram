@@ -1,4 +1,6 @@
 /** Zettelkasten note + frontmatter builders (pure; caller supplies id + created). */
+import type { FrontmatterList } from "../markdown/frontmatter-list";
+
 import {
   flowList,
   frontmatterListItems,
@@ -55,16 +57,21 @@ export function buildPermanentNote(input: {
 
 /**
  * §96 The `tags:` field of a note's YAML frontmatter, as the promoted permanent note carries it
- * forward: one list read to its end (`complete`) is carried as written, in its own form — only
- * an item YAML cannot read is respelled (`writeFrontmatterList`), and line breaks become `\n`.
- * Anything else — no field, a field not read to its end, two `tags` keys — carries the values
- * as a new flow list (`tags: []` when there are none). Carrying the bare values wrote
+ * forward: one list read to its end (`complete`) and spaced as YAML reads it
+ * (`carriesAsWritten`) is carried as written, in its own form — only an item YAML cannot read
+ * is respelled (`writeFrontmatterList`), and line breaks become `\n`. Anything else — no field,
+ * a field not read to its end, two `tags` keys, a list YAML reads otherwise — carries the
+ * values as a new flow list (`tags: []` when there are none). Carrying the bare values wrote
  * `tags: [#idea]`, which YAML cannot parse.
  */
 export function carriedTagField(md: string): string {
   const yaml = frontmatterOf(md);
   const lists = readFrontmatterLists(yaml, "tags");
-  if (lists.length === 1 && lists[0].complete) {
+  if (
+    lists.length === 1 &&
+    lists[0].complete &&
+    carriesAsWritten(yaml, lists[0])
+  ) {
     const names = lists[0].items.map((i) => tagName(i.value)).filter(Boolean);
     const respelled = writeFrontmatterList(yaml, "tags", names, tagName);
     const [list] = readFrontmatterLists(respelled, "tags");
@@ -88,6 +95,30 @@ export function parseFrontmatterAliases(md: string): string[] {
 export function sanitizeZettelTitle(title: string): string {
   const cleaned = title.replace(RESERVED, "").replace(/\s+/g, " ").trim();
   return cleaned.length > 0 ? cleaned : "Untitled";
+}
+
+/**
+ * Whether YAML reads `list` as the list the app's readers read, so it can be carried as written.
+ * The readers take any Unicode whitespace before the key's colon, after it, around a `-` and as
+ * indentation (`readFrontmatterLists`). YAML takes a space or a tab around the colon and after
+ * a `-`, and only spaces as indentation, and reads block lines as one list only when they are
+ * indented alike. Measured with yaml 2.9.1 and js-yaml 4.3.2, which agree: `tags:[a, b]` and
+ * `tags:` + U+00A0 + `[a]` are a plain scalar, not a key; a tab or a U+00A0 in the indentation
+ * does not parse; `- ` + U+00A0 + `a` is an item that starts with U+00A0; `  - a` then
+ * `    - b` is the one item `a - b`, and `    - a` then `  - b` does not parse.
+ */
+function carriesAsWritten(yaml: string, list: FrontmatterList): boolean {
+  if (!/^tags[ \t]*:$/i.test(list.key)) return false;
+  if (list.form === "inline") {
+    return /^[ \t]+$/.test(yaml.slice(list.start + list.key.length, list.open));
+  }
+  const indents = new Set<number>();
+  for (const line of list.lines) {
+    const lead = /^( *)-[ \t]+$/.exec(line.item ? line.item.lead! : line.text);
+    if (!lead) return false;
+    indents.add(lead[1].length);
+  }
+  return indents.size <= 1;
 }
 
 /**
