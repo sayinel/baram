@@ -6,6 +6,8 @@
 // dropped block lists (their `- a` lines have no colon), comments and nested maps, and wrote a
 // typed `#new` chip as `tags: [..., #new]`, which YAML cannot parse.
 
+import { yamlLanguage } from "@codemirror/lang-yaml";
+
 import { tagName } from "../tags/tag-name";
 import {
   appendFrontmatterLine,
@@ -13,21 +15,31 @@ import {
   writableFrontmatterList,
   writeFrontmatterList,
 } from "./frontmatter-list";
-import { yamlPropertyValue, yamlString } from "./yaml-scalar";
+import {
+  coreScalarKind,
+  quotedScalar,
+  yamlPropertyValue,
+  yamlString,
+} from "./yaml-scalar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PropertyEntry {
   /** The key as the front matter spells it, quotes included. */
   key: string;
+  /** A string, enum or `yaml` property's value as the front matter spells it. */
+  raw?: string;
   type: PropertyType;
   /** A string or enum property's value; an array property's items — a `tags` item by its name. */
   value: string | string[];
 }
 
 /**
- * `yaml`: a one-line value in YAML's own syntax — a flow map, an anchor, an alias, a YAML tag, a
- * flow list the list writer cannot rewrite — shown and written as its YAML text, as typed.
+ * `yaml`: a one-line value shown and written as its YAML text, as typed — a value in YAML's own
+ * syntax (a flow map, an anchor, an alias, a YAML tag, a flow list the list writer cannot
+ * rewrite) or one whose text the panel cannot show as such (a plain value with a comment, a
+ * double-quoted one with an escape JSON does not have). It is written only when it is valid
+ * YAML there (`isWritableYamlValue`).
  */
 export type PropertyType = "array" | "enum" | "string" | "yaml";
 
@@ -53,8 +65,10 @@ export const ENUM_VALUES: Record<string, string[]> = {
  *   (`writableFrontmatterList`) — `aliases: [p, q]`, or `aliases:` and `- p` lines — shows its
  *   items, and an edit goes through that writer.
  * - A one-line value in YAML's own syntax (`{a: 1}`, `&a x`, `*a`, `!!str 5`, a flow list the
- *   writer cannot rewrite) shows as its YAML text, type `yaml`, and is written as typed.
+ *   writer cannot rewrite), a plain value with a comment (`a # c`) and a double-quoted value
+ *   with an escape JSON does not have (`"a\x41"`) show as their YAML text, type `yaml`.
  * - Any other one-line value is a string (or an enum, `ENUM_KEYS`), shown without its quotes.
+ *   `key:` with nothing after it is an empty string, not an empty list.
  *
  * Left out, so no edit reaches them: a value over several lines that is not such a list (a
  * nested map, an item over two lines) and a block scalar (`|`, `>`). Before, the panel showed
@@ -87,7 +101,11 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
       continue;
     }
     const list = writableFrontmatterList(yaml, field.key);
-    if (list && list.start === field.start) {
+    if (
+      list &&
+      list.start === field.start &&
+      (list.form === "inline" || list.items.length > 0)
+    ) {
       entries.push({
         key: field.key,
         type: "array",
@@ -96,12 +114,18 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
       continue;
     }
     if (field.continued || BLOCK_SCALAR.test(field.value)) continue;
-    if (YAML_SYNTAX.test(field.value)) {
-      entries.push({ key: field.key, type: "yaml", value: field.value });
+    if (YAML_SYNTAX.test(field.value) || !readsAsText(field.value)) {
+      entries.push({
+        key: field.key,
+        raw: field.value,
+        type: "yaml",
+        value: field.value,
+      });
       continue;
     }
     entries.push({
       key: field.key,
+      raw: field.value,
       type: ENUM_KEYS.has(field.key) ? "enum" : "string",
       value: scalarText(field.value),
     });
@@ -113,7 +137,8 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
 
 /**
  * Adds the property `key` at the end of the front matter (`appendFrontmatterLine`) — an empty
- * list for an array key, an empty string otherwise. A key already there is left as it is.
+ * list for an array key; otherwise no value (`key:`), so the first value typed takes its own
+ * type. A key already there is left as it is.
  */
 export function addYamlProperty(
   yaml: string,
@@ -121,8 +146,48 @@ export function addYamlProperty(
   type: PropertyType,
 ): string {
   if (topLevelFields(yaml).some((f) => f.key === key)) return yaml;
-  const value = type === "array" ? "[]" : yamlPropertyValue("");
-  return appendFrontmatterLine(yaml, `${yamlString(key)}: ${value}`);
+  const line =
+    type === "array" ? `${yamlString(key)}: []` : `${yamlString(key)}:`;
+  return appendFrontmatterLine(yaml, line);
+}
+
+/**
+ * Whether writing `text` as the `yaml` property `key`, as typed, leaves `yaml` valid YAML: one
+ * line; not a sequence entry, a complex key or a mapping (`- y`, `? x`, `a: b`), which YAML does
+ * not take as a key's one-line value; a quote that closes; no reserved or directive indicator
+ * (`@`, `` ` ``, `%`) to start; no syntax error in the whole front matter by the YAML grammar
+ * the editor's code blocks use (`@codemirror/lang-yaml`); and every alias naming an anchor set
+ * before it. Typed one key at a time, a `yaml` value passes through texts that are none of
+ * these; the panel writes only those that are.
+ */
+export function isWritableYamlValue(
+  yaml: string,
+  key: string,
+  text: string,
+): boolean {
+  if (/[\n\r]/.test(text)) return false;
+  // The value after any anchor and tag in front of it.
+  const rest = text.trim().replace(/^(?:[&!]\S*\s+)+/, "");
+  if (/^(?:[-?:](?:\s|$)|[@`%])/.test(rest)) return false;
+  if (rest.startsWith('"')) {
+    if (!/^"(?:[^"\\]|\\.)*"(?:\s+#.*)?$/.test(rest)) return false;
+  } else if (rest.startsWith("'")) {
+    if (!/^'(?:[^']|'')*'(?:\s+#.*)?$/.test(rest)) return false;
+  } else if (!/^[[{]/.test(rest)) {
+    if (/:(?:\s|$)/.test(rest.replace(/\s#.*$/, ""))) return false;
+  }
+  const candidate = setYamlPropertyValue(yaml, key, text, { asYaml: true });
+  const anchors = new Set<string>();
+  let valid = true;
+  yamlLanguage.parser.parse(candidate).iterate({
+    enter: (node) => {
+      const name = candidate.slice(node.from + 1, node.to);
+      if (node.type.isError) valid = false;
+      else if (node.name === "Anchor") anchors.add(name);
+      else if (node.name === "Alias" && !anchors.has(name)) valid = false;
+    },
+  });
+  return valid;
 }
 
 /** Removes the property `key` — its key line and every line under it — and one line break. */
@@ -153,24 +218,31 @@ export function setYamlPropertyItems(
 
 /**
  * Sets the string, enum or `yaml` property `key` to `value` on the key's own line, which keeps
- * its spelling of the key. A string or enum value is written so YAML reads back that text
- * (`yamlPropertyValue`); a `yaml` value (`asYaml`) is YAML text and is written as typed, as the
- * panel always wrote it. A key not there is added at the end.
+ * its spelling of the key; a key not there is added at the end. A value spelled as the line
+ * already has it writes nothing.
+ *
+ * A `yaml` value (`asYaml`) is YAML text and is written as typed. A string or enum value keeps
+ * the type of `original`, the value's spelling when the edit began (by default what the line
+ * holds now): `propertySpelling`.
  */
 export function setYamlPropertyValue(
   yaml: string,
   key: string,
   value: string,
-  asYaml = false,
+  options: { asYaml?: boolean; original?: string } = {},
 ): string {
-  const spelled = asYaml ? value : yamlPropertyValue(value);
   const field = topLevelFields(yaml).find((f) => f.key === key);
   if (!field) {
+    const spelled = options.asYaml ? value : yamlPropertyValue(value);
     return appendFrontmatterLine(yaml, `${yamlString(key)}: ${spelled}`);
   }
+  const spelled = options.asYaml
+    ? value
+    : propertySpelling(value, options.original ?? field.value);
+  if (spelled === field.value) return yaml;
   return (
     yaml.slice(0, field.start) +
-    `${field.keyText} ${spelled}` +
+    (spelled === "" ? field.keyText : `${field.keyText} ${spelled}`) +
     yaml.slice(field.end)
   );
 }
@@ -202,6 +274,47 @@ const YAML_SYNTAX = /^[[{&*!]/;
  */
 const KEY_LINE =
   /^((?:"(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^\s#\-"'?:][^\n]*?)[ \t]*:)(?:[ \t]+([^\n]*)|[ \t]*)$/;
+
+/**
+ * How to write `value` for a property whose value was spelled `original` when the edit began,
+ * so that typing never changes its type by accident:
+ *
+ * - `value` is what `original` shows: `original` itself, quotes, `1.50` and `True` and all — an
+ *   edit typed and then undone writes back what was there.
+ * - `original` is a plain number, boolean or null by the YAML 1.2 core schema
+ *   (`coreScalarKind`) and `value` reads as the same kind: `value` plain (`-1`, `1.50`, `0x1F`,
+ *   `True`, `~`).
+ * - `original` is empty or null (`~`) — no type to keep — or `value` reads as a string:
+ *   `yamlPropertyValue`.
+ * - Otherwise — a string original and a value that would read as a number, a boolean or null —
+ *   `value` quoted, so it stays a string.
+ */
+function propertySpelling(value: string, original: string): string {
+  if (readsAsText(original) && scalarText(original) === value) return original;
+  const kind = /^["']/.test(original) ? "string" : coreScalarKind(original);
+  const next = coreScalarKind(value);
+  if (next === kind && kind !== "string") return value;
+  if (kind === "null" || next === "string") return yamlPropertyValue(value);
+  return quotedScalar(value);
+}
+
+/**
+ * Whether the panel can show a one-line value as text and write its text back: a whole
+ * double-quoted scalar whose escapes JSON reads, a whole single-quoted one, or a plain one with
+ * no comment.
+ */
+function readsAsText(raw: string): boolean {
+  if (/^"(?:[^"\\]|\\.)*"$/.test(raw)) {
+    try {
+      JSON.parse(raw);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (/^'(?:[^']|'')*'$/.test(raw)) return true;
+  return !/^["']/.test(raw) && !/\s#/.test(raw);
+}
 
 /** A one-line value as text: without the quotes around it, a plain value as it is. */
 function scalarText(raw: string): string {

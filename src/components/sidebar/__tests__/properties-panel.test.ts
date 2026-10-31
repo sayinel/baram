@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parse } from "yaml";
+import { parse, parseDocument } from "yaml";
 
 import { withFrontmatterYaml } from "../../../utils/markdown/frontmatter";
 import {
   addYamlProperty,
+  isWritableYamlValue,
   parseYamlProperties,
   type PropertyEntry,
   removeYamlProperty,
@@ -18,11 +19,13 @@ describe("parseYamlProperties", () => {
     );
     expect(result).toContainEqual({
       key: "name",
+      raw: "test-skill",
       value: "test-skill",
       type: "string",
     });
     expect(result).toContainEqual({
       key: "description",
+      raw: "A skill",
       value: "A skill",
       type: "string",
     });
@@ -47,6 +50,7 @@ describe("parseYamlProperties", () => {
     const result = parseYamlProperties("status: draft");
     expect(result).toContainEqual({
       key: "status",
+      raw: "draft",
       value: "draft",
       type: "enum",
     });
@@ -72,8 +76,8 @@ describe("parseYamlProperties", () => {
       'title: "My: note"\nmeta:\n  nested: 1\ndesc: |\n  line\nnote: n',
     );
     expect(keys).toEqual([
-      { key: "title", type: "string", value: "My: note" },
-      { key: "note", type: "string", value: "n" },
+      { key: "title", raw: '"My: note"', type: "string", value: "My: note" },
+      { key: "note", raw: "n", type: "string", value: "n" },
     ]);
   });
 
@@ -153,7 +157,7 @@ function edits(
       out.push([
         `set ${key} as typed`,
         key,
-        setYamlPropertyValue(yaml, key, value as string, true),
+        setYamlPropertyValue(yaml, key, value as string, { asYaml: true }),
       ]);
     } else {
       for (const v of VALUES)
@@ -214,11 +218,15 @@ describe("Properties panel edits (§72)", () => {
     expect(parse(out)).toEqual({ tags: ["#a", "b c"] });
   });
 
-  it("adds a property at the end, once", () => {
+  // A new property has no value yet (`key:`), so the first value typed takes its own type.
+  it("adds a property at the end, once, with no value", () => {
     const yaml = "aliases:\n  - foo\ntitle: t";
     const out = addYamlProperty(yaml, "status", "enum");
-    expect(out).toBe('aliases:\n  - foo\ntitle: t\nstatus: ""');
+    expect(out).toBe("aliases:\n  - foo\ntitle: t\nstatus:");
     expect(addYamlProperty(out, "status", "enum")).toBe(out);
+    expect(setYamlPropertyValue(out, "status", "3")).toBe(
+      "aliases:\n  - foo\ntitle: t\nstatus: 3",
+    );
   });
 
   it("removes a property with its lines and one line break", () => {
@@ -278,7 +286,9 @@ describe("Properties panel shapes it could and could not round-trip (§72)", () 
   ])("%s is YAML text written as typed", (_what, yaml, key, typed, after) => {
     const entry = parseYamlProperties(yaml).find((e) => e.key === key);
     expect(entry?.type).toBe("yaml");
-    expect(parse(setYamlPropertyValue(yaml, key, typed, true))).toEqual(after);
+    expect(
+      parse(setYamlPropertyValue(yaml, key, typed, { asYaml: true })),
+    ).toEqual(after);
   });
 
   // Main showed a nested map's inner keys as properties and a block scalar as `|`; editing
@@ -313,5 +323,188 @@ describe("withFrontmatterYaml (§72)", () => {
     expect(withFrontmatterYaml("no front matter", "a: 2")).toBe(
       "no front matter",
     );
+  });
+});
+
+/** The kind YAML reads a value as. */
+function kindOf(value: unknown): string {
+  if (value === null) return "null";
+  return typeof value === "boolean" ? "bool" : typeof value;
+}
+
+describe("an edited value keeps its type (§72)", () => {
+  // What turns this red: writing every edit through `yamlPropertyValue` alone — `-1` became
+  // `"-1"`, `True` became `"True"`, and merely touching the field changed its type.
+  it.each([
+    ["-1", "-12"],
+    ["1.50", "1.25"],
+    ["3", "3.5"],
+    ["0x1F", "0x20"],
+    ["1e3", "2e3"],
+    ["True", "False"],
+    ["~", "null"],
+  ])("a plain %j edited to %j stays plain and of its kind", (raw, typed) => {
+    const yaml = `v: ${raw}\nnote: n`;
+    const out = setYamlPropertyValue(yaml, "v", typed);
+    expect(out).toBe(`v: ${typed}\nnote: n`);
+    expect(kindOf(parse(out).v)).toBe(kindOf(parse(yaml).v));
+  });
+
+  it("a value typed and then typed back writes back what was there", () => {
+    for (const [raw, detour] of [
+      ["1.50", "1.505"],
+      ["True", "Tru"],
+      ["-1", "-"],
+      ['"a\\tb"', "a"],
+      ["'it''s'", "it"],
+    ]) {
+      const yaml = `v: ${raw}\nnote: n`;
+      const shown = parseYamlProperties(yaml)[0].value as string;
+      const away = setYamlPropertyValue(yaml, "v", detour, { original: raw });
+      expect(setYamlPropertyValue(away, "v", shown, { original: raw })).toBe(
+        yaml,
+      );
+    }
+  });
+
+  // What turns this red: rewriting a value whose text did not change — `url: http://x` was
+  // quoted, `a: x   ` lost its trailing spaces, `12:30` became `"12:30"`.
+  it.each([
+    "url: http://x.y/z",
+    "time: 12:30",
+    "v: x   ",
+    "v: 'it''s'",
+    'v: "a\\tb"',
+    "v: 1.50",
+    "v: ~",
+  ])("writes nothing when %j is set to the value it shows", (yaml) => {
+    const [entry] = parseYamlProperties(yaml);
+    expect(setYamlPropertyValue(yaml, entry.key, entry.value as string)).toBe(
+      yaml,
+    );
+  });
+
+  it("a string stays a string when it is edited into something YAML would read as a number", () => {
+    expect(setYamlPropertyValue("v: hello", "v", "3")).toBe('v: "3"');
+    expect(setYamlPropertyValue('v: "5"', "v", "6")).toBe('v: "6"');
+    expect(parse(setYamlPropertyValue("v: hello", "v", "true")).v).toBe("true");
+  });
+});
+
+describe("values the panel shows as YAML text (§72)", () => {
+  // What turns these red: showing them as strings — `a # c` was written back as the string
+  // `"a # c"` (YAML had read `a`), and `"a\x41"` lost its escape.
+  it.each([
+    ["comment: a # c", "a # c"],
+    ['fold: "a\\x41"', '"a\\x41"'],
+    ['q: "a" # c', '"a" # c'],
+  ])("%j is yaml text", (yaml, text) => {
+    expect(parseYamlProperties(yaml)[0]).toMatchObject({
+      type: "yaml",
+      value: text,
+    });
+  });
+
+  // What turns this red: reading `key:` with nothing after it as an empty list — emptying a
+  // value turned the field into a chip list.
+  it("a key with no value is an empty string, not a list", () => {
+    expect(parseYamlProperties("aliases:\ntitle: t")[0]).toEqual({
+      key: "aliases",
+      raw: "",
+      type: "string",
+      value: "",
+    });
+  });
+});
+
+describe("isWritableYamlValue (§72)", () => {
+  const DOC = [
+    "title: t",
+    "anchor: &a x",
+    "ref: *a",
+    "flow: {a: 1}",
+    "typed: !!str 5",
+    "comment: a # c",
+  ].join("\n");
+  const TEXTS = [
+    "new",
+    "a: b",
+    "#x",
+    "- y",
+    "",
+    "123",
+    "-1",
+    "true",
+    "~",
+    "it's",
+    'say "hi"',
+    "x #y",
+    "[a",
+    "{b",
+    "@at",
+    "`bt",
+    "%p",
+    "!t",
+    "*a",
+    "*b",
+    "|",
+    ">",
+    "?",
+    ":",
+    "-",
+    '"',
+    "'",
+    "''",
+    "{a: 2}",
+    "[1, 2]",
+    "&a z",
+    "&b z",
+    "!!str 6",
+    "{a: b: c}",
+    "[a,",
+    "{a: 1}}",
+    "&a",
+    "a # cd",
+    '"q" # c',
+    "&a b: c",
+    "multi\nline",
+  ];
+
+  // What turns this red: writing `yaml` text as typed without checking it — `[a`, `a: b`, a
+  // lone `"`, or an anchor typed away from the alias that needs it left YAML that does not
+  // parse. Every text the check lets through must parse and resolve.
+  it.each(["anchor", "ref", "flow", "typed", "comment"])(
+    "lets through only texts that leave %s valid YAML",
+    (key) => {
+      for (const text of TEXTS) {
+        if (!isWritableYamlValue(DOC, key, text)) continue;
+        const out = setYamlPropertyValue(DOC, key, text, { asYaml: true });
+        const doc = parseDocument(out, { uniqueKeys: true });
+        expect(doc.errors, `${key}: ${JSON.stringify(text)}`).toEqual([]);
+        expect(
+          () => doc.toJS(),
+          `${key}: ${JSON.stringify(text)}`,
+        ).not.toThrow();
+      }
+    },
+  );
+
+  it("lets through the edits a user means", () => {
+    expect(isWritableYamlValue(DOC, "flow", "{a: 2}")).toBe(true);
+    expect(isWritableYamlValue(DOC, "anchor", "&a y")).toBe(true);
+    expect(isWritableYamlValue(DOC, "ref", "*a")).toBe(true);
+    expect(isWritableYamlValue(DOC, "typed", "!!str 6")).toBe(true);
+    expect(isWritableYamlValue(DOC, "comment", "a # cd")).toBe(true);
+    expect(isWritableYamlValue(DOC, "flow", "")).toBe(true);
+  });
+
+  // The cases the YAML grammar alone lets through.
+  it.each(["a: b", "- y", "?", ":", "-", '"', "'"])("refuses %j", (text) => {
+    expect(isWritableYamlValue(DOC, "flow", text)).toBe(false);
+  });
+
+  it("refuses an alias to an anchor the front matter does not set before it", () => {
+    expect(isWritableYamlValue(DOC, "ref", "*b")).toBe(false);
+    expect(isWritableYamlValue(DOC, "anchor", "new")).toBe(false);
   });
 });
