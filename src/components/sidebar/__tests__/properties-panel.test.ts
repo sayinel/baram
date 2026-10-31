@@ -437,6 +437,9 @@ describe("values that run on past their key's line (§72)", () => {
     'k: "a # not a comment\nb: c"',
     "k: ['x,\ny']",
     "k: [a,\nb,\nc: d]",
+    // after an anchor or a tag, which the check reads past
+    "k: &x [p,\nq]",
+    'k: !!str "x\ny"',
   ])("hides %j and the lines it runs on to", (field) => {
     const keys = parseYamlProperties(`title: t\n${field}\nlast: z`).map(
       (e) => e.key,
