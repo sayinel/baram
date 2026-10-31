@@ -1079,6 +1079,18 @@ export interface SandboxContext {
 /** @deprecated The same as `EditorAPI` since §388 — kept so existing type references compile. */
 export type SandboxEditorAPI = EditorAPI;
 
+/**
+ * §395 One update for the sandboxed `SandboxUIAPI.setFileDecorations` (spec 0074 D7): `path` relative to a
+ * context root as `ctx.files` takes it (`""` is the root itself, and the only path a single-file context
+ * takes), `context` a registered context id — left out, the context the app shows when the call arrives,
+ * which can differ from the one `ctx.files` reads without a context while the user switches vaults.
+ */
+export interface SandboxFileDecorationUpdate {
+  context?: string;
+  decoration: FileDecoration | null;
+  path: string;
+}
+
 export interface SandboxFileOptions {
   /** Registered context id to resolve `path` against. Default: the active context. */
   context?: string;

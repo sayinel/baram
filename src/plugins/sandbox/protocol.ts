@@ -14,6 +14,7 @@ import type {
   InputBoxOptions,
   QuickPickItem,
   QuickPickOptions,
+  SandboxFileDecorationUpdate,
 } from "../types";
 
 import { EDITOR_REFUSAL_CODES } from "../types";
@@ -217,9 +218,36 @@ export type SandboxHostRequest =
       id: string;
       kind: "ui_set_panel";
     }
+  | {
+      // §395 spec 0074 D6 — `ui.defineFileIcon`. The host judges the name, the UTF-8 size, and the SVG
+      // after sanitizing (`file-decorations/icons.ts`).
+      kind: "filetree_define_icon";
+      name: string;
+      svg: string;
+    }
+  | {
+      // §395 spec 0074 D7 · D14 — `ui.setFileDecorations`, paths relative to a context root. The host
+      // resolves them when the request arrives (`host-file-tree-bridge.ts`) and judges every field.
+      kind: "filetree_set_decorations";
+      updates: SandboxFileDecorationUpdate[];
+    }
+  | {
+      // §395 spec 0074 D15 — `ui.clearFileDecorations`: the plugin's decorations go, its icons stay.
+      kind: "filetree_clear_decorations";
+    }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }
   | { kind: "ai_stream"; opts?: AICompleteOptions; prompt: string };
+
+/**
+ * §395 — the `filetree_*` half of `SandboxHostRequest`. One alias so the host bridge
+ * (`host-file-tree-bridge.ts`) and the sandbox client's file tree methods share one `Extract`, not two
+ * copies that could drift apart.
+ */
+export type FileTreeRequest = Extract<
+  SandboxHostRequest,
+  { kind: `filetree_${string}` }
+>;
 
 /**
  * §385 — the `prompt_*` half of `SandboxHostRequest`. One alias so the shape checker

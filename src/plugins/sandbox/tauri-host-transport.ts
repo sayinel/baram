@@ -14,6 +14,11 @@ import type {
 import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
+import {
+  MAX_DECORATION_UPDATES,
+  MAX_FILE_ICON_NAME_CHARS,
+  MAX_FILE_ICON_SVG_BYTES,
+} from "../file-decorations/limits";
 import { inputBoxProblem, quickPickProblem } from "../prompt-shape";
 import { MAX_UI_TEXT_CHARS } from "./protocol";
 import {
@@ -185,6 +190,16 @@ const HOST_REQUEST_VALIDATORS: {
   editor_set_markdown: (r) =>
     typeof r.markdown === "string" &&
     r.markdown.length <= MAX_SET_MARKDOWN_CHARS,
+  // §395 spec 0074 §5.3 — shapes and the UTF-16 floor of each cap (a string within a UTF-8 byte cap is
+  // within it in UTF-16 units too); the bridge judges every field (`host-file-tree-bridge.ts`).
+  filetree_clear_decorations: () => true,
+  filetree_define_icon: (r) =>
+    typeof r.name === "string" &&
+    r.name.length <= MAX_FILE_ICON_NAME_CHARS &&
+    typeof r.svg === "string" &&
+    r.svg.length <= MAX_FILE_ICON_SVG_BYTES,
+  filetree_set_decorations: (r) =>
+    Array.isArray(r.updates) && r.updates.length <= MAX_DECORATION_UPDATES,
   // §385 — shape and hard bounds from the ONE rule set the gate and the sandbox pre-check use
   // (`prompt-shape.ts`). A refusal here answers only generically (`refuseIfAwaited`), which is why
   // the sandbox pre-check exists: the author gets the specific reason there first.

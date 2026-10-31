@@ -1,6 +1,7 @@
 // §260 Phase 4a · §394 — an absolute path as the sandboxed tier may see it. Moved out of
 // `plugin-lifecycle.ts` so the code block NodeView can use it (plan 0125 P13) without importing the
 // plugin lifecycle — and through it the loader — into the editor's extension graph.
+// §395 — and its inverse, `absoluteInContext`, for the paths a sandboxed plugin decorates (spec 0074 D7).
 import type { PluginFileEvent } from "./types";
 
 import { contextRootOf, useContextStore } from "../stores/context/context";
@@ -35,4 +36,25 @@ export function locateInContext(absolutePath: string): null | PluginFileEvent {
     .replace(/^[/\\]+/, "")
     .replace(/\\/g, "/");
   return { context: context.id, path: relative };
+}
+
+/**
+ * §395 spec 0074 D7 — the inverse of `locateInContext`: the absolute path a sandboxed plugin means by
+ * `relative` in context `contextId`, or `null` when no registered context has that id, or when it is a
+ * file context and `relative` is not `""` (a file context IS the file, §89). Joined at the same boundary
+ * `locateInContext` slices at (`contextRootOf`), with "/" — the row's key folds either separator
+ * (`decorationKey`), so a Windows root needs no backslash here. `relative` was checked to be
+ * `locateInContext`'s form (`relativeLocate`); nothing here resolves `..`.
+ */
+export function absoluteInContext(
+  contextId: string,
+  relative: string,
+): null | string {
+  const context = useContextStore
+    .getState()
+    .contexts.find((candidate) => candidate.id === contextId);
+  if (context === undefined) return null;
+  const root = contextRootOf(context.path);
+  if (relative === "") return root;
+  return context.contextType === "file" ? null : `${root}/${relative}`;
 }

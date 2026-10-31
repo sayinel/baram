@@ -69,6 +69,7 @@ export type {
   // sandboxed plugin has no type to name, which is how the reference port was blocked.
   SandboxContext,
   SandboxEditorAPI,
+  SandboxFileDecorationUpdate,
   SandboxFileOptions,
   SandboxFilesAPI,
   SandboxSettingsAPI,
