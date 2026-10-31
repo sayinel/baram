@@ -1148,6 +1148,13 @@ export interface SandboxSettingsAPI {
  * remain trusted-tier only (see `UIAPI`).
  */
 export interface SandboxUIAPI {
+  /** §395 Remove every decoration this plugin set (spec 0074 D15); its icons stay defined. Needs `filetree`. */
+  clearFileDecorations(): Promise<void>;
+  /**
+   * §395 Define or redefine icon `name` for `FileDecoration.icon.svg` (spec 0074 D6) — the same rules as
+   * `UIAPI.defineFileIcon`. Needs `filetree`.
+   */
+  defineFileIcon(name: string, svg: string): Promise<void>;
   /**
    * §394 A click on an element with `data-action` inside panel `id`'s content: `handler` gets the
    * value. Only a panel declared in `contributions.panels`; throws for any other. While the handler's
@@ -1158,6 +1165,13 @@ export interface SandboxUIAPI {
     id: string,
     handler: (action: string) => Promise<void> | void,
   ): Disposable;
+  /**
+   * §395 Set, or with `decoration: null` remove, this plugin's decoration of each path (spec 0074 D2 · D7).
+   * Paths are relative to a context root, as `ctx.files` takes them; see `SandboxFileDecorationUpdate`.
+   * The limits and the order of calls are `UIAPI.setFileDecorations`'s; a call this realm can tell is
+   * malformed or too large to send is refused before it is sent. Needs `filetree`.
+   */
+  setFileDecorations(updates: SandboxFileDecorationUpdate[]): Promise<void>;
   /**
    * §394 Show `content` in panel `id`, one declared in `contributions.panels` (which needs `sidebar`).
    * Throws at once for an undeclared id and for content over a limit — 1 MiB of HTML or 64 KiB of CSS

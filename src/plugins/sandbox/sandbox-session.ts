@@ -57,9 +57,9 @@ type ServiceOf<K> = K extends `${infer S}_${string}` ? S : never;
 export const INFLIGHT_BUDGET: Record<HostService, number> = {
   ai: 4,
   editor: 4,
-  // §395 spec 0074 D14 — `filetree_*`. The host makes a call beyond its buckets wait in the plugin's
-  // line (`file-decorations/decoration-host.ts`) instead of refusing it, so four is a backstop against a
-  // sandbox that drives the transport itself, not a queue depth.
+  // §395 spec 0074 D14 — `filetree_*`. The client sends one at a time (`sandbox-file-tree.ts`) and the
+  // host makes a call beyond its buckets wait in the plugin's line (`file-decorations/decoration-host.ts`),
+  // so four is a backstop against a sandbox that drives the transport itself, not a queue depth.
   filetree: 4,
   // §385 — one: a prompt occupies the user, and the app shows one at a time (spec 0061 D5). A
   // plugin's second request is refused here, before it reaches the gate.
