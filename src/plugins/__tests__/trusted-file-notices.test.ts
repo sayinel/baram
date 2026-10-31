@@ -65,12 +65,16 @@ describe("a trusted plugin hears the app's renames and deletions (§395)", () =>
     expect(renamed).not.toHaveBeenCalled();
   });
 
-  it("stops after the plugin's subscriptions are disposed", () => {
-    const ctx = context("p", ["files"]);
-    const renamed = vi.fn();
-    ctx.events.on("file:rename", renamed);
+  /** What fails this: a file-notice watcher left subscribed on dispose (a second plugin load under the same
+   *  id would then hear the notice twice, the dead context's copy through the shared scoped bus). */
+  it("leaves no watcher behind when a plugin is disposed and loaded again", () => {
+    const first = context("p", ["files"]);
+    first.events.on("file:rename", vi.fn());
     live.splice(0).forEach((c) => c.subscriptions.forEach((d) => d.dispose()));
+    const second = context("p", ["files"]);
+    const renamed = vi.fn();
+    second.events.on("file:rename", renamed);
     notifyRenamed("/v/a.md", "/v/b.md", false);
-    expect(renamed).not.toHaveBeenCalled();
+    expect(renamed).toHaveBeenCalledTimes(1);
   });
 });

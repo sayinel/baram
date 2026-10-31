@@ -1,3 +1,4 @@
+// §69 Plugin Loader — Dynamic ESM import with lifecycle management
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import type { SandboxSession } from "./sandbox/sandbox-session";
@@ -32,7 +33,6 @@ import {
   setEditorInstance,
   unregisterPluginUI,
 } from "./extension-context";
-// §69 Plugin Loader — Dynamic ESM import with lifecycle management
 import {
   deliverFileNoticeToSandbox,
   watchFileNotices,

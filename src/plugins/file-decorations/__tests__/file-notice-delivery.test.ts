@@ -122,6 +122,14 @@ describe("what each tier receives (D11 · §4)", () => {
     ).toBeNull();
     expect(
       sandboxNoticeEvent({
+        from: "/elsewhere/a.md",
+        isDir: false,
+        kind: "rename",
+        to: "/v/b.md",
+      }),
+    ).toBeNull();
+    expect(
+      sandboxNoticeEvent({
         isDir: false,
         kind: "delete",
         path: "/elsewhere/a.md",

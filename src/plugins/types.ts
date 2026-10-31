@@ -216,7 +216,8 @@ export interface EventsAPI {
   ): Disposable;
   /**
    * §395 Baram renamed or moved a file or folder (spec 0074 D11): its own rename, move, journal migration
-   * or zettel promotion — never a change made outside Baram, which only `vault:changed` reports. Absolute
+   * or zettel promotion — never a change made outside Baram or by Baram's own git operations, which only
+   * `vault:changed` reports. Absolute
    * paths; a folder is one notice, and what it held moved with it. Comes before the same change's
    * `vault:changed` (except in a vault registered through a symlink or another spelling of its folder).
    * Needs `files` or `files:readonly`, not `events`; without either the subscription is accepted and
@@ -226,7 +227,13 @@ export interface EventsAPI {
     event: "file:rename",
     handler: (oldPath: string, newPath: string, isDir: boolean) => void,
   ): Disposable;
-  /** §395 Baram deleted (moved to the trash) a file or folder — see `on("file:rename")`. */
+  /**
+   * §395 Baram deleted (moved to the trash) a file or folder (spec 0074 D10): its own tree delete or zettel
+   * inbox delete — never a change made outside Baram, and not what Baram's own git operations do to the
+   * working tree, which only `vault:changed` reports. Absolute path; a folder is one notice and what it
+   * held went with it. Comes before the same change's `vault:changed`. Needs `files` or `files:readonly`,
+   * not `events`; without either the subscription is accepted and never fires.
+   */
   on(
     event: "file:delete",
     handler: (path: string, isDir: boolean) => void,
@@ -595,7 +602,10 @@ export interface PluginFetchResponse {
   status: number;
 }
 
-/** §395 What `file:delete` carries in the sandboxed tier (spec 0074 §4): where the entry was, and whether it was a folder. */
+/**
+ * §395 What `file:delete` carries in the sandboxed tier (spec 0074 §4): where the entry was, and whether it
+ * was a folder.
+ */
 export interface PluginFileDelete extends PluginFileEvent {
   isDir: boolean;
 }

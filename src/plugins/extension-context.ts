@@ -433,7 +433,8 @@ export function createExtensionContext(
   // §393 — the trusted tier's half of `vault:changed`, installed here for the same reason as the
   // settings watcher above: `disposables` is `context.subscriptions`, so unload tears it down. §395 —
   // and of `file:rename` / `file:delete` (spec 0074 D11), on the same grant, in the SAME entry:
-  // `extension-context.test.ts` counts `subscriptions` (plan 0127 P39).
+  // `trusted-file-notices.test.ts` "hears absolute paths with files:readonly, in one subscription entry"
+  // counts `subscriptions` (plan 0127 P39).
   if (hasCapability("files") || hasCapability("files:readonly")) {
     const stopVaultChanges = watchVaultChanges({
       capabilities: manifest.capabilities,
