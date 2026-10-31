@@ -334,8 +334,8 @@ jobs:
   #      arms are taken only here — outside tests, today: the link index
   #      (index/mod.rs, relative_links.rs, service/query.rs, and rename/
   #      block_id.rs, destination.rs, file.rs, scope.rs), the CLI and MCP path
-  #      handling (cli/paths.rs, cli/spelling.rs, cli/mcp/scope.rs),
-  #      plugin/vault_path.rs and export/pandoc.rs.
+  #      handling (cli/paths.rs and cli/mcp/scope.rs, which pass `windows` to
+  #      cli/spelling.rs), plugin/vault_path.rs and export/pandoc.rs.
   #
   # What it deliberately does NOT do:
   #   - no `tauri build`, for the same reason the macos job has none: nothing in
