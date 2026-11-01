@@ -56,19 +56,24 @@ export function ZettelInboxList({
       t("zettel.hub.delete.confirm", { title: item.title }),
     );
     if (!ok) return;
-    // §395 spec 0074 D10 · D12 — raised after the confirmation, as the first statement of the try whose
-    // finally releases it; plugins hear file:delete once the file is in the trash.
+    // §395 spec 0074 D10 · D12 — the gate is raised after the confirmation, as the first statement of the
+    // inner try whose finally releases it; plugins hear file:delete once the file is in the trash. The
+    // inner try covers the delete only, so a vault:changed held for the context is let out before the
+    // hub refresh starts, as a promotion releases before it opens the new note. The outer catch logs a
+    // failure from either try.
     let release: (() => void) | undefined;
     try {
-      release = beginFileOperation([item.path]);
-      await deleteFile(item.path);
-      notifyDeleted(item.path, false);
+      try {
+        release = beginFileOperation([item.path]);
+        await deleteFile(item.path);
+        notifyDeleted(item.path, false);
+      } finally {
+        release?.();
+      }
       useZettelIndexStore.getState().removeByPath(item.path);
       await onRefresh();
     } catch (err) {
       logger.error("[Zettel] delete inbox note failed:", err);
-    } finally {
-      release?.();
     }
   };
 

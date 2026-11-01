@@ -44,13 +44,13 @@ afterEach(() => {
   __resetVaultChangeHolds();
 });
 
-function list(): void {
+function list(onRefresh: () => Promise<void> = async () => undefined): void {
   render(
     <ZettelInboxList
       collapsed={false}
       items={[{ id: "1", path: "/z/inbox/1.md", tags: [], title: "T" }]}
       loading={false}
-      onRefresh={vi.fn(async () => undefined)}
+      onRefresh={onRefresh}
       onToggleCollapse={vi.fn()}
       zettelDir="/z"
     />,
@@ -69,7 +69,30 @@ describe("zettel inbox delete notices (§395)", () => {
     );
   });
 
-  /** §7 "IPC 가 던지면 알림 0번 · store 그대로" — the pair of the row above. */
+  /**
+   * D12 — the gate covers the delete, not the hub refresh after it: by the time the refresh starts, the
+   * held `vault:changed` is out. What fails this: releasing in a `finally` that runs after
+   * `await onRefresh()`.
+   */
+  it("lets the held vault:changed out before the hub refresh starts", async () => {
+    ipc.deleteFile.mockImplementation(async () => {
+      publishVaultChange("ctx-z");
+    });
+    let endRefresh: () => void = () => undefined;
+    const onRefresh = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          endRefresh = resolve;
+        }),
+    );
+    list(onRefresh);
+    fireEvent.click(screen.getByLabelText("Delete “T”"));
+    await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
+    expect(recorder.events).toEqual(["delete /z/inbox/1.md", "vault ctx-z"]);
+    endRefresh();
+  });
+
+  /** §7 "IPC 가 던지면 알림 0번 · store 그대로" — the pair of the first row. */
   it("tells nothing and keeps the decoration when the IPC fails", async () => {
     applyDecorations("p", "P", [
       { decoration: { badge: "1" }, where: { absolute: "/z/inbox/1.md" } },
