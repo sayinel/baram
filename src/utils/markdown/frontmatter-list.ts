@@ -212,11 +212,13 @@ export function readFrontmatterLists(
  * `nameOf(item.value)`. An item whose name is not in `names` is removed — with its line, in a
  * block list; every other item stays as written (an item with no name too), except that one YAML
  * cannot read is respelled (`listItemSpelling`) — in a block list, keeping its comment and the
- * spaces and tabs before that, but no other whitespace (YAML takes none after a closing quote).
+ * spaces and tabs before that, and nothing else on its line: no other whitespace and no lone
+ * `\r`, which YAML (yaml 2.9.1, for the `\r`) does not take after a closing quote.
  * A name no item has is added at the end, in the
  * list's form and lead, with its line break. A block list this edit leaves with nothing is
  * written `field: []`.
- * In a block list the lines an edit does not touch stay byte for byte, so writing back the names
+ * In a block list the lines an edit does not touch stay byte for byte (but for a lone `\r` that
+ * ends the last line, which goes when lines are added after it), so writing back the names
  * the list already has changes nothing but the respelling of items YAML cannot read. An inline
  * list is rewritten whole, its items joined by `, ` between the brackets — `[a,b]` and
  * `[ a , b ]` come back `[a, b]`, whatever the edit; what follows the `]` stays.
@@ -261,16 +263,19 @@ export function writeFrontmatterList(
     .filter((line) => !line.item || stays(line.item))
     .map(({ item, sep, text }) => {
       if (!item || !blockItemUnreadable(item.raw)) return `${sep}${text}`;
-      // What follows the item on its line stays — its comment, and the spaces and tabs before
-      // that — but not other whitespace: the reader names the item without it, and YAML takes
-      // none after the closing quote a respelling may add. `raw` starts right after `lead`
-      // (`blockItem`).
-      const after = text
-        .slice(item.lead!.length + item.raw.length)
-        .replace(/^(?:(?![\r\n])\p{White_Space})+/u, (run) =>
-          run.replace(/[^ \t]/g, ""),
-        );
-      return `${sep}${item.lead}${listItemSpelling(item.value, false)}${after}`;
+      // What follows the item on its line is whitespace and then, maybe, its comment. The
+      // comment stays, set off by the spaces and tabs before it, and nothing else does: after
+      // the closing quote a respelling may add, YAML takes no other whitespace, and yaml 2.9.1
+      // no lone `\r` (a line ends with one where the note has `\r\r\n`); the reader names
+      // the item without either. `raw` starts right after `lead` (`blockItem`), so the first
+      // `#` after it starts the comment.
+      const after = text.slice(item.lead!.length + item.raw.length);
+      const at = after.indexOf("#");
+      const comment =
+        at < 0
+          ? ""
+          : after.slice(0, at).replace(/[^ \t]/g, "") + after.slice(at);
+      return `${sep}${item.lead}${listItemSpelling(item.value, false)}${comment}`;
     });
   if (kept.length + added.length === 0) {
     // An empty `field:` stays as it is; one emptied by this edit becomes `field: []`.
@@ -280,21 +285,14 @@ export function writeFrontmatterList(
   const appended = added.map(
     (name) => `${list.newline}${lead}${listItemSpelling(name, false)}`,
   );
-  // A list that ends `yaml` may end with a lone `\r`, the `\r` of the line break before the
-  // closing fence, which the caller cut at its `\n`. It stays last, after the added lines:
-  // yaml 2.9.1 rejects a quoted item followed by `\r\r\n`.
+  // A lone `\r` that ends the list's last line (`\r\r\n` in the note, or a front matter that
+  // ends `\r\r\n---`: the callers cut it at `\r?\n---`) goes when lines are added after it.
+  // Kept, it would come before the added lines' break, or last after them; yaml 2.9.1 rejects
+  // a closing quote followed by a lone `\r`, either way.
   let body = kept.join("");
-  const cr =
-    appended.length > 0 && list.end === yaml.length && body.endsWith("\r")
-      ? "\r"
-      : "";
-  if (cr) body = body.slice(0, -1);
+  if (appended.length > 0 && body.endsWith("\r")) body = body.slice(0, -1);
   return (
-    yaml.slice(0, list.open) +
-    body +
-    appended.join("") +
-    cr +
-    yaml.slice(list.end)
+    yaml.slice(0, list.open) + body + appended.join("") + yaml.slice(list.end)
   );
 }
 

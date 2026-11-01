@@ -164,7 +164,7 @@ describe("carriedTagField", () => {
     );
     // §56m The no-break space after the item is not carried behind the new closing quote,
     // where YAML does not take it.
-    const carried = carriedTagField("---\ntags:\n  - #unq \n  - a\n---\n");
+    const carried = carriedTagField("---\ntags:\n  - #unq\u00a0\n  - a\n---\n");
     expect(carried).toBe(`tags:\n  - "#unq"\n  - a`);
     expect(parse(carried)).toEqual({ tags: ["#unq", "a"] });
   });

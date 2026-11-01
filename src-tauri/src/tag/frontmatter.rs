@@ -195,9 +195,11 @@ pub(crate) fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 /// written around it stay, and so does a block item's comment, which is not part of its entry
 /// (`block_item`). A bare entry — no quote character anywhere in it, no leading `#` —
 /// gets the renamed name as `yaml_string` spells it, so `null` or `123` is written quoted and
-/// YAML still reads text; the whitespace right after its name, up to the line's end, keeps
-/// only its spaces and tabs. The reader names the entry without any Unicode whitespace there,
-/// and after the closing quote YAML takes no other (`"2024"` + U+00A0 does not parse).
+/// YAML still reads text. The whitespace right after its name — up to the next other character
+/// (`#`, `,`, `]`, …) or the line break — keeps only its spaces and tabs: the reader names the
+/// entry without any Unicode whitespace there, and after the closing quote YAML takes no other
+/// (`"2024"` + U+00A0 does not parse), nor, in yaml 2.9.1, a lone `\r`. A `\r` is the line
+/// break's before a `\n`, or where it ends the front matter (the closing fence's `\n` follows).
 /// Both names are bare (`bare_tag`).
 pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -> (String, usize) {
     let mut out = String::with_capacity(frontmatter.len());
@@ -223,10 +225,19 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
         copied = start + name.len();
         if bare {
             out.push_str(&yaml_string(&renamed));
+            // The whitespace after the name, up to the next other character or the line break:
+            // a `\r` is the line break's before a `\n`, or where it ends the front matter (the
+            // closing fence's `\n` follows it); any other `\r` is whitespace here.
             let after = frontmatter.get(copied..).unwrap_or_default();
+            let breaks_line = |at: usize| {
+                after
+                    .get(at..)
+                    .is_some_and(|rest| rest == "\r" || rest.starts_with("\r\n"))
+            };
             let run = after
-                .find(|c: char| !c.is_whitespace() || c == '\r' || c == '\n')
-                .unwrap_or(after.len());
+                .char_indices()
+                .find(|&(at, c)| !c.is_whitespace() || c == '\n' || (c == '\r' && breaks_line(at)))
+                .map_or(after.len(), |(at, _)| at);
             let blanks = after.get(..run).unwrap_or_default();
             out.extend(blanks.chars().filter(|c| matches!(c, ' ' | '\t')));
             copied = copied.saturating_add(run);

@@ -199,7 +199,7 @@ describe("writeFrontmatterList", () => {
     expect(parse(out)).toEqual({ tags: ["#solo", "z"] });
   });
 
-  it.each(["# memo", "## memo", "#　memo"])(
+  it.each(["# memo", "## memo", "#\u3000memo"])(
     "keeps a block line that holds only the comment %j as written",
     (comment) => {
       const out = write(`tags:\n  - ${comment}\n  - a`, (n) => [...n, "z"]);
@@ -226,9 +226,9 @@ describe("writeFrontmatterList", () => {
   // that whitespace over — `"#solo"` + U+00A0 does not parse, and neither does `"#solo"` +
   // U+3000 before the comment. Each input parses (YAML reads a comment, so null).
   it.each([
-    ["tags:\n  - #solo \n  - a", `tags:\n  - "#solo"\n  - a\n  - z`],
-    ["tags:\n  - #solo　 # memo", `tags:\n  - "#solo" # memo\n  - z`],
-    ["tags:\n  - #solo \t# memo", `tags:\n  - "#solo"\t# memo\n  - z`],
+    ["tags:\n  - #solo\u00a0\n  - a", `tags:\n  - "#solo"\n  - a\n  - z`],
+    ["tags:\n  - #solo\u3000 # memo", `tags:\n  - "#solo" # memo\n  - z`],
+    ["tags:\n  - #solo\u00a0\t# memo", `tags:\n  - "#solo"\t# memo\n  - z`],
   ])(
     "respells %j keeping only the spaces and tabs after the item",
     (yaml, out) => {
@@ -239,19 +239,26 @@ describe("writeFrontmatterList", () => {
     },
   );
 
-  // A last line can end with a lone `\r`: the `\r` of the line break before the closing fence,
-  // cut at its `\n`. What turns these red: adding lines after that `\r` — yaml 2.9.1 rejects a
-  // quoted item followed by `\r\r\n`, kept as written or respelled.
+  // A line of `yaml` ends with a lone `\r` only where the note has `\r\r\n`: the callers cut the
+  // front matter at `\r?\n---`, and a line loses just the `\r` of its `\r\n`. yaml 2.9.1 rejects
+  // a closing quote followed by a lone `\r`, mid-text and at the end (js-yaml reads it), and the
+  // Properties panel puts `yaml` back in front of the fence's `\r\n`, where a reader cuts it out
+  // the same way. What turns these red: keeping that `\r` after a respelled item, or after an
+  // added line — moved behind the added lines, it follows `"null"`. A comment keeps its `\r`.
   it.each([
-    [`tags:\r\n  - "a"\r`, `tags:\r\n  - "a"\r\n  - z\r`],
-    ["tags:\r\n  - #solo \r", `tags:\r\n  - "#solo"\r\n  - z\r`],
+    ["tags:\r\n  - #s\r\r\n  - a", [], `tags:\r\n  - "#s"\r\n  - a`],
+    ["tags:\r\n  - #s\r\r\nother: 1", [], `tags:\r\n  - "#s"\r\nother: 1`],
+    ["tags:\r\n  - #s\r", [], `tags:\r\n  - "#s"`],
+    ["tags:\r\n  - #s # c\r\r\n  - a", [], `tags:\r\n  - "#s" # c\r\r\n  - a`],
+    ["tags:\r\n  - #solo\u00a0\r", ["z"], `tags:\r\n  - "#solo"\r\n  - z`],
+    [`tags:\r\n  - "a"\r`, ["z"], `tags:\r\n  - "a"\r\n  - z`],
+    ["tags:\r\n  - a\r", ["null"], `tags:\r\n  - a\r\n  - "null"`],
   ])(
-    "adds lines before the lone \\r a last line ends with: %j",
-    (yaml, out) => {
-      expect(parses(yaml + "\n")).toBe(true);
-      const written = write(yaml, (n) => [...n, "z"]);
+    "writes %j adding %j without a lone \\r after a quote",
+    (yaml, add, out) => {
+      const written = write(yaml, (n) => [...n, ...add]);
       expect(written).toBe(out);
-      expect(parses(written + "\n")).toBe(true);
+      expect(parses(written)).toBe(true);
     },
   );
 
