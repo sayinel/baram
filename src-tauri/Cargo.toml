@@ -90,7 +90,7 @@ git2 = { version = "0.20", features = ["vendored-openssl"] }
 # call sites need: `plugin-release.yml` packs with `zip -r` (Deflated) and Notion
 # exports are Deflated. Adding a codec back here re-arms the above — do it only with
 # the allocation behaviour of that decoder in hand.
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 similar = "3"
 sha2 = "0.11"
 # §69 revocation-list signing. Both were already in the tree via tauri-plugin-updater, so
