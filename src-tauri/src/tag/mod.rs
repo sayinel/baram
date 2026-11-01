@@ -968,33 +968,48 @@ mod tests {
     /// `\r`. Alone, without that `\n`, the two CRLF outputs that end the front matter with
     /// `"2024"` + `\r` are rejected by yaml 2.9.1 too, as `- 'x'` + `\r` is: the `\r` is the
     /// fence's. What fails this: carrying the whitespace, or the `\r` of `\r\r\n`, over behind
-    /// the quote.
+    /// the quote. A plain new name (`b`) gets the same whitespace: both packages read `year` +
+    /// U+00A0 there, and `b` after the rename. What fails this too: filtering only when the
+    /// new name is quoted.
     #[tokio::test]
     async fn a_renamed_bare_entry_keeps_only_the_spaces_and_tabs_after_it() {
-        for (front, want) in [
+        for (front, new, want) in [
             (
                 "tags:\n  - year\u{a0} # memo\n  - z",
+                "2024",
                 "tags:\n  - \"2024\" # memo\n  - z",
             ),
-            ("tags:\n  - year\u{a0}", "tags:\n  - \"2024\""),
+            ("tags:\n  - year\u{a0}", "2024", "tags:\n  - \"2024\""),
             (
                 "tags:\n  - year\u{3000}\u{a0}\t# memo",
+                "2024",
                 "tags:\n  - \"2024\"\t# memo",
             ),
-            ("tags: [year\u{a0}, b]", "tags: [\"2024\", b]"),
-            ("tags:\r\n  - year\u{a0}\r", "tags:\r\n  - \"2024\"\r"),
+            ("tags: [year\u{a0}, b]", "2024", "tags: [\"2024\", b]"),
+            (
+                "tags:\r\n  - year\u{a0}\r",
+                "2024",
+                "tags:\r\n  - \"2024\"\r",
+            ),
             (
                 "tags:\r\n  - year\r\r\n  - z",
+                "2024",
                 "tags:\r\n  - \"2024\"\r\n  - z",
             ),
-            ("tags:\r\n  - year\r\r", "tags:\r\n  - \"2024\"\r"),
+            ("tags:\r\n  - year\r\r", "2024", "tags:\r\n  - \"2024\"\r"),
+            (
+                "tags:\n  - year\u{a0} # memo\n  - z",
+                "b",
+                "tags:\n  - b # memo\n  - z",
+            ),
+            ("tags: [year\u{a0}, x]", "b", "tags: [b, x]"),
         ] {
             let (d, root) = vault(&format!("---\n{front}\n---\n")).await;
-            let r = rename_tag(&root, "year", "2024").await.unwrap();
+            let r = rename_tag(&root, "year", new).await.unwrap();
             assert_eq!(r.occurrences_replaced, 1, "{front:?}");
             assert_eq!(read(&d).await, format!("---\n{want}\n---\n"), "{front:?}");
             assert!(
-                extract_frontmatter_tags(want).contains(&"2024".to_string()),
+                extract_frontmatter_tags(want).contains(&new.to_string()),
                 "{want:?}"
             );
         }
