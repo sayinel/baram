@@ -58,6 +58,8 @@ export interface FrontmatterListItem {
 /** A line of a block list: the line break before it and its text, with the item it holds. */
 export interface FrontmatterListLine {
   item?: FrontmatterListItem;
+  /** The text in front of the item, `  - `, whether or not the line holds one. */
+  lead: string;
   sep: string;
   text: string;
 }
@@ -153,6 +155,7 @@ export function readFrontmatterLists(
         if (read) block.items.push(read);
         block.lines.push({
           ...(read && { item: read }),
+          lead: item[1],
           sep: lines[i - 1].break,
           text,
         });
@@ -251,7 +254,8 @@ export function writeFrontmatterList(
     return `${yaml.slice(0, list.open)}[${parts.join(", ")}]${yaml.slice(list.end)}`;
   }
 
-  const lead = list.items[0]?.lead ?? "  - ";
+  // The first item's lead, or the first line's when no line holds an item (`- # todo`).
+  const lead = list.items[0]?.lead ?? list.lines[0]?.lead ?? "  - ";
   const kept = list.lines
     .filter((line) => !line.item || stays(line.item))
     .map(({ item, sep, text }) => {

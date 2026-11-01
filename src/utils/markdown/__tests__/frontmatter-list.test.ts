@@ -205,6 +205,19 @@ describe("writeFrontmatterList", () => {
     expect(parse(out)).toEqual({ tags: [null, "a", "z"] });
   });
 
+  // A list whose `-` lines hold no item still sets the lead of an added one. What turns these
+  // red: adding at a lead the list does not use — `  - ` under `- # todo` is a list nested in
+  // the null item, and under `    - # todo` yaml 2.9.1 rejects the text.
+  it.each([
+    ["tags:\n- # todo", "tags:\n- # todo\n- z"],
+    ["tags:\n    - # todo", "tags:\n    - # todo\n    - z"],
+    ["tags:\n-  \ntitle: x", "tags:\n-  \n- z\ntitle: x"],
+  ])("adds an item at the lead of %j", (yaml, out) => {
+    const written = write(yaml, (n) => [...n, "z"]);
+    expect(written).toBe(out);
+    expect((parse(written) as { tags: unknown }).tags).toEqual([null, "z"]);
+  });
+
   // The reader names an item without any Unicode whitespace after it, but after the closing
   // quote a respelling adds YAML takes only spaces and tabs. What turns these red: carrying
   // that whitespace over — `"#solo"` + U+00A0 does not parse, and neither does `"#solo"` +

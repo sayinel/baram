@@ -270,6 +270,16 @@ describe("Properties panel shapes it could and could not round-trip (§72)", () 
     });
   });
 
+  // §56m What turns this red: adding at the writer's default lead `  - ` when no item gives
+  // one — under `- # todo` that nests the new item in a list of its own.
+  it("adds a tag at the lead of a list whose only line is a comment", () => {
+    const out = setYamlPropertyItems("tags:\n- # todo\ntitle: x", "tags", [
+      "z",
+    ]);
+    expect(out).toBe("tags:\n- # todo\n- z\ntitle: x");
+    expect(parse(out)).toEqual({ tags: [null, "z"], title: "x" });
+  });
+
   // Main showed these as their YAML text and wrote them back as typed — they round-tripped,
   // so they stay visible, as `yaml` text written as typed.
   it.each([
