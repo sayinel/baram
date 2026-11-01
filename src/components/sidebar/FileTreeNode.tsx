@@ -95,7 +95,7 @@ export function FileTreeNode({
       // role="presentation": a role-less wrapper between the tree and its rows makes WebKit's
       // `isValidTree()` (AccessibilityNodeObject.cpp, WebKit main as of 2026-11-01) reject the tree; it
       // accepts only `group` or `presentation` there (its `hasAnyRole` call), and reads the wrapper's
-      // children as the tree's. `role="none"` would NOT do: `hasPresentationRole` honours it, but this
+      // children as the tree's. `role="none"` would NOT do: `hasPresentationRole` (AXUtilities.cpp) honours it, but this
       // check does not call that. The rows carry `aria-level`.
       <div
         className={isDragOver ? "file-tree-drop-target" : ""}

@@ -8,11 +8,13 @@
 // one with role `group` or `presentation` is accepted and its children are queued; any other element child
 // makes the tree invalid. Role matching follows `hasRole` / `hasAnyRole` in
 // Source/WebCore/accessibility/AXUtilities.cpp (same date): the `role` attribute is lowercased and matched
-// as any one of its space-separated tokens.
+// as any one of its tokens, split on ASCII space, tab, LF, FF and CR only
+// (SpaceSplitString, which those functions call).
 //
-// Testing Library computes accessible names with dom-accessibility-api on jsdom. jsdom does not load the
-// app's CSS, so it joins a row's parts without the spaces WebKit adds (`shouldPrependSpace` for blockified
-// flex children). WebKit's own naming of the rows is checked by VoiceOver, not here.
+// Testing Library computes accessible names with dom-accessibility-api on jsdom. file-tree.css is not
+// loaded here (nothing this test imports pulls it in), so jsdom joins a row's parts without the spaces
+// WebKit adds (`shouldPrependSpace` for blockified flex children). WebKit's own naming of the rows is
+// checked by VoiceOver, not here.
 import type { FileEntry } from "../../../stores/file/file";
 import type { FileTreeContextValue } from "../FileTreeContext";
 
@@ -53,7 +55,7 @@ function isValidTree(tree: Element): boolean {
     for (const child of Array.from(parent.children)) {
       const roles = (child.getAttribute("role") ?? "")
         .toLowerCase()
-        .split(/\s+/);
+        .split(/[\t\n\f\r ]+/);
       if (roles.includes("treeitem")) continue;
       if (roles.some((r) => r === "group" || r === "presentation")) {
         queue.push(child);
