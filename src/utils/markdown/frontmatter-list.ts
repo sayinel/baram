@@ -262,10 +262,11 @@ export function writeFrontmatterList(
     return `${yaml.slice(0, list.open)}[${parts.join(", ")}]${yaml.slice(list.end)}`;
   }
 
-  // The first item's lead, or the first line's when no line holds an item (`- # todo`), with
-  // any whitespace in it but a space or a tab made a space: YAML reads `- ` + U+00A0 + `z` as
-  // the item U+00A0 + `z`, where the reader reads `z`.
-  const lead = (list.items[0]?.lead ?? list.lines[0]?.lead ?? "  - ").replace(
+  // The first line's lead, whether or not it holds an item (`- # todo`): YAML's entries begin
+  // at its indentation, and a deeper `-` under a line with no item is a list inside that entry.
+  // Any whitespace in it but a space or a tab becomes a space: YAML reads `- ` + U+00A0 + `z`
+  // as the item U+00A0 + `z`, where the reader reads `z`.
+  const lead = (list.lines[0]?.lead ?? "  - ").replace(
     /(?![ \t])\p{White_Space}/gu,
     " ",
   );

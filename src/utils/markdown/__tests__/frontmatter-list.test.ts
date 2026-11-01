@@ -225,6 +225,15 @@ describe("writeFrontmatterList", () => {
     expect((parse(written) as { tags: unknown }).tags).toEqual([null, "z"]);
   });
 
+  // YAML's entries begin at the first line's indentation, whether or not that line holds an
+  // item. What turns this red: copying the first item's lead — under `- # c` that adds `z` to
+  // the list YAML reads inside the null entry, not to the list.
+  it("adds an item at the first line's lead", () => {
+    const written = write("tags:\n- # c\n  - a", (n) => [...n, "z"]);
+    expect(written).toBe("tags:\n- # c\n  - a\n- z");
+    expect(parse(written)).toEqual({ tags: [["a"], "z"] });
+  });
+
   // A copied lead keeps its spaces and tabs, and any other whitespace in it becomes a space.
   // What turns this red: copying `- ` + U+00A0 as it is — YAML reads the item U+00A0 + `z`,
   // where the app reads `z`.
