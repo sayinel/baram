@@ -1294,6 +1294,66 @@ mod extract_zip_bomb_tests {
         );
     }
 
+    /// Clears general-purpose bit 11 (the UTF-8 "language encoding" flag) in every local
+    /// and central header — the shape of an archive whose zipper wrote UTF-8 names without
+    /// declaring them. Asserts the writer had set the flag on each header, so the clear is
+    /// never a no-op that leaves the fixture flagged, and that neither header carries an
+    /// extra field, so no Unicode Path field (0x7075) can supply the name instead.
+    fn without_utf8_flag(mut bytes: Vec<u8>) -> Vec<u8> {
+        const UTF8_FLAG_HIGH_BYTE: u8 = 0x08; // bit 11 of the little-endian u16
+                                              // (signature, offset of the flag's high byte, offset of the extra-field length)
+        let headers: [(&[u8; 4], usize, usize); 2] =
+            [(b"PK\x03\x04", 7, 28), (b"PK\x01\x02", 9, 30)];
+        for (signature, high_flag_byte, extra_len) in headers {
+            let starts: Vec<usize> = bytes
+                .windows(4)
+                .enumerate()
+                .filter(|(_, w)| w == signature)
+                .map(|(i, _)| i)
+                .collect();
+            assert_eq!(starts.len(), 1, "one entry, one {signature:?} header");
+            let extra = starts[0] + extra_len;
+            assert_eq!(
+                &bytes[extra..extra + 2],
+                &[0, 0],
+                "{signature:?} has no extra field"
+            );
+            let at = starts[0] + high_flag_byte;
+            assert_ne!(
+                bytes[at] & UTF8_FLAG_HIGH_BYTE,
+                0,
+                "writer set the UTF-8 flag"
+            );
+            bytes[at] &= !UTF8_FLAG_HIGH_BYTE;
+        }
+        bytes
+    }
+
+    /// An entry whose name is UTF-8 but whose UTF-8 flag is unset extracts under its real
+    /// name. zip 9 decodes a name as UTF-8 whenever its bytes are valid UTF-8 and falls
+    /// back to CP437 only otherwise. zip 8.6 read an unflagged name as CP437 unless a
+    /// Unicode Path extra field supplied it, and this fixture has none, so this archive
+    /// extracted to `δà╕φè╕/φò£Ω╕Ç.md` (measured on 8.6.0 against these same bytes).
+    #[tokio::test]
+    async fn extracts_a_utf8_name_the_archive_did_not_flag_as_utf8() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytes = without_utf8_flag(zip_bytes(&[("노트/한글.md", b"# hello")]));
+        let zip_path = write_zip(dir.path(), "unflagged.zip", &bytes);
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let paths = extract_zip(zip_path.to_str().unwrap(), out.to_str().unwrap())
+            .await
+            .expect("an unflagged UTF-8 name must extract");
+
+        assert_eq!(paths.len(), 1, "{paths:?}");
+        assert!(Path::new(&paths[0]).ends_with("노트/한글.md"), "{paths:?}");
+        assert_eq!(
+            std::fs::read_to_string(out.join("노트/한글.md")).unwrap(),
+            "# hello"
+        );
+    }
+
     /// Regression — the bomb bounds must not have loosened the pre-existing Zip Slip check
     /// (`normalized.starts_with(&canonical_output)` above), which predates this change and
     /// runs before any of the new bounds are even reached.
