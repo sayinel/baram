@@ -110,6 +110,8 @@ describe("readFrontmatterLists", () => {
     ["a nested map", "tags: [{a: 1}, b]"],
     ["text after `]`", "tags: [a, b]x"],
     ["a comment not set off by a space", "tags: [a]#c"],
+    // YAML reads a `-` as an entry only before a space or a tab: here the whole value is text.
+    ["a dash followed by a no-break space", "tags:\n  -\u00a0# c\n  - # c"],
   ])("is not complete with %s", (_why, yaml) => {
     const lists = readFrontmatterLists(yaml, "tags");
     expect(lists).toHaveLength(1);
@@ -142,6 +144,8 @@ describe("writeFrontmatterList", () => {
     // A quote that never closes: the rest of the list is one item to the reader.
     'title: t\ntags: ["a, b]\ndate: d',
     "title: t\ntags: ['a, b]\ndate: d",
+    // YAML reads this `tags` as text, and rejects it with any line added.
+    "title: t\ntags:\n  -\u00a0# c\n  - # c\ndate: d",
   ])("leaves a list it did not read to its end alone: %j", (yaml) => {
     expect(write(yaml, (n) => [...n, "x"])).toBe(yaml);
     expect(write(yaml, (n) => [...n, "yes"])).toBe(yaml);
@@ -219,6 +223,15 @@ describe("writeFrontmatterList", () => {
     const written = write(yaml, (n) => [...n, "z"]);
     expect(written).toBe(out);
     expect((parse(written) as { tags: unknown }).tags).toEqual([null, "z"]);
+  });
+
+  // A copied lead keeps its spaces and tabs, and any other whitespace in it becomes a space.
+  // What turns this red: copying `- ` + U+00A0 as it is — YAML reads the item U+00A0 + `z`,
+  // where the app reads `z`.
+  it("adds an item at a lead whose other whitespace becomes a space", () => {
+    const written = write("tags:\n- \u00a0# todo", (n) => [...n, "z"]);
+    expect(written).toBe("tags:\n- \u00a0# todo\n-  z");
+    expect(parse(written)).toEqual({ tags: ["\u00a0# todo", "z"] });
   });
 
   // The reader names an item without any Unicode whitespace after it, but after the closing

@@ -20,7 +20,9 @@ export interface FrontmatterList {
    * Whether a writer may rewrite the list in place. Inline: nothing but blanks and a comment
    * follows `]`, every quote closes, no item opens a nested `[` or `{`. Block: past the last
    * item, and any blank or comment lines after it, the next line is neither indented nor a
-   * `-` line — it is not a continuation of an item, nor an item after a gap.
+   * `-` line — it is not a continuation of an item, nor an item after a gap; and every `-` is
+   * followed by a space or a tab, as YAML needs to read an entry (to YAML `-` + U+00A0 begins
+   * text, and yaml 2.9.1 and js-yaml 4.3.2 reject that text once an item line follows it).
    */
   complete: boolean;
   /** Offset just past the list: its `]`, or the end of its last line (before that line's break). */
@@ -160,10 +162,11 @@ export function readFrontmatterLists(
           sep: lines[i - 1].break,
           text,
         });
+        if (!/-[ \t]/.test(item[1])) block.complete = false;
         block.end = start + text.length;
         continue;
       }
-      block.complete = blockEndsAt(lines, i);
+      block.complete &&= blockEndsAt(lines, i);
       block = null;
     }
 
@@ -257,8 +260,13 @@ export function writeFrontmatterList(
     return `${yaml.slice(0, list.open)}[${parts.join(", ")}]${yaml.slice(list.end)}`;
   }
 
-  // The first item's lead, or the first line's when no line holds an item (`- # todo`).
-  const lead = list.items[0]?.lead ?? list.lines[0]?.lead ?? "  - ";
+  // The first item's lead, or the first line's when no line holds an item (`- # todo`), with
+  // any whitespace in it but a space or a tab made a space: YAML reads `- ` + U+00A0 + `z` as
+  // the item U+00A0 + `z`, where the reader reads `z`.
+  const lead = (list.items[0]?.lead ?? list.lines[0]?.lead ?? "  - ").replace(
+    /(?![ \t])\p{White_Space}/gu,
+    " ",
+  );
   const kept = list.lines
     .filter((line) => !line.item || stays(line.item))
     .map(({ item, sep, text }) => {
