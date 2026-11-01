@@ -92,6 +92,13 @@ pub(super) fn yaml_string(value: &str) -> String {
 ///   are followed by any other character is read by this rule too (`#solo # memo` is `#solo`),
 ///   as the reader keeps `- #solo`, which YAML reads as a comment.
 ///
+/// Where that whitespace is not a space or a tab this differs from YAML on purpose: the dash's
+/// whitespace (`FM_TAGS_BLOCK_ITEM_RE`'s `\s+`) and the trims take any Unicode whitespace, as
+/// the readers always have to name an item, but YAML sets nothing off with it. `-` + U+00A0 +
+/// `# memo` and `- ` + U+3000 + `#` hold no item here, where YAML reads the strings `-` +
+/// U+00A0 + `# memo` (the key's whole value) and U+3000 + `#`; `a` + U+00A0 + ` # c` is `a`,
+/// where YAML reads `a` + U+00A0. A writer does not rely on it (`rename_frontmatter_tags`).
+///
 /// The item is the start of `rest`, so its length places it in the line.
 fn block_item(rest: &str) -> Option<&str> {
     let text = rest.trim_end();
@@ -110,10 +117,11 @@ fn block_item(rest: &str) -> Option<&str> {
     {
         return None;
     }
-    let comment = text
+    let before_comment = text
         .match_indices('#')
-        .find(|&(at, _)| text[..at].ends_with([' ', '\t']));
-    Some(comment.map_or(text, |(at, _)| text[..at].trim_end()))
+        .filter_map(|(at, _)| text.get(..at))
+        .find(|before| before.ends_with([' ', '\t']));
+    Some(before_comment.map_or(text, str::trim_end))
 }
 
 /// Every entry of the front matter's tag lists, in order, as byte ranges of `frontmatter`:

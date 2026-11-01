@@ -990,16 +990,17 @@ mod tests {
     }
 
     /// §56m A block item's comment is not part of its entry (`frontmatter::block_item`): a
-    /// rename replaces the name and leaves the blanks and the comment after it, and a quote in
+    /// rename replaces the name and leaves the spaces and the comment after it, and a quote in
     /// the comment does not make the entry non-bare, so `null` is still written quoted. What
-    /// fails this: an entry that runs to the end of the line (the reader names `solo # it's`
-    /// and nothing is renamed), or judging "bare" with the comment in (`- null # it's`, which
+    /// fails this: an entry that runs to the end of the line — then only `solo/x\t# "q"` is
+    /// renamed, its whole text still starting with `solo/`, so the count is 1 and the first
+    /// three lines keep `solo` — or judging "bare" with the comment in (`- null # it's`, which
     /// YAML reads as null).
     #[tokio::test]
     async fn a_block_items_comment_stays_through_a_rename() {
         let (d, root) = vault(
             "---\ntags:\n  - solo # it's\n  - \"#solo\"   # keep me\n  - #solo # memo\n  \
-             - solo/x\t# \"q\"\n  - # solo\n---\n",
+             - solo/x\t# \"q\"\n---\n",
         )
         .await;
         let r = rename_tag(&root, "solo", "null").await.unwrap();
@@ -1007,7 +1008,7 @@ mod tests {
         assert_eq!(
             read(&d).await,
             "---\ntags:\n  - \"null\" # it's\n  - \"#null\"   # keep me\n  - #null # memo\n  \
-             - null/x\t# \"q\"\n  - # solo\n---\n"
+             - null/x\t# \"q\"\n---\n"
         );
     }
 

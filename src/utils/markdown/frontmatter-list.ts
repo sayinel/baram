@@ -122,9 +122,10 @@ export function listItemSpelling(
  * list is `field: [a, b]` on the key's line, or `field:` alone and then the `- a` lines after
  * it, indented or not, up to the first line that is not one. Whitespace is Unicode's
  * (`White_Space`, as Rust's `char::is_whitespace`). A block item is its line's text without
- * the comment YAML reads after it (`blockItem`), and a line that is only a comment holds no
- * item. An item's value is its text less every `"` at either end, then every `'` — no escape
- * is read.
+ * the comment YAML reads after it, and a line that is only a comment holds no item — YAML's
+ * reading where the line's whitespace is spaces and tabs (`blockItem` says where it is not).
+ * An item's value is its text less every `"` at either end, then every `'` — no escape is
+ * read.
  *
  * The backend's reader and this one read the cases of
  * `src-tauri/src/tag/fixtures/frontmatter-tags.json` in their tests. The one reading that
@@ -314,16 +315,22 @@ export function writableFrontmatterList(
 /** Unicode whitespace (`White_Space`), the set Rust's `char::is_whitespace` and `\s` use. */
 const WS = "\\p{White_Space}";
 
-const DOUBLE_QUOTED = /^"(?:[^"\\]|\\.)*"$/;
-const SINGLE_QUOTED = /^'(?:[^']|'')*'$/;
+/** A closed double-quoted scalar, where `\` escapes the next character. */
+const DOUBLE_QUOTED_SCALAR = String.raw`"(?:[^"\\]|\\[^\n])*"`;
+/** A closed single-quoted scalar, where `''` is a quote. */
+const SINGLE_QUOTED_SCALAR = String.raw`'(?:[^']|'')*'`;
+
+const DOUBLE_QUOTED = new RegExp(`^${DOUBLE_QUOTED_SCALAR}$`);
+const SINGLE_QUOTED = new RegExp(`^${SINGLE_QUOTED_SCALAR}$`);
 
 /**
- * A block item that is one quoted scalar — `"…"`, where `\` escapes the next character, or
- * `'…'`, where `''` is a quote — and then nothing, or a `#` comment set off by spaces or tabs.
- * Group 1 is the scalar. The same pattern as the backend's `FM_TAGS_QUOTED_ITEM_RE`.
+ * A block item that is one quoted scalar and then nothing, or a `#` comment set off by spaces
+ * or tabs. Group 1 is the scalar. Its source is the text of the backend's
+ * `FM_TAGS_QUOTED_ITEM_RE`.
  */
-const QUOTED_ITEM =
-  /^("(?:[^"\\]|\\[^\n])*"|'(?:[^']|'')*')(?:[ \t]+#[^\n]*)?$/;
+const QUOTED_ITEM = new RegExp(
+  String.raw`^(${DOUBLE_QUOTED_SCALAR}|${SINGLE_QUOTED_SCALAR})(?:[ \t]+#[^\n]*)?$`,
+);
 
 interface Line {
   /** The line break that ends the line: `\n`, `\r\n`, or `""` on the last line. */
@@ -373,6 +380,14 @@ function blockEndsAt(lines: Line[], i: number): boolean {
  *   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item whose `#`s are
  *   followed by any other character is read by this rule too (`#solo # memo` is `#solo`), as
  *   `- #solo` is, which YAML reads as a comment.
+ *
+ * Where that whitespace is not a space or a tab this differs from YAML on purpose: the dash's
+ * whitespace (the item pattern of `readFrontmatterLists`) and the trims take any Unicode
+ * whitespace, as the readers always have to name an item, but YAML sets nothing off with it.
+ * `-` + U+00A0 + `# memo` and `- ` + U+3000 + `#` hold no item here, where YAML reads the
+ * strings `-` + U+00A0 + `# memo` (the key's whole value) and U+3000 + `#`; `a` + U+00A0 +
+ * ` # c` is `a`, where YAML reads `a` + U+00A0. A writer does not rely on it
+ * (`writeFrontmatterList`).
  *
  * The item is the start of `rest` (whose first character is not whitespace when it holds an
  * item: the dash's whitespace is all in front of it).
