@@ -28,6 +28,13 @@ static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
 static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*-\s+(.+)$").unwrap());
 
+// A block item that is one quoted scalar — `"…"`, where `\` escapes the next character, or
+// `'…'`, where `''` is a quote — and then nothing, or a `#` comment set off by spaces or tabs.
+// Group 1 is the scalar.
+static FM_TAGS_QUOTED_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"^("(?:[^"\\]|\\[^\n])*"|'(?:[^']|'')*')(?:[ \t]+#[^\n]*)?$"#).unwrap()
+});
+
 /// The plain spellings a bare entry may keep: a letter, digit or `_` first, then letters, marks,
 /// digits and `_-./`, with single spaces between parts. YAML reads such a spelling as one plain
 /// scalar of exactly this text, whose type `READS_AS_NON_STRING_RE` then judges.
@@ -70,11 +77,50 @@ pub(super) fn yaml_string(value: &str) -> String {
     }
 }
 
+/// The item of a block list line, `rest` being the line's text after its dash and the
+/// whitespace after that, without the comment YAML reads after it; `None` when the line holds
+/// only a comment. The text less the whitespace at its end is read:
+/// - a quoted item (`FM_TAGS_QUOTED_ITEM_RE`) followed by nothing or by spaces or tabs and a
+///   `#` comment is the quoted part — `"#solo"   # keep me` is `"#solo"`, `"q # in"` all of it;
+/// - an item that starts with a quote otherwise — one that never closes, or text after the
+///   closing quote that is not a comment — is the whole text, `#`s and all;
+/// - `#` and then a space, a tab or nothing is a comment (`- # memo`): no item;
+/// - any other item ends before the first `#` that follows a space or a tab, less the
+///   whitespace before that: `plain # memo` is `plain`; `a#b` is whole, and so is `a`, then
+///   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item that starts
+///   with `#` and a name is kept as written (`#solo # memo` is `#solo`), as the reader keeps
+///   `- #solo`.
+///
+/// The item is the start of `rest`, so its length places it in the line.
+fn block_item(rest: &str) -> Option<&str> {
+    let text = rest.trim_end();
+    if let Some(quoted) = FM_TAGS_QUOTED_ITEM_RE
+        .captures(text)
+        .and_then(|caps| caps.get(1))
+    {
+        return Some(quoted.as_str());
+    }
+    if text.starts_with(['"', '\'']) {
+        return Some(text);
+    }
+    if text
+        .strip_prefix('#')
+        .is_some_and(|after| after.is_empty() || after.starts_with([' ', '\t']))
+    {
+        return None;
+    }
+    let comment = text
+        .match_indices('#')
+        .find(|&(at, _)| text[..at].ends_with([' ', '\t']));
+    Some(comment.map_or(text, |(at, _)| text[..at].trim_end()))
+}
+
 /// Every entry of the front matter's tag lists, in order, as byte ranges of `frontmatter`:
-/// each comma-separated part of a `tags: [a, b]` line, and the value of each `- item` line
-/// after a `tags:` line, indented or not, up to the first line that is not one — so the next
-/// key ends the list, and its own `- x` items are not tags. A line is read without its `\n`
-/// (or `\r\n`), as `str::lines` gives it.
+/// each comma-separated part of a `tags: [a, b]` line, and the item of each `- item` line
+/// after a `tags:` line (`block_item` — without its comment, and none for a line that is only
+/// one), indented or not, up to the first line that is not one — so the next key ends the
+/// list, and its own `- x` items are not tags. A line is read without its `\n` (or `\r\n`), as
+/// `str::lines` gives it.
 fn tag_entries(frontmatter: &str) -> Vec<Range<usize>> {
     let mut entries = Vec::new();
     let mut in_block = false;
@@ -86,11 +132,14 @@ fn tag_entries(frontmatter: &str) -> Vec<Range<usize>> {
         let at = line_start;
         line_start = line_start.saturating_add(piece.len());
         if in_block {
-            if let Some(item) = FM_TAGS_BLOCK_ITEM_RE
+            if let Some(rest) = FM_TAGS_BLOCK_ITEM_RE
                 .captures(line)
                 .and_then(|caps| caps.get(1))
             {
-                entries.push(at.saturating_add(item.start())..at.saturating_add(item.end()));
+                if let Some(item) = block_item(rest.as_str()) {
+                    let from = at.saturating_add(rest.start());
+                    entries.push(from..from.saturating_add(item.len()));
+                }
                 continue;
             }
             in_block = false;
@@ -134,7 +183,8 @@ pub(crate) fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 /// Renames the tag `old` to `new` in the front matter's tag lists and says in how many
 /// entries. An entry is renamed when it names `old` or a child of it (`project/baram`
 /// follows `project`, as in the body); only the name is replaced, so the quotes and the `#`s
-/// written around it stay. A bare entry — no quote character anywhere in it, no leading `#` —
+/// written around it stay, and so does a block item's comment, which is not part of its entry
+/// (`block_item`). A bare entry — no quote character anywhere in it, no leading `#` —
 /// gets the renamed name as `yaml_string` spells it, so `null` or `123` is written quoted and
 /// YAML still reads text.
 /// Both names are bare (`bare_tag`).

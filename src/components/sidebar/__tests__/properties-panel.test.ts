@@ -85,7 +85,7 @@ describe("parseYamlProperties", () => {
     expect(parseYamlProperties('tags:\n  - a # c\n  - "#b"\n- c')[0]).toEqual({
       key: "tags",
       type: "array",
-      value: ["a # c", "b", "c"],
+      value: ["a", "b", "c"],
     });
   });
 });
