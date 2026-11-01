@@ -2,8 +2,9 @@
 // are exactly the six that tell plugins. Counted by effect — a file that names a wrapper, however it
 // imports it (`ipc/invoke` re-exports `ipc/fs` and `ipc/link-index`) — not by an import line. Corpus:
 // `src` `.ts` / `.tsx` outside `src/ipc`, `__tests__` and `*.test.*`, walked with Node `fs`, keys joined
-// with "/". What fails this: a new file calling a wrapper (shown below on a temporary corpus), one of the
-// six dropping its notices import, or one of the five commands invoked outside `src/ipc`.
+// with "/". What fails this: a new file calling a wrapper, one of the six no longer calling the gate or a
+// notice, or one of the five commands invoked outside `src/ipc` in any quotes — each shown below on a
+// temporary corpus.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, posix, relative, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,9 +15,16 @@ const SRC = resolve(__dirname, "../../..");
 const WRAPPER =
   /\b(?:deleteDir|deleteFile|renameFile|renameFileWithLinks|renameNamespace)\b/u;
 
-/** The five commands, as quoted strings. */
+/** The five commands, as string literals in any of the three quotes. */
 const COMMAND =
-  /["'](?:delete_dir|delete_file|rename_file|rename_file_with_links|rename_namespace)["']/u;
+  /["'`](?:delete_dir|delete_file|rename_file|rename_file_with_links|rename_namespace)["'`]/u;
+
+/** What each of the six calls: the gate, and a notice. A call, not a name — the module path or a name in
+ *  a comment does not count, though a call-shaped mention in a comment would. */
+const CALLS = [
+  /\bbeginFileOperation\(/u,
+  /\b(?:notifyRenamed|notifyDeleted)\(/u,
+];
 
 /** spec 0074 §2 — the six, measured at ab5028ff. */
 const SIX = [
@@ -62,6 +70,18 @@ const callers = (sources: Source[]) =>
     .map((source) => source.path)
     .sort();
 
+const invokers = (sources: Source[]) =>
+  outsideIpc(sources)
+    .filter((source) => COMMAND.test(source.text))
+    .map((source) => source.path);
+
+/** The six that miss one of `CALLS`. */
+const silent = (sources: Source[]) =>
+  SIX.filter((path) => {
+    const text = sources.find((source) => source.path === path)?.text ?? "";
+    return !CALLS.every((call) => call.test(text));
+  });
+
 describe("the app's file operations tell plugins (D10)", () => {
   const sources = corpus();
 
@@ -70,11 +90,7 @@ describe("the app's file operations tell plugins (D10)", () => {
   });
 
   it("invokes the five commands inside src/ipc only", () => {
-    expect(
-      outsideIpc(sources)
-        .filter((source) => COMMAND.test(source.text))
-        .map((source) => source.path),
-    ).toEqual([]);
+    expect(invokers(sources)).toEqual([]);
     expect(
       sources.filter(
         (source) => source.path.startsWith("ipc/") && COMMAND.test(source.text),
@@ -82,11 +98,36 @@ describe("the app's file operations tell plugins (D10)", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("imports the notices in each of the six", () => {
-    for (const path of SIX) {
-      const text = sources.find((source) => source.path === path)?.text ?? "";
-      expect(text, path).toContain("file-decorations/operation-notices");
-    }
+  it("calls the gate and a notice in each of the six", () => {
+    expect(silent(sources)).toEqual([]);
+  });
+
+  /** The command scan is live in all three quotes: a template literal invoking a command is found. */
+  it("turns red for a command invoked outside src/ipc in backticks", () => {
+    const added = [
+      ...sources,
+      {
+        path: "components/new-thing.ts",
+        text: 'import { invoke } from "@tauri-apps/api/core";\nvoid invoke(`delete_file`, { path: "/v/a.md" });\n',
+      },
+    ];
+    expect(invokers(added)).toEqual(["components/new-thing.ts"]);
+  });
+
+  /** The notice scan reads calls: one of the six that only names the notices, in an import and a comment,
+   *  is found. */
+  it("turns red for one of the six that names the notices but calls neither", () => {
+    const named = sources.map((source) =>
+      source.path === "components/zettelkasten/ZettelInboxList.tsx"
+        ? {
+            ...source,
+            text: 'import { beginFileOperation, notifyDeleted } from "../../plugins/file-decorations/operation-notices";\n// raises beginFileOperation, then notifyDeleted once the file is gone\n',
+          }
+        : source,
+    );
+    expect(silent(named)).toEqual([
+      "components/zettelkasten/ZettelInboxList.tsx",
+    ]);
   });
 
   /** The scan is live: a new file that deletes through the wrapper changes the set the first row pins. */
