@@ -54,8 +54,6 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
           release = beginFileOperation([from, to]);
           await renameFile(from, to);
           moveFileEntry(from, targetPath);
-          // In the tree update's synchronous span (D10).
-          notifyRenamed(from, to, isDir);
           const { tabs } = useEditorStore.getState();
           for (const tab of tabs) {
             if (tab.filePath === from) {
@@ -68,6 +66,10 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
               );
             }
           }
+          // D10 — after the tree and the tabs follow the move, in the tree update's synchronous span (no
+          // await between `moveFileEntry` and here), so a trusted plugin's `file:rename` handler finds the
+          // tabs already on `to`.
+          notifyRenamed(from, to, isDir);
         } catch (err) {
           logger.error("[FileTree] Move failed:", from, err);
           failed.push(from.split("/").pop() ?? from);

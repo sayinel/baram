@@ -29,17 +29,21 @@ vi.mock("../../../../utils/tasks/sync-open-surfaces", () => ({
   syncCleanSurfacesAfterReferrerRewrite: vi.fn(() => true),
 }));
 
+import type { EditorTab } from "../../../../stores/editor/editor";
+
 import { recordNotices } from "../../../../plugins/file-decorations/__tests__/notice-recorder";
 import {
   __resetFileDecorations,
   applyDecorations,
   useFileDecorationStore,
 } from "../../../../plugins/file-decorations/file-decoration-store";
+import { onFileNotice } from "../../../../plugins/file-decorations/operation-notices";
 import {
   __resetVaultChangeHolds,
   publishVaultChange,
 } from "../../../../services/vault-changes";
 import { useContextStore } from "../../../../stores/context/context";
+import { useEditorStore } from "../../../../stores/editor/editor";
 import { useFileStore } from "../../../../stores/file/file";
 import { useFileTreeCrud } from "../use-file-tree-crud";
 import { useFileTreeMove } from "../use-file-tree-move";
@@ -273,5 +277,90 @@ describe("delete (use-file-tree-crud)", () => {
     await act(() => result.current.handleDelete("/vault/b.md"));
     expect(recorder.events).toEqual(["vault ctx-v"]);
     expect(badgeAt("/vault/b.md")).toBe("1");
+  });
+});
+
+/**
+ * D10 — a listener runs after the app's tabs follow the rename or move, as a delete closes its tabs before
+ * telling: a trusted plugin's `file:rename` handler that reads the open tabs finds them on the new path.
+ * Each row records the tab paths at each notice. What fails this: telling before `renameTab` /
+ * `renameDirInTabs` (the row would see the old path).
+ */
+describe("a listener finds the tabs already on the new path", () => {
+  const tab = (id: string, filePath: string): EditorTab => ({
+    contextId: "ctx-v",
+    filePath,
+    id,
+    isDirty: false,
+    isPinned: false,
+    title: filePath.split("/").pop() ?? "",
+  });
+  let seen: string[][];
+  let off: () => void;
+
+  beforeEach(() => {
+    seen = [];
+    off = onFileNotice(() => {
+      seen.push(useEditorStore.getState().tabs.map((t) => t.filePath));
+    });
+  });
+  afterEach(() => {
+    off();
+    useEditorStore.setState({ tabs: [] });
+  });
+
+  /** §33 — the renamed PDF, then the highlight note it carries along, each re-keyed before its notice. */
+  it("renames a file and what it carries", async () => {
+    const note = "/vault/highlights/papers/Paper.md";
+    const movedNote = "/vault/highlights/papers/Survey.md";
+    useEditorStore.setState({
+      tabs: [tab("pdf", "/vault/papers/Paper.pdf"), tab("note", note)],
+    });
+    ipc.renameFileWithLinks.mockResolvedValue({
+      moved: [{ from: note, to: movedNote }],
+      skippedFiles: [],
+      updatedFiles: [],
+    });
+    const { result } = renderHook(() => useFileTreeRename({ current: null }));
+    await act(() =>
+      result.current.handleConfirmRename(
+        "/vault/papers/Paper.pdf",
+        "Survey.pdf",
+      ),
+    );
+    expect(seen).toEqual([
+      ["/vault/papers/Survey.pdf", note],
+      ["/vault/papers/Survey.pdf", movedNote],
+    ]);
+  });
+
+  it("renames a folder", async () => {
+    useEditorStore.setState({ tabs: [tab("x", "/vault/ns/x.md")] });
+    ipc.renameNamespace.mockResolvedValue({
+      filesMoved: 1,
+      indexRebuilt: true,
+      skippedFiles: [],
+      uncheckedFiles: [],
+      updatedFiles: [],
+    });
+    const { result } = renderHook(() => useFileTreeRename({ current: null }));
+    await act(() => result.current.handleConfirmRename("/vault/ns", "ns2"));
+    expect(seen).toEqual([["/vault/ns2/x.md"]]);
+  });
+
+  /** Each moved item's tabs follow before its own notice; the next item's tabs are not moved yet. */
+  it("moves a folder and a file", async () => {
+    useEditorStore.setState({
+      tabs: [tab("b", "/vault/b.md"), tab("x", "/vault/ns/x.md")],
+    });
+    ipc.renameFile.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useFileTreeMove());
+    await act(() =>
+      result.current.moveEntries(["/vault/ns", "/vault/b.md"], "/vault/t"),
+    );
+    expect(seen).toEqual([
+      ["/vault/b.md", "/vault/t/ns/x.md"],
+      ["/vault/t/b.md", "/vault/t/ns/x.md"],
+    ]);
   });
 });

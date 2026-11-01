@@ -128,16 +128,18 @@ export function useFileTreeRename(
         let renamedNoteHeldBack = false;
         try {
           // §395 spec 0074 D10 — the `notifyRenamed` in each branch of this if
-          // runs right after its `renameFileEntry`, in the tree update's
-          // synchronous span, before the first await below, so a row
-          // re-mounted under the new path finds its decoration already there.
-          // The branch taken decides `isDir`: `renameNamespace` moved a
-          // folder, `renameFileWithLinks` files — the renamed one and each one
-          // it carried along, every one an in-app rename plugins hear of.
+          // runs after its `renameFileEntry` and the tab re-key that follows
+          // it, in the tree update's synchronous span, before the first await
+          // below: a row re-mounted under the new path finds its decoration
+          // already there, and a trusted plugin's `file:rename` handler finds
+          // the tabs already on the new path. The branch taken decides
+          // `isDir`: `renameNamespace` moved a folder, `renameFileWithLinks`
+          // files — the renamed one and each one it carried along, every one
+          // an in-app rename plugins hear of.
           if (isNamespaceRename) {
             renameFileEntry(oldPath, newPath, newName);
-            notifyRenamed(oldPath, newPath, true);
             useEditorStore.getState().renameDirInTabs(oldPath, newPath);
+            notifyRenamed(oldPath, newPath, true);
           } else {
             // The renamed file, then §33 every file the rename carried along
             // (`moved`: a PDF's highlight note and sidecar) — each followed the
@@ -150,8 +152,8 @@ export function useFileTreeRename(
             for (const { from, to } of files) {
               const name = to === newPath ? newName : lastPathSegment(to);
               renameFileEntry(from, to, name);
-              notifyRenamed(from, to, false);
               renameTab(from, to, name);
+              notifyRenamed(from, to, false);
             }
           }
           // Each moved file's cached content is already under its new path:
