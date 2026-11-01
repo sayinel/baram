@@ -93,8 +93,10 @@ export function FileTreeNode({
   if (entry.isDir) {
     return (
       // role="presentation": a role-less wrapper between the tree and its rows makes WebKit's
-      // `isValidTree()` (WebKit main as of 2026-11-01) reject the tree; it accepts `presentation`
-      // and reads the wrapper's children as the tree's. The rows carry `aria-level`.
+      // `isValidTree()` (AccessibilityNodeObject.cpp, WebKit main as of 2026-11-01) reject the tree; it
+      // accepts only `group` or `presentation` there (its `hasAnyRole` call), and reads the wrapper's
+      // children as the tree's. `role="none"` would NOT do: `hasPresentationRole` honours it, but this
+      // check does not call that. The rows carry `aria-level`.
       <div
         className={isDragOver ? "file-tree-drop-target" : ""}
         data-drop-path={entry.path}
@@ -190,9 +192,10 @@ function CreateInputRow({
   }, []);
 
   return (
-    // A child of `role="tree"`, so it must itself pass WebKit's tree validity walk (§4.4,
-    // `AccessibilityNodeObject::isValidTree()`, WebKit main as of 2026-11-01): a role-less child there
-    // demotes the whole tree. It stands for the entry being created.
+    // Rendered only inside a folder's `role="presentation"` wrapper, so WebKit's tree validity walk
+    // (`isValidTree()`, AccessibilityNodeObject.cpp, WebKit main as of 2026-11-01) reaches it as a child
+    // of the tree and rejects the whole tree if it has no accepted role. It stands for the entry being
+    // created. It is not in `visiblePaths`, so keyboard navigation and selection never land on it.
     <div
       aria-level={depth + 1}
       className="file-tree-item"

@@ -617,7 +617,9 @@ export function FileTree(): React.JSX.Element {
                   setSearchQuery("");
                 }}
               >
-                <span className="file-tree-icon">{getFileIcon(file.name)}</span>
+                <span aria-hidden="true" className="file-tree-icon">
+                  {getFileIcon(file.name)}
+                </span>
                 <span className="file-tree-name text-truncate">
                   {file.name}
                   <span className="file-tree-result-path">
@@ -636,7 +638,7 @@ export function FileTree(): React.JSX.Element {
           <>
             {creatingEntry && creatingEntry.parentPath === rootPath && (
               <div className="file-tree-item">
-                <span className="file-tree-icon">
+                <span aria-hidden="true" className="file-tree-icon">
                   {creatingEntry.isDir ? <IconFolder /> : <IconFile />}
                 </span>
                 <input
