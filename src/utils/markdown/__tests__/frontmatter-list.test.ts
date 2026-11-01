@@ -50,7 +50,7 @@ describe("readFrontmatterLists", () => {
     expect(list.form).toBe("block");
     expect(list.items).toEqual([
       { lead: "  - ", raw: `"#solo"`, value: "#solo" },
-      { lead: "- ", raw: "plain # c", value: "plain # c" },
+      { lead: "- ", raw: "plain", value: "plain" },
     ]);
     expect(list.lines.map((l) => l.text)).toEqual([
       `  - "#solo"`,
@@ -186,6 +186,38 @@ describe("writeFrontmatterList", () => {
     const out = write(`tags:\n  ${item}`, (n) => [...n, "z"]);
     expect(out).toBe(`tags:\n  ${respelled}\n  - z`);
     expect(parses(out)).toBe(true);
+  });
+
+  // The four tests below: a block item's comment is not part of it (`readFrontmatterLists`).
+  // What turns them red: a reader that runs the item to the end of the line — `#solo # memo` is
+  // respelled whole into one quoted value, `# memo` becomes the value `"# memo"`, and the names
+  // `b` and `a` are not found, so `b` stays and `a` is removed and added back without its
+  // comment. A respelling that drops what follows the item turns the first one red too.
+  it("respells an unreadable block item keeping the comment after it", () => {
+    const out = write("tags:\n  - #solo # memo", (n) => [...n, "z"]);
+    expect(out).toBe(`tags:\n  - "#solo" # memo\n  - z`);
+    expect(parse(out)).toEqual({ tags: ["#solo", "z"] });
+  });
+
+  it("keeps a block line that holds only a comment as written", () => {
+    const out = write("tags:\n  - # memo\n  - a", (n) => [...n, "z"]);
+    expect(out).toBe("tags:\n  - # memo\n  - a\n  - z");
+    expect(parse(out)).toEqual({ tags: [null, "a", "z"] });
+  });
+
+  it("removes a commented block item by its name, with its line", () => {
+    const yaml = "tags:\n  - a # first\n  - b # second\n  - c";
+    expect(write(yaml, (n) => n.filter((t) => t !== "b"))).toBe(
+      "tags:\n  - a # first\n  - c",
+    );
+  });
+
+  it("finds a name a commented block item holds, adding none", () => {
+    const yaml = "tags:\n  - a # c";
+    expect(writeFrontmatterList(yaml, "tags", ["a"], tagName)).toBe(yaml);
+    expect(writeFrontmatterList(yaml, "tags", ["a", "b"], tagName)).toBe(
+      "tags:\n  - a # c\n  - b",
+    );
   });
 
   // What turns this red: anything but the touched lines changing — a CRLF list rejoined with
