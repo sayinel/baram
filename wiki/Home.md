@@ -128,6 +128,7 @@ Rust 백엔드 — 웹뷰의 호출은 IPC 커맨드를 거쳐, CLI 의 호출�
 - **[CLI](CLI-Overview)** — 앱 실행 파일이 겸하는 읽기 전용 명령줄 도구. Tauri 를 띄우지 않고 앱과 같은
   Rust 함수로 디스크의 vault 를 읽는다 — 모드 분기, 앱과 같은 답과 일부러 다른 답, 그 모양을 지키는 불변식이
   내용이다. [Overview](CLI-Overview) → [Architecture](CLI-Architecture) → [Decisions and history](CLI-Decisions-and-history).
+  같은 명령 함수를 MCP 도구로 내는 `baram mcp` 는 [MCP server](CLI-MCP-server).
 
 ### wiki 섹션이 없는 영역 — 출처
 

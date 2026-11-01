@@ -36,7 +36,8 @@ run · execute         결과를 stdout 에, 실패를 stderr 에 쓰고 종료 
 
 `baram mcp` 는 `cli::run` 이 stdout 을 잡기 전에 이 흐름에서 갈라져 `cli::mcp` 로 간다 — 명령 하나를 돌리는
 대신 stdin 이 닫힐 때까지 서버로 돌고, stdout 은 프로토콜만 싣는다. vault 는 `vault::resolve` 대신
-서버가 호출마다 자기 허용 집합 안에서 고르고, 그 아래의 `paths` 와 명령 함수는 CLI 와 공유한다.
+서버가 호출마다 자기 허용 집합 안에서 고르고, 그 아래의 `paths` 와 명령 함수는 CLI 와 공유한다. 서버만의 결정과
+불변식은 [MCP server](CLI-MCP-server) 에 있다.
 
 ## 층별 책임
 
