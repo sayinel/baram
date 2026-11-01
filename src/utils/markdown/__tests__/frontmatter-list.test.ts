@@ -252,8 +252,9 @@ describe("writeFrontmatterList", () => {
     },
   );
 
-  // A line of `yaml` ends with a lone `\r` only where the note has `\r\r\n`: the callers cut the
-  // front matter at `\r?\n---`, and a line loses just the `\r` of its `\r\n`. yaml 2.9.1 rejects
+  // A line of `yaml` ends with a lone `\r` only where the note has `\r\r\n`: what the callers
+  // hand over stops before the closing fence's `\r?\n` (the tag bar's mdast value too, measured),
+  // and a line loses just the `\r` of its `\r\n`. yaml 2.9.1 rejects
   // a closing quote followed by a lone `\r`, mid-text and at the end (js-yaml reads it), and the
   // Properties panel puts `yaml` back in front of the fence's `\r\n`, where a reader cuts it out
   // the same way. What turns these red: keeping that `\r` after a respelled item, or after an

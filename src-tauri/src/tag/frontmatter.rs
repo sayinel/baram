@@ -84,8 +84,9 @@ pub(super) fn yaml_string(value: &str) -> String {
 ///   `#` comment is the quoted part — `"#solo"   # keep me` is `"#solo"`, `"q # in"` all of it;
 /// - an item that starts with a quote otherwise — one that never closes, or text after the
 ///   closing quote that is not a comment — is the whole text, `#`s and all;
-/// - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item, as
-///   no tag name begins with whitespace;
+/// - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item.
+///   YAML reads a comment there, the `#` set off by the space or tab after the dash, and no
+///   name the body can spell begins with whitespace (`tag::refusal`);
 /// - any other item ends before the first `#` that follows a space or a tab, less the
 ///   whitespace before that: `plain # memo` is `plain`; `a#b` is whole, and so is `a`, then
 ///   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item whose `#`s
@@ -94,9 +95,10 @@ pub(super) fn yaml_string(value: &str) -> String {
 ///
 /// Where that whitespace is not a space or a tab this differs from YAML on purpose: the dash's
 /// whitespace (`FM_TAGS_BLOCK_ITEM_RE`'s `\s+`) and the trims take any Unicode whitespace, as
-/// the readers always have to name an item, but YAML sets nothing off with it. `-` + U+00A0 +
-/// `# memo` and `- ` + U+3000 + `#` hold no item here, where YAML reads the strings `-` +
-/// U+00A0 + `# memo` (the key's whole value) and U+3000 + `#`; `a` + U+00A0 + ` # c` is `a`,
+/// the readers always have done to name an item, but YAML sets nothing off with it. An
+/// indented `-` + U+00A0 + `# memo` and `- ` + U+3000 + `#` hold no item here, where YAML
+/// reads the strings `-` + U+00A0 + `# memo` (the key's whole value; at the key's own
+/// indentation both packages reject the text) and U+3000 + `#`; `a` + U+00A0 + ` # c` is `a`,
 /// where YAML reads `a` + U+00A0. A writer does not rely on it (`rename_frontmatter_tags`).
 ///
 /// The item is the start of `rest`, so its length places it in the line.

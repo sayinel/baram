@@ -125,7 +125,9 @@ export function listItemSpelling(
  * it, indented or not, up to the first line that is not one. Whitespace is Unicode's
  * (`White_Space`, as Rust's `char::is_whitespace`). A block item is its line's text without
  * the comment YAML reads after it, and a line that is only a comment holds no item — YAML's
- * reading where the line's whitespace is spaces and tabs (`blockItem` says where it is not).
+ * reading where the line's whitespace is spaces and tabs, but for an item that starts with `#`
+ * and a name, which YAML reads as a comment and the readers keep on purpose (`- #solo # memo`
+ * is `#solo`); `blockItem` says both.
  * An item's value is its text less every `"` at either end, then every `'` — no escape is
  * read.
  *
@@ -294,7 +296,8 @@ export function writeFrontmatterList(
     (name) => `${list.newline}${lead}${listItemSpelling(name, false)}`,
   );
   // A lone `\r` that ends the list's last line (`\r\r\n` in the note, or a front matter that
-  // ends `\r\r\n---`: the callers cut it at `\r?\n---`) goes when lines are added after it.
+  // ends `\r\r\n---`: what the callers hand over stops before the fence's `\r?\n`) goes when
+  // lines are added after it.
   // Kept, it would come before the added lines' break, or last after them; yaml 2.9.1 rejects
   // a closing quote followed by a lone `\r`, either way.
   let body = kept.join("");
@@ -321,7 +324,13 @@ export function writableFrontmatterList(
 /** Unicode whitespace (`White_Space`), the set Rust's `char::is_whitespace` and `\s` use. */
 const WS = "\\p{White_Space}";
 
-/** A closed double-quoted scalar, where `\` escapes the next character. */
+/**
+ * A closed double-quoted scalar, where `\` escapes the next character. Only that the scalar
+ * closes is judged, not that YAML takes its escapes: `"a\xb"`, or `\` before U+2028, U+2029
+ * or a lone `\r`, closes here, where yaml 2.9.1 rejects the escape (js-yaml 4.3.2 rejects the
+ * first three and reads `\` + `\r` as an escaped line break). Such an item is kept as
+ * written: the text was unreadable already.
+ */
 const DOUBLE_QUOTED_SCALAR = String.raw`"(?:[^"\\]|\\[^\n])*"`;
 /** A closed single-quoted scalar, where `''` is a quote. */
 const SINGLE_QUOTED_SCALAR = String.raw`'(?:[^']|'')*'`;
@@ -379,8 +388,9 @@ function blockEndsAt(lines: Line[], i: number): boolean {
  *   the quoted part — `"#solo"   # keep me` is `"#solo"`, `"q # in"` all of it;
  * - an item that starts with a quote otherwise — one that never closes, or text after the
  *   closing quote that is not a comment — is the whole text, `#`s and all;
- * - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item, as no
- *   tag name begins with whitespace;
+ * - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item. YAML
+ *   reads a comment there, the `#` set off by the space or tab after the dash, and no name the
+ *   body can spell begins with whitespace (`isBodyTagName`);
  * - any other item ends before the first `#` that follows a space or a tab, less the
  *   whitespace before that: `plain # memo` is `plain`; `a#b` is whole, and so is `a`, then
  *   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item whose `#`s are
@@ -389,11 +399,11 @@ function blockEndsAt(lines: Line[], i: number): boolean {
  *
  * Where that whitespace is not a space or a tab this differs from YAML on purpose: the dash's
  * whitespace (the item pattern of `readFrontmatterLists`) and the trims take any Unicode
- * whitespace, as the readers always have to name an item, but YAML sets nothing off with it.
- * `-` + U+00A0 + `# memo` and `- ` + U+3000 + `#` hold no item here, where YAML reads the
- * strings `-` + U+00A0 + `# memo` (the key's whole value) and U+3000 + `#`; `a` + U+00A0 +
- * ` # c` is `a`, where YAML reads `a` + U+00A0. A writer does not rely on it
- * (`writeFrontmatterList`).
+ * whitespace, as the readers always have done to name an item, but YAML sets nothing off with
+ * it. An indented `-` + U+00A0 + `# memo` and `- ` + U+3000 + `#` hold no item here, where
+ * YAML reads the strings `-` + U+00A0 + `# memo` (the key's whole value; at the key's own
+ * indentation both packages reject the text) and U+3000 + `#`; `a` + U+00A0 + ` # c` is `a`,
+ * where YAML reads `a` + U+00A0. A writer does not rely on it (`writeFrontmatterList`).
  *
  * The item is the start of `rest` (whose first character is not whitespace when it holds an
  * item: the dash's whitespace is all in front of it).
