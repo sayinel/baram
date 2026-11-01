@@ -270,6 +270,23 @@ describe("Properties panel shapes it could and could not round-trip (§72)", () 
     });
   });
 
+  // A block list whose `-` lines hold no item is a list of nulls to YAML. What turns these red:
+  // leaving it out of the panel — no chip shows, and Add property cannot add a key the note
+  // already has, so nothing could be added to it.
+  it.each(["aliases:\n  - # todo\ntitle: x", "aliases:\n  -  \ntitle: x"])(
+    "shows %j as a list with no items, which an add writes into",
+    (yaml) => {
+      expect(parseYamlProperties(yaml)[0]).toEqual({
+        key: "aliases",
+        type: "array",
+        value: [],
+      });
+      const out = setYamlPropertyItems(yaml, "aliases", ["z"]);
+      expect(out).toBe(yaml.replace("\ntitle", "\n  - z\ntitle"));
+      expect(parse(out)).toEqual({ aliases: [null, "z"], title: "x" });
+    },
+  );
+
   // §56m What turns this red: adding at the writer's default lead `  - ` when no item gives
   // one — under `- # todo` that nests the new item in a list of its own.
   it("adds a tag at the lead of a list whose only line is a comment", () => {

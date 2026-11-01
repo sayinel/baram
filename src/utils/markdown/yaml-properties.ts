@@ -65,7 +65,8 @@ export const ENUM_VALUES: Record<string, string[]> = {
  *   shows as its one item.
  * - Any other key holding a list the list writer can rewrite in place
  *   (`writableFrontmatterList`) — `aliases: [p, q]`, or `aliases:` and `- p` lines — shows its
- *   items, and an edit goes through that writer.
+ *   items, and an edit goes through that writer. A block list whose `-` lines hold no item
+ *   (blank, or only a comment), which YAML reads as nulls, shows as a list with none.
  * - A one-line value in YAML's own syntax (`{a: 1}`, `&a x`, `*a`, `!!str 5`, a flow list the
  *   writer cannot rewrite), a plain value with a comment (`a # c`) and a double-quoted value
  *   with an escape JSON does not have (`"a\x41"`) show as their YAML text, type `yaml`.
@@ -106,7 +107,7 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
     if (
       list &&
       list.start === field.start &&
-      (list.form === "inline" || list.items.length > 0)
+      (list.form === "inline" || list.lines.length > 0)
     ) {
       // Each value once: removing a chip removes every item that holds it.
       entries.push({
