@@ -231,8 +231,9 @@ export interface EventsAPI {
    * §395 Baram deleted (moved to the trash) a file or folder (spec 0074 D10): its own tree delete or zettel
    * inbox delete — never a change made outside Baram, and not what Baram's own git operations do to the
    * working tree, which only `vault:changed` reports. Absolute path; a folder is one notice and what it
-   * held went with it. Comes before the same change's `vault:changed`. Needs `files` or `files:readonly`,
-   * not `events`; without either the subscription is accepted and never fires.
+   * held went with it. Comes before the same change's `vault:changed` (except in a vault registered
+   * through a symlink or another spelling of its folder). Needs `files` or `files:readonly`, not `events`;
+   * without either the subscription is accepted and never fires.
    */
   on(
     event: "file:delete",
@@ -278,7 +279,10 @@ export interface FileDecoration {
   color?: `#${string}` | FileDecorationPaletteColor;
   /** Replaces the default file or folder icon: one character, or the name of an icon `defineFileIcon` defined. */
   icon?: { glyph: string } | { svg: string };
-  /** One line, cut at 120 characters; the row's hover text shows `{plugin name}: {tooltip}`. */
+  /**
+   * One line of at most 120 UTF-16 units — a longer one is cut and ends in `…`. The row's hover text
+   * shows `{plugin name}: {tooltip}`.
+   */
   tooltip?: string;
 }
 
@@ -1130,7 +1134,7 @@ export type SandboxEditorAPI = EditorAPI;
 
 /**
  * §395 One update for the sandboxed `SandboxUIAPI.setFileDecorations` (spec 0074 D7): `path` is names joined
- * by "/" — no leading "/", no empty, "." or ".." name, no "\"
+ * by "/", at most 4,096 UTF-16 units — no leading "/", no empty, "." or ".." name, no "\"
  * (`""` is the context root itself, and the only path a single-file context takes); `context` is a
  * registered context id. Left out, it is the context the app shows when the call arrives. That can differ
  * from the one `ctx.files` reads without a context while the user switches vaults, and after the app
@@ -1216,7 +1220,7 @@ export interface SandboxUIAPI {
   ): Disposable;
   /**
    * §395 Set, or with `decoration: null` remove, this plugin's decoration of each path (spec 0074 D2 · D7).
-   * Paths are relative to a context root, as `ctx.files` takes them; see `SandboxFileDecorationUpdate`.
+   * Paths are relative to a context root, in the form `SandboxFileDecorationUpdate` describes.
    * The limits and the order of calls are `UIAPI.setFileDecorations`'s; a call this realm can tell is
    * malformed or too large to send is refused before it is sent. Needs `filetree`.
    */
@@ -1375,8 +1379,9 @@ export interface UIAPI {
   registerFileViewer(opts: PluginFileViewerOptions): Disposable;
   /**
    * §395 Set, or with `decoration: null` remove, this plugin's decoration of each absolute `path`
-   * (spec 0074 D2 · D4). At most 1,000 updates a call and 20,000 decorated paths a plugin; an update
-   * over a limit, or a malformed one, refuses the whole call and nothing is applied (D14). Needs `filetree`. The three file tree methods of one plugin are
+   * (spec 0074 D2 · D4). At most 1,000 updates a call, 4,096 UTF-16 units a `path` and 20,000 decorated
+   * paths a plugin; an update over a limit, or a malformed one, refuses the whole call and nothing is
+   * applied (D14). Needs `filetree`. The three file tree methods of one plugin are
    * applied in the order called — eight decoration calls at once, then one every 250 ms; a call beyond
    * that waits and is not refused — so they may be called together. Baram does not keep decorations:
    * set them again in `activate`.

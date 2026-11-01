@@ -138,6 +138,9 @@ ctx.events.on("file:delete", ({ context, path, isDir }) => {});
 ```
 
 - A folder is one notice; what it held moved or went with it.
+- Renaming a PDF in the file tree takes its companion note and geometry file along
+  ([where highlights are stored](/en/docs/pdf/managing-highlights/#where-highlights-are-stored)): each one
+  that moves is one more `file:rename`, after the PDF's, with `isDir` false.
 - `events` is not needed. Without `files` or `files:readonly` the subscription is accepted and never
   fires. A plugin that stores paths (pinned notes, chosen icons) should declare `files:readonly` for this.
 - Sandboxed: a move between nested vaults gives `from` and `to` different contexts. A notice is not sent
@@ -145,7 +148,8 @@ ctx.events.on("file:delete", ({ context, path, isDir }) => {});
 - `file:rename` and `file:delete` come **before** the same change's `vault:changed`. While Baram's own
   operation runs, that vault's `vault:changed` waits for it — and keeps waiting if the operation never
   finishes. In a vault registered through a symlink or another spelling of its folder this order is not
-  guaranteed.
+  guaranteed. Nor is it for a PDF's rename in a vault or folder registered at or inside `highlights/` or
+  `.baram/` of a vault or folder holding the PDF, when it does not hold the PDF itself.
 - Nothing is told when the operation fails, for new files, for Baram's own git operations (switching
   branches, pulling, discarding changes), or for changes made outside Baram (another app, a terminal).
   Such changes reach you only as `vault:changed`. A decoration on a path deleted or renamed that way is
