@@ -229,8 +229,9 @@ describe("carriedTagField", () => {
 
   // §96 A `-` line that holds only a comment is a null item to YAML, as a blank `-` line is,
   // and the app reads no item from either. What turns this red: taking such a line for a
-  // spacing YAML reads otherwise — the field was carried as `tags: [a]`, which drops the
-  // comment and reads `[a]` where the note's own field reads `[null, a]`.
+  // spacing YAML reads otherwise, so that the field is carried as a new flow list of the
+  // values read — `tags: [a]`, without the comment, which YAML reads as `[a]` where the
+  // note's own field reads `[null, a]`.
   it("carries a list with a comment-only item as written", () => {
     const field = "tags:\n  - # memo\n  - a";
     const carried = carriedTagField(`---\n${field}\n---\n`);
