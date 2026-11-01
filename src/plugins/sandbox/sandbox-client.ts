@@ -221,7 +221,8 @@ export function startSandboxClient(
         path,
       }) as Promise<void>,
   };
-  // §260 Phase 4a · §394 — `ctx.ui`: the status bar, the toast and the declared panels (`sandbox-ui.ts`).
+  // §260 Phase 4a · §394 · §395 — `ctx.ui`: the status bar, the toast, the declared panels and the three
+  // file tree methods (`sandbox-ui.ts`).
   const ui = createSandboxUI(hostRequest);
 
   // §385 — host-drawn prompts (spec 0061 §9). Checked HERE before sending, because a frame Rust

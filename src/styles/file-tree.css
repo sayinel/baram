@@ -185,8 +185,9 @@
   min-width: 0;
 }
 
-/* The right group carries the margin-left: auto the git dot used to carry, so plugin badges sit before
-   the dot and the dot stays right-most. */
+/* The right group: its margin-left: auto (the git dot carried it before §395) pushes the group to the
+   leaf's right end. Inside the group, plugin badges sit before the git dot because they come before it in
+   DOM order (file-tree-row-body.tsx), so the dot stays right-most. */
 .file-tree-row-end {
   display: inline-flex;
   flex: 0 0 auto;

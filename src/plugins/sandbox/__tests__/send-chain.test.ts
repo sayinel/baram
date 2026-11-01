@@ -75,7 +75,7 @@ describe("createSendChain", () => {
     ).toEqual(["a", "b", "c"]);
   });
 
-  /** P31 — an idle chain sends in the same tick, as `send` did before. */
+  /** plan 0127 P31 — an idle chain sends in the same tick, as `send` did before. */
   it("sends at once when nothing is in flight", () => {
     createSendChain("alpha")(frame("a"), "send to");
     expect(sent.frames).toHaveLength(1);

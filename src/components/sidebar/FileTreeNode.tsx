@@ -1,5 +1,5 @@
 // §4.3 File tree — recursive tree node component
-// Reads 8 shared states from FileTreeContext; receives only 10 handler props. §395 — what a plugin's
+// Reads 8 shared states from FileTreeContext; receives 10 props (8 handlers). §395 — what a plugin's
 // decoration changes is drawn by `FileTreeRowBody`, which subscribes to its own path; this row does not
 // read the decoration store, so a decoration never re-renders a folder's mounted children (spec 0074 D9).
 import { useEffect, useRef } from "react";

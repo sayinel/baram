@@ -709,7 +709,7 @@ describe("createHostTransport (§260 host end)", () => {
       requestId: "req-live",
       value: 1,
     });
-    await new Promise((r) => setTimeout(r, 0)); // P31 — let the chain settle that send
+    await new Promise((r) => setTimeout(r, 0)); // plan 0127 P31 — let the chain settle that send
     invoke.mockClear();
     deliver({
       pluginId: "alpha",

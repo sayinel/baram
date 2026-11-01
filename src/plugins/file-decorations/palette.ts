@@ -1,6 +1,8 @@
 // §395 spec 0074 D5 — the colours a decoration may name. A palette name is drawn with a semantic token,
-// so it follows the theme; `#rrggbb` is drawn as written. These two forms are the only strings from a
-// plugin that reach a style value (the file tree's row leaf sets them as `color` / `background-color`).
+// so it follows the theme; `#rrggbb` is drawn as written. Of what a plugin puts in a decoration, these two
+// forms are the only strings that reach an inline style value (the file tree's row leaf sets them as
+// `color` / `background-color`); an icon's SVG reaches the style text of a stylesheet instead, as a
+// percent-encoded URL (D6, `icons.ts`).
 import type { FileDecorationPaletteColor } from "../types";
 
 /** D5 — each palette name and the token it is drawn with. */

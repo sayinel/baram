@@ -285,8 +285,8 @@ describe("iconCallProblem (D6)", () => {
 });
 
 describe("fileTreeCapabilityMessage (§6 · P24)", () => {
-  /** The trusted `require("filetree", method)` in `createUIAPI` builds this exact sentence; Task 6's
-   *  test holds the two together. */
+  /** The trusted `require("filetree", method)` in `createUIAPI` builds this exact sentence;
+   *  `trusted-file-tree-api.test.ts` "refuses %s without filetree" holds the two together. */
   it("names the capability, the call and the manifest field", () => {
     expect(fileTreeCapabilityMessage("setFileDecorations")).toBe(
       'Plugin requires "filetree" capability to call ui.setFileDecorations. Add "filetree" to the capabilities array in baram-plugin.json.',

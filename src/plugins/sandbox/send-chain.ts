@@ -3,9 +3,10 @@
 // command, and two of them in flight finish in no defined order, so frames sent without waiting could
 // take their `channel.send` in either order — the order the sandbox then sees (`channels.rs`). With
 // the chain, the order is the order frames were handed in. A rejected send — the sandbox not connected
-// yet in the activate retry window, or its channel gone after `close` — is logged and the chain goes
-// on. The chain never reads whether the transport closed: `SandboxSession.dispose` hands in the answers
-// it owes and `deactivate`, then closes in the same tick, and those frames must still leave.
+// yet in the activate retry window, or its channel dropped when the plugin was deregistered
+// (`plugin_sandbox_deregister` → `channels.disconnect`) — is logged and the chain goes on. The chain
+// never reads whether the transport closed: `SandboxSession.dispose` hands in the answers it owes and
+// `deactivate`, then closes in the same tick, and those frames must still leave.
 import type { HostToSandbox } from "./protocol";
 
 import { pluginSandboxSend } from "../../ipc/plugin-invoke";
