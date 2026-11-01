@@ -44,7 +44,7 @@ export function FileTreeRowBody({
     // D8 — the hover text names each plugin, including one whose badge does not fit.
     <div className="file-tree-row-body" title={decoration?.title}>
       {decoration?.icon === undefined ? (
-        <span className="file-tree-icon">
+        <span aria-hidden="true" className="file-tree-icon">
           {entry.isDir ? <IconFolder /> : getFileIcon(entry.name)}
         </span>
       ) : (

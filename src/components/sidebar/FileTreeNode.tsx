@@ -92,9 +92,13 @@ export function FileTreeNode({
 
   if (entry.isDir) {
     return (
+      // role="presentation": a role-less wrapper between the tree and its rows makes WebKit's
+      // `isValidTree()` (WebKit main as of 2026-11-01) reject the tree; it accepts `presentation`
+      // and reads the wrapper's children as the tree's. The rows carry `aria-level`.
       <div
         className={isDragOver ? "file-tree-drop-target" : ""}
         data-drop-path={entry.path}
+        role="presentation"
       >
         <div
           aria-expanded={isExpanded}
@@ -109,6 +113,7 @@ export function FileTreeNode({
           tabIndex={isFocused ? 0 : -1}
         >
           <span
+            aria-hidden="true"
             className={`file-tree-icon file-tree-chevron ${isExpanded ? "file-tree-chevron-open" : ""}`}
           >
             <ChevronRight size={12} />
@@ -185,8 +190,16 @@ function CreateInputRow({
   }, []);
 
   return (
-    <div className="file-tree-item" style={{ paddingLeft: treeIndent(depth) }}>
-      <span className="file-tree-icon">
+    // A child of `role="tree"`, so it must itself pass WebKit's tree validity walk (§4.4,
+    // `AccessibilityNodeObject::isValidTree()`, WebKit main as of 2026-11-01): a role-less child there
+    // demotes the whole tree. It stands for the entry being created.
+    <div
+      aria-level={depth + 1}
+      className="file-tree-item"
+      role="treeitem"
+      style={{ paddingLeft: treeIndent(depth) }}
+    >
+      <span aria-hidden="true" className="file-tree-icon">
         {creatingEntry.isDir ? <IconFolder /> : <IconFile />}
       </span>
       <RenameInput
