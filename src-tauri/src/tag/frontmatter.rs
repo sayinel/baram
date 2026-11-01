@@ -84,12 +84,13 @@ pub(super) fn yaml_string(value: &str) -> String {
 ///   `#` comment is the quoted part — `"#solo"   # keep me` is `"#solo"`, `"q # in"` all of it;
 /// - an item that starts with a quote otherwise — one that never closes, or text after the
 ///   closing quote that is not a comment — is the whole text, `#`s and all;
-/// - `#` and then a space, a tab or nothing is a comment (`- # memo`): no item;
+/// - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item, as
+///   no tag name begins with whitespace;
 /// - any other item ends before the first `#` that follows a space or a tab, less the
 ///   whitespace before that: `plain # memo` is `plain`; `a#b` is whole, and so is `a`, then
-///   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item that starts
-///   with `#` and a name is kept as written (`#solo # memo` is `#solo`), as the reader keeps
-///   `- #solo`.
+///   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item whose `#`s
+///   are followed by any other character is read by this rule too (`#solo # memo` is `#solo`),
+///   as the reader keeps `- #solo`, which YAML reads as a comment.
 ///
 /// The item is the start of `rest`, so its length places it in the line.
 fn block_item(rest: &str) -> Option<&str> {
@@ -103,9 +104,9 @@ fn block_item(rest: &str) -> Option<&str> {
     if text.starts_with(['"', '\'']) {
         return Some(text);
     }
-    if text
-        .strip_prefix('#')
-        .is_some_and(|after| after.is_empty() || after.starts_with([' ', '\t']))
+    let after_hashes = text.trim_start_matches('#');
+    if after_hashes.len() < text.len()
+        && after_hashes.chars().next().is_none_or(char::is_whitespace)
     {
         return None;
     }

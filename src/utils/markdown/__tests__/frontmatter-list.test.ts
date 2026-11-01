@@ -199,11 +199,14 @@ describe("writeFrontmatterList", () => {
     expect(parse(out)).toEqual({ tags: ["#solo", "z"] });
   });
 
-  it("keeps a block line that holds only a comment as written", () => {
-    const out = write("tags:\n  - # memo\n  - a", (n) => [...n, "z"]);
-    expect(out).toBe("tags:\n  - # memo\n  - a\n  - z");
-    expect(parse(out)).toEqual({ tags: [null, "a", "z"] });
-  });
+  it.each(["# memo", "## memo", "#　memo"])(
+    "keeps a block line that holds only the comment %j as written",
+    (comment) => {
+      const out = write(`tags:\n  - ${comment}\n  - a`, (n) => [...n, "z"]);
+      expect(out).toBe(`tags:\n  - ${comment}\n  - a\n  - z`);
+      expect(parse(out)).toEqual({ tags: [null, "a", "z"] });
+    },
+  );
 
   // A list whose `-` lines hold no item still sets the lead of an added one. What turns these
   // red: adding at a lead the list does not use — `  - ` under `- # todo` is a list nested in

@@ -366,11 +366,13 @@ function blockEndsAt(lines: Line[], i: number): boolean {
  *   the quoted part — `"#solo"   # keep me` is `"#solo"`, `"q # in"` all of it;
  * - an item that starts with a quote otherwise — one that never closes, or text after the
  *   closing quote that is not a comment — is the whole text, `#`s and all;
- * - `#` and then a space, a tab or nothing is a comment (`- # memo`): no item;
+ * - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item, as no
+ *   tag name begins with whitespace;
  * - any other item ends before the first `#` that follows a space or a tab, less the
  *   whitespace before that: `plain # memo` is `plain`; `a#b` is whole, and so is `a`, then
- *   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item that starts
- *   with `#` and a name is kept as written (`#solo # memo` is `#solo`), as `- #solo` is.
+ *   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item whose `#`s are
+ *   followed by any other character is read by this rule too (`#solo # memo` is `#solo`), as
+ *   `- #solo` is, which YAML reads as a comment.
  *
  * The item is the start of `rest` (whose first character is not whitespace when it holds an
  * item: the dash's whitespace is all in front of it).
@@ -380,7 +382,7 @@ function blockItem(rest: string): string {
   const quoted = QUOTED_ITEM.exec(text);
   if (quoted) return quoted[1];
   if (text.startsWith('"') || text.startsWith("'")) return text;
-  if (/^#(?:[ \t]|$)/.test(text)) return "";
+  if (/^#+(?:\p{White_Space}|$)/u.test(text)) return "";
   const comment = /[ \t]#/.exec(text);
   return comment ? whitespaceTrim(text.slice(0, comment.index)) : text;
 }

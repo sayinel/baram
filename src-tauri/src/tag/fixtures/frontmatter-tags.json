@@ -1,5 +1,5 @@
 {
-  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; a block item without the comment YAML reads after it (a quoted item ends at its closing quote when only blanks, or blanks and a `#` comment, follow it; an unquoted item ends before the first `#` that follows a space or a tab; an item that is `#` and then a space, a tab or nothing is a comment and names nothing); each entry trimmed, then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. `cases` are front matters to read; `names` (see `names_contract`) are names to rename to. Every character outside ASCII is written as a JSON unicode escape. A case may also carry `frontendTags` and `frontendWhy`: the names the app's frontend reader (`readFrontmatterLists` in `src/utils/markdown/frontmatter-list.ts`) gives where it reads the text differently on purpose \u2014 it does not split an inline list at a comma inside a quoted entry, so that its writer keeps the entry whole. The Rust test reads `tags`; the frontend's test (`src/utils/__tests__/frontmatter-tag-readers.test.ts`) reads `frontendTags` where a case has it.",
+  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; a block item without the comment YAML reads after it (a quoted item ends at its closing quote when only blanks, or blanks and a `#` comment, follow it; an unquoted item ends before the first `#` that follows a space or a tab; an item that is `#`s and then whitespace or nothing is a comment and names nothing); each entry trimmed, then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. `cases` are front matters to read; `names` (see `names_contract`) are names to rename to. Every character outside ASCII is written as a JSON unicode escape. A case may also carry `frontendTags` and `frontendWhy`: the names the app's frontend reader (`readFrontmatterLists` in `src/utils/markdown/frontmatter-list.ts`) gives where it reads the text differently on purpose \u2014 it does not split an inline list at a comma inside a quoted entry, so that its writer keeps the entry whole. The Rust test reads `tags`; the frontend's test (`src/utils/__tests__/frontmatter-tag-readers.test.ts`) reads `frontendTags` where a case has it.",
   "cases": [
     {
       "frontmatter": "tags: [\"#solo\"]",
@@ -169,6 +169,18 @@
         "a"
       ],
       "why": "a # and then a space right after the dash begins a comment: the line holds no item and names no tag, and the list goes on (YAML reads null, then a)"
+    },
+    {
+      "frontmatter": "tags:\n  - ## memo\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "#s and then whitespace right after the dash are a comment too, however many #s (YAML reads null, then a)"
+    },
+    {
+      "frontmatter": "tags:\n  - #\u3000memo",
+      "tags": [],
+      "why": "after the #s any whitespace, here an ideographic space (U+3000), makes the line a comment: no tag name begins with whitespace (YAML reads null, the # being set off by the space after the dash)"
     },
     {
       "frontmatter": "tags:\n  - 'it''s' # c",
