@@ -158,7 +158,7 @@ fn extract_zip_bounded(
         let is_dir = file.is_dir();
         let depth = enclosed_name.components().count();
         let out_path = output_dir.join(&enclosed_name);
-        let raw_name = file.name().to_string();
+        let raw_name = file.name()?.into_owned();
 
         // Remaining five defenses (method allowlist, path depth, per-entry/total/ratio caps)
         // and the actual bounded copy live in the shared core — see `crate::fs::archive` for

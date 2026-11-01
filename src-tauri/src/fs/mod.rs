@@ -760,12 +760,23 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                 ))
             })?;
 
+            // zip 9 decodes the name on each call and returns `Result`. An undecodable name is
+            // a refusal, like every other malformed entry here — not a silent skip.
+            let raw_name = file
+                .name()
+                .map_err(|e| {
+                    FsError::ReadError(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        e.to_string(),
+                    ))
+                })?
+                .into_owned();
+
             // Skip __MACOSX and .DS_Store before any path operations
-            if file.name().starts_with("__MACOSX") || file.name().ends_with(".DS_Store") {
+            if raw_name.starts_with("__MACOSX") || raw_name.ends_with(".DS_Store") {
                 continue;
             }
 
-            let raw_name = file.name().to_string();
             let relative_path = reject_escaping_entry(&raw_name, file.enclosed_name())?;
             let out_path = staged.path().join(&relative_path);
 
