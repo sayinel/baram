@@ -186,7 +186,9 @@ pub(crate) fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 /// written around it stay, and so does a block item's comment, which is not part of its entry
 /// (`block_item`). A bare entry — no quote character anywhere in it, no leading `#` —
 /// gets the renamed name as `yaml_string` spells it, so `null` or `123` is written quoted and
-/// YAML still reads text.
+/// YAML still reads text; the whitespace right after its name, up to the line's end, keeps
+/// only its spaces and tabs. The reader names the entry without any Unicode whitespace there,
+/// and after the closing quote YAML takes no other (`"2024"` + U+00A0 does not parse).
 /// Both names are bare (`bare_tag`).
 pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -> (String, usize) {
     let mut out = String::with_capacity(frontmatter.len());
@@ -209,8 +211,19 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
         let renamed = format!("{new}{}", &name[old.len()..]);
         let bare = !text.contains(['"', '\'']) && !text.trim_start().starts_with('#');
         out.push_str(&frontmatter[copied..start]);
-        out.push_str(&if bare { yaml_string(&renamed) } else { renamed });
         copied = start + name.len();
+        if bare {
+            out.push_str(&yaml_string(&renamed));
+            let after = frontmatter.get(copied..).unwrap_or_default();
+            let run = after
+                .find(|c: char| !c.is_whitespace() || c == '\r' || c == '\n')
+                .unwrap_or(after.len());
+            let blanks = after.get(..run).unwrap_or_default();
+            out.extend(blanks.chars().filter(|c| matches!(c, ' ' | '\t')));
+            copied = copied.saturating_add(run);
+        } else {
+            out.push_str(&renamed);
+        }
         count += 1;
     }
     out.push_str(&frontmatter[copied..]);

@@ -957,6 +957,38 @@ mod tests {
         );
     }
 
+    /// §56m The whitespace after a bare entry keeps only its spaces and tabs when the entry is
+    /// renamed: the reader names the entry without any Unicode whitespace after it, and YAML
+    /// takes no other whitespace after the closing quote `2024` gets. yaml 2.9.1 and js-yaml
+    /// 4.3.2 read every input here, and read each output's entry as `2024` (2026-11-01); they
+    /// reject `"2024"` + U+00A0, before a comment, at the end of the line and before a `,`. A
+    /// line's `\r` stays. What fails this: carrying the whitespace over behind the quote.
+    #[tokio::test]
+    async fn a_renamed_bare_entry_keeps_only_the_spaces_and_tabs_after_it() {
+        for (front, want) in [
+            (
+                "tags:\n  - year\u{a0} # memo\n  - z",
+                "tags:\n  - \"2024\" # memo\n  - z",
+            ),
+            ("tags:\n  - year\u{a0}", "tags:\n  - \"2024\""),
+            (
+                "tags:\n  - year\u{3000}\u{a0}\t# memo",
+                "tags:\n  - \"2024\"\t# memo",
+            ),
+            ("tags: [year\u{a0}, b]", "tags: [\"2024\", b]"),
+            ("tags:\r\n  - year\u{a0}\r", "tags:\r\n  - \"2024\"\r"),
+        ] {
+            let (d, root) = vault(&format!("---\n{front}\n---\n")).await;
+            let r = rename_tag(&root, "year", "2024").await.unwrap();
+            assert_eq!(r.occurrences_replaced, 1, "{front:?}");
+            assert_eq!(read(&d).await, format!("---\n{want}\n---\n"), "{front:?}");
+            assert!(
+                extract_frontmatter_tags(want).contains(&"2024".to_string()),
+                "{want:?}"
+            );
+        }
+    }
+
     /// §56m A block item's comment is not part of its entry (`frontmatter::block_item`): a
     /// rename replaces the name and leaves the blanks and the comment after it, and a quote in
     /// the comment does not make the entry non-bare, so `null` is still written quoted. What

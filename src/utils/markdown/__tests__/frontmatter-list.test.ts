@@ -205,6 +205,40 @@ describe("writeFrontmatterList", () => {
     expect(parse(out)).toEqual({ tags: [null, "a", "z"] });
   });
 
+  // The reader names an item without any Unicode whitespace after it, but after the closing
+  // quote a respelling adds YAML takes only spaces and tabs. What turns these red: carrying
+  // that whitespace over — `"#solo"` + U+00A0 does not parse, and neither does `"#solo"` +
+  // U+3000 before the comment. Each input parses (YAML reads a comment, so null).
+  it.each([
+    ["tags:\n  - #solo \n  - a", `tags:\n  - "#solo"\n  - a\n  - z`],
+    ["tags:\n  - #solo　 # memo", `tags:\n  - "#solo" # memo\n  - z`],
+    ["tags:\n  - #solo \t# memo", `tags:\n  - "#solo"\t# memo\n  - z`],
+  ])(
+    "respells %j keeping only the spaces and tabs after the item",
+    (yaml, out) => {
+      expect(parses(yaml)).toBe(true);
+      const written = write(yaml, (n) => [...n, "z"]);
+      expect(written).toBe(out);
+      expect(parses(written)).toBe(true);
+    },
+  );
+
+  // A last line can end with a lone `\r`: the `\r` of the line break before the closing fence,
+  // cut at its `\n`. What turns these red: adding lines after that `\r` — yaml 2.9.1 rejects a
+  // quoted item followed by `\r\r\n`, kept as written or respelled.
+  it.each([
+    [`tags:\r\n  - "a"\r`, `tags:\r\n  - "a"\r\n  - z\r`],
+    ["tags:\r\n  - #solo \r", `tags:\r\n  - "#solo"\r\n  - z\r`],
+  ])(
+    "adds lines before the lone \\r a last line ends with: %j",
+    (yaml, out) => {
+      expect(parses(yaml + "\n")).toBe(true);
+      const written = write(yaml, (n) => [...n, "z"]);
+      expect(written).toBe(out);
+      expect(parses(written + "\n")).toBe(true);
+    },
+  );
+
   it("removes a commented block item by its name, with its line", () => {
     const yaml = "tags:\n  - a # first\n  - b # second\n  - c";
     expect(write(yaml, (n) => n.filter((t) => t !== "b"))).toBe(
