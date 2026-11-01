@@ -25,6 +25,19 @@ export const MAX_ENTRY_TITLE_CHARS = 64;
 export const MAX_ENTRY_DESCRIPTION_CHARS = 120;
 
 /**
+ * Text that draws nothing: empty, or default-ignorable code points alone. Measured on one-character
+ * icons a manifest accepts (§394 plan 0126 Task 6, ledger 0096): `sanitizePluginText` empties " ",
+ * "\n", "\t", U+00A0, U+3000, U+202E and U+2060, and keeps U+200D ZWJ and U+200C ZWNJ (which join emoji
+ * and scripts), U+FE0F, U+3164 HANGUL FILLER, U+2062 and U+180E — default-ignorable, so blank. Not
+ * blank, so kept: a lone U+2800 BRAILLE PATTERN BLANK or combining U+0301 (not default-ignorable), and
+ * any text with a visible code point beside its joiners (a ZWJ family emoji). Two callers: a sandboxed
+ * panel's icon (`rendered/panels-host.ts`) and a file decoration's badge and glyph
+ * (`file-decorations/validate.ts`, §395). Here, in a module with no imports, so the sandbox realm can
+ * read it.
+ */
+export const BLANK_ICON = /^\p{Default_Ignorable_Code_Point}*$/u;
+
+/**
  * The plugin's name as a badge (§260 Phase 4a HIGH-1, §385 spec 0061 §8): sanitised and capped,
  * falling back to the id — also capped, since `validateManifest` charset-checks ids but does not
  * bound their length. One function for every badge: the sandboxed toast, the trusted toast and

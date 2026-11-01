@@ -12,6 +12,10 @@ import {
   deleteFile,
   isFileExistsError,
 } from "../../../ipc/invoke";
+import {
+  beginFileOperation,
+  notifyDeleted,
+} from "../../../plugins/file-decorations/operation-notices";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
@@ -53,7 +57,11 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
           : `Move file "${entry.name}" to Trash?`,
       );
       if (!confirmed) return;
+      // §395 spec 0074 D12 — raised after the confirmation (an open dialog must not hold the vault's
+      // vault:changed), as the first statement of the try whose finally releases it.
+      let release: (() => void) | undefined;
       try {
+        release = beginFileOperation([path]);
         if (entry.isDir) await deleteDir(path);
         else await deleteFile(path);
         const { tabs: currentTabs } = useEditorStore.getState();
@@ -62,9 +70,13 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
             closeTab(tab.id);
         }
         removeFileEntry(path);
+        // §395 spec 0074 D10 — in the tree update's synchronous span.
+        notifyDeleted(path, entry.isDir);
         useLinkStore.getState().invalidate();
       } catch (err) {
         logger.error("[FileTree] Delete failed:", err);
+      } finally {
+        release?.();
       }
     },
     [rootPath, closeTab, removeFileEntry],
@@ -91,7 +103,10 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
       if (!confirmed) return;
       const failed: string[] = [];
       for (const entry of entries) {
+        // §395 spec 0074 D12 — per item, after the one confirmation above.
+        let release: (() => void) | undefined;
         try {
+          release = beginFileOperation([entry.path]);
           if (entry.isDir) await deleteDir(entry.path);
           else await deleteFile(entry.path);
           const { tabs: currentTabs } = useEditorStore.getState();
@@ -103,9 +118,13 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
               closeTab(tab.id);
           }
           removeFileEntry(entry.path);
+          // §395 spec 0074 D10 — in the tree update's synchronous span.
+          notifyDeleted(entry.path, entry.isDir);
         } catch (err) {
           logger.error("[FileTree] Delete failed:", entry.path, err);
           failed.push(entry.name);
+        } finally {
+          release?.();
         }
       }
       useLinkStore.getState().invalidate();

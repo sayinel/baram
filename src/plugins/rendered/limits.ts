@@ -61,7 +61,7 @@ export const PANEL_UPDATE_BURST = 8;
  * D13 — a `renderCodeBlock` frame carries the source inline while the whole serialized frame is
  * at most this many UTF-8 bytes; above it the sandbox pulls the source (`render_get_source`). A
  * margin under tauri's 8,192-byte direct-delivery threshold (`MAX_JSON_DIRECT_EXECUTE_THRESHOLD`
- * in tauri 2.12.1 `ipc/channel.rs`), because the host counts `JSON.stringify` + UTF-8 and Rust
+ * in tauri 2.12.2 `ipc/channel.rs`, the version Cargo.lock holds — the line reads the same in 2.12.1), because the host counts `JSON.stringify` + UTF-8 and Rust
  * counts its own serde_json output. Plan 0125 Task 11 measured the two on five frames — ASCII,
  * Hangul, emoji, control-character escapes, and U+2028 · U+2029 · DEL — and got the same count
  * on each, so the 1 KiB margin is left for fields a frame may gain, not for a counting difference.

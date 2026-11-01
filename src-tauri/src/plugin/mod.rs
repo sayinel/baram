@@ -217,6 +217,7 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginError> {
         "storage",
         "viewer",
         "codeblocks",
+        "filetree",
     ];
     for cap in &manifest.capabilities {
         if !valid_caps.contains(&cap.as_str()) {

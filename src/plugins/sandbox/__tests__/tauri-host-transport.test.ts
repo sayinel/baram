@@ -16,6 +16,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: (...args: unknown[]) => listen(...args),
 }));
 
+import {
+  MAX_DECORATION_UPDATES,
+  MAX_FILE_ICON_NAME_CHARS,
+  MAX_FILE_ICON_SVG_BYTES,
+} from "../../file-decorations/limits";
 import { CODE_BLOCK_LANG } from "../../manifest-code-blocks";
 import {
   MAX_CODE_BLOCK_LANG_CHARS,
@@ -434,6 +439,52 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(3);
   });
 
+  /** §395 plan 0127 P10 — the three filetree requests have validators: shapes and the UTF-16 floor of
+   *  their caps; the bridge judges every field. What fails this: a kind missing from
+   *  `HOST_REQUEST_VALIDATORS` (the well-formed batch would be dropped — the record is a mapped type,
+   *  so that one is a compile error too) or a validator that skips a field (a broken one delivered). */
+  it("§395 delivers well-formed filetree requests and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    const asked = (request: unknown) => ({
+      msg: { request, requestId: "r", type: "hostRequest" },
+      pluginId: "alpha",
+    });
+    for (const request of [
+      { kind: "filetree_set_decorations" },
+      { kind: "filetree_set_decorations", updates: {} },
+      {
+        kind: "filetree_set_decorations",
+        updates: Array.from({ length: MAX_DECORATION_UPDATES + 1 }, () => ({})),
+      },
+      { kind: "filetree_define_icon", svg: "<svg/>" },
+      { kind: "filetree_define_icon", name: "a" },
+      { kind: "filetree_define_icon", name: "a", svg: ["<svg/>"] },
+      {
+        kind: "filetree_define_icon",
+        name: "a".repeat(MAX_FILE_ICON_NAME_CHARS + 1),
+        svg: "<svg/>",
+      },
+      {
+        kind: "filetree_define_icon",
+        name: "a",
+        svg: "x".repeat(MAX_FILE_ICON_SVG_BYTES + 1),
+      },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toEqual([]);
+    for (const request of [
+      { kind: "filetree_clear_decorations" },
+      { kind: "filetree_define_icon", name: "a", svg: "<svg/>" },
+      { kind: "filetree_set_decorations", updates: [] },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toHaveLength(3);
+  });
+
   it("caps the document a plugin may install, at the frame", async () => {
     // §260 Phase 4b security review (MEDIUM-2) — `editor_set_markdown` is parsed and then
     // replaces the whole document in one transaction (a full re-render with NodeView
@@ -658,6 +709,7 @@ describe("createHostTransport (§260 host end)", () => {
       requestId: "req-live",
       value: 1,
     });
+    await new Promise((r) => setTimeout(r, 0)); // plan 0127 P31 — let the chain settle that send
     invoke.mockClear();
     deliver({
       pluginId: "alpha",

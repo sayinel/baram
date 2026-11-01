@@ -172,6 +172,25 @@ export interface EventsAPI {
      * either the subscription is accepted and never fires.
      */
     on(event: "vault:changed", handler: (change: VaultChange) => void): Disposable;
+    /**
+     * §395 Baram renamed or moved a file or folder (spec 0074 D11): its own rename, move, journal migration
+     * or zettel promotion — never a change made outside Baram or by Baram's own git operations, which only
+     * `vault:changed` reports. Absolute
+     * paths; a folder is one notice, and what it held moved with it. Comes before the same change's
+     * `vault:changed` (except in a vault registered through a symlink or another spelling of its folder).
+     * Needs `files` or `files:readonly`, not `events`; without either the subscription is accepted and
+     * never fires.
+     */
+    on(event: "file:rename", handler: (oldPath: string, newPath: string, isDir: boolean) => void): Disposable;
+    /**
+     * §395 Baram deleted (moved to the trash) a file or folder (spec 0074 D10): its own tree delete or zettel
+     * inbox delete — never a change made outside Baram, and not what Baram's own git operations do to the
+     * working tree, which only `vault:changed` reports. Absolute path; a folder is one notice and what it
+     * held went with it. Comes before the same change's `vault:changed` (except in a vault registered
+     * through a symlink or another spelling of its folder). Needs `files` or `files:readonly`, not `events`;
+     * without either the subscription is accepted and never fires.
+     */
+    on(event: "file:delete", handler: (path: string, isDir: boolean) => void): Disposable;
     on(event: string, handler: (...args: unknown[]) => void): Disposable;
 }
 export interface ExtensionContext {
@@ -197,6 +216,35 @@ export interface ExtensionContext {
     storage: StorageAPI;
     subscriptions: Disposable[];
     ui: UIAPI;
+}
+/**
+ * §395 What a plugin puts on one file tree row (spec 0074 D4). Every field is optional, and a
+ * decoration with none left after the limits below is the same as `null`: no decoration. The
+ * colour reaches the badge and the icon, never the file name.
+ */
+export interface FileDecoration {
+    /** One or two characters (grapheme clusters), at most 16 UTF-16 units: a chip at the row's right end, before the git dot. */
+    badge?: string;
+    /** The badge's and the icon's colour: a palette name, which follows the theme, or `#rrggbb`. */
+    color?: `#${string}` | FileDecorationPaletteColor;
+    /** Replaces the default file or folder icon: one character, or the name of an icon `defineFileIcon` defined. */
+    icon?: {
+        glyph: string;
+    } | {
+        svg: string;
+    };
+    /**
+     * One line of at most 120 UTF-16 units — a longer one is cut and ends in `…`. The row's hover text
+     * shows `{plugin name}: {tooltip}`.
+     */
+    tooltip?: string;
+}
+/** §395 The palette names (spec 0074 D5). Each is drawn with a theme colour, so it follows the theme. */
+export type FileDecorationPaletteColor = "accent" | "blue" | "gray" | "green" | "orange" | "purple" | "red" | "yellow";
+/** §395 One update for the trusted `UIAPI.setFileDecorations`: an absolute path, and its decoration or `null`. */
+export interface FileDecorationUpdate {
+    decoration: FileDecoration | null;
+    path: string;
 }
 export interface FilesAPI {
     listDir(path: string): Promise<string[]>;
@@ -371,7 +419,7 @@ export interface LoadedPlugin {
 export interface NetworkAPI {
     fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 }
-export type PluginCapability = "ai" | "codeblocks" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
+export type PluginCapability = "ai" | "codeblocks" | "commands" | "editor" | "editor:readonly" | "events" | "extensions" | "files" | "files:readonly" | "filetree" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
 /**
  * §260 Phase 5 — a snapshot of what the user approved, taken at the moment they
  * approved it. Compared against a later version's request by `plugin-consent.ts`.
@@ -479,6 +527,13 @@ export interface PluginFetchResponse {
     status: number;
 }
 /**
+ * §395 What `file:delete` carries in the sandboxed tier (spec 0074 §4): where the entry was, and whether it
+ * was a folder.
+ */
+export interface PluginFileDelete extends PluginFileEvent {
+    isDir: boolean;
+}
+/**
  * §260 Phase 4a — what a sandboxed plugin is told when a file event fires. Carries a
  * VAULT-RELATIVE path and the context to resolve it against; no absolute path ever
  * crosses the sandbox boundary (see `SandboxFilesAPI`). Pass `context` straight back to
@@ -488,6 +543,12 @@ export interface PluginFetchResponse {
 export interface PluginFileEvent {
     context: string;
     path: string;
+}
+/** §395 What `file:rename` carries in the sandboxed tier (spec 0074 §4). */
+export interface PluginFileRename {
+    from: PluginFileEvent;
+    isDir: boolean;
+    to: PluginFileEvent;
 }
 /**
  * What the host tells a file viewer when it mounts or updates. `assetUrl` is
@@ -913,6 +974,13 @@ export interface SandboxContext {
         /** §393 See `EventsAPI.on("vault:changed")` — the same event, the same payload. */
         on(event: "vault:changed", handler: (change: VaultChange) => void): void;
         /**
+         * §395 See `EventsAPI.on("file:rename")`. `from` and `to` are each relative to their own context — a
+         * move between nested vaults names two. Not sent when either path is in no registered context.
+         */
+        on(event: "file:rename", handler: (rename: PluginFileRename) => void): void;
+        /** §395 See `EventsAPI.on("file:delete")`. Not sent for a path in no registered context. */
+        on(event: "file:delete", handler: (deletion: PluginFileDelete) => void): void;
+        /**
          * §260 Phase 4a — overloaded so the file events' payload actually reaches plugin
          * code as `PluginFileEvent` (code review nit): with only the `unknown[]` signature an
          * author had to cast to learn the shape of the very thing this phase added.
@@ -951,6 +1019,20 @@ export interface SandboxContext {
 }
 /** @deprecated The same as `EditorAPI` since §388 — kept so existing type references compile. */
 export type SandboxEditorAPI = EditorAPI;
+/**
+ * §395 One update for the sandboxed `SandboxUIAPI.setFileDecorations` (spec 0074 D7): `path` is names joined
+ * by "/", at most 4,096 UTF-16 units — no leading "/", no empty, "." or ".." name, no "\"
+ * (`""` is the context root itself, and the only path a single-file context takes); `context` is a
+ * registered context id. Left out, it is the context the app shows when the call arrives. That can differ
+ * from the one `ctx.files` reads without a context while the user switches vaults, and after the app
+ * switches to a single-file context only `""` is accepted: a context-less call with another path is refused
+ * whole.
+ */
+export interface SandboxFileDecorationUpdate {
+    context?: string;
+    decoration: FileDecoration | null;
+    path: string;
+}
 export interface SandboxFileOptions {
     /** Registered context id to resolve `path` against. Default: the active context. */
     context?: string;
@@ -998,6 +1080,13 @@ export interface SandboxSettingsAPI {
  * remain trusted-tier only (see `UIAPI`).
  */
 export interface SandboxUIAPI {
+    /** §395 Remove every decoration this plugin set (spec 0074 D15); its icons stay defined. Needs `filetree`. */
+    clearFileDecorations(): Promise<void>;
+    /**
+     * §395 Define or redefine icon `name` for `FileDecoration.icon.svg` (spec 0074 D6) — the same rules as
+     * `UIAPI.defineFileIcon`. Needs `filetree`.
+     */
+    defineFileIcon(name: string, svg: string): Promise<void>;
     /**
      * §394 A click on an element with `data-action` inside panel `id`'s content: `handler` gets the
      * value. Only a panel declared in `contributions.panels`; throws for any other. While the handler's
@@ -1005,6 +1094,13 @@ export interface SandboxUIAPI {
      * prompt is open and starts again from 30 s when it closes. Several handlers may listen to one panel.
      */
     onPanelAction(id: string, handler: (action: string) => Promise<void> | void): Disposable;
+    /**
+     * §395 Set, or with `decoration: null` remove, this plugin's decoration of each path (spec 0074 D2 · D7).
+     * Paths are relative to a context root, in the form `SandboxFileDecorationUpdate` describes.
+     * The limits and the order of calls are `UIAPI.setFileDecorations`'s; a call this realm can tell is
+     * malformed or too large to send is refused before it is sent. Needs `filetree`.
+     */
+    setFileDecorations(updates: SandboxFileDecorationUpdate[]): Promise<void>;
     /**
      * §394 Show `content` in panel `id`, one declared in `contributions.panels` (which needs `sidebar`).
      * Throws at once for an undeclared id and for content over a limit — 1 MiB of HTML or 64 KiB of CSS
@@ -1136,7 +1232,26 @@ export interface UIAPI {
     addSettingsTab(opts: PluginSettingsTabOptions): Disposable;
     addSidebarPanel(opts: PluginSidebarPanelOptions): Disposable;
     addStyle(css: string): Disposable;
+    /** §395 Remove every decoration this plugin set (spec 0074 D15); its icons stay defined. Needs `filetree`. */
+    clearFileDecorations(): Promise<void>;
+    /**
+     * §395 Define or redefine icon `name` for `FileDecoration.icon.svg` (spec 0074 D6). `name` is 1–64
+     * of A–Z, a–z, 0–9, `_` and `-`; `svg` is at most 8 KiB of UTF-8 and must be one `<svg>` element once
+     * Baram has sanitized it. Drawn as a one-colour mask in the decoration's colour, or the row's text colour when the decoration has none (D5); 64 icons a plugin.
+     * Needs `filetree`. Up to 64 calls are taken at once, then one every 250 ms — a call beyond that waits.
+     */
+    defineFileIcon(name: string, svg: string): Promise<void>;
     registerFileViewer(opts: PluginFileViewerOptions): Disposable;
+    /**
+     * §395 Set, or with `decoration: null` remove, this plugin's decoration of each absolute `path`
+     * (spec 0074 D2 · D4). At most 1,000 updates a call, 4,096 UTF-16 units a `path` and 20,000 decorated
+     * paths a plugin; an update over a limit, or a malformed one, refuses the whole call and nothing is
+     * applied (D14). Needs `filetree`. The three file tree methods of one plugin are
+     * applied in the order called — eight decoration calls at once, then one every 250 ms; a call beyond
+     * that waits and is not refused — so they may be called together. Baram does not keep decorations:
+     * set them again in `activate`.
+     */
+    setFileDecorations(updates: FileDecorationUpdate[]): Promise<void>;
     showNotification(message: string, type?: "error" | "info" | "warning"): void;
     showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
 }
@@ -1146,9 +1261,10 @@ export interface VaultChange {
 }
 /**
  * Capabilities that admit the `ui` surface. Shared by both tiers on purpose: the
- * trusted tier hands out a `UIAPI` when a plugin holds any of these, and the sandboxed
- * tier answers `ui` requests under the same rule (§260 Phase 4a). One list, so "may this
- * plugin use the `ui` surface?" cannot come to two different answers. (§385 `prompts`
+ * trusted `showNotification` and `addStyle` need one of these, and the sandboxed tier
+ * answers `ui` requests under the same rule (§260 Phase 4a). One list, so "may this
+ * plugin use the `ui` surface?" cannot come to two different answers. (`filetree` also
+ * opens the trusted `UIAPI` object, for its three file tree methods only — §395.) (§385 `prompts`
  * reach the screen without any of these — their bound is the prompt gate, spec 0061 D2.)
  */
 export declare const UI_CAPABILITIES: readonly PluginCapability[];

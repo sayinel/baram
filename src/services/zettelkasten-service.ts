@@ -6,6 +6,10 @@ import {
   readFile,
   writeFile,
 } from "../ipc/invoke";
+import {
+  beginFileOperation,
+  notifyRenamed,
+} from "../plugins/file-decorations/operation-notices";
 import { useZettelIndexStore } from "../stores/zettelkasten/zettel-index";
 import { yamlString } from "../utils/markdown/yaml-scalar";
 import { extractLeadingId } from "../utils/zettelkasten/parse-note-title";
@@ -128,7 +132,6 @@ export async function promoteFleeting(
   const created =
     extractCreated(raw) ?? deriveCreatedFromId(id) ?? localIsoMinute();
   const notesDir = `${zettelDir}/notes`;
-  await createDir(notesDir);
   const filename = `${id} ${sanitizeZettelTitle(title)}.md`;
   const path = `${notesDir}/${filename}`;
   const content =
@@ -140,8 +143,20 @@ export async function promoteFleeting(
     `aliases: []\n` +
     `---\n\n` +
     `# ${title}\n\n${seedBody}\n`;
-  await writeFile(path, content);
-  await deleteFile(fleetingPath);
+  // §395 spec 0074 D10 · D12 — a promotion is the same note in a new place: plugins hear file:rename
+  // once the inbox file is gone, and the zettel space's vault:changed waits for that. Raised as the
+  // first statement of the try whose finally releases it; the first IPC that writes is `createDir`
+  // (the `readFile` above only reads).
+  let release: (() => void) | undefined;
+  try {
+    release = beginFileOperation([fleetingPath, path]);
+    await createDir(notesDir);
+    await writeFile(path, content);
+    await deleteFile(fleetingPath);
+    notifyRenamed(fleetingPath, path, false);
+  } finally {
+    release?.();
+  }
   useZettelIndexStore.getState().upsert({ id, path, title });
   useZettelIndexStore.getState().removeByPath(fleetingPath);
   await openFileInTab(path, content);

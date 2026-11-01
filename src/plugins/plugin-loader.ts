@@ -33,6 +33,10 @@ import {
   setEditorInstance,
   unregisterPluginUI,
 } from "./extension-context";
+import {
+  deliverFileNoticeToSandbox,
+  watchFileNotices,
+} from "./file-decorations/file-notice-delivery";
 import { validateManifest } from "./manifest";
 import { declaredPanels } from "./manifest-panels";
 import { grantableCapabilities } from "./plugin-consent";
@@ -879,6 +883,20 @@ export class PluginLoader {
         capabilities: manifest.capabilities,
         deliver: (change) =>
           session.deliverEvent(VAULT_CHANGED_EVENT, [change]),
+        label: "Sandbox",
+        pluginId: manifest.id,
+      }),
+    });
+    // §395 — and to the app's own renames and deletions (spec 0074 D11), on the same grant and route as
+    // `vault:changed`: paths made relative first (`deliverFileNoticeToSandbox`).
+    disposables.push({
+      dispose: watchFileNotices({
+        capabilities: manifest.capabilities,
+        deliver: (notice) =>
+          deliverFileNoticeToSandbox(
+            (event, args) => session.deliverEvent(event, args),
+            notice,
+          ),
         label: "Sandbox",
         pluginId: manifest.id,
       }),

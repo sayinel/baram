@@ -1,15 +1,18 @@
 // §4.3 File tree — recursive tree node component
-// Reads 6 shared states from FileTreeContext; receives only 10 handler props.
+// Reads 8 shared states from FileTreeContext; receives 10 props (8 handlers). §395 — what a plugin's
+// decoration changes is drawn by `FileTreeRowBody`, which subscribes to its own path; this row does not
+// read the decoration store, so a decoration never re-renders a folder's mounted children (spec 0074 D9).
 import { useEffect, useRef } from "react";
 
 import type { FileEntry } from "../../stores/file/file";
+import type { GitDot } from "./file-tree-row-body";
 import type { CreatingEntryState } from "./file-tree-types";
 
 import { ChevronRight } from "lucide-react";
 
 import { toBadgeKey } from "../../stores/system/git-badges";
-import { getFileIcon } from "./file-icon";
 import { IconFile, IconFolder } from "./file-tree-icons";
+import { FileTreeRowBody, RenameInput } from "./file-tree-row-body";
 import { treeIndent } from "./file-tree-types";
 import { useFileTreeContext } from "./FileTreeContext";
 
@@ -69,6 +72,24 @@ export function FileTreeNode({
   const showCreateInput =
     creatingEntry && creatingEntry.parentPath === entry.path;
 
+  const badgeKey = toBadgeKey(entry.path);
+  const git: GitDot = entry.isDir
+    ? gitBadges.dirs.has(badgeKey)
+      ? "changes"
+      : null
+    : (gitBadges.files.get(badgeKey) ?? null);
+  const body = (
+    <FileTreeRowBody
+      entry={entry}
+      git={git}
+      inputRef={inputRef}
+      isRenaming={isRenaming}
+      onCancelRename={onCancelRename}
+      onConfirmRename={onConfirmRename}
+      onStartRename={onStartRename}
+    />
+  );
+
   if (entry.isDir) {
     return (
       <div
@@ -92,34 +113,9 @@ export function FileTreeNode({
           >
             <ChevronRight size={12} />
           </span>
-          <span className="file-tree-icon">
-            <IconFolder />
-          </span>
-          {isRenaming ? (
-            <RenameInput
-              defaultValue={entry.name}
-              inputRef={inputRef}
-              onCancel={onCancelRename}
-              onConfirm={(val) => onConfirmRename(entry.path, val)}
-            />
-          ) : (
-            <span
-              className="file-tree-name text-truncate"
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                onStartRename(entry.path);
-              }}
-            >
-              {entry.name}
-            </span>
-          )}
-          {gitBadges.dirs.has(toBadgeKey(entry.path)) && (
-            <span
-              aria-label="contains changes"
-              className="file-tree-git-badge file-tree-git-badge-dir"
-            />
-          )}
+          {body}
         </div>
+        {/* Children render here, outside the leaf: a decoration change re-renders the leaf only. */}
         {isExpanded && (
           <>
             {showCreateInput && (
@@ -165,34 +161,7 @@ export function FileTreeNode({
       style={{ paddingLeft }}
       tabIndex={isFocused ? 0 : -1}
     >
-      <span className="file-tree-icon">{getFileIcon(entry.name)}</span>
-      {isRenaming ? (
-        <RenameInput
-          defaultValue={entry.name}
-          inputRef={inputRef}
-          onCancel={onCancelRename}
-          onConfirm={(val) => onConfirmRename(entry.path, val)}
-        />
-      ) : (
-        <span
-          className="file-tree-name text-truncate"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            onStartRename(entry.path);
-          }}
-        >
-          {entry.name}
-        </span>
-      )}
-      {(() => {
-        const badge = gitBadges.files.get(toBadgeKey(entry.path));
-        return badge ? (
-          <span
-            aria-label={badge === "modified" ? "modified" : "added"}
-            className={`file-tree-git-badge file-tree-git-badge-${badge}`}
-          />
-        ) : null;
-      })()}
+      {body}
     </div>
   );
 }
@@ -227,50 +196,5 @@ function CreateInputRow({
         placeholder={creatingEntry.isDir ? "folder name" : "file name"}
       />
     </div>
-  );
-}
-
-// --- RenameInput (deduplicated from 4 inline occurrences) ---
-function RenameInput({
-  defaultValue,
-  onConfirm,
-  onCancel,
-  inputRef,
-  placeholder,
-}: {
-  defaultValue?: string;
-  inputRef?: React.RefObject<HTMLInputElement | null>;
-  onCancel: () => void;
-  onConfirm: (value: string) => void;
-  placeholder?: string;
-}): React.JSX.Element {
-  return (
-    <input
-      autoFocus={!defaultValue}
-      className="file-tree-rename-input"
-      defaultValue={defaultValue}
-      onBlur={(e) => {
-        const val = e.target.value;
-        if (defaultValue !== undefined) {
-          onConfirm(val);
-        } else {
-          if (val.trim()) onConfirm(val);
-          else onCancel();
-        }
-      }}
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          onConfirm((e.target as HTMLInputElement).value);
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          onCancel();
-        }
-        e.stopPropagation();
-      }}
-      placeholder={placeholder}
-      ref={inputRef}
-    />
   );
 }

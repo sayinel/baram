@@ -191,7 +191,7 @@ it (deleting a path the index never held, an empty folder appearing). It needs `
 not `events`, and fires within about two seconds of a change, even while files keep changing, only in vaults
 Baram watches (the active one and any opened this session), never for hidden files or folders (a name
 starting with `.`) or tool folders (`.git`, `.obsidian`, `.baram`, `node_modules`). Your own
-`files.writeFile` in those vaults can fire it too: skip unchanged writes to avoid a loop. Read the vault again with [`ctx.index`](/en/docs/plugin-dev/context-index/).
+`files.writeFile` in those vaults can fire it too: skip unchanged writes to avoid a loop. Read the vault again with [`ctx.index`](/en/docs/plugin-dev/context-index/). The renames, moves and deletions Baram makes in its file tree, a journal migration, a zettel promotion or a zettel inbox delete also arrive as `"file:rename"` and `"file:delete"`, before the same change's `"vault:changed"` (except in a vault registered through a symlink or another spelling of its folder) — see [File tree decorations](/en/docs/plugin-dev/file-tree/#filerename-and-filedelete-requires-files-or-filesreadonly).
 
 `"file:open"` fires once the opened file's content is actually loaded into the
 editor — not at the moment the tab opens — so for markdown files

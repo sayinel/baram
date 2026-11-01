@@ -12,6 +12,10 @@ import {
   writeFile,
 } from "../../ipc/invoke";
 import {
+  beginFileOperation,
+  notifyRenamed,
+} from "../../plugins/file-decorations/operation-notices";
+import {
   buildFlattenPlan,
   buildMigrationPlan,
   detectFlatJournalFiles,
@@ -90,7 +94,12 @@ export function MigrationDialog({
     let count = 0;
 
     for (const { from, to } of plan) {
+      // §395 spec 0074 D10 · D12 — a migrated entry is the same note in a new place: plugins hear
+      // file:rename once its old file is gone, and the journal's vault:changed waits for that. Raised
+      // as the first statement of the try whose finally releases it; the first disk IPC is `createDir`.
+      let release: (() => void) | undefined;
       try {
+        release = beginFileOperation([from, to]);
         // Ensure target directory exists
         const dir = to.substring(0, to.lastIndexOf("/"));
         await createDir(dir).catch(() => {});
@@ -99,9 +108,12 @@ export function MigrationDialog({
         const content = await readFile(from);
         await writeFile(to, content);
         await deleteFile(from);
+        notifyRenamed(from, to, false);
         count++;
       } catch (err) {
         logger.error(`[MigrationDialog] Failed to migrate ${from}:`, err);
+      } finally {
+        release?.();
       }
     }
 

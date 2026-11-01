@@ -1,7 +1,8 @@
 // §260 Phase 4a · §394 spec 0073 D14 — `ctx.ui` inside the sandbox realm: the status bar and the toast
-// (moved out of `sandbox-client.ts` by plan 0126 P2) and the plugin's sidebar panels. The host told
-// `activate` which panel ids the manifest declares (`panelIds`, plan 0126 P11), whether or not consent
-// granted `sidebar`: `setPanel` and `onPanelAction` refuse any other id at once, with the host's
+// (moved out of `sandbox-client.ts` by plan 0126 P2) and the plugin's sidebar panels. §395 — and the
+// three file tree methods, judged and sent one at a time by `sandbox-file-tree.ts` (spec 0074 D14). The
+// host told `activate` which panel ids the manifest declares (`panelIds`, plan 0126 P11), whether or not
+// consent granted `sidebar`: `setPanel` and `onPanelAction` refuse any other id at once, with the host's
 // sentence (`panel-messages.ts`), and the host refuses it again (`host-ui-bridge.ts`). Without
 // `sidebar` the host's gate refuses every `setPanel`, which `send` logs.
 //
@@ -30,6 +31,7 @@ import {
   readRenderedContent,
 } from "../rendered/limits";
 import { undeclaredPanelMessage } from "../rendered/panel-messages";
+import { createSandboxFileTree } from "./sandbox-file-tree";
 
 /** What `sandbox-client.ts` gets: the plugin's `ctx.ui`, and the two calls the client makes itself. */
 export interface SandboxUI {
@@ -99,7 +101,11 @@ export function createSandboxUI(
     }
   };
 
+  const fileTree = createSandboxFileTree(hostRequest);
+
   const api: SandboxUIAPI = {
+    clearFileDecorations: fileTree.clearFileDecorations,
+    defineFileIcon: fileTree.defineFileIcon,
     onPanelAction(id, handler): Disposable {
       requireDeclared("onPanelAction", id);
       const list = handlers.get(id) ?? new Set<PanelHandler>();
@@ -107,6 +113,7 @@ export function createSandboxUI(
       list.add(handler);
       return { dispose: () => void list.delete(handler) };
     },
+    setFileDecorations: fileTree.setFileDecorations,
     setPanel(id, content) {
       requireDeclared("setPanel", id);
       // Read as the host's `prepareDrawable` reads a result (`readRenderedContent`): each field once,

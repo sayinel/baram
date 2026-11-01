@@ -2,6 +2,7 @@ import type { AIAPI } from "../../types";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { fileTreeCapabilityMessage } from "../../file-decorations/validate";
 import { PROMPT_HEARTBEAT_MS } from "../host-prompt-bridge";
 import { createHostRequestHandler } from "../host-request-router";
 
@@ -39,6 +40,15 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     const { handler, toasts } = handlerFor(["statusbar"]);
     await handler({ kind: "ui_notify", message: "hello" }, noop);
     expect(toasts).toEqual([{ message: "hello", source: "P" }]);
+  });
+
+  /** §395 — the filetree kinds reach their own bridge, under its own gate. What fails this: a kind the
+   *  router does not route ("unsupported host request"). */
+  it("routes a file tree request to its bridge, under its own gate", async () => {
+    const { handler } = handlerFor(["statusbar"]);
+    await expect(
+      handler({ kind: "filetree_clear_decorations" }, noop),
+    ).rejects.toThrow(fileTreeCapabilityMessage("clearFileDecorations"));
   });
 
   it("answers an ai request for a plugin that holds no ui capability", async () => {

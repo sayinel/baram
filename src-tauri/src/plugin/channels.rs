@@ -42,12 +42,20 @@ impl SandboxChannels {
             .connected
             .get(label)
             .ok_or_else(|| format!("sandbox \"{label}\" is not connected"))?;
-        // §260 3c-2a review (I3): a frame ≥ MAX_JSON_DIRECT_EXECUTE_THRESHOLD
-        // (8 KiB) is staged in tauri's app-global `ChannelDataIpcQueue` and fetched
-        // by the webview through `FETCH_CHANNEL_DATA_COMMAND`, which is ACL-EXEMPT
-        // and takes only a guessable sequential id — so another sandbox could race
-        // that fetch and steal (and wedge) this frame. Every frame we send today is
-        // far under it; warn loudly in dev if that ever stops being true.
+        // §260 3c-2a review (I3) · §395 spec 0074 §10 — a frame whose JSON is 8,192 bytes or more
+        // (`MAX_JSON_DIRECT_EXECUTE_THRESHOLD`) is not delivered by the one `eval` a smaller frame
+        // gets: tauri parks it in `ChannelDataIpcQueue` and the webview fetches it through
+        // `FETCH_CHANNEL_DATA_COMMAND`, one more round trip. At the locked tauri 2.12.2
+        // (`ipc/channel.rs`) that queue is per webview — "Scoped per webview"; a frame goes in with
+        // `insert_if(webview.label(), …)` and the fetch takes `cache.remove(webview.label(), id)`, the
+        // calling webview's own entry — so no other sandbox can read or take it. (Written at tauri
+        // 2.11.5, this comment used to say another sandbox could.) Size does not change the order a
+        // sandbox sees either: `channel_on` numbers every frame as `channel.send` takes it, and the
+        // sandbox's `Channel` (@tauri-apps/api 2.12.4, `core.js`) hands frames to `onmessage` in that
+        // order, holding a later frame until an earlier fetched one has arrived. The host sends a
+        // sandbox's frames one at a time for that reason (`send-chain.ts`, spec 0074 D12). The
+        // warning below still calls the queue shared and guessable; its wording is plan (B)'s
+        // (spec 0074 D16).
         #[cfg(debug_assertions)]
         {
             // tauri's direct-eval path is `len < MAX_JSON_DIRECT_EXECUTE_THRESHOLD`,

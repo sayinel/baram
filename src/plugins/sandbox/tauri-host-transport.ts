@@ -13,8 +13,12 @@ import type {
 } from "./protocol";
 import type { SandboxTransport } from "./transport";
 
-import { pluginSandboxSend } from "../../ipc/plugin-invoke";
 import { logger } from "../../utils/logger";
+import {
+  MAX_DECORATION_UPDATES,
+  MAX_FILE_ICON_NAME_CHARS,
+  MAX_FILE_ICON_SVG_BYTES,
+} from "../file-decorations/limits";
 import { inputBoxProblem, quickPickProblem } from "../prompt-shape";
 import { MAX_UI_TEXT_CHARS } from "./protocol";
 import {
@@ -24,6 +28,7 @@ import {
   isRenderResult,
   isSetPanel,
 } from "./render-frames";
+import { createSendChain, type SendInOrder } from "./send-chain";
 
 type Fields = Record<string, unknown>;
 
@@ -56,6 +61,9 @@ export async function createHostTransport(
    */
   const liveRequests = new Map<string, number>();
   let closed = false;
+  // §395 spec 0074 D12 — every frame to this sandbox, answers to refused requests included, leaves
+  // through one chain, in the order handed in (`send-chain.ts`).
+  const sendInOrder = createSendChain(pluginId);
   const unlisten = await listen<S2HEnvelope>("plugin:s2h", (event) => {
     if (closed) return;
     const envelope = event.payload;
@@ -68,7 +76,7 @@ export async function createHostTransport(
       // own stall timer fires ~150 s later, so an over-cap `setMarkdown` looks to the
       // plugin like the app hung. The correlation id is already in hand and these caps
       // are deliberate refusals rather than corruption, so they can be reported.
-      refuseIfAwaited(pluginId, envelope.msg, liveRequests);
+      refuseIfAwaited(envelope.msg, liveRequests, sendInOrder);
       logger.debug(`[Sandbox] dropped malformed s2h frame from ${pluginId}`);
       return;
     }
@@ -93,9 +101,9 @@ export async function createHostTransport(
       handlers.add(h);
       return () => handlers.delete(h);
     },
-    // Fire-and-forget: `plugin_sandbox_send` rejects until the sandbox has called
-    // `plugin_sandbox_connect`, which is the normal state during the session's
-    // activate retry window. Log, never reject into the caller.
+    // `plugin_sandbox_send` rejects until the sandbox has called `plugin_sandbox_connect`, which is
+    // the normal state during the session's activate retry window; the chain logs that and goes on,
+    // and never rejects into the caller.
     send: (msg) => {
       // The session answers every id it accepts — on success, on timeout and on dispose —
       // so this is what keeps `liveRequests` from growing for the life of the sandbox.
@@ -104,9 +112,7 @@ export async function createHostTransport(
         if (outstanding > 0) liveRequests.set(msg.requestId, outstanding);
         else liveRequests.delete(msg.requestId);
       }
-      void pluginSandboxSend(pluginId, msg).catch((err: unknown) => {
-        logger.debug(`[Sandbox] send to ${pluginId} failed:`, err);
-      });
+      sendInOrder(msg, "send to");
     },
   };
 }
@@ -184,6 +190,16 @@ const HOST_REQUEST_VALIDATORS: {
   editor_set_markdown: (r) =>
     typeof r.markdown === "string" &&
     r.markdown.length <= MAX_SET_MARKDOWN_CHARS,
+  // §395 spec 0074 §5.3 — shapes and the UTF-16 floor of each cap (a string within a UTF-8 byte cap is
+  // within it in UTF-16 units too); the bridge judges every field (`host-file-tree-bridge.ts`).
+  filetree_clear_decorations: () => true,
+  filetree_define_icon: (r) =>
+    typeof r.name === "string" &&
+    r.name.length <= MAX_FILE_ICON_NAME_CHARS &&
+    typeof r.svg === "string" &&
+    r.svg.length <= MAX_FILE_ICON_SVG_BYTES,
+  filetree_set_decorations: (r) =>
+    Array.isArray(r.updates) && r.updates.length <= MAX_DECORATION_UPDATES,
   // §385 — shape and hard bounds from the ONE rule set the gate and the sandbox pre-check use
   // (`prompt-shape.ts`). A refusal here answers only generically (`refuseIfAwaited`), which is why
   // the sandbox pre-check exists: the author gets the specific reason there first.
@@ -289,9 +305,9 @@ function isWellFormed(msg: unknown): msg is SandboxToHost {
  * Anything that is not a correlatable request is left dropped — there is no one waiting.
  */
 function refuseIfAwaited(
-  pluginId: string,
   msg: unknown,
   liveRequests: ReadonlyMap<string, number>,
+  sendInOrder: SendInOrder,
 ): void {
   if (typeof msg !== "object" || msg === null) return;
   const m = msg as Fields;
@@ -301,13 +317,14 @@ function refuseIfAwaited(
   // unknown. Self-inflicted only — ids are per-sandbox — but the invariant is the session's
   // to keep, so this path must not step on it (code review M3).
   if (liveRequests.has(m.requestId)) return;
-  void pluginSandboxSend(pluginId, {
-    error:
-      "the host rejected this request: it is malformed or exceeds a size limit",
-    ok: false,
-    requestId: m.requestId,
-    type: "hostResponse",
-  }).catch((err: unknown) => {
-    logger.debug(`[Sandbox] refusal to ${pluginId} failed:`, err);
-  });
+  sendInOrder(
+    {
+      error:
+        "the host rejected this request: it is malformed or exceeds a size limit",
+      ok: false,
+      requestId: m.requestId,
+      type: "hostResponse",
+    },
+    "refusal to",
+  );
 }

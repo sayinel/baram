@@ -90,8 +90,9 @@ type UIRequest = Extract<SandboxHostRequest, { kind: `ui_${string}` }>;
 /**
  * Build the `ui` half of one sandboxed plugin's host-request handler.
  *
- * Gated on `UI_CAPABILITIES` — the same rule that decides whether a TRUSTED plugin gets
- * a `UIAPI` at all, rather than a second policy that could drift from it. Prompts are not
+ * Gated on `UI_CAPABILITIES` — the rule the TRUSTED `showNotification` and `addStyle` check
+ * (`trusted/ui-api.ts`), rather than a second policy that could drift from it. (A trusted plugin
+ * holding only `filetree` also gets the `UIAPI` object, for its three file tree methods — §395.) Prompts are not
  * `ui` and are not gated here (§385, `host-prompt-bridge.ts`).
  */
 export function createUIRequestHandler(
