@@ -107,7 +107,11 @@ export function sanitizeZettelTitle(title: string): string {
  * does not parse; `- ` + U+00A0 + `a` is an item that starts with U+00A0; `  - a` then
  * `    - b` is the one item `a - b`, and `    - a` then `  - b` does not parse. After a block
  * list's `tags:` only spaces or tabs may end the line: `tags:` + U+3000 or U+00A0 makes the key
- * line and the items one plain scalar, which beside other keys does not parse.
+ * line and the items one plain scalar, which beside other keys does not parse. A `-` line that
+ * holds no item may hold, after the spaces or tabs that follow its `-`, only a `#` comment —
+ * both packages read `  - # memo`, like `  -  `, as a null item. YAML sets a comment off only
+ * with a space or a tab, so after other whitespace the `#` is text: `- ` + U+00A0 + `# memo`
+ * is the string U+00A0 + `# memo`.
  */
 function carriesAsWritten(yaml: string, list: FrontmatterList): boolean {
   if (!/^tags[ \t]*:$/i.test(list.key)) return false;
@@ -116,7 +120,9 @@ function carriesAsWritten(yaml: string, list: FrontmatterList): boolean {
   if (!/^[ \t]*$/.test(afterColon)) return false;
   const indents = new Set<number>();
   for (const line of list.lines) {
-    const lead = /^( *)-[ \t]+$/.exec(line.item ? line.item.lead! : line.text);
+    const lead = line.item
+      ? /^( *)-[ \t]+$/.exec(line.item.lead!)
+      : /^( *)-[ \t]+(?:#[^\n]*)?$/.exec(line.text);
     if (!lead) return false;
     indents.add(lead[1].length);
   }

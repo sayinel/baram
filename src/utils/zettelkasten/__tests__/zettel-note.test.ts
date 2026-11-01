@@ -197,6 +197,9 @@ describe("carriedTagField", () => {
     ["tags\u00a0: [a, b]", "tags: [a, b]"],
     ["tags:\u3000\n  - a\n  - b", "tags: [a, b]"],
     ["tags:\u00a0\n  - a\n  - b", "tags: [a, b]"],
+    // A no-break space before the `#` does not set off a comment: YAML reads the string
+    // `\u00a0# memo` where the app reads no item.
+    ["tags:\n  - \u00a0# memo\n  - a", "tags: [a]"],
   ])(
     "carries %j, which YAML reads otherwise, as a new flow list",
     (field, carried) => {
@@ -213,8 +216,21 @@ describe("carriedTagField", () => {
     "tags:\n  -\ta\n  - b",
     "tags:\n    - a # c\n    -  \n    - b",
     "tags: \t\n  - a\n  - b",
+    "tags:\n  -\t#\n  - a",
+    "tags:\n  - a\n  - # memo",
   ])("carries %j as written", (field) => {
     expect(carriedTagField(`---\n${field}\n---\n`)).toBe(field);
+  });
+
+  // §96 A `-` line that holds only a comment is a null item to YAML, as a blank `-` line is,
+  // and the app reads no item from either. What turns this red: taking such a line for a
+  // spacing YAML reads otherwise — the field was carried as `tags: [a]`, which drops the
+  // comment and reads `[a]` where the note's own field reads `[null, a]`.
+  it("carries a list with a comment-only item as written", () => {
+    const field = "tags:\n  - # memo\n  - a";
+    const carried = carriedTagField(`---\n${field}\n---\n`);
+    expect(carried).toBe(field);
+    expect(parse(carried)).toEqual({ tags: [null, "a"] });
   });
 
   it("carries only a field YAML reads as the tags the app reads", () => {
