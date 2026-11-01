@@ -6,6 +6,8 @@
 // dropped block lists (their `- a` lines have no colon), comments and nested maps, and wrote a
 // typed `#new` chip as `tags: [..., #new]`, which YAML cannot parse.
 
+import type { FrontmatterList } from "./frontmatter-list";
+
 import { CST, parseDocument, Parser, visit } from "yaml";
 
 import { tagName } from "../tags/tag-name";
@@ -66,7 +68,8 @@ export const ENUM_VALUES: Record<string, string[]> = {
  * - Any other key holding a list the list writer can rewrite in place
  *   (`writableFrontmatterList`) — `aliases: [p, q]`, or `aliases:` and `- p` lines — shows its
  *   items, and an edit goes through that writer. A block list whose `-` lines hold no item
- *   (blank, or only a comment), which YAML reads as nulls, shows as a list with none.
+ *   (blank, or only a comment) shows as a list with none when YAML reads it as a list of nulls
+ *   (`entriesAlike`), and is left out otherwise, as a value over several lines.
  * - A one-line value in YAML's own syntax (`{a: 1}`, `&a x`, `*a`, `!!str 5`, a flow list the
  *   writer cannot rewrite), a plain value with a comment (`a # c`) and a double-quoted value
  *   with an escape JSON does not have (`"a\x41"`) show as their YAML text, type `yaml`.
@@ -107,7 +110,7 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
     if (
       list &&
       list.start === field.start &&
-      (list.form === "inline" || list.lines.length > 0)
+      (list.form === "inline" || list.items.length > 0 || entriesAlike(list))
     ) {
       // Each value once: removing a chip removes every item that holds it.
       entries.push({
@@ -276,6 +279,19 @@ const BLOCK_SCALAR = /^[|>]/;
 
 /** A one-line value in YAML's own syntax: a flow collection, an anchor, an alias or a YAML tag. */
 const YAML_SYNTAX = /^[[{&*!]/;
+
+/**
+ * Whether YAML reads the lines of the block list `list` as the entries of one list: every lead
+ * is spaces, `-` and spaces or tabs, indented alike. A list whose lines hold no item is then a
+ * list of nulls to yaml 2.9.1 and js-yaml 4.3.2. To both, `-` + U+00A0 begins text, `- ` +
+ * U+00A0 an item that starts with U+00A0, and a `-` indented deeper a nested list.
+ */
+function entriesAlike(list: FrontmatterList): boolean {
+  const indents = new Set(
+    list.lines.map((line) => /^( *)-[ \t]+$/.exec(line.lead)?.[1]),
+  );
+  return !indents.has(undefined) && indents.size === 1;
+}
 
 /**
  * Every error and warning `parseDocument` reports for `yaml` (its code and offset range), and

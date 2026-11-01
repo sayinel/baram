@@ -287,6 +287,17 @@ describe("Properties panel shapes it could and could not round-trip (§72)", () 
     },
   );
 
+  // §56m A list whose lines hold no item shows with none only when YAML reads its lines as
+  // nulls. What turns these red: showing one it does not — `-` + U+00A0 + `# c` is text to
+  // YAML, `- ` + U+00A0 + `# c` the item U+00A0 + `# c`, and a line indented deeper nests.
+  it.each([
+    "aliases:\n  -\u00a0# c\n  - # c\ntitle: x",
+    "aliases:\n- \u00a0# c\ntitle: x",
+    "aliases:\n  - # a\n    - # b\ntitle: x",
+  ])("leaves %j out, as a value it cannot show", (yaml) => {
+    expect(parseYamlProperties(yaml).map((e) => e.key)).toEqual(["title"]);
+  });
+
   // §56m What turns this red: adding at the writer's default lead `  - ` when no item gives
   // one — under `- # todo` that nests the new item in a list of its own.
   it("adds a tag at the lead of a list whose only line is a comment", () => {
