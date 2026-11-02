@@ -110,7 +110,7 @@
     "lucide-react": "^1.28.0",
     "mdast-util-from-markdown": "^2.1.0",
     "mdast-util-gfm": "^3.1.0",
-    "mdast-util-to-markdown": "^2.2.0",
+    "mdast-util-to-markdown": "^2.2.1",
     "mdast-util-to-string": "^4.0.0",
     "mermaid": "^11.17.2",
     "pdfjs-dist": "^6.4.299",
