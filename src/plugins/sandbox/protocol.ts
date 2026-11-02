@@ -1,6 +1,6 @@
 // §260 Sandbox message protocol — the typed host↔sandbox contract. Payloads
-// cross a WebviewWindow boundary as Tauri event payloads (serde-JSON — see the
-// serialization guard in the client; NOT arbitrary structured clone).
+// cross a WebviewWindow boundary as Tauri event payloads (serde-JSON — see
+// `assertSerializable` below; NOT arbitrary structured clone).
 //
 // ‼️ Per-member notes live INSIDE the member's braces. `perfectionist` sorts union
 // members alphabetically on every lint run, and a comment written above a member
@@ -342,6 +342,23 @@ export const PROMPT_LIMITS = {
   /** An input box's initial `value`, and what the user may type. */
   valueChars: 1_000,
 } as const;
+
+/**
+ * §260 · §395 — throws when `value` holds what the wire's JSON cannot carry as it is: a function or a BigInt
+ * (this check), or a cycle (`JSON.stringify` throws on its own). Here, beside the frames, because both ends
+ * call it: the sandbox client before it sends a plugin's own value (`events.emit` arguments, a command's
+ * result), and `SandboxSession.invokeCommand` before it sends a command's arguments (plan 0128 R10). Without
+ * it, on tauri 2.12.2 — run: the serialisation step turns a function into `null` in an array, drops it from an
+ * object, and throws on a BigInt or a cycle; read in tauri's scripts and `send-chain.ts`, not run: that throw
+ * rejects `invoke`, the host's send chain only logs it, and the call waits out `CALL_TIMEOUT_MS`.
+ */
+export function assertSerializable(value: unknown): void {
+  JSON.stringify(value, (_k, v) => {
+    if (typeof v === "function" || typeof v === "bigint")
+      throw new Error("value is not serializable");
+    return v;
+  });
+}
 
 /**
  * §388 spec 0067 §10 — whether a value is one of the published refusal codes. Here, beside the

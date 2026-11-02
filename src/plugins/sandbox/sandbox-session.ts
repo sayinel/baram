@@ -18,7 +18,7 @@ import type {
 import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
-import { isEditorRefusalCode } from "./protocol";
+import { assertSerializable, isEditorRefusalCode } from "./protocol";
 import { SandboxCalls } from "./sandbox-calls";
 import { SandboxRenderCalls } from "./sandbox-render-calls";
 
@@ -269,6 +269,19 @@ export class SandboxSession {
   invokeCommand(commandId: string, args: unknown[] = []): Promise<unknown> {
     if (this.disposed)
       return Promise.reject(new Error("Sandbox session disposed"));
+    // §395 plan 0128 R10 — arguments travel now: the file tree menu's targets, and whatever a trusted
+    // plugin's `commands.execute` passes. One the wire's JSON cannot carry is refused here, at once —
+    // sent, a BigInt or a cycle would reject inside tauri's `invoke`, which the send chain only logs, and
+    // the call would wait out `CALL_TIMEOUT_MS`; a function would arrive as `null` (or vanish from an object).
+    try {
+      assertSerializable(args);
+    } catch {
+      return Promise.reject(
+        new Error(
+          `Sandbox command "${commandId}" was not sent: an argument holds a function, a BigInt or a cycle`,
+        ),
+      );
+    }
     return this.calls.start("callResult", commandId, (callId) => ({
       type: "invokeCommand",
       callId,

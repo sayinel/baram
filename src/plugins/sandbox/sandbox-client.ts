@@ -25,7 +25,7 @@ import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 import { promptFrameProblem } from "../prompt-shape";
-import { isEditorRefusalCode } from "./protocol";
+import { assertSerializable, isEditorRefusalCode } from "./protocol";
 import { createSandboxCodeBlocks } from "./sandbox-code-blocks";
 import { createSandboxEditorAPI } from "./sandbox-editor-client";
 import { createSandboxIndexAPI } from "./sandbox-index";
@@ -470,16 +470,6 @@ export function startSandboxClient(
         void codeBlocks.render(m);
         break;
     }
-  });
-}
-
-function assertSerializable(value: unknown): void {
-  // Throws on functions/BigInt/cycles that JSON (the wire format for Tauri
-  // events) cannot faithfully carry.
-  JSON.stringify(value, (_k, v) => {
-    if (typeof v === "function" || typeof v === "bigint")
-      throw new Error("value is not serializable");
-    return v;
   });
 }
 
