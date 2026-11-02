@@ -24,6 +24,7 @@ export type {
   FileDecoration,
   FileDecorationPaletteColor,
   FileDecorationUpdate,
+  FileMenuTarget,
   FilesAPI,
   // §393 — `ctx.index` for both tiers (spec 0072 §4) and its rows.
   IndexAPI,
@@ -72,6 +73,7 @@ export type {
   SandboxContext,
   SandboxEditorAPI,
   SandboxFileDecorationUpdate,
+  SandboxFileMenuTarget,
   SandboxFileOptions,
   SandboxFilesAPI,
   SandboxSettingsAPI,

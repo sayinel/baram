@@ -3,6 +3,9 @@
 // lines when these rules arrived (plan 0118 P1). The checks come in from
 // `validateContributions`, which owns the error list, so a rule here reports exactly the way a
 // rule there does.
+// §395 spec 0074 D16 — and `contributions.fileMenu`, the file tree's right-click menu, by the same rules.
+// Its tie to the `filetree` capability is `checkFileMenuDeclarations`, which `validateManifest` calls
+// because it needs the capability list.
 import {
   MAX_ENTRY_DESCRIPTION_CHARS,
   MAX_ENTRY_TITLE_CHARS,
@@ -13,6 +16,9 @@ const MAX_MENU_ITEMS = 5;
 
 /** D11 — nor the slash list. */
 const MAX_SLASH_ITEMS = 10;
+
+/** §395 spec 0074 D16 — nor the file tree's right-click menu. */
+const MAX_FILE_MENU_ITEMS = 5;
 
 /** The checks `validateContributions` lends this file, bound to its error list. */
 export interface ContributionChecks {
@@ -27,10 +33,37 @@ export interface ContributionChecks {
 }
 
 /**
+ * §395 spec 0074 D16 — `fileMenu` needs `filetree`, in either tier (both may declare it), so the install
+ * dialog can say so. The reverse is not an error: `filetree` without `fileMenu` is a plugin that only
+ * decorates (plan 0127), as `sidebar` without `panels` stays valid (`checkPanelDeclarations`).
+ */
+export function checkFileMenuDeclarations(
+  capabilities: unknown,
+  contributions: unknown,
+  report: (field: string, message: string) => void,
+): void {
+  if (!Array.isArray(capabilities)) return; // reported by the capabilities check
+  const list =
+    typeof contributions === "object" &&
+    contributions !== null &&
+    !Array.isArray(contributions)
+      ? (contributions as Record<string, unknown>).fileMenu
+      : undefined;
+  if (!Array.isArray(list) || list.length === 0) return;
+  if (!capabilities.includes("filetree")) {
+    report(
+      "capabilities",
+      'contributions.fileMenu needs the "filetree" capability — the install dialog has to be able to say so',
+    );
+  }
+}
+
+/**
  * `menu` and `slash`: arrays of objects, capped (D11), ids unique within each array, every
  * entry's `id` an id and its `command` one of `contributions.commands[].id`; a `title`, when
  * present, 1 to 64 characters; a slash `description` 1 to 120; a menu `when` left out or
- * `"selection"` — a closed keyword (D4), so adding one later breaks no plugin.
+ * `"selection"` — a closed keyword (D4), so adding one later breaks no plugin. `fileMenu` (§395 spec 0074
+ * D16) takes the menu's rules with its own cap and its own `when`: left out, `"file"` or `"folder"`.
  */
 export function validateEntryPoints(check: ContributionChecks): void {
   const menu = check.entries("menu");
@@ -41,6 +74,24 @@ export function validateEntryPoints(check: ContributionChecks): void {
       validateEntry(check, item, at);
       if (item.when !== undefined && item.when !== "selection") {
         check.report(`${at}.when`, 'when must be left out or be "selection"');
+      }
+    });
+  }
+  const fileMenu = check.entries("fileMenu");
+  if (fileMenu) {
+    capped(check, "fileMenu", fileMenu, MAX_FILE_MENU_ITEMS);
+    fileMenu.forEach((item, i) => {
+      const at = `contributions.fileMenu[${i}]`;
+      validateEntry(check, item, at);
+      if (
+        item.when !== undefined &&
+        item.when !== "file" &&
+        item.when !== "folder"
+      ) {
+        check.report(
+          `${at}.when`,
+          'when must be left out or be "file" or "folder"',
+        );
       }
     });
   }
@@ -60,7 +111,7 @@ export function validateEntryPoints(check: ContributionChecks): void {
   }
 }
 
-/** The count cap and the duplicate-id rule, which both arrays share. */
+/** The count cap and the duplicate-id rule, which every array here shares. */
 function capped(
   check: ContributionChecks,
   section: string,
@@ -92,7 +143,7 @@ function optionalText(
   }
 }
 
-/** What a menu entry and a slash entry share: `id`, `command` and an optional `title`. */
+/** What a menu, a slash and a file menu entry share: `id`, `command` and an optional `title`. */
 function validateEntry(
   check: ContributionChecks,
   item: Record<string, unknown>,
