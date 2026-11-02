@@ -40,10 +40,12 @@ function plugin(
       { id: "insert", title: "Insert citation" },
       { id: "pick", title: "Pick a source" },
     ],
+    fileMenu: [],
     menu: [],
     name,
     pluginId,
     slash,
+    trust: "trusted",
   };
 }
 const all = () => true;

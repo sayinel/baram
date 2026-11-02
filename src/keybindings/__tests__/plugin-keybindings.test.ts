@@ -31,7 +31,15 @@ function plugin(
   commands: PluginEntryContributions["commands"],
   name = pluginId,
 ): PluginEntryContributions {
-  return { commands, menu: [], name, pluginId, slash: [] };
+  return {
+    commands,
+    fileMenu: [],
+    menu: [],
+    name,
+    pluginId,
+    slash: [],
+    trust: "trusted",
+  };
 }
 
 const CONTRIBUTIONS = {

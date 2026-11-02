@@ -44,10 +44,12 @@ beforeEach(() => {
     contributions: {
       cite: {
         commands: [{ id: "insert", title: "Insert citation" }],
+        fileMenu: [],
         menu: [{ command: "insert", id: "m" }],
         name: "Cite",
         pluginId: "cite",
         slash: [],
+        trust: "trusted",
       },
     },
   });
