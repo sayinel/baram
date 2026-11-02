@@ -110,7 +110,8 @@ describe("readFrontmatterLists", () => {
     ["a nested map", "tags: [{a: 1}, b]"],
     ["text after `]`", "tags: [a, b]x"],
     ["a comment not set off by a space", "tags: [a]#c"],
-    // YAML reads a `-` as an entry only before a space or a tab: here the whole value is text.
+    // YAML reads a `-` as an entry only before a space, a tab or a line break: here the whole
+    // value is text.
     ["a dash followed by a no-break space", "tags:\n  -\u00a0# c\n  - # c"],
   ])("is not complete with %s", (_why, yaml) => {
     const lists = readFrontmatterLists(yaml, "tags");

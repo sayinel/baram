@@ -229,7 +229,13 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
             out.push_str(&yaml_string(&renamed));
             // The whitespace after the name, up to the next other character or the line break:
             // a `\r` is the line break's before a `\n`, or where it ends the front matter (the
-            // closing fence's `\n` follows it); any other `\r` is whitespace here.
+            // closing fence's `\n` follows it). Any other `\r` goes with the whitespace. That is
+            // yaml 2.9.1's reading, the YAML package the app reads front matter with: it keeps
+            // a lone `\r` in a plain value and rejects a closing quote followed by one. js-yaml
+            // (YAML 1.2) reads a lone `\r` as a line break instead, so where one ended a comment
+            // only it could read (`[x #,a` + `\r` + ` , z]`), dropping the `\r` runs the comment
+            // on. Keeping it was measured too (inline lists, 2026-11-02): of the renames whose
+            // input yaml 2.9.1 reads, 3,515 then wrote text it rejects.
             let after = frontmatter.get(copied..).unwrap_or_default();
             let breaks_line = |at: usize| {
                 after

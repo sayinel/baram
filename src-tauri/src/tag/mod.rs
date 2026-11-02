@@ -960,10 +960,11 @@ mod tests {
     /// §56m The whitespace after a bare entry keeps only its spaces and tabs when the entry is
     /// renamed, and a `\r` only where it is the line break's — before a `\n`, or ending the
     /// front matter, where the closing fence's `\n` follows. The reader names the entry without
-    /// any Unicode whitespace after it, and YAML takes no other whitespace, nor a lone `\r`,
-    /// after the closing quote `2024` gets. Measured with yaml 2.9.1 and js-yaml 4.3.2
-    /// (2026-11-01) on each front matter as the note holds it, the fence's `\n` after it: both
-    /// read every input, and read each output's entry as `2024`; yaml 2.9.1 rejects `"2024"`
+    /// any Unicode whitespace after it, and YAML takes no other whitespace after the closing
+    /// quote `2024` gets, nor does yaml 2.9.1 take a lone `\r` there (js-yaml 4.3.2 reads
+    /// `"2024"` + `\r\r\n` as `2024`). Measured with yaml 2.9.1 and js-yaml 4.3.2 (2026-11-01) on
+    /// each front matter as the note holds it, the fence's `\n` after it: both read every input,
+    /// and read each `2024` row's output entry as `2024`; yaml 2.9.1 rejects `"2024"`
     /// followed by U+00A0 (before a comment, at the end of the line, before a `,`) or by a lone
     /// `\r`. Alone, without that `\n`, the two CRLF outputs that end the front matter with
     /// `"2024"` + `\r` are rejected by yaml 2.9.1 too, as `- 'x'` + `\r` is: the `\r` is the
