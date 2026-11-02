@@ -22,11 +22,12 @@ export interface FrontmatterList {
    * item, and any blank or comment lines after it, the next line is neither indented nor a
    * `-` line — it is not a continuation of an item, nor an item after a gap; and every `-` is
    * followed by a space or a tab. To YAML a `-` before other whitespace does not begin an entry
-   * (measured with yaml 2.9.1 and js-yaml 4.3.2): indented, the line is text the lines after it
-   * continue (`  -` + U+00A0 + `a` then `  - b` is the string `-` + U+00A0 + `a - b`; after an
-   * entry, a continuation of it); at the key's own indentation both reject the text; and an
-   * item line added after it can make the text rejected (after `-` + U+00A0 + `# c` and
-   * `- # c`, it does).
+   * (measured with yaml 2.9.1 and js-yaml 4.3.2). First under the key and indented, the line is
+   * text the lines after it continue (`  -` + U+00A0 + `a` then `  - b` is the string `-` +
+   * U+00A0 + `a - b`); after an entry and indented deeper than it, a continuation of that entry
+   * (`- a` then `  -` + U+00A0 + `b` is `a -` + U+00A0 + `b`); at the key's own indentation, or
+   * at the entry's, both reject the text; and an item line added after it can make the text
+   * rejected (after `-` + U+00A0 + `# c` and `- # c`, it does).
    */
   complete: boolean;
   /** Offset just past the list: its `]`, or the end of its last line (before that line's break). */

@@ -234,8 +234,12 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
             // a lone `\r` in a plain value and rejects a closing quote followed by one. js-yaml
             // (YAML 1.2) reads a lone `\r` as a line break instead, so where one ended a comment
             // only it could read (`[x #,a` + `\r` + ` , z]`), dropping the `\r` runs the comment
-            // on. Keeping it was measured too (inline lists, 2026-11-02): of the renames whose
-            // input yaml 2.9.1 reads, 3,515 then wrote text it rejects.
+            // on. Keeping it was measured too (2026-11-02), over the inline lists `[s, z]`,
+            // `[z, s]` and `[s, z]` + CRLF + a key, where `s` is every string of up to 5
+            // characters from `a`, `#`, space, tab, `"`, `'`, `/`, U+00A0, `\r` and `,`, renamed
+            // from `a` to `null`, `2024` and `b`: of the renames whose input yaml 2.9.1 reads
+            // (the fence's `\n` appended), 3,515 then wrote text it rejects. Dropping it, 6 did,
+            // each one origin/main writes the same.
             let after = frontmatter.get(copied..).unwrap_or_default();
             let breaks_line = |at: usize| {
                 after
