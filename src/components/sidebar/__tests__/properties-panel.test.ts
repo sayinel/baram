@@ -288,14 +288,28 @@ describe("Properties panel shapes it could and could not round-trip (§72)", () 
   );
 
   // §56m A list whose lines hold no item shows with none only when YAML reads its lines as
-  // nulls. What turns these red: showing one it does not — `-` + U+00A0 + `# c` is text to
-  // YAML, `- ` + U+00A0 + `# c` the item U+00A0 + `# c`, and a line indented deeper nests.
+  // nulls. What turns these red: showing one it does not. The first row is text to YAML (`-` +
+  // U+00A0), and the list reader leaves it not `complete`, so it reaches no list writer. The
+  // rest `entriesAlike` refuses: `- ` + U+00A0 + `# c` is the item U+00A0 + `# c`, `- ` +
+  // U+00A0 the item U+00A0, and a line indented deeper nests.
   it.each([
     "aliases:\n  -\u00a0# c\n  - # c\ntitle: x",
     "aliases:\n- \u00a0# c\ntitle: x",
+    "aliases:\n- # c\n- \u00a0\ntitle: x",
     "aliases:\n  - # a\n    - # b\ntitle: x",
   ])("leaves %j out, as a value it cannot show", (yaml) => {
     expect(parseYamlProperties(yaml).map((e) => e.key)).toEqual(["title"]);
+  });
+
+  // A last line can end with a lone `\r` (the note has `\r\r\n---`). Both packages read a
+  // comment line ending so as a null entry, but yaml 2.9.1 reads a blank `-` line's `\r` as the
+  // value. What turns this red: a line test that stops at the `\r` after a comment (JavaScript's
+  // `.`), or one that lets a blank line end with it.
+  it("shows a list whose last comment line ends with a lone \\r, but not a blank one", () => {
+    expect(parseYamlProperties("aliases:\n  - # a\n  - # b\r")).toEqual([
+      { key: "aliases", type: "array", value: [] },
+    ]);
+    expect(parseYamlProperties("aliases:\n  - # a\n  -  \r")).toEqual([]);
   });
 
   // §56m What turns this red: adding at the writer's default lead `  - ` when no item gives

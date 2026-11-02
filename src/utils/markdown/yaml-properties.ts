@@ -281,14 +281,17 @@ const BLOCK_SCALAR = /^[|>]/;
 const YAML_SYNTAX = /^[[{&*!]/;
 
 /**
- * Whether YAML reads the lines of the block list `list` as the entries of one list: every lead
- * is spaces, `-` and spaces or tabs, indented alike. A list whose lines hold no item is then a
- * list of nulls to yaml 2.9.1 and js-yaml 4.3.2. To both, `-` + U+00A0 begins text, `- ` +
- * U+00A0 an item that starts with U+00A0, and a `-` indented deeper a nested list.
+ * Whether YAML reads the lines of the block list `list`, none of which holds an item, as the
+ * null entries of one list: every line is spaces, `-`, spaces or tabs and nothing else or a
+ * `#` comment, indented alike. The whole line is judged, not its lead, which the reader may end
+ * before the last of the whitespace (`- ` + U+00A0 has the lead `- `). Measured with yaml 2.9.1
+ * and js-yaml 4.3.2: such lines are nulls to both; `- ` + U+00A0 is the item U+00A0, `- ` +
+ * U+00A0 + `# c` the item U+00A0 + `# c`, and a `-` indented deeper a nested list. A blank
+ * `-` line that ends with a lone `\r` is refused too: as handed over, yaml 2.9.1 reads that `\r`.
  */
 function entriesAlike(list: FrontmatterList): boolean {
   const indents = new Set(
-    list.lines.map((line) => /^( *)-[ \t]+$/.exec(line.lead)?.[1]),
+    list.lines.map((line) => /^( *)-[ \t]+(?:#[^\n]*)?$/.exec(line.text)?.[1]),
   );
   return !indents.has(undefined) && indents.size === 1;
 }
