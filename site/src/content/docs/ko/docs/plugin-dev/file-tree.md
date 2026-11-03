@@ -1,6 +1,6 @@
 ---
 title: "파일 트리 장식"
-sourceHash: "4c73f76578c6"
+sourceHash: "9591cbce14e9"
 ---
 
 ## `context.ui` 와 파일 트리 (`filetree` 필요)
@@ -147,3 +147,39 @@ ctx.events.on("file:delete", ({ context, path, isDir }) => {});
   경로의 장식은 지워지지 않습니다 — 경로 20,000개에 계속 세어지고, 나중에 그 경로에 파일이 생기면 그 파일에
   보입니다. 단 Baram 자신의 이름 바꾸기나 이동이 그 경로로 파일을 옮겼다면 장식이 먼저 지워집니다.
   `vault:changed` 와 `listDir` 로 정리하십시오.
+
+## 파일 트리 우클릭 메뉴 (`filetree` 필요)
+
+`contributions.fileMenu` 는 파일 트리에서 파일 · 폴더 행이 여는 메뉴에 항목을 다섯 개까지 더합니다. 항목은 메뉴
+맨 아래, 앱 항목들과 선으로 나뉜 자리에 플러그인 이름순으로 놓이고, 항목마다 옆에 플러그인 이름이 보입니다. 항목은
+`commands` 의 명령 하나를 가리키고, 자기 `title`(1–64자)이 없으면 그 명령의 `title` 을 보여 줍니다. 두 티어 모두
+선언할 수 있고, trusted 플러그인은 `commands` 도 필요합니다. Baram 저장소의 `tree-badges` 예제 플러그인이 이
+메뉴로 노트를 고정합니다.
+
+```json
+{
+  "contributions": {
+    "commands": [{ "id": "pin", "title": "Pin", "palette": false }],
+    "fileMenu": [{ "id": "pin", "command": "pin", "when": "file" }]
+  }
+}
+```
+
+명령의 처리기는 대상 목록을 첫 인자로 받습니다.
+
+```typescript
+ctx.commands.register("pin", (targets) => {}); // trusted: FileMenuTarget[], 절대 경로의 { path, isDir }
+ctx.commands.register("pin", (targets) => {}); // sandboxed: SandboxFileMenuTarget[], { context, path, isDir }
+```
+
+- **대상** — 둘 이상을 고른 선택 안에서 우클릭하면 고른 항목 전부가 선택의 순서대로(Cmd/Ctrl+클릭은 누른 순서, Shift
+  범위는 트리 순서) 가고, 그 밖에서는 우클릭한
+  행 하나가 갑니다. 접지 않습니다 — 폴더와 그 안의 파일을 함께 고르면 둘 다 갑니다.
+- **`when`** — 생략하면 늘 보이고, `"file"` 은 대상이 모두 파일일 때만, `"folder"` 는 모두 폴더일 때만 보입니다.
+- 대상이 1,000개를 넘으면 항목이 비활성으로 보입니다. sandboxed 플러그인의 항목은 등록된 컨텍스트 어디에도 없는
+  대상이 하나라도 있을 때도 비활성입니다. 비활성 항목에 마우스를 올리면 이유가 보입니다.
+- 트리의 빈 곳을 우클릭한 메뉴에는 플러그인 항목이 없습니다.
+- **인자를 확인하십시오.** 명령 팔레트 · 단축키 · 상태바에서 부르면 대상이 없고, 다른 플러그인의
+  `commands.execute` 는 무엇이든 넘길 수 있습니다. sandboxed 플러그인에는 함수, BigInt, 자기 자신을 가리키는 값을
+  보내지 않습니다 — 그런 호출은 거부됩니다.
+- 이 메뉴에서 시작한 명령은 [선택창 · 입력창](/ko/docs/plugin-dev/context-prompts/)을 열 수 있습니다.

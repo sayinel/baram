@@ -21,10 +21,12 @@ context.commands.register("summarize", () => summarize(), {
 
 ## Commands in menus, slash and shortcuts
 
-A command declared in the manifest's `contributions.commands` can be offered in three more
-places: the editor's right-click menu (`contributions.menu`), the slash menu
-(`contributions.slash`), and **Settings > Keybindings**, where the user can give it a key. The
-app draws all three from the manifest — see [The plugin manifest](/en/docs/plugin-dev/manifest/)
+A command declared in the manifest's `contributions.commands` can be offered in four more
+places: the editor's right-click menu (`contributions.menu`), the file tree's right-click menu
+(`contributions.fileMenu`, with the `filetree` capability — see
+[File tree decorations](/en/docs/plugin-dev/file-tree/#the-file-trees-right-click-menu-requires-filetree)),
+the slash menu (`contributions.slash`), and **Settings > Keybindings**, where the user can give it
+a key. The app draws all four from the manifest — see [The plugin manifest](/en/docs/plugin-dev/manifest/)
 — and runs the command the way the palette does, so the command may open a prompt from any of
 them.
 
@@ -48,7 +50,7 @@ context.commands.register("cite", () => insertCitation());
 An item shows only while its plugin is on and the command is registered: a command you
 `dispose()` leaves the right-click and slash menus, and its shortcut stops doing anything. A
 command registered without being declared stays palette-only. A trusted plugin without the
-`commands` capability — or with it withheld at install — gets none of the three.
+`commands` capability — or with it withheld at install — gets none of the four.
 
 ## Tiptap Extension plugins
 

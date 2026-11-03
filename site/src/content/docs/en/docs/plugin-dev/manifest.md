@@ -63,6 +63,7 @@ runs to put an item on screen.
 | `statusBar` | `{ id, text, tooltip?, command? }`      | 5       |
 | `settings`  | a settings field                        | 16      |
 | `menu`      | `{ id, command, title?, when? }`        | 5       |
+| `fileMenu`  | `{ id, command, title?, when? }`        | 5       |
 | `slash`     | `{ id, command, title?, description? }` | 10      |
 | `codeBlocks` | `{ lang }`                             | 10      |
 | `panels`     | `{ id, title, icon? }`                 | 3       |
@@ -74,6 +75,10 @@ runs to put an item on screen.
 `panels` is a sandboxed plugin's sidebar panels and needs the `sidebar` capability: Baram draws each
 panel's button and header from the manifest, and the plugin sends the content — see
 [Sidebar panels](/en/docs/plugin-dev/sidebar-panels/).
+
+`fileMenu` adds items to the file tree's right-click menu and needs the `filetree` capability. Each
+names one of your `commands`, as a `menu` item does; its `when` is left out, `"file"` or `"folder"` — see
+[File tree decorations](/en/docs/plugin-dev/file-tree/#the-file-trees-right-click-menu-requires-filetree).
 
 `menu` adds items to the editor's right-click menu, and `slash` adds items to the slash menu.
 Each names one of your `commands` by its `id` and shows that command's `title`, unless it has a
