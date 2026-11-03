@@ -20,7 +20,14 @@ export interface FrontmatterList {
    * Whether a writer may rewrite the list in place. Inline: nothing but blanks and a comment
    * follows `]`, every quote closes, no item opens a nested `[` or `{`. Block: past the last
    * item, and any blank or comment lines after it, the next line is neither indented nor a
-   * `-` line — it is not a continuation of an item, nor an item after a gap.
+   * `-` line — it is not a continuation of an item, nor an item after a gap; and every `-` is
+   * followed by a space or a tab. To YAML a `-` before other whitespace does not begin an entry
+   * (measured with yaml 2.9.1 and js-yaml 4.3.2). First under the key and indented, the line is
+   * text the lines after it continue (`  -` + U+00A0 + `a` then `  - b` is the string `-` +
+   * U+00A0 + `a - b`); after an entry and indented deeper than it, a continuation of that entry
+   * (`- a` then `  -` + U+00A0 + `b` is `a -` + U+00A0 + `b`); at the key's own indentation, or
+   * at the entry's, both reject the text; and an item line added after it can make the text
+   * rejected (after `-` + U+00A0 + `# c` and `- # c`, it does).
    */
   complete: boolean;
   /** Offset just past the list: its `]`, or the end of its last line (before that line's break). */
@@ -30,7 +37,10 @@ export interface FrontmatterList {
   items: FrontmatterListItem[];
   /** The key line up to and including its colon — `tags:`, `Tags :`. */
   key: string;
-  /** Block form: every line read as part of the list, an item or a blank `-`, as written. */
+  /**
+   * Block form: every line read as part of the list, as written — an item, or a `-` with no
+   * item after it: blank, or only a comment.
+   */
   lines: FrontmatterListLine[];
   /** The line break after the key line — `\n` or `\r\n` — or the document's, on the last line. */
   newline: string;
@@ -43,7 +53,10 @@ export interface FrontmatterList {
 export interface FrontmatterListItem {
   /** Block form: the text in front of the item on its line, `  - `. */
   lead?: string;
-  /** The item as written, without the whitespace around it — quotes included. */
+  /**
+   * The item as written, quotes included, without the whitespace around it — and, in block
+   * form, without the comment after it (`blockItem`).
+   */
   raw: string;
   /** What the item says: `raw` without its quotes, as the readers take them off. */
   value: string;
@@ -52,6 +65,8 @@ export interface FrontmatterListItem {
 /** A line of a block list: the line break before it and its text, with the item it holds. */
 export interface FrontmatterListLine {
   item?: FrontmatterListItem;
+  /** The text in front of the item, `  - `, whether or not the line holds one. */
+  lead: string;
   sep: string;
   text: string;
 }
@@ -113,8 +128,13 @@ export function listItemSpelling(
  * one `\r` before it; the key matches in any case, with whitespace allowed before its colon; a
  * list is `field: [a, b]` on the key's line, or `field:` alone and then the `- a` lines after
  * it, indented or not, up to the first line that is not one. Whitespace is Unicode's
- * (`White_Space`, as Rust's `char::is_whitespace`). An item's value is its text less every `"`
- * at either end, then every `'` — no escape is read.
+ * (`White_Space`, as Rust's `char::is_whitespace`). A block item is its line's text without
+ * the comment YAML reads after it, and a line that is only a comment holds no item — YAML's
+ * reading where the line's whitespace is spaces and tabs, but for an item that starts with `#`
+ * and a name, which YAML reads as a comment and the readers keep on purpose (`- #solo # memo`
+ * is `#solo`); `blockItem` says both.
+ * An item's value is its text less every `"` at either end, then every `'` — no escape is
+ * read.
  *
  * The backend's reader and this one read the cases of
  * `src-tauri/src/tag/fixtures/frontmatter-tags.json` in their tests. The one reading that
@@ -140,18 +160,20 @@ export function readFrontmatterLists(
     if (block) {
       const item = itemRe.exec(text);
       if (item) {
-        const raw = whitespaceTrim(item[2]);
+        const raw = blockItem(item[2]);
         const read = raw ? { lead: item[1], raw, value: unquote(raw) } : null;
         if (read) block.items.push(read);
         block.lines.push({
           ...(read && { item: read }),
+          lead: item[1],
           sep: lines[i - 1].break,
           text,
         });
+        if (!/-[ \t]/.test(item[1])) block.complete = false;
         block.end = start + text.length;
         continue;
       }
-      block.complete = blockEndsAt(lines, i);
+      block.complete &&= blockEndsAt(lines, i);
       block = null;
     }
 
@@ -199,10 +221,14 @@ export function readFrontmatterLists(
  * Rewrites the `field` list of `yaml` to hold the names `names`, where an item's name is
  * `nameOf(item.value)`. An item whose name is not in `names` is removed — with its line, in a
  * block list; every other item stays as written (an item with no name too), except that one YAML
- * cannot read is respelled (`listItemSpelling`). A name no item has is added at the end, in the
+ * cannot read is respelled (`listItemSpelling`) — in a block list, keeping its comment and the
+ * spaces and tabs before that, and nothing else on its line: no other whitespace and no lone
+ * `\r`, which YAML (yaml 2.9.1, for the `\r`) does not take after a closing quote.
+ * A name no item has is added at the end, in the
  * list's form and lead, with its line break. A block list this edit leaves with nothing is
  * written `field: []`.
- * In a block list the lines an edit does not touch stay byte for byte, so writing back the names
+ * In a block list the lines an edit does not touch stay byte for byte (but for a lone `\r` that
+ * ends the last line, which goes when lines are added after it), so writing back the names
  * the list already has changes nothing but the respelling of items YAML cannot read. An inline
  * list is rewritten whole, its items joined by `, ` between the brackets — `[a,b]` and
  * `[ a , b ]` come back `[a, b]`, whatever the edit; what follows the `]` stays.
@@ -241,14 +267,32 @@ export function writeFrontmatterList(
     return `${yaml.slice(0, list.open)}[${parts.join(", ")}]${yaml.slice(list.end)}`;
   }
 
-  const lead = list.items[0]?.lead ?? "  - ";
+  // The first line's lead, whether or not it holds an item (`- # todo`): YAML's entries begin
+  // at its indentation, and a deeper `-` under a line with no item is a list inside that entry.
+  // Any whitespace in it but a space or a tab becomes a space: YAML reads `- ` + U+00A0 + `z`
+  // as the item U+00A0 + `z`, where the reader reads `z`.
+  const lead = (list.lines[0]?.lead ?? "  - ").replace(
+    /(?![ \t])\p{White_Space}/gu,
+    " ",
+  );
   const kept = list.lines
     .filter((line) => !line.item || stays(line.item))
-    .map(({ item, sep, text }) =>
-      item && blockItemUnreadable(item.raw)
-        ? `${sep}${item.lead}${listItemSpelling(item.value, false)}`
-        : `${sep}${text}`,
-    );
+    .map(({ item, sep, text }) => {
+      if (!item || !blockItemUnreadable(item.raw)) return `${sep}${text}`;
+      // What follows the item on its line is whitespace and then, maybe, its comment. The
+      // comment stays, set off by the spaces and tabs before it, and nothing else does: after
+      // the closing quote a respelling may add, YAML takes no other whitespace, and yaml 2.9.1
+      // no lone `\r` (a line ends with one where the note has `\r\r\n`); the reader names
+      // the item without either. `raw` starts right after `lead` (`blockItem`), so the first
+      // `#` after it starts the comment.
+      const after = text.slice(item.lead!.length + item.raw.length);
+      const at = after.indexOf("#");
+      const comment =
+        at < 0
+          ? ""
+          : after.slice(0, at).replace(/[^ \t]/g, "") + after.slice(at);
+      return `${sep}${item.lead}${listItemSpelling(item.value, false)}${comment}`;
+    });
   if (kept.length + added.length === 0) {
     // An empty `field:` stays as it is; one emptied by this edit becomes `field: []`.
     if (list.lines.length === 0) return yaml;
@@ -257,11 +301,15 @@ export function writeFrontmatterList(
   const appended = added.map(
     (name) => `${list.newline}${lead}${listItemSpelling(name, false)}`,
   );
+  // A lone `\r` that ends the list's last line (`\r\r\n` in the note, or a front matter that
+  // ends `\r\r\n---`: what the callers hand over stops before the fence's `\r?\n`) goes when
+  // lines are added after it.
+  // Kept, it would come before the added lines' break, or last after them; yaml 2.9.1 rejects
+  // a closing quote followed by a lone `\r`, either way.
+  let body = kept.join("");
+  if (appended.length > 0 && body.endsWith("\r")) body = body.slice(0, -1);
   return (
-    yaml.slice(0, list.open) +
-    kept.join("") +
-    appended.join("") +
-    yaml.slice(list.end)
+    yaml.slice(0, list.open) + body + appended.join("") + yaml.slice(list.end)
   );
 }
 
@@ -282,8 +330,28 @@ export function writableFrontmatterList(
 /** Unicode whitespace (`White_Space`), the set Rust's `char::is_whitespace` and `\s` use. */
 const WS = "\\p{White_Space}";
 
-const DOUBLE_QUOTED = /^"(?:[^"\\]|\\.)*"$/;
-const SINGLE_QUOTED = /^'(?:[^']|'')*'$/;
+/**
+ * A closed double-quoted scalar, where `\` escapes the next character. Only that the scalar
+ * closes is judged, not that YAML takes its escapes: `"a\xb"`, or `\` before U+2028, U+2029
+ * or a lone `\r`, closes here, where yaml 2.9.1 rejects the escape (js-yaml 4.3.2 rejects the
+ * first three and reads `\` + `\r` as an escaped line break). Such an item is kept as
+ * written: the text was unreadable already.
+ */
+const DOUBLE_QUOTED_SCALAR = String.raw`"(?:[^"\\]|\\[^\n])*"`;
+/** A closed single-quoted scalar, where `''` is a quote. */
+const SINGLE_QUOTED_SCALAR = String.raw`'(?:[^']|'')*'`;
+
+const DOUBLE_QUOTED = new RegExp(`^${DOUBLE_QUOTED_SCALAR}$`);
+const SINGLE_QUOTED = new RegExp(`^${SINGLE_QUOTED_SCALAR}$`);
+
+/**
+ * A block item that is one quoted scalar and then nothing, or a `#` comment set off by spaces
+ * or tabs. Group 1 is the scalar. Its source is the text of the backend's
+ * `FM_TAGS_QUOTED_ITEM_RE`.
+ */
+const QUOTED_ITEM = new RegExp(
+  String.raw`^(${DOUBLE_QUOTED_SCALAR}|${SINGLE_QUOTED_SCALAR})(?:[ \t]+#[^\n]*)?$`,
+);
 
 interface Line {
   /** The line break that ends the line: `\n`, `\r\n`, or `""` on the last line. */
@@ -319,16 +387,53 @@ function blockEndsAt(lines: Line[], i: number): boolean {
 }
 
 /**
+ * The item of a block list line, `rest` being the line's text after its dash and the whitespace
+ * after that, without the comment YAML reads after it; `""` when the line holds only a comment.
+ * The backend's `block_item` reads the same: the text less the whitespace at its ends is read —
+ * - a quoted item (`QUOTED_ITEM`) followed by nothing or by spaces or tabs and a `#` comment is
+ *   the quoted part — `"#solo"   # keep me` is `"#solo"`, `"q # in"` all of it;
+ * - an item that starts with a quote otherwise — one that never closes, or text after the
+ *   closing quote that is not a comment — is the whole text, `#`s and all;
+ * - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item. YAML
+ *   reads a comment there, the `#` set off by the space or tab after the dash, and no name the
+ *   body can spell begins with whitespace (`isBodyTagName`);
+ * - any other item ends before the first `#` that follows a space or a tab, less the
+ *   whitespace before that: `plain # memo` is `plain`; `a#b` is whole, and so is `a`, then
+ *   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item whose `#`s are
+ *   followed by any other character is read by this rule too (`#solo # memo` is `#solo`), as
+ *   `- #solo` is, which YAML reads as a comment.
+ *
+ * Where that whitespace is not a space or a tab this differs from YAML on purpose: the dash's
+ * whitespace (the item pattern of `readFrontmatterLists`) and the trims take any Unicode
+ * whitespace, as the readers always have done to name an item, but YAML sets nothing off with
+ * it. An indented `-` + U+00A0 + `# memo` and `- ` + U+3000 + `#` hold no item here, where
+ * YAML reads the strings `-` + U+00A0 + `# memo` (the key's whole value; at the key's own
+ * indentation both packages reject the text) and U+3000 + `#`; `a` + U+00A0 + ` # c` is `a`,
+ * where YAML reads `a` + U+00A0. A writer does not rely on it (`writeFrontmatterList`).
+ *
+ * The item is the start of `rest` (whose first character is not whitespace when it holds an
+ * item: the dash's whitespace is all in front of it).
+ */
+function blockItem(rest: string): string {
+  const text = whitespaceTrim(rest);
+  const quoted = QUOTED_ITEM.exec(text);
+  if (quoted) return quoted[1];
+  if (text.startsWith('"') || text.startsWith("'")) return text;
+  if (/^#+(?:\p{White_Space}|$)/u.test(text)) return "";
+  const comment = /[ \t]#/.exec(text);
+  return comment ? whitespaceTrim(text.slice(0, comment.index)) : text;
+}
+
+/**
  * Whether YAML cannot read a block item as written: it starts with `#` (a comment, read as
  * null), with a reserved indicator (`@`, `` ` ``) or the directive indicator `%` — none of
- * which may begin a plain scalar — or with a quote that does not close; a closed quote may be
- * followed by a comment.
+ * which may begin a plain scalar — or with a quote that does not close at its end. The comment
+ * after an item is not part of it (`blockItem`).
  */
 function blockItemUnreadable(raw: string): boolean {
   if (/^[#@`%]/.test(raw)) return true;
-  if (raw.startsWith('"'))
-    return !/^"(?:[^"\\]|\\.)*"(?:[ \t]+#.*)?$/.test(raw);
-  if (raw.startsWith("'")) return !/^'(?:[^']|'')*'(?:[ \t]+#.*)?$/.test(raw);
+  if (raw.startsWith('"')) return !DOUBLE_QUOTED.test(raw);
+  if (raw.startsWith("'")) return !SINGLE_QUOTED.test(raw);
   return false;
 }
 

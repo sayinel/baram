@@ -6,6 +6,8 @@
 // dropped block lists (their `- a` lines have no colon), comments and nested maps, and wrote a
 // typed `#new` chip as `tags: [..., #new]`, which YAML cannot parse.
 
+import type { FrontmatterList } from "./frontmatter-list";
+
 import { CST, parseDocument, Parser, visit } from "yaml";
 
 import { tagName } from "../tags/tag-name";
@@ -65,7 +67,9 @@ export const ENUM_VALUES: Record<string, string[]> = {
  *   shows as its one item.
  * - Any other key holding a list the list writer can rewrite in place
  *   (`writableFrontmatterList`) — `aliases: [p, q]`, or `aliases:` and `- p` lines — shows its
- *   items, and an edit goes through that writer.
+ *   items, and an edit goes through that writer. A block list whose `-` lines hold no item
+ *   (blank, or only a comment) shows as a list with none when YAML reads it as a list of nulls
+ *   (`entriesAlike`), and is left out otherwise, as a value over several lines.
  * - A one-line value in YAML's own syntax (`{a: 1}`, `&a x`, `*a`, `!!str 5`, a flow list the
  *   writer cannot rewrite), a plain value with a comment (`a # c`) and a double-quoted value
  *   with an escape JSON does not have (`"a\x41"`) show as their YAML text, type `yaml`.
@@ -106,7 +110,7 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
     if (
       list &&
       list.start === field.start &&
-      (list.form === "inline" || list.items.length > 0)
+      (list.form === "inline" || list.items.length > 0 || entriesAlike(list))
     ) {
       // Each value once: removing a chip removes every item that holds it.
       entries.push({
@@ -275,6 +279,22 @@ const BLOCK_SCALAR = /^[|>]/;
 
 /** A one-line value in YAML's own syntax: a flow collection, an anchor, an alias or a YAML tag. */
 const YAML_SYNTAX = /^[[{&*!]/;
+
+/**
+ * Whether YAML reads the lines of the block list `list`, none of which holds an item, as the
+ * null entries of one list: every line is spaces, `-`, spaces or tabs and nothing else or a
+ * `#` comment, indented alike. The whole line is judged, not its lead, which the reader may end
+ * before the last of the whitespace (`- ` + U+00A0 has the lead `- `). Measured with yaml 2.9.1
+ * and js-yaml 4.3.2: such lines are nulls to both; `- ` + U+00A0 is the item U+00A0, `- ` +
+ * U+00A0 + `# c` the item U+00A0 + `# c`, and a `-` indented deeper a nested list. A blank
+ * `-` line that ends with a lone `\r` is refused too: as handed over, yaml 2.9.1 reads that `\r`.
+ */
+function entriesAlike(list: FrontmatterList): boolean {
+  const indents = new Set(
+    list.lines.map((line) => /^( *)-[ \t]+(?:#[^\n]*)?$/.exec(line.text)?.[1]),
+  );
+  return !indents.has(undefined) && indents.size === 1;
+}
 
 /**
  * Every error and warning `parseDocument` reports for `yaml` (its code and offset range), and

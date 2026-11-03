@@ -85,7 +85,7 @@ describe("parseYamlProperties", () => {
     expect(parseYamlProperties('tags:\n  - a # c\n  - "#b"\n- c')[0]).toEqual({
       key: "tags",
       type: "array",
-      value: ["a # c", "b", "c"],
+      value: ["a", "b", "c"],
     });
   });
 });
@@ -268,6 +268,58 @@ describe("Properties panel shapes it could and could not round-trip (§72)", () 
       note: "n",
       title: "t2",
     });
+  });
+
+  // A block list whose `-` lines hold no item is a list of nulls to YAML. What turns these red:
+  // leaving it out of the panel — no chip shows, and Add property cannot add a key the note
+  // already has, so nothing could be added to it.
+  it.each(["aliases:\n  - # todo\ntitle: x", "aliases:\n  -  \ntitle: x"])(
+    "shows %j as a list with no items, which an add writes into",
+    (yaml) => {
+      expect(parseYamlProperties(yaml)[0]).toEqual({
+        key: "aliases",
+        type: "array",
+        value: [],
+      });
+      const out = setYamlPropertyItems(yaml, "aliases", ["z"]);
+      expect(out).toBe(yaml.replace("\ntitle", "\n  - z\ntitle"));
+      expect(parse(out)).toEqual({ aliases: [null, "z"], title: "x" });
+    },
+  );
+
+  // §56m A list whose lines hold no item shows with none only when YAML reads its lines as
+  // nulls. What turns these red: showing one it does not. The first row is text to YAML (`-` +
+  // U+00A0), and the list reader leaves it not `complete`, so it reaches no list writer. The
+  // rest `entriesAlike` refuses: `- ` + U+00A0 + `# c` is the item U+00A0 + `# c`, `- ` +
+  // U+00A0 the item U+00A0, and a line indented deeper nests.
+  it.each([
+    "aliases:\n  -\u00a0# c\n  - # c\ntitle: x",
+    "aliases:\n- \u00a0# c\ntitle: x",
+    "aliases:\n- # c\n- \u00a0\ntitle: x",
+    "aliases:\n  - # a\n    - # b\ntitle: x",
+  ])("leaves %j out, as a value it cannot show", (yaml) => {
+    expect(parseYamlProperties(yaml).map((e) => e.key)).toEqual(["title"]);
+  });
+
+  // A last line can end with a lone `\r` (the note has `\r\r\n---`). Both packages read a
+  // comment line ending so as a null entry, but yaml 2.9.1 reads a blank `-` line's `\r` as the
+  // value. What turns this red: a line test that stops at the `\r` after a comment (JavaScript's
+  // `.`), or one that lets a blank line end with it.
+  it("shows a list whose last comment line ends with a lone \\r, but not a blank one", () => {
+    expect(parseYamlProperties("aliases:\n  - # a\n  - # b\r")).toEqual([
+      { key: "aliases", type: "array", value: [] },
+    ]);
+    expect(parseYamlProperties("aliases:\n  - # a\n  -  \r")).toEqual([]);
+  });
+
+  // §56m What turns this red: adding at the writer's default lead `  - ` when no item gives
+  // one — under `- # todo` that nests the new item in a list of its own.
+  it("adds a tag at the lead of a list whose only line is a comment", () => {
+    const out = setYamlPropertyItems("tags:\n- # todo\ntitle: x", "tags", [
+      "z",
+    ]);
+    expect(out).toBe("tags:\n- # todo\n- z\ntitle: x");
+    expect(parse(out)).toEqual({ tags: [null, "z"], title: "x" });
   });
 
   // Main showed these as their YAML text and wrote them back as typed — they round-tripped,

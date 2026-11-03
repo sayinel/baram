@@ -28,6 +28,13 @@ static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
 static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\s*-\s+(.+)$").unwrap());
 
+// A block item that is one quoted scalar — `"…"`, where `\` escapes the next character, or
+// `'…'`, where `''` is a quote — and then nothing, or a `#` comment set off by spaces or tabs.
+// Group 1 is the scalar.
+static FM_TAGS_QUOTED_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"^("(?:[^"\\]|\\[^\n])*"|'(?:[^']|'')*')(?:[ \t]+#[^\n]*)?$"#).unwrap()
+});
+
 /// The plain spellings a bare entry may keep: a letter, digit or `_` first, then letters, marks,
 /// digits and `_-./`, with single spaces between parts. YAML reads such a spelling as one plain
 /// scalar of exactly this text, whose type `READS_AS_NON_STRING_RE` then judges.
@@ -70,11 +77,61 @@ pub(super) fn yaml_string(value: &str) -> String {
     }
 }
 
+/// The item of a block list line, `rest` being the line's text after its dash and the
+/// whitespace after that, without the comment YAML reads after it; `None` when the line holds
+/// only a comment. The text less the whitespace at its end is read:
+/// - a quoted item (`FM_TAGS_QUOTED_ITEM_RE`) followed by nothing or by spaces or tabs and a
+///   `#` comment is the quoted part — `"#solo"   # keep me` is `"#solo"`, `"q # in"` all of it;
+/// - an item that starts with a quote otherwise — one that never closes, or text after the
+///   closing quote that is not a comment — is the whole text, `#`s and all;
+/// - `#`s and then whitespace or nothing are a comment (`- # memo`, `- ## memo`): no item.
+///   YAML reads a comment there, the `#` set off by the space or tab after the dash, and no
+///   name the body can spell begins with whitespace (`tag::refusal`);
+/// - any other item ends before the first `#` that follows a space or a tab, less the
+///   whitespace before that: `plain # memo` is `plain`; `a#b` is whole, and so is `a`, then
+///   U+3000, then `# b` — U+3000 is whitespace, but not a space to YAML. An item whose `#`s
+///   are followed by any other character is read by this rule too (`#solo # memo` is `#solo`),
+///   as the reader keeps `- #solo`, which YAML reads as a comment.
+///
+/// Where that whitespace is not a space or a tab this differs from YAML on purpose: the dash's
+/// whitespace (`FM_TAGS_BLOCK_ITEM_RE`'s `\s+`) and the trims take any Unicode whitespace, as
+/// the readers always have done to name an item, but YAML sets nothing off with it. An
+/// indented `-` + U+00A0 + `# memo` and `- ` + U+3000 + `#` hold no item here, where YAML
+/// reads the strings `-` + U+00A0 + `# memo` (the key's whole value; at the key's own
+/// indentation both packages reject the text) and U+3000 + `#`; `a` + U+00A0 + ` # c` is `a`,
+/// where YAML reads `a` + U+00A0. A writer does not rely on it (`rename_frontmatter_tags`).
+///
+/// The item is the start of `rest`, so its length places it in the line.
+fn block_item(rest: &str) -> Option<&str> {
+    let text = rest.trim_end();
+    if let Some(quoted) = FM_TAGS_QUOTED_ITEM_RE
+        .captures(text)
+        .and_then(|caps| caps.get(1))
+    {
+        return Some(quoted.as_str());
+    }
+    if text.starts_with(['"', '\'']) {
+        return Some(text);
+    }
+    let after_hashes = text.trim_start_matches('#');
+    if after_hashes.len() < text.len()
+        && after_hashes.chars().next().is_none_or(char::is_whitespace)
+    {
+        return None;
+    }
+    let before_comment = text
+        .match_indices('#')
+        .filter_map(|(at, _)| text.get(..at))
+        .find(|before| before.ends_with([' ', '\t']));
+    Some(before_comment.map_or(text, str::trim_end))
+}
+
 /// Every entry of the front matter's tag lists, in order, as byte ranges of `frontmatter`:
-/// each comma-separated part of a `tags: [a, b]` line, and the value of each `- item` line
-/// after a `tags:` line, indented or not, up to the first line that is not one — so the next
-/// key ends the list, and its own `- x` items are not tags. A line is read without its `\n`
-/// (or `\r\n`), as `str::lines` gives it.
+/// each comma-separated part of a `tags: [a, b]` line, and the item of each `- item` line
+/// after a `tags:` line (`block_item` — without its comment, and none for a line that is only
+/// one), indented or not, up to the first line that is not one — so the next key ends the
+/// list, and its own `- x` items are not tags. A line is read without its `\n` (or `\r\n`), as
+/// `str::lines` gives it.
 fn tag_entries(frontmatter: &str) -> Vec<Range<usize>> {
     let mut entries = Vec::new();
     let mut in_block = false;
@@ -86,11 +143,14 @@ fn tag_entries(frontmatter: &str) -> Vec<Range<usize>> {
         let at = line_start;
         line_start = line_start.saturating_add(piece.len());
         if in_block {
-            if let Some(item) = FM_TAGS_BLOCK_ITEM_RE
+            if let Some(rest) = FM_TAGS_BLOCK_ITEM_RE
                 .captures(line)
                 .and_then(|caps| caps.get(1))
             {
-                entries.push(at.saturating_add(item.start())..at.saturating_add(item.end()));
+                if let Some(item) = block_item(rest.as_str()) {
+                    let from = at.saturating_add(rest.start());
+                    entries.push(from..from.saturating_add(item.len()));
+                }
                 continue;
             }
             in_block = false;
@@ -134,9 +194,14 @@ pub(crate) fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 /// Renames the tag `old` to `new` in the front matter's tag lists and says in how many
 /// entries. An entry is renamed when it names `old` or a child of it (`project/baram`
 /// follows `project`, as in the body); only the name is replaced, so the quotes and the `#`s
-/// written around it stay. A bare entry — no quote character anywhere in it, no leading `#` —
+/// written around it stay, and so does a block item's comment, which is not part of its entry
+/// (`block_item`). A bare entry — no quote character anywhere in it, no leading `#` —
 /// gets the renamed name as `yaml_string` spells it, so `null` or `123` is written quoted and
-/// YAML still reads text.
+/// YAML still reads text. The whitespace right after its name — up to the next other character
+/// (`#`, `,`, `]`, …) or the line break — keeps only its spaces and tabs: the reader names the
+/// entry without any Unicode whitespace there, and after the closing quote YAML takes no other
+/// (`"2024"` + U+00A0 does not parse), nor, in yaml 2.9.1, a lone `\r`. A `\r` is the line
+/// break's before a `\n`, or where it ends the front matter (the closing fence's `\n` follows).
 /// Both names are bare (`bare_tag`).
 pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -> (String, usize) {
     let mut out = String::with_capacity(frontmatter.len());
@@ -159,8 +224,38 @@ pub(super) fn rename_frontmatter_tags(frontmatter: &str, old: &str, new: &str) -
         let renamed = format!("{new}{}", &name[old.len()..]);
         let bare = !text.contains(['"', '\'']) && !text.trim_start().starts_with('#');
         out.push_str(&frontmatter[copied..start]);
-        out.push_str(&if bare { yaml_string(&renamed) } else { renamed });
         copied = start + name.len();
+        if bare {
+            out.push_str(&yaml_string(&renamed));
+            // The whitespace after the name, up to the next other character or the line break:
+            // a `\r` is the line break's before a `\n`, or where it ends the front matter (the
+            // closing fence's `\n` follows it). Any other `\r` goes with the whitespace. That is
+            // yaml 2.9.1's reading, the YAML package the app reads front matter with: it keeps
+            // a lone `\r` in a plain value and rejects a closing quote followed by one. js-yaml
+            // (YAML 1.2) reads a lone `\r` as a line break instead, so where one ended a comment
+            // only it could read (`[x #,a` + `\r` + ` , z]`), dropping the `\r` runs the comment
+            // on. Keeping it was measured too (2026-11-02), over the inline lists `[s, z]`,
+            // `[z, s]` and `[s, z]` + CRLF + a key, where `s` is every string of up to 5
+            // characters from `a`, `#`, space, tab, `"`, `'`, `/`, U+00A0, `\r` and `,`, renamed
+            // from `a` to `null`, `2024` and `b`: of the renames whose input yaml 2.9.1 reads
+            // (the fence's `\n` appended), 3,515 then wrote text it rejects. Dropping it, 6 did,
+            // each one origin/main writes the same.
+            let after = frontmatter.get(copied..).unwrap_or_default();
+            let breaks_line = |at: usize| {
+                after
+                    .get(at..)
+                    .is_some_and(|rest| rest == "\r" || rest.starts_with("\r\n"))
+            };
+            let run = after
+                .char_indices()
+                .find(|&(at, c)| !c.is_whitespace() || c == '\n' || (c == '\r' && breaks_line(at)))
+                .map_or(after.len(), |(at, _)| at);
+            let blanks = after.get(..run).unwrap_or_default();
+            out.extend(blanks.chars().filter(|c| matches!(c, ' ' | '\t')));
+            copied = copied.saturating_add(run);
+        } else {
+            out.push_str(&renamed);
+        }
         count += 1;
     }
     out.push_str(&frontmatter[copied..]);

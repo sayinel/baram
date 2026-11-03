@@ -50,7 +50,7 @@ describe("readFrontmatterLists", () => {
     expect(list.form).toBe("block");
     expect(list.items).toEqual([
       { lead: "  - ", raw: `"#solo"`, value: "#solo" },
-      { lead: "- ", raw: "plain # c", value: "plain # c" },
+      { lead: "- ", raw: "plain", value: "plain" },
     ]);
     expect(list.lines.map((l) => l.text)).toEqual([
       `  - "#solo"`,
@@ -110,6 +110,9 @@ describe("readFrontmatterLists", () => {
     ["a nested map", "tags: [{a: 1}, b]"],
     ["text after `]`", "tags: [a, b]x"],
     ["a comment not set off by a space", "tags: [a]#c"],
+    // YAML reads a `-` as an entry only before a space, a tab or a line break: here the whole
+    // value is text.
+    ["a dash followed by a no-break space", "tags:\n  -\u00a0# c\n  - # c"],
   ])("is not complete with %s", (_why, yaml) => {
     const lists = readFrontmatterLists(yaml, "tags");
     expect(lists).toHaveLength(1);
@@ -142,6 +145,8 @@ describe("writeFrontmatterList", () => {
     // A quote that never closes: the rest of the list is one item to the reader.
     'title: t\ntags: ["a, b]\ndate: d',
     "title: t\ntags: ['a, b]\ndate: d",
+    // YAML reads this `tags` as text, and rejects it with any line added.
+    "title: t\ntags:\n  -\u00a0# c\n  - # c\ndate: d",
   ])("leaves a list it did not read to its end alone: %j", (yaml) => {
     expect(write(yaml, (n) => [...n, "x"])).toBe(yaml);
     expect(write(yaml, (n) => [...n, "yes"])).toBe(yaml);
@@ -186,6 +191,114 @@ describe("writeFrontmatterList", () => {
     const out = write(`tags:\n  ${item}`, (n) => [...n, "z"]);
     expect(out).toBe(`tags:\n  ${respelled}\n  - z`);
     expect(parses(out)).toBe(true);
+  });
+
+  // The four tests below: a block item's comment is not part of it (`readFrontmatterLists`).
+  // What turns them red: a reader that runs the item to the end of the line — `#solo # memo` is
+  // respelled whole into one quoted value, `# memo` becomes the value `"# memo"`, and the names
+  // `b` and `a` are not found, so `b` stays and `a` is removed and added back without its
+  // comment. A respelling that drops what follows the item turns the first one red too.
+  it("respells an unreadable block item keeping the comment after it", () => {
+    const out = write("tags:\n  - #solo # memo", (n) => [...n, "z"]);
+    expect(out).toBe(`tags:\n  - "#solo" # memo\n  - z`);
+    expect(parse(out)).toEqual({ tags: ["#solo", "z"] });
+  });
+
+  it.each(["# memo", "## memo", "#\u3000memo"])(
+    "keeps a block line that holds only the comment %j as written",
+    (comment) => {
+      const out = write(`tags:\n  - ${comment}\n  - a`, (n) => [...n, "z"]);
+      expect(out).toBe(`tags:\n  - ${comment}\n  - a\n  - z`);
+      expect(parse(out)).toEqual({ tags: [null, "a", "z"] });
+    },
+  );
+
+  // A list whose `-` lines hold no item still sets the lead of an added one. What turns these
+  // red: adding at a lead the list does not use — `  - ` under `- # todo` is a list nested in
+  // the null item, and under `    - # todo` yaml 2.9.1 rejects the text.
+  it.each([
+    ["tags:\n- # todo", "tags:\n- # todo\n- z"],
+    ["tags:\n    - # todo", "tags:\n    - # todo\n    - z"],
+    ["tags:\n-  \ntitle: x", "tags:\n-  \n- z\ntitle: x"],
+  ])("adds an item at the lead of %j", (yaml, out) => {
+    const written = write(yaml, (n) => [...n, "z"]);
+    expect(written).toBe(out);
+    expect((parse(written) as { tags: unknown }).tags).toEqual([null, "z"]);
+  });
+
+  // YAML's entries begin at the first line's indentation, whether or not that line holds an
+  // item. What turns this red: copying the first item's lead — under `- # c` that adds `z` to
+  // the list YAML reads inside the null entry, not to the list.
+  it("adds an item at the first line's lead", () => {
+    const written = write("tags:\n- # c\n  - a", (n) => [...n, "z"]);
+    expect(written).toBe("tags:\n- # c\n  - a\n- z");
+    expect(parse(written)).toEqual({ tags: [["a"], "z"] });
+  });
+
+  // A copied lead keeps its spaces and tabs, and any other whitespace in it becomes a space.
+  // What turns this red: copying `- ` + U+00A0 as it is — YAML reads the item U+00A0 + `z`,
+  // where the app reads `z`.
+  it("adds an item at a lead whose other whitespace becomes a space", () => {
+    const written = write("tags:\n- \u00a0# todo", (n) => [...n, "z"]);
+    expect(written).toBe("tags:\n- \u00a0# todo\n-  z");
+    expect(parse(written)).toEqual({ tags: ["\u00a0# todo", "z"] });
+  });
+
+  // The reader names an item without any Unicode whitespace after it, but after the closing
+  // quote a respelling adds YAML takes only spaces and tabs. What turns these red: carrying
+  // that whitespace over — `"#solo"` + U+00A0 does not parse, and neither does `"#solo"` +
+  // U+3000 before the comment. Each input parses (YAML reads a comment, so null).
+  it.each([
+    ["tags:\n  - #solo\u00a0\n  - a", `tags:\n  - "#solo"\n  - a\n  - z`],
+    ["tags:\n  - #solo\u3000 # memo", `tags:\n  - "#solo" # memo\n  - z`],
+    ["tags:\n  - #solo\u00a0\t# memo", `tags:\n  - "#solo"\t# memo\n  - z`],
+  ])(
+    "respells %j keeping only the spaces and tabs after the item",
+    (yaml, out) => {
+      expect(parses(yaml)).toBe(true);
+      const written = write(yaml, (n) => [...n, "z"]);
+      expect(written).toBe(out);
+      expect(parses(written)).toBe(true);
+    },
+  );
+
+  // A line of `yaml` ends with a lone `\r` only where the note has `\r\r\n`: what the callers
+  // hand over stops before the closing fence's `\r?\n` (the tag bar's mdast value too, measured),
+  // and a line loses just the `\r` of its `\r\n`. yaml 2.9.1 rejects
+  // a closing quote followed by a lone `\r`, mid-text and at the end (js-yaml reads it), and the
+  // Properties panel puts `yaml` back in front of the fence's `\r\n`, where a reader cuts it out
+  // the same way. What turns these red: keeping that `\r` after a respelled item, or after an
+  // added line — moved behind the added lines, it follows `"null"`. A comment keeps its `\r`.
+  it.each([
+    ["tags:\r\n  - #s\r\r\n  - a", [], `tags:\r\n  - "#s"\r\n  - a`],
+    ["tags:\r\n  - #s\r\r\nother: 1", [], `tags:\r\n  - "#s"\r\nother: 1`],
+    ["tags:\r\n  - #s\r", [], `tags:\r\n  - "#s"`],
+    ["tags:\r\n  - #s # c\r\r\n  - a", [], `tags:\r\n  - "#s" # c\r\r\n  - a`],
+    ["tags:\r\n  - #solo\u00a0\r", ["z"], `tags:\r\n  - "#solo"\r\n  - z`],
+    [`tags:\r\n  - "a"\r`, ["z"], `tags:\r\n  - "a"\r\n  - z`],
+    ["tags:\r\n  - a\r", ["null"], `tags:\r\n  - a\r\n  - "null"`],
+  ])(
+    "writes %j adding %j without a lone \\r after a quote",
+    (yaml, add, out) => {
+      const written = write(yaml, (n) => [...n, ...add]);
+      expect(written).toBe(out);
+      expect(parses(written)).toBe(true);
+    },
+  );
+
+  it("removes a commented block item by its name, with its line", () => {
+    const yaml = "tags:\n  - a # first\n  - b # second\n  - c";
+    expect(write(yaml, (n) => n.filter((t) => t !== "b"))).toBe(
+      "tags:\n  - a # first\n  - c",
+    );
+  });
+
+  it("finds a name a commented block item holds, adding none", () => {
+    const yaml = "tags:\n  - a # c";
+    expect(writeFrontmatterList(yaml, "tags", ["a"], tagName)).toBe(yaml);
+    expect(writeFrontmatterList(yaml, "tags", ["a", "b"], tagName)).toBe(
+      "tags:\n  - a # c\n  - b",
+    );
   });
 
   // What turns this red: anything but the touched lines changing — a CRLF list rejoined with

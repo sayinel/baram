@@ -957,6 +957,88 @@ mod tests {
         );
     }
 
+    /// §56m The whitespace after a bare entry keeps only its spaces and tabs when the entry is
+    /// renamed, and a `\r` only where it is the line break's — before a `\n`, or ending the
+    /// front matter, where the closing fence's `\n` follows. The reader names the entry without
+    /// any Unicode whitespace after it, and YAML takes no other whitespace after the closing
+    /// quote `2024` gets, nor does yaml 2.9.1 take a lone `\r` there (js-yaml 4.3.2 reads
+    /// `"2024"` + `\r\r\n` as `2024`). Measured with yaml 2.9.1 and js-yaml 4.3.2 (2026-11-01) on
+    /// each front matter as the note holds it, the fence's `\n` after it: both read every input,
+    /// and read each `2024` row's output entry as `2024`; yaml 2.9.1 rejects `"2024"`
+    /// followed by U+00A0 (before a comment, at the end of the line, before a `,`) or by a lone
+    /// `\r`. Alone, without that `\n`, the two CRLF outputs that end the front matter with
+    /// `"2024"` + `\r` are rejected by yaml 2.9.1 too, as `- 'x'` + `\r` is: the `\r` is the
+    /// fence's. What fails this: carrying the whitespace, or the `\r` of `\r\r\n`, over behind
+    /// the quote. A plain new name (`b`) gets the same whitespace: both packages read `year` +
+    /// U+00A0 there, and `b` after the rename. What fails this too: filtering only when the
+    /// new name is quoted.
+    #[tokio::test]
+    async fn a_renamed_bare_entry_keeps_only_the_spaces_and_tabs_after_it() {
+        for (front, new, want) in [
+            (
+                "tags:\n  - year\u{a0} # memo\n  - z",
+                "2024",
+                "tags:\n  - \"2024\" # memo\n  - z",
+            ),
+            ("tags:\n  - year\u{a0}", "2024", "tags:\n  - \"2024\""),
+            (
+                "tags:\n  - year\u{3000}\u{a0}\t# memo",
+                "2024",
+                "tags:\n  - \"2024\"\t# memo",
+            ),
+            ("tags: [year\u{a0}, b]", "2024", "tags: [\"2024\", b]"),
+            (
+                "tags:\r\n  - year\u{a0}\r",
+                "2024",
+                "tags:\r\n  - \"2024\"\r",
+            ),
+            (
+                "tags:\r\n  - year\r\r\n  - z",
+                "2024",
+                "tags:\r\n  - \"2024\"\r\n  - z",
+            ),
+            ("tags:\r\n  - year\r\r", "2024", "tags:\r\n  - \"2024\"\r"),
+            (
+                "tags:\n  - year\u{a0} # memo\n  - z",
+                "b",
+                "tags:\n  - b # memo\n  - z",
+            ),
+            ("tags: [year\u{a0}, x]", "b", "tags: [b, x]"),
+        ] {
+            let (d, root) = vault(&format!("---\n{front}\n---\n")).await;
+            let r = rename_tag(&root, "year", new).await.unwrap();
+            assert_eq!(r.occurrences_replaced, 1, "{front:?}");
+            assert_eq!(read(&d).await, format!("---\n{want}\n---\n"), "{front:?}");
+            assert!(
+                extract_frontmatter_tags(want).contains(&new.to_string()),
+                "{want:?}"
+            );
+        }
+    }
+
+    /// §56m A block item's comment is not part of its entry (`frontmatter::block_item`): a
+    /// rename replaces the name and leaves the spaces and the comment after it, and a quote in
+    /// the comment does not make the entry non-bare, so `null` is still written quoted. What
+    /// fails this: an entry that runs to the end of the line — then only `solo/x\t# "q"` is
+    /// renamed, its whole text still starting with `solo/`, so the count is 1 and the first
+    /// three lines keep `solo` — or judging "bare" with the comment in (`- null # it's`, which
+    /// YAML reads as null).
+    #[tokio::test]
+    async fn a_block_items_comment_stays_through_a_rename() {
+        let (d, root) = vault(
+            "---\ntags:\n  - solo # it's\n  - \"#solo\"   # keep me\n  - #solo # memo\n  \
+             - solo/x\t# \"q\"\n---\n",
+        )
+        .await;
+        let r = rename_tag(&root, "solo", "null").await.unwrap();
+        assert_eq!(r.occurrences_replaced, 4);
+        assert_eq!(
+            read(&d).await,
+            "---\ntags:\n  - \"null\" # it's\n  - \"#null\"   # keep me\n  - #null # memo\n  \
+             - null/x\t# \"q\"\n---\n"
+        );
+    }
+
     /// §393 What fails this: stripping one `#` only (`##work` would stay `#work` and match
     /// nothing), or touching a `#` inside the name. The pair: a name without `#` is untouched.
     #[test]
