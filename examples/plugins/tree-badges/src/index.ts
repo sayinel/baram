@@ -15,18 +15,25 @@ import type { FileDecoration, SandboxContext, SandboxFileDecorationUpdate } from
  * in place of a note's icon. A plugin has one decoration per path, so a pinned note's decoration carries its
  * count too, and the pin is the icon rather than a second badge — a badge holds two characters, and "9+" is
  * two already. The pins are kept in `ctx.storage` as `{ context, path }` and follow Baram's own renames and
- * deletions (`file:rename`, `file:delete`); Baram moves and drops the decorations itself. The counts name no
+ * deletions (`file:rename`, `file:delete`) while the plugin is running — those notices are wired once
+ * `activate` has read the stored pins, so a rename or deletion made while the plugin is disabled, failed to
+ * load or still reading its storage leaves a pin on the old path; Baram moves and drops the decorations itself. The counts name no
  * vault — the sandboxed tier is never told the active vault's id — so every count sends the pins after the
  * counts, each with its own vault and that vault's count: one plugin's calls are applied in the order made,
  * so a pinned note the counts reached ends with its pin. A count takes the pins after its reads, so an Unpin
- * or a rename heard while it reads is in what it sends; Pin runs a count of its own instead of sending, and a
+ * or a rename heard while it reads is in the pin list it sends — but its counts were read for the pins as
+ * they were before, so a pin that a same-vault rename moved meanwhile goes out with count 0 (`pinCounts` is
+ * keyed by the old path) until that rename's own `vault:changed` count repairs it; Pin runs a count of its own instead of sending, and a
  * count still reading when a newer one starts stops before sending (`runs`). Each vault's pins go in a call of
  * their own, because a call naming a vault Baram no longer has is refused whole; such a vault's pins stay in
- * storage, unused (a vault removed and added again gets a new id).
+ * storage, and every count and Pin that reaches them sends them again, is refused and logs a warning (a vault
+ * removed and added again gets a new id). Pin writes are chained (`saving`): the host stores whichever
+ * temporary file is renamed last, so unchained writes could leave an older list in storage.
  *
  * A note whose path holds a backslash can be neither badged nor pinned: a sandboxed path takes no "\"
  * (`SandboxFileDecorationUpdate`), and `setFileDecorations` refuses the whole call that carries one.
- * (The tree folds "\" into "/" in a row's key, so `a\b.md` would share a key with `a/b.md`.)
+ * (The tree folds "\" into "/" in a row's key, so `a\b.md` would share a key with `a/b.md`.) The same goes
+ * for the other paths the host refuses — see `pinnablePath`.
  *
  * The counting calls name no context, so both read the active vault — `ctx.index` the one the backend holds
  * active, `setFileDecorations` the one the app shows. The two can differ for a moment while the user switches
@@ -46,6 +53,9 @@ interface Pin {
   context: string;
   path: string;
 }
+
+/** The most UTF-16 units the host takes in a decoration path (its `MAX_DECORATION_PATH_CHARS`). */
+const MAX_PATH_CHARS = 4096;
 
 /** The cap at nine is this example's choice: 1–9, then "9+" (a badge holds one or two characters). */
 function badgeText(count: number): string {
@@ -84,9 +94,23 @@ function decoration(count: number, pinned: boolean): FileDecoration | null {
 }
 
 /**
+ * Whether the host would take `path` in `setFileDecorations`: names joined by "/", no leading or trailing "/",
+ * no empty, "." or ".." name, no "\\", at most `MAX_PATH_CHARS` units. This restates the host's `relativeLocate`
+ * rule (an example cannot import host code); a note is never the empty path, which the host does take.
+ */
+function pinnablePath(path: string): boolean {
+  return (
+    path !== "" &&
+    path.length <= MAX_PATH_CHARS &&
+    !path.includes("\\") &&
+    path.split("/").every((name) => name !== "" && name !== "." && name !== "..")
+  );
+}
+
+/**
  * The notes among a command's argument. The file tree menu hands `SandboxFileMenuTarget[]`; the palette hands
- * nothing and another plugin's `commands.execute` anything, so it is checked — folders and paths with "\" are
- * left out.
+ * nothing and another plugin's `commands.execute` anything, so it is checked — folders and paths the host would
+ * refuse (`pinnablePath`) are left out.
  */
 function notesOf(targets: unknown): Pin[] {
   if (!Array.isArray(targets)) return [];
@@ -94,14 +118,14 @@ function notesOf(targets: unknown): Pin[] {
   for (const target of targets as unknown[]) {
     if (typeof target !== "object" || target === null) continue;
     const { context, isDir, path } = target as Record<string, unknown>;
-    if (typeof context === "string" && typeof path === "string" && isDir === false && !path.includes("\\")) {
+    if (typeof context === "string" && typeof path === "string" && isDir === false && pinnablePath(path)) {
       notes.push({ context, path });
     }
   }
   return notes;
 }
 
-/** The stored pins, keeping only well-formed entries. */
+/** The stored pins, keeping only well-formed entries — one the host would refuse would refuse its vault's whole call. */
 function parsePins(stored: null | string): Pin[] {
   if (stored === null) return [];
   let value: unknown;
@@ -116,7 +140,8 @@ function parsePins(stored: null | string): Pin[] {
       typeof entry === "object" &&
       entry !== null &&
       typeof (entry as Pin).context === "string" &&
-      typeof (entry as Pin).path === "string",
+      typeof (entry as Pin).path === "string" &&
+      pinnablePath((entry as Pin).path),
   );
 }
 
@@ -136,7 +161,13 @@ export async function activate(ctx: SandboxContext): Promise<void> {
   let runs = 0;
   let pins = parsePins(await ctx.storage.read(PINS_KEY));
 
-  const savePins = (): Promise<void> => ctx.storage.write(PINS_KEY, JSON.stringify(pins));
+  /** The last write, settled or not. Storage keeps whichever write the host finishes last, so each write waits for the one before and serialises `pins` as it is then. */
+  let saving: Promise<void> = Promise.resolve();
+  const savePins = (): Promise<void> => {
+    const next = saving.then(() => ctx.storage.write(PINS_KEY, JSON.stringify(pins)));
+    saving = next.catch(() => undefined);
+    return next;
+  };
   const savePinsQuietly = (): void => {
     savePins().catch((err: unknown) => {
       console.warn("[tree-badges] saving pins failed", err);
@@ -169,7 +200,7 @@ export async function activate(ctx: SandboxContext): Promise<void> {
     return [...byContext.values()].flatMap((updates) =>
       chunks(updates).map((part) =>
         ctx.ui.setFileDecorations(part).catch((err: unknown) => {
-          console.warn("[tree-badges] pins not shown", err);
+          console.warn("[tree-badges] a pin call was refused", err);
         }),
       ),
     );

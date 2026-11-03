@@ -1,6 +1,7 @@
 // src/index.ts
 var PER_CALL = 1e3;
 var PINS_KEY = "pins";
+var MAX_PATH_CHARS = 4096;
 function badgeText(count) {
   return count > 9 ? "9+" : String(count);
 }
@@ -31,13 +32,16 @@ function decoration(count, pinned) {
   if (pinned) shown.icon = { glyph: "\u{1F4CC}" };
   return shown;
 }
+function pinnablePath(path) {
+  return path !== "" && path.length <= MAX_PATH_CHARS && !path.includes("\\") && path.split("/").every((name) => name !== "" && name !== "." && name !== "..");
+}
 function notesOf(targets) {
   if (!Array.isArray(targets)) return [];
   const notes = [];
   for (const target of targets) {
     if (typeof target !== "object" || target === null) continue;
     const { context, isDir, path } = target;
-    if (typeof context === "string" && typeof path === "string" && isDir === false && !path.includes("\\")) {
+    if (typeof context === "string" && typeof path === "string" && isDir === false && pinnablePath(path)) {
       notes.push({ context, path });
     }
   }
@@ -53,7 +57,7 @@ function parsePins(stored) {
   }
   if (!Array.isArray(value)) return [];
   return value.filter(
-    (entry) => typeof entry === "object" && entry !== null && typeof entry.context === "string" && typeof entry.path === "string"
+    (entry) => typeof entry === "object" && entry !== null && typeof entry.context === "string" && typeof entry.path === "string" && pinnablePath(entry.path)
   );
 }
 function samePin(a, b) {
@@ -66,7 +70,12 @@ async function activate(ctx) {
   let sent = /* @__PURE__ */ new Set();
   let runs = 0;
   let pins = parsePins(await ctx.storage.read(PINS_KEY));
-  const savePins = () => ctx.storage.write(PINS_KEY, JSON.stringify(pins));
+  let saving = Promise.resolve();
+  const savePins = () => {
+    const next = saving.then(() => ctx.storage.write(PINS_KEY, JSON.stringify(pins)));
+    saving = next.catch(() => void 0);
+    return next;
+  };
   const savePinsQuietly = () => {
     savePins().catch((err) => {
       console.warn("[tree-badges] saving pins failed", err);
@@ -91,7 +100,7 @@ async function activate(ctx) {
     return [...byContext.values()].flatMap(
       (updates) => chunks(updates).map(
         (part) => ctx.ui.setFileDecorations(part).catch((err) => {
-          console.warn("[tree-badges] pins not shown", err);
+          console.warn("[tree-badges] a pin call was refused", err);
         })
       )
     );

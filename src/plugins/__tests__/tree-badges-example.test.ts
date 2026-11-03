@@ -146,13 +146,14 @@ describe("baram-tree-badges — the reference file tree decorator (§395)", () =
   });
 
   /** Starts the plugin against `rows` over `store` (its `ctx.storage`), hearing Baram's renames and deletions as
-   *  `wireSandboxContributions` wires them. `hold` may hand an `index_tasks` read a promise to wait on; `rejectSet`
+   *  `wireSandboxContributions` wires them. `hold` may hand an `index_tasks` read a promise to wait on, `holdWrite` a `storage_write`; `rejectSet`
    *  names the `setFileDecorations` calls (counted from 1) the host refuses; `settled(n)` waits until the host has
    *  taken `n` of them and applied every one it took. */
   async function start(
     rows: () => { path: string }[],
     options: {
       hold?: () => Promise<void> | undefined;
+      holdWrite?: () => Promise<void> | undefined;
       rejectSet?: number[];
       store?: Map<string, string>;
     } = {},
@@ -168,6 +169,7 @@ describe("baram-tree-badges — the reference file tree decorator (§395)", () =
       }
       if (op.kind === "storage_read") return store.get(op.key) ?? null;
       if (op.kind === "storage_write") {
+        await options.holdWrite?.(); // a write the test holds open
         store.set(op.key, op.value);
         return null;
       }
@@ -450,26 +452,76 @@ describe("baram-tree-badges — the reference file tree decorator (§395)", () =
     await settled(2);
     expect(merged().get("/v/notes/a.md")?.icon).toEqual({ glyph: "📌" });
     expect(warn).toHaveBeenCalledWith(
-      "[tree-badges] pins not shown",
+      "[tree-badges] a pin call was refused",
       expect.anything(),
     );
     expect(pins(store)).toEqual(stored);
     warn.mockRestore();
   });
 
-  /** What fails this: a handler that trusts its argument — a folder, the palette's nothing, junk, or a "\" path
-   *  would be pinned (and the last refuses the call it travels in). */
-  it("pins nothing for a folder, no argument, a malformed one or a path with a backslash", async () => {
+  /** What fails this: a handler that trusts its argument — a folder, the palette's nothing, junk, or a path
+   *  with a "\", a ".." or empty name, a leading or trailing "/", or over 4,096 units would be pinned — and the
+   *  host refuses the whole call such a path travels in. */
+  it("pins nothing for a folder, no argument, a malformed one or a path the host would refuse", async () => {
     const { session, settled, store } = await start(() => []);
     for (const args of [
       [[note("docs", true)]],
       [],
       [["junk"]],
       [[note("a\\b.md")]],
+      [[note("../x.md")]],
+      [[note("a//b.md")]],
+      [[note("/a.md")]],
+      [[note("a.md/")]],
+      [[note(`${"a".repeat(4096)}.md`)]],
     ]) {
       await session.invokeCommand("pin", args);
     }
     await settled(0);
     expect(store.has("pins")).toBe(false);
+  });
+
+  /** What fails this: pin writes that are not chained. Pin of `a` starts its write and the host holds it; a rename
+   *  of `a` writes the moved list meanwhile; the held write then lands last and storage keeps the old path. */
+  it("keeps the last pin list when an earlier write finishes later", async () => {
+    let hold: Promise<void> | undefined;
+    let release = (): void => undefined;
+    const take = () => {
+      const held = hold;
+      hold = undefined; // one write only
+      return held;
+    };
+    const { session, store } = await start(() => [], { holdWrite: take });
+    hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pinning = session.invokeCommand("pin", [[note("notes/a.md")]]);
+    await vi.waitFor(() => expect(hold).toBeUndefined()); // that write now waits
+    notifyRenamed("/v/notes/a.md", "/v/notes/z.md", false);
+    // A command that does nothing: its answer comes back after the rename has been handled (frames are handled in
+    // the order sent), so an unchained rename write has reached the broker by now.
+    await session.invokeCommand("pin", []);
+    release();
+    await pinning;
+    await vi.waitFor(() =>
+      expect(pins(store)).toEqual([{ context: "ctx-1", path: "notes/z.md" }]),
+    );
+    // The positive pair: the held write did land (a stored list exists), after the rename's.
+    expect(store.has("pins")).toBe(true);
+  });
+
+  /** What fails this: a stored pin the host refuses (`../x.md`) sent beside a good one — the whole vault's call
+   *  is refused and the good pin is not shown. Its positive pair: the good pin is drawn. */
+  it("sends only the stored pins the host would take", async () => {
+    const stored = [
+      { context: "ctx-1", path: "../x.md" },
+      { context: "ctx-1", path: "notes/a.md" },
+    ];
+    const { settled } = await start(() => [], {
+      store: new Map([["pins", JSON.stringify(stored)]]),
+    });
+    await settled(1);
+    expect(merged().get("/v/notes/a.md")?.icon).toEqual({ glyph: "📌" });
+    expect(merged().size).toBe(1);
   });
 });

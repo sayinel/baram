@@ -95,8 +95,9 @@ loses its tasks by an outside edit keeps its stale badge even after the user ret
 changes. It also pins notes from the file tree's right-click menu (`contributions.fileMenu`, files only): **Pin** puts
 📌 in place of the note's icon — the icon rather than a second badge, because a plugin has one decoration per
 path and a badge holds two characters — and **Unpin** takes it off. The pins are kept in `ctx.storage` as
-`{ context, path }`, follow Baram's renames and deletions (`file:rename`, `file:delete`), and are sent again on
-`activate` and after every count, each vault's in a call of its own.
+`{ context, path }`, follow Baram's renames and deletions (`file:rename`, `file:delete`) while the plugin is running — one made
+while it is disabled or failed to load leaves the pin on the old path — and are sent again on `activate` and
+after every count, each vault's in a call of its own.
 It is not published — read it for the pattern, and copy `community-template/` to publish your own.
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
