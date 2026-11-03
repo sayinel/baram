@@ -96,7 +96,7 @@ changes. It also pins notes from the file tree's right-click menu (`contribution
 📌 in place of the note's icon — the icon rather than a second badge, because a plugin has one decoration per
 path and a badge holds two characters — and **Unpin** takes it off. The pins are kept in `ctx.storage` as
 `{ context, path }`, follow Baram's renames and deletions (`file:rename`, `file:delete`) while the plugin is running — one made
-while it is disabled or failed to load leaves the pin on the old path — and are sent again on `activate` and
+while it is disabled, failed to load or is still reading its storage at start leaves the pin on the old path — and are sent again on `activate` and
 after every count, each vault's in a call of its own.
 It is not published — read it for the pattern, and copy `community-template/` to publish your own.
 

@@ -33,7 +33,8 @@ function decoration(count, pinned) {
   return shown;
 }
 function pinnablePath(path) {
-  return path !== "" && path.length <= MAX_PATH_CHARS && !path.includes("\\") && path.split("/").every((name) => name !== "" && name !== "." && name !== "..");
+  if (path === "") return true;
+  return path.length <= MAX_PATH_CHARS && !path.includes("\\") && path.split("/").every((name) => name !== "" && name !== "." && name !== "..");
 }
 function notesOf(targets) {
   if (!Array.isArray(targets)) return [];

@@ -506,8 +506,8 @@ describe("baram-tree-badges — the reference file tree decorator (§395)", () =
     await vi.waitFor(() =>
       expect(pins(store)).toEqual([{ context: "ctx-1", path: "notes/z.md" }]),
     );
-    // The positive pair: the held write did land (a stored list exists), after the rename's.
-    expect(store.has("pins")).toBe(true);
+    // `await pinning` returns only once Pin's own write — the held one — has landed, so the list read above is
+    // the one left after it; with unchained writes that is `[a]`.
   });
 
   /** What fails this: a stored pin the host refuses (`../x.md`) sent beside a good one — the whole vault's call
@@ -523,5 +523,24 @@ describe("baram-tree-badges — the reference file tree decorator (§395)", () =
     await settled(1);
     expect(merged().get("/v/notes/a.md")?.icon).toEqual({ glyph: "📌" });
     expect(merged().size).toBe(1);
+  });
+
+  /** What fails this: a pin path check stricter than the host's. An external file's own context is the file, and the
+   *  menu hands it as `path: ""`, which the host takes; a Pin that drops it does nothing and says nothing. */
+  it("pins an external file whose context is the file itself", async () => {
+    useContextStore.setState({
+      activeContextId: "ctx-1",
+      contexts: [
+        { contextType: "vault", id: "ctx-1", path: "/v" },
+        { contextType: "file", id: "ctx-file", path: "/ext/f.md" },
+      ] as never,
+    });
+    const { session, settled, store } = await start(() => []);
+    await session.invokeCommand("pin", [
+      [{ context: "ctx-file", isDir: false, path: "" }],
+    ]);
+    await settled(1);
+    expect(merged().get("/ext/f.md")?.icon).toEqual({ glyph: "📌" });
+    expect(pins(store)).toEqual([{ context: "ctx-file", path: "" }]);
   });
 });

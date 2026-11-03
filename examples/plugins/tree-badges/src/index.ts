@@ -22,12 +22,13 @@ import type { FileDecoration, SandboxContext, SandboxFileDecorationUpdate } from
  * counts, each with its own vault and that vault's count: one plugin's calls are applied in the order made,
  * so a pinned note the counts reached ends with its pin. A count takes the pins after its reads, so an Unpin
  * or a rename heard while it reads is in the pin list it sends — but its counts were read for the pins as
- * they were before, so a pin that a same-vault rename moved meanwhile goes out with count 0 (`pinCounts` is
- * keyed by the old path) until that rename's own `vault:changed` count repairs it; Pin runs a count of its own instead of sending, and a
+ * they were before, so a pin that a same-vault rename moved meanwhile can go out with count 0 — when that
+ * vault's read saw the old path (`pinCounts` is keyed by it) — until that rename's own `vault:changed` count
+ * repairs it; Pin runs a count of its own instead of sending, and a
  * count still reading when a newer one starts stops before sending (`runs`). Each vault's pins go in a call of
  * their own, because a call naming a vault Baram no longer has is refused whole; such a vault's pins stay in
  * storage, and every count and Pin that reaches them sends them again, is refused and logs a warning (a vault
- * removed and added again gets a new id). Pin writes are chained (`saving`): the host stores whichever
+ * removed and added again gets a new id). Every write of the pin list (Pin, Unpin, `file:rename`, `file:delete`) is chained (`saving`): the host stores whichever
  * temporary file is renamed last, so unchained writes could leave an older list in storage.
  *
  * A note whose path holds a backslash can be neither badged nor pinned: a sandboxed path takes no "\"
@@ -96,11 +97,12 @@ function decoration(count: number, pinned: boolean): FileDecoration | null {
 /**
  * Whether the host would take `path` in `setFileDecorations`: names joined by "/", no leading or trailing "/",
  * no empty, "." or ".." name, no "\\", at most `MAX_PATH_CHARS` units. This restates the host's `relativeLocate`
- * rule (an example cannot import host code); a note is never the empty path, which the host does take.
+ * rule (an example cannot import host code), the empty path included: the host takes `""` for an external file's
+ * own context (a `file` context is the file), and the tree menu hands exactly that.
  */
 function pinnablePath(path: string): boolean {
+  if (path === "") return true; // split below would read it as one empty name
   return (
-    path !== "" &&
     path.length <= MAX_PATH_CHARS &&
     !path.includes("\\") &&
     path.split("/").every((name) => name !== "" && name !== "." && name !== "..")
