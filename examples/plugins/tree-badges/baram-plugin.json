@@ -1,14 +1,24 @@
 {
   "id": "baram-tree-badges",
   "name": "Tree Badges",
-  "description": "Puts the number of open tasks on each note in the file tree. The reference file tree decorator.",
+  "description": "Puts the number of open tasks on each note in the file tree, and pins notes from its right-click menu. The reference file tree decorator.",
   "version": "1.0.0",
   "author": "Baram",
   "license": "Apache-2.0",
   "main": "dist/index.mjs",
   "engines": { "baram": ">=0.7.7" },
   "trust": "sandboxed",
-  "capabilities": ["filetree", "files:readonly"],
+  "capabilities": ["filetree", "files:readonly", "storage"],
+  "contributions": {
+    "commands": [
+      { "id": "pin", "title": "Pin to the file tree", "palette": false },
+      { "id": "unpin", "title": "Unpin from the file tree", "palette": false }
+    ],
+    "fileMenu": [
+      { "id": "pin", "command": "pin", "title": "Pin", "when": "file" },
+      { "id": "unpin", "command": "unpin", "title": "Unpin", "when": "file" }
+    ]
+  },
   "icon": "☐",
   "keywords": ["tasks", "file tree", "example"]
 }

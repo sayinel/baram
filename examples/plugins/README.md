@@ -92,7 +92,12 @@ backslash cannot be badged: a sandboxed path takes no `\`, and `setFileDecoratio
 that carries one. It reads the active vault only, so after a vault switch the new vault's badges appear at
 that vault's first change, and the vault left keeps the badges last sent to it. A note in that vault that
 loses its tasks by an outside edit keeps its stale badge even after the user returns and the vault
-changes. It is not published — read it for the pattern, and copy `community-template/` to publish your own.
+changes. It also pins notes from the file tree's right-click menu (`contributions.fileMenu`, files only): **Pin** puts
+📌 in place of the note's icon — the icon rather than a second badge, because a plugin has one decoration per
+path and a badge holds two characters — and **Unpin** takes it off. The pins are kept in `ctx.storage` as
+`{ context, path }`, follow Baram's renames and deletions (`file:rename`, `file:delete`), and are sent again on
+`activate` and after every count, each vault's in a call of its own.
+It is not published — read it for the pattern, and copy `community-template/` to publish your own.
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
 fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING
