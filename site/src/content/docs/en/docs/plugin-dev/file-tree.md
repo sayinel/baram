@@ -189,7 +189,7 @@ ctx.commands.register("pin", (targets) => {}); // sandboxed: SandboxFileMenuTarg
 - With more than 1,000 targets your items are shown disabled. A sandboxed plugin's items are disabled
   too when a target is in no registered context. A disabled item says why on hover.
 - The menu of the tree's empty area has no plugin items.
-- **Check the argument.** Started from the palette, a shortcut or the status bar, the command gets no
-  targets, and another plugin's `commands.execute` can pass it anything. A sandboxed plugin is not
+- **Check the argument.** Started any other way — the palette, the editor's right-click menu, the slash menu, a
+  shortcut or the status bar — the command gets no targets, and another plugin's `commands.execute` can pass it anything. A sandboxed plugin is not
   sent a function, a BigInt or a value that refers to itself — that call is refused.
 - A command started from this menu may open a [prompt](/en/docs/plugin-dev/context-prompts/).

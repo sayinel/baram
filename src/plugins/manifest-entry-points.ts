@@ -3,7 +3,8 @@
 // lines when these rules arrived (plan 0118 P1). The checks come in from
 // `validateContributions`, which owns the error list, so a rule here reports exactly the way a
 // rule there does.
-// §395 spec 0074 D16 — and `contributions.fileMenu`, the file tree's right-click menu, by the same rules.
+// §395 spec 0074 D16 — and `contributions.fileMenu`, the file tree's right-click menu, by the menu's
+// rules with its own cap and its own `when`.
 // Its tie to the `filetree` capability is `checkFileMenuDeclarations`, which `validateManifest` calls
 // because it needs the capability list.
 import {

@@ -1,6 +1,6 @@
 ---
 title: "플러그인 매니페스트"
-sourceHash: "2c8bbcfd47fc"
+sourceHash: "4a1b3db037d1"
 ---
 
 
@@ -45,7 +45,7 @@ sourceHash: "2c8bbcfd47fc"
 
 | 필드               | 타입      | 설명                                                                                                  |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
-| `contributions`    | object    | 앱이 플러그인 대신 그리는 것(명령, 상태바 항목, 설정, 우클릭 · 슬래시 항목, sandboxed 플러그인의 사이드바 패널)과 플러그인이 그리는 코드 블록 언어 — [기여](#기여) 참조 |
+| `contributions`    | object    | 앱이 플러그인 대신 그리는 것(명령, 상태바 항목, 설정, 에디터 · 파일 트리 우클릭 항목, 슬래시 항목, sandboxed 플러그인의 사이드바 패널)과 플러그인이 그리는 코드 블록 언어 — [기여](#기여) 참조 |
 | `dependencies`     | string\[] | 이 플러그인이 의존하는 다른 플러그인 ID                                                               |
 | `tiptapExtensions` | object\[] | 이 플러그인이 내보내는 Tiptap 확장 — [Tiptap 확장 플러그인](/ko/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-확장-플러그인) 참조 |
 | `repository`       | string    | 소스 코드 URL                                                                                         |

@@ -44,7 +44,7 @@ title: "The plugin manifest"
 
 | Field              | Type      | Description                                                                                           |
 | ------------------ | --------- | ----------------------------------------------------------------------------------------------------- |
-| `contributions`    | object    | What the app draws for the plugin (commands, status-bar items, settings, right-click and slash items, a sandboxed plugin's sidebar panels) and the code block languages the plugin draws — see [Contributions](#contributions) |
+| `contributions`    | object    | What the app draws for the plugin (commands, status-bar items, settings, editor and file tree right-click items, slash items, a sandboxed plugin's sidebar panels) and the code block languages the plugin draws — see [Contributions](#contributions) |
 | `dependencies`     | string\[] | Other plugin IDs this plugin depends on                                                               |
 | `tiptapExtensions` | object\[] | Tiptap extensions exported by this plugin — see [Tiptap Extension plugins](/en/docs/plugin-dev/commands-and-tiptap-extensions/#tiptap-extension-plugins) |
 | `repository`       | string    | Source code URL                                                                                       |
