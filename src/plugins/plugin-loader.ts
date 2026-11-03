@@ -837,7 +837,7 @@ export class PluginLoader {
         registerHostCommandHandler(
           fullId,
           // §395 spec 0074 D16 — the arguments travel: the file tree menu hands its targets, a trusted
-          // plugin's `commands.execute` what it passes (`invokeCommand` refuses what JSON cannot carry).
+          // plugin's `commands.execute` what it passes (`invokeCommand` refuses a function, a BigInt or a cycle; other values go as `JSON.stringify` makes them).
           // The five other callers of `executePluginCommand` pass none (`execute-plugin-command-callers.test.ts`
           // lists them), so the handler gets no argument from them.
           (...args: unknown[]) => session.invokeCommand(cmd.id, args),

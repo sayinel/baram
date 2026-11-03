@@ -270,7 +270,7 @@ export class SandboxSession {
     if (this.disposed)
       return Promise.reject(new Error("Sandbox session disposed"));
     // §395 plan 0128 R10 — arguments travel now: the file tree menu's targets, and whatever a trusted
-    // plugin's `commands.execute` passes. One the wire's JSON cannot carry is refused here, at once —
+    // plugin's `commands.execute` passes. A function, a BigInt or a cycle is refused here, at once; any other value goes as `JSON.stringify` makes it —
     // sent, a BigInt or a cycle would reject inside tauri's `invoke`, which the send chain only logs, and
     // the call would wait out `CALL_TIMEOUT_MS`; a function would arrive as `null` (or vanish from an object).
     try {

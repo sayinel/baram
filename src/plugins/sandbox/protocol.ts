@@ -344,13 +344,17 @@ export const PROMPT_LIMITS = {
 } as const;
 
 /**
- * §260 · §395 — throws when `value` holds what the wire's JSON cannot carry as it is: a function or a BigInt
- * (this check), or a cycle (`JSON.stringify` throws on its own). Here, beside the frames, because both ends
- * call it: the sandbox client before it sends a plugin's own value (`events.emit` arguments, a command's
- * result), and `SandboxSession.invokeCommand` before it sends a command's arguments (plan 0128 R10). Without
- * it, on tauri 2.12.2 — run: the serialisation step turns a function into `null` in an array, drops it from an
- * object, and throws on a BigInt or a cycle; read in tauri's scripts and `send-chain.ts`, not run: that throw
- * rejects `invoke`, the host's send chain only logs it, and the call waits out `CALL_TIMEOUT_MS`.
+ * §260 · §395 — throws when `value` holds a function, a BigInt (this check) or a cycle (`JSON.stringify`
+ * throws on its own); any other value passes, and crosses as `JSON.stringify` makes it (`undefined`, `NaN`, a
+ * Symbol → `null` in an array; a Date → its ISO string; a Set → `{}` — measured with this body and tauri
+ * 2.12.2's `process-ipc-message-fn.js`). Here, beside the frames, because both ends call it: the sandbox client
+ * before it sends a plugin's own value (`events.emit` arguments, a command's result), and
+ * `SandboxSession.invokeCommand` before it sends a command's arguments (plan 0128 R10). The rest of this
+ * comment governs the host → sandbox direction (`invokeCommand`) only. Without the check, on tauri 2.12.2 —
+ * run, on hand-built `invokeCommand` frames: the serialisation step turns a function into `null` in an array,
+ * drops it from an object, and throws on a BigInt or a cycle; read in tauri's scripts and `send-chain.ts`, not
+ * run: that throw rejects `invoke`, the host's send chain only logs it, and the call waits out
+ * `CALL_TIMEOUT_MS`.
  */
 export function assertSerializable(value: unknown): void {
   JSON.stringify(value, (_k, v) => {

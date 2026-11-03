@@ -1,9 +1,10 @@
 // §395 spec 0074 D16 · §7 "계획 B" (호출) — a sandboxed plugin's file tree menu command, end to end through the
 // loader (`prompt-end-to-end.test.ts`'s harness): the targets reach the handler and the palette's call hands
 // none; 1,000 targets cross in one frame of 8,192 bytes or more, all of them; a command started from the menu
-// may open a prompt (§385); and an argument JSON cannot carry is refused at once instead of waiting out the
-// call's 30 s. `wire` models what plan 0128 R10 found — run: every host→sandbox frame crosses as JSON; read,
-// not run: one that JSON cannot serialize makes `invoke` reject, which the send chain logs and drops.
+// may open a prompt (§385); and a function, a BigInt or a cycle among the arguments is refused at once instead of waiting out the
+// call's 30 s. `wire` models what plan 0128 R10 found — run: the serialisation step on hand-built `invokeCommand` frames;
+// read, not run: every host→sandbox frame crosses it, and one it cannot serialize makes `invoke` reject,
+// which the send chain logs and drops.
 import { fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -201,7 +202,7 @@ describe("a sandboxed file tree menu command, end to end (§395 D16)", () => {
    * `invoke` drops them, and the call waits out `CALL_TIMEOUT_MS` (30 s, past this test's 5 s); the function
    * arrives as `null`.
    */
-  it("refuses at once an argument JSON cannot carry, from another plugin's commands.execute; a plain one goes", async () => {
+  it("refuses at once a function, a BigInt or a cycle argument, from another plugin's commands.execute; a plain one goes", async () => {
     const other = createExtensionContext(caller, "/p/other");
     const cycle: Record<string, unknown> = {};
     cycle.self = cycle;
