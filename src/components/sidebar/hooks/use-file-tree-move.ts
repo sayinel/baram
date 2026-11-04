@@ -76,7 +76,7 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
           release?.();
         }
       }
-      // §29 #824 each `rename_file` announced its own index change.
+      // §29 #824 each `renameFile` call announced its own index change.
       if (failed.length > 0) {
         await showAlert(`Failed to move: ${failed.join(", ")}`);
       }
