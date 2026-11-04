@@ -34,6 +34,8 @@ A note inside a left-out folder can still be opened with **File > Open File** (`
 - [tags](/en/docs/linking/wikilinks-and-tags/#tags), including renaming a tag
 - the [Tasks panel](/en/docs/tasks/panel-and-queries/#the-tasks-panel)
 - the [command line](/en/docs/command-line/): `files`, `search`, `tags`, `tasks`, `backlinks` and `links`
+- the [MCP server](/en/docs/mcp/)'s tools, which an AI client calls
+- what plugins read through [`ctx.index`](/en/docs/plugin-dev/context-index/)
 
 Saving a note in a left-out folder does not bring it back into any of these.
 
@@ -67,7 +69,11 @@ Baram does not read `.gitignore`, `.ignore` or Git's global excludes. Notes you 
 
 ### When a change takes effect
 
-Search, tags, the Tasks panel, folder renames and the command line read the file each time they run. Links, backlinks, the graph and note renames use what the link index read when it was built — when the vault was opened, or after a folder rename. After editing `.baramignore`, close and reopen the vault to see the change everywhere.
+Search, tags, folder renames, the command line and the MCP server read the file each time they run.
+
+Links, backlinks, the graph and note renames follow once Baram sees the file change, which rebuilds the link index: when you save `.baramignore` from Baram, or when another program changes it in a vault Baram is watching — the open vault, and the vaults you have opened since Baram started. A vault you opened earlier but have not returned to since you reloaded the window catches up when you open it again.
+
+The Tasks panel re-reads its notes when you press its refresh button or change what it covers.
 
 ### When the file can't be used
 

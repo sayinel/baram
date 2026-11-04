@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: 인덱스"
-sourceHash: "9f5b2d533ddc"
+sourceHash: "69ab18d4b452"
 ---
 
 ## `context.index` (`files` 또는 `files:readonly` 필요)
@@ -77,7 +77,8 @@ interface IndexSearchResult { items: { line: number; path: string; snippet: stri
   자신의 별칭 뒤의 링크, 블록 참조와 블록 임베드가 모두 해당합니다. 노트가 아직 없어도 물을 수 있고,
   폴더는 거부됩니다.
 - **`links(path)`** — 노트가 있어야 하고, 노트(`.md`, `.markdown`)여야 하며, 볼트 걷기가 들어가는 곳이어야
-  합니다 — 숨김 폴더나 `node_modules` 안은 거부됩니다.
+  합니다 — 숨김 폴더나 볼트 걷기가 [건너뛰는 폴더](/ko/docs/workspace/excluded-folders/)(기본으로는
+  빌드 산출물, 그리고 그 볼트의 `.baramignore`가 적은 것) 안은 거부됩니다.
 - **`tags()`와 `notesWithTag(tag)`** — 태그는 소문자로 비교하고 앞의 `#`는 모두 뗍니다. 넘기는 태그에서도,
   `tags: ["#work"]` 같은 프론트매터 항목에서도 떼므로 그 항목은 태그 `work`입니다. `tags()`는 그것을 본문의
   `#work`와 함께 세고, `notesWithTag("#Work")`는 둘 다 찾습니다. 빈 태그는 거부됩니다.

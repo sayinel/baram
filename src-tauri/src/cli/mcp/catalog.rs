@@ -178,8 +178,9 @@ impl ToolName {
                 title: "List notes",
                 description: "The Markdown notes (.md and .markdown) in the vault, or in one \
                               folder of it, by path: the files the app's walk finds for tags, \
-                              tasks and links. Hidden files and folders, and node_modules, are \
-                              left out.",
+                              tasks and links. Hidden files and folders are left out, and so are \
+                              build-output folders (node_modules, target, build, dist, \
+                              __pycache__, .next) and what the vault's .baramignore lists.",
                 arguments: LIST_FILES,
             },
             ToolName::ReadNote => About {
@@ -189,8 +190,8 @@ impl ToolName {
                               time, each line with its line ending: content, totalLines, and \
                               nextOffset when more follows. A page also ends early, at the end \
                               of a line, before it grows past a size limit. Only notes: hidden \
-                              files, files in hidden folders or in node_modules, and files \
-                              other than .md and .markdown are refused.",
+                              files, files in a folder list_files leaves out, and files other \
+                              than .md and .markdown are refused.",
                 arguments: READ_NOTE,
             },
             ToolName::Search => About {

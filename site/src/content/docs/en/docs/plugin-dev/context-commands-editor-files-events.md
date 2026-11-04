@@ -190,7 +190,7 @@ program, once the link index reflects it. A change that leaves a live index as i
 a path the index never held, an empty folder appearing). It needs `files` or `files:readonly`, not `events`, and
 fires within about two seconds of a change, even while files keep changing, only in vaults Baram watches (the
 active one and any opened this session); one that makes Baram re-read the vault (a folder moved in, a
-`.baramignore` edit) fires after that read. Never for names starting with `.`, or inside [folders Baram leaves
+`.baramignore` edit) fires after that read. Never for other names starting with `.`, or inside [folders Baram leaves
 out](/en/docs/workspace/excluded-folders/): build output and `.git` by default plus what `.baramignore` lists.
 Your own `files.writeFile` can fire it too: skip unchanged writes to avoid a loop. Read the vault again with [`ctx.index`](/en/docs/plugin-dev/context-index/). The renames, moves and deletions Baram makes in its file tree, a journal migration, a zettel promotion or a zettel inbox delete also arrive as `"file:rename"` and `"file:delete"`, before the same change's `"vault:changed"` (except in a vault registered through a symlink or another spelling of its folder) — see [File tree decorations](/en/docs/plugin-dev/file-tree/#filerename-and-filedelete-requires-files-or-filesreadonly).
 

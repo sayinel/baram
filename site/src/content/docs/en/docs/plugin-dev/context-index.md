@@ -79,7 +79,9 @@ interface IndexSearchResult { items: { line: number; path: string; snippet: stri
   (`[[notes/a]]`), behind the vault's own alias, and block references and embeds. The note need
   not exist yet; a folder is refused.
 - **`links(path)`** — the note must exist, be a note (`.md`, `.markdown`) and sit where the
-  vault walk goes — not in a hidden folder or `node_modules`.
+  vault walk goes — not in a hidden folder or a folder the walk
+  [leaves out](/en/docs/workspace/excluded-folders/) (build output by default, plus the vault's
+  `.baramignore`).
 - **`tags()`** and **`notesWithTag(tag)`** — tags are compared lowercased, and every leading `#` is
   dropped — from the tag you pass and from a front-matter entry such as `tags: ["#work"]` alike — so
   that entry is the tag `work`: `tags()` counts it with `#work` in the text, and

@@ -2245,16 +2245,37 @@
       "description": "LLM 에러"
     },
     {
-      "name": "index:updated",
+      "name": "index:changed",
       "payload": {
-        "filesIndexed": "number",
-        "duration": "number"
+        "entries": "{ canonical: string; spellings: string[] }[]",
+        "rebuilt": "string[]",
+        "contexts": "string[]?"
       },
       "module": "index",
       "spec": "§29",
       "phase": 2,
       "milestone": "M7",
-      "description": "인덱스 갱신 완료"
+      "description": "링크 인덱스가 바뀜 — 앱의 쓰기 명령이 끝나기 전에, 또는 watcher applier 의 묶음 · 재빌드 뒤에 (#824). entries 는 바뀐 파일, rebuilt 는 다시 만든 등록, contexts 는 vault:changed 로 알릴 컨텍스트(watcher 묶음과 재빌드만 싣는다)"
+    },
+    {
+      "name": "watch:retry",
+      "payload": null,
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M7",
+      "description": "거절됐던 감시를 다시 청해도 될 수 있음 — 컨텍스트가 등록됐거나 감시 자리가 비었다 (#797)"
+    },
+    {
+      "name": "watch:lease-ended",
+      "payload": {
+        "lease": "number"
+      },
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M7",
+      "description": "Rust 가 이 창의 감시 lease 하나를 끝냈음 — 받은 창은 그 감시를 다시 청한다 (#797)"
     },
     {
       "name": "plugin:s2h",
