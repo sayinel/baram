@@ -1,7 +1,11 @@
 // §33 Inline rename with wikilink auto-update
 import { useCallback, useState } from "react";
 
-import type { NamespaceRenameResult, RenameResult } from "../../../ipc/types";
+import type {
+  MovedFile,
+  NamespaceRenameResult,
+  RenameResult,
+} from "../../../ipc/types";
 import type { FileEntry } from "../../../stores/file/file";
 
 import { type Locale, t } from "../../../i18n";
@@ -11,6 +15,10 @@ import {
   renameFileWithLinks,
   renameNamespace,
 } from "../../../ipc/invoke";
+import {
+  beginFileOperation,
+  notifyRenamed,
+} from "../../../plugins/file-decorations/operation-notices";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -71,87 +79,129 @@ export function useFileTreeRename(
       // IPC call and the local state updates.
       const isNamespaceRename = isDir && !!rootPath;
 
-      // issue 263: ONLY the IPC call belongs inside the try whose catch says
-      // the rename failed. A throw from here means nothing happened on disk,
-      // and that is the only case in which "Rename failed" is true.
-      let result: NamespaceRenameResult | RenameResult;
+      // §395 spec 0074 D12 — the vault:changed of every context holding either
+      // path waits until this rename has told plugins. Raised as the first
+      // statement of the try whose finally releases it, so nothing thrown
+      // between here and the IPC leaves it raised. The files a PDF's rename
+      // carries along (`moved`) are known only from the IPC's result, but the
+      // backend carries them only under the root of a directory context
+      // holding the PDF (`carry_pdf_highlights`), so every context holding one
+      // holds the PDF too and is held here — except one registered at or
+      // inside that root's `highlights/` or `.baram/` that does not hold the
+      // PDF, whose vault:changed is then not held.
+      let release: (() => void) | undefined;
       try {
-        result = isNamespaceRename
-          ? await renameNamespace(oldPath, newPath, rootPath)
-          : await renameFileWithLinks(oldPath, newPath);
-      } catch (err) {
-        logger.error("[FileTree] Rename failed:", err);
-        // issue 263: the backend now refuses a rename it cannot complete (the
-        // link index is still being built, the file is outside every context)
-        // instead of renaming and leaving references stale. The reason has to
-        // reach the user, not only the log — the tree simply keeps the old
-        // name otherwise.
-        const { locale } = useSettingsStore.getState();
-        useUIStore.getState().showToast(
-          t("fileTree.rename.failed.toast", locale as Locale, {
-            message: String(err),
-          }),
-          "error",
-        );
-        return;
-      }
-
-      // The file is already renamed on disk by now. Reporting a local-state
-      // failure as "Rename failed" would tell the user the opposite of what
-      // happened, so this half only logs.
-      let referrersHeldBack = 0;
-      // issue 678: the renamed note is counted apart from the referrers. Its
-      // tab is the one the person is looking at, so "reload it to see the new
-      // name" would tell them to throw away the edit they are making.
-      let renamedNoteHeldBack = false;
-      try {
-        renameFileEntry(oldPath, newPath, newName);
-        if (isNamespaceRename) {
-          useEditorStore.getState().renameDirInTabs(oldPath, newPath);
-        } else {
-          renameTab(oldPath, newPath, newName);
+        release = beginFileOperation([oldPath, newPath]);
+        // issue 263: ONLY the IPC call belongs inside the try whose catch says
+        // the rename failed. A throw from here means nothing happened on disk,
+        // and that is the only case in which "Rename failed" is true.
+        let result: NamespaceRenameResult | RenameResult;
+        try {
+          result = isNamespaceRename
+            ? await renameNamespace(oldPath, newPath, rootPath)
+            : await renameFileWithLinks(oldPath, newPath);
+        } catch (err) {
+          logger.error("[FileTree] Rename failed:", err);
+          // issue 263: the backend now refuses a rename it cannot complete (the
+          // link index is still being built, the file is outside every context)
+          // instead of renaming and leaving references stale. The reason has to
+          // reach the user, not only the log — the tree simply keeps the old
+          // name otherwise.
+          const { locale } = useSettingsStore.getState();
+          useUIStore.getState().showToast(
+            t("fileTree.rename.failed.toast", locale as Locale, {
+              message: String(err),
+            }),
+            "error",
+          );
+          return;
         }
-        // The renamed file's cached content is already under newPath:
-        // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
-        // stores/file/file-tree-ops.ts). Read the map after it.
-        const { openFiles } = useFileStore.getState();
-        // The files the backend rewrote — referrers, and since issue 678 the
-        // renamed note itself under its NEW path (re-keyed above, so it is
-        // found here): every CLEAN open surface of each follows the disk
-        // (issue 594); one with unsaved work keeps its edits and takes the
-        // conflict path, as for any external write.
-        for (const updatedFile of result.updatedFiles) {
-          if (openFiles.has(updatedFile)) {
-            try {
-              const newContent = await readFile(updatedFile);
-              if (
-                !syncCleanSurfacesAfterReferrerRewrite(updatedFile, newContent)
-              ) {
-                if (updatedFile === newPath) renamedNoteHeldBack = true;
-                else referrersHeldBack += 1;
-              }
-            } catch {
-              /* ignore */
+
+        // The file is already renamed on disk by now. Reporting a local-state
+        // failure as "Rename failed" would tell the user the opposite of what
+        // happened, so this half only logs.
+        let referrersHeldBack = 0;
+        // issue 678: the renamed note is counted apart from the referrers. Its
+        // tab is the one the person is looking at, so "reload it to see the new
+        // name" would tell them to throw away the edit they are making.
+        let renamedNoteHeldBack = false;
+        try {
+          // §395 spec 0074 D10 — the `notifyRenamed` in each branch of this if
+          // runs after its `renameFileEntry` and the tab re-key that follows
+          // it, in the tree update's synchronous span, before the first await
+          // below: a row re-mounted under the new path finds its decoration
+          // already there, and a trusted plugin's `file:rename` handler finds
+          // the tabs already on the new path. The branch taken decides
+          // `isDir`: `renameNamespace` moved a folder, `renameFileWithLinks`
+          // files — the renamed one and each one it carried along, every one
+          // an in-app rename plugins hear of.
+          if (isNamespaceRename) {
+            renameFileEntry(oldPath, newPath, newName);
+            useEditorStore.getState().renameDirInTabs(oldPath, newPath);
+            notifyRenamed(oldPath, newPath, true);
+          } else {
+            // The renamed file, then §33 every file the rename carried along
+            // (`moved`: a PDF's highlight note and sidecar) — each followed the
+            // same way, or a tab left on the old path writes the file back
+            // there on its next save (`writeFile` creates a missing file).
+            const files: MovedFile[] = [
+              { from: oldPath, to: newPath },
+              ...("moved" in result ? result.moved : []),
+            ];
+            for (const { from, to } of files) {
+              const name = to === newPath ? newName : lastPathSegment(to);
+              renameFileEntry(from, to, name);
+              renameTab(from, to, name);
+              notifyRenamed(from, to, false);
             }
           }
+          // Each moved file's cached content is already under its new path:
+          // `renameFileEntry` re-keys openFiles (`rekeyOpenFilesPrefix`,
+          // stores/file/file-tree-ops.ts). Read the map after it.
+          const { openFiles } = useFileStore.getState();
+          // The files the backend rewrote — referrers, and since issue 678 the
+          // renamed note itself under its NEW path (re-keyed above, so it is
+          // found here): every CLEAN open surface of each follows the disk
+          // (issue 594); one with unsaved work keeps its edits and takes the
+          // conflict path, as for any external write.
+          for (const updatedFile of result.updatedFiles) {
+            if (openFiles.has(updatedFile)) {
+              try {
+                const newContent = await readFile(updatedFile);
+                if (
+                  !syncCleanSurfacesAfterReferrerRewrite(
+                    updatedFile,
+                    newContent,
+                  )
+                ) {
+                  if (updatedFile === newPath) renamedNoteHeldBack = true;
+                  else referrersHeldBack += 1;
+                }
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+          // §29 #824 the rename command announced the index change (`index:changed`).
+        } catch (err) {
+          logger.error(
+            "[FileTree] Rename committed, local state update failed:",
+            err,
+          );
         }
-        // §29 #824 the rename command announced the index change (`index:changed`).
-      } catch (err) {
-        logger.error(
-          "[FileTree] Rename committed, local state update failed:",
-          err,
-        );
-      }
 
-      // issue 594: what the backend could not finish AFTER the move is in the
-      // result, not in an `Err` — and it has to reach the user the same way a
-      // refusal does. Warnings, not errors: the rename itself is done.
-      reportPostRenameOutcomes(
-        result,
-        isNamespaceRename ? rootPath : null,
-        referrersHeldBack,
-        renamedNoteHeldBack,
-      );
+        // issue 594: what the backend could not finish AFTER the move is in the
+        // result, not in an `Err` — and it has to reach the user the same way a
+        // refusal does. Warnings, not errors: the rename itself is done.
+        reportPostRenameOutcomes(
+          result,
+          isNamespaceRename ? rootPath : null,
+          referrersHeldBack,
+          renamedNoteHeldBack,
+        );
+      } finally {
+        release?.();
+      }
     },
     [treeRef, renameFileEntry, renameTab, fileTree, rootPath],
   );

@@ -31,6 +31,10 @@ pub enum RateClass {
     /// comment that a cap does not stop a flood. It also carries `hostRequest`, so
     /// without this the host-mediated `ai` path had no Rust-side limit at all.
     Transport,
+    /// §393 — a walk of one context's whole directory: `ctx.index` tags, notes with a tag, tasks
+    /// and search (spec 0072 D8). One call reads every note, so the budget counts walks, not
+    /// files. Sized from a 10,000-note vault (plan 0124 Task 4, ledger `impl-notes/0093`).
+    Walk,
 }
 
 impl RateClass {
@@ -54,6 +58,12 @@ impl RateClass {
             // throttling here stalls correctness-bearing traffic, not just abuse.
             // Finite is the point.
             RateClass::Transport => (300.0, 150.0),
+            // §393 (spec 0072 §12): a burst of ten walks for a plugin that reads tags, tasks and
+            // a search together. Plan 0124 P6's rule keeps the refill under half a core:
+            // refill × slowest walk ≤ 0.5 s. Measured on 10,000 notes in 100 folders (release
+            // build, Apple M5 Pro): tags 412 ms, tasks 329 ms, search 271 ms, slowest 412 ms, so
+            // the refill is ⌊0.5 ÷ 0.412⌋ = 1 a second (ledger 0093).
+            RateClass::Walk => (10.0, 1.0),
         }
     }
 }
@@ -332,5 +342,29 @@ mod tests {
         assert!(limiter
             .check_at("plugin-a", RateClass::Network, now)
             .is_err());
+    }
+
+    /// §393 (spec 0072 D8) — a walk of a whole context costs what thousands of file reads do,
+    /// so it has its own, smaller bucket: refused past its burst, and spending it leaves the
+    /// `Default` bucket (the link reads and every file op) untouched. What fails this: `Walk`
+    /// sharing `Default`'s budget or bucket.
+    #[test]
+    fn the_walk_class_is_bounded_tighter_and_independent() {
+        let (walk_burst, walk_rate) = RateClass::Walk.budget();
+        let (default_burst, default_rate) = RateClass::Default.budget();
+        assert!(walk_burst < default_burst && walk_rate < default_rate);
+
+        let limiter = PluginRateLimiter::new();
+        let now = Instant::now();
+        for i in 0..walk_burst as u32 {
+            assert!(
+                limiter.check_at("plugin-a", RateClass::Walk, now).is_ok(),
+                "walk {i} of the burst must be admitted"
+            );
+        }
+        assert!(limiter.check_at("plugin-a", RateClass::Walk, now).is_err());
+        assert!(limiter
+            .check_at("plugin-a", RateClass::Default, now)
+            .is_ok());
     }
 }

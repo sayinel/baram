@@ -1014,6 +1014,11 @@ fn the_unconfined_media_reader_is_not_reachable_from_the_broker() {
         "src/plugin/authorizer.rs",
         "src/plugin/mod.rs",
         "src/plugin/storage.rs",
+        // §393 The broker's `Index*` arms run these.
+        "src/commands/plugin_index_cmd.rs",
+        "src/plugin/index_reads/mod.rs",
+        "src/plugin/index_reads/reads.rs",
+        "src/plugin/index_reads/rows.rs",
     ] {
         assert!(
             !code_only(module).contains("read_media_data_url"),

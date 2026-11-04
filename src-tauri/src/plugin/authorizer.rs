@@ -10,7 +10,9 @@ use std::sync::Mutex;
 use serde::Deserialize;
 use thiserror::Error;
 
+use super::index_reads::SearchArgs;
 use super::{PluginFetchInit, RateClass};
+use crate::task::TaskStatus;
 
 /// `"plugin-<id>"` → `Some("<id>")`; `None` for any non-sandbox window label.
 pub fn plugin_id_from_label(label: &str) -> Option<String> {
@@ -88,6 +90,43 @@ pub enum PluginOp {
     /// resolves the slot from the caller's window label, so a sandbox cannot name whose
     /// payload it wants.
     StagedRead,
+    /// §393 `ctx.index` (spec 0072 §5.2). This comment governs the six `Index*` variants that
+    /// follow, through `IndexTasks`: reads of ONE directory context — its link index
+    /// (`IndexBacklinks`, `IndexLinks`) and walks of its files (the other four, which spend
+    /// `RateClass::Walk`). Admitted by either files grant, as `FilesRead` is (spec D3), because
+    /// each answer derives from file content the grant already lets the plugin read: backlinks
+    /// and links from the `[[…]]`/`((…))` references in note text, notes with a tag and tags
+    /// from the `#tags` and frontmatter of note text, tasks from the checkbox lines of note
+    /// text, search from the text itself. `path`, `file` and `options.folder`
+    /// are context-relative paths that go through the file ops' own gate
+    /// (`plugin_cmd::check_plugin_file_path`); `tag`, `query`, `status` and the other options are
+    /// values. Answered by `commands::plugin_index_cmd::sandboxed_read`.
+    IndexBacklinks {
+        context: Option<String>,
+        path: String,
+    },
+    IndexLinks {
+        context: Option<String>,
+        path: String,
+    },
+    IndexSearch {
+        context: Option<String>,
+        #[serde(default)]
+        options: SearchArgs,
+        query: String,
+    },
+    IndexTagNotes {
+        context: Option<String>,
+        tag: String,
+    },
+    IndexTags {
+        context: Option<String>,
+    },
+    IndexTasks {
+        context: Option<String>,
+        file: Option<String>,
+        status: Option<TaskStatus>,
+    },
 }
 
 impl PluginOp {
@@ -101,10 +140,16 @@ impl PluginOp {
             | PluginOp::StorageList
             | PluginOp::StorageRemove { .. } => AnyOf(&["storage"]),
             PluginOp::HttpFetch { .. } => AnyOf(&["network"]),
-            // Reading is admitted by either files grant; writing needs the rw one.
-            PluginOp::FilesRead { .. } | PluginOp::FilesList { .. } => {
-                AnyOf(&["files", "files:readonly"])
-            }
+            // Reading is admitted by either files grant; writing needs the rw one. §393 The six
+            // index reads answer what these files would (spec D3).
+            PluginOp::FilesRead { .. }
+            | PluginOp::FilesList { .. }
+            | PluginOp::IndexBacklinks { .. }
+            | PluginOp::IndexLinks { .. }
+            | PluginOp::IndexSearch { .. }
+            | PluginOp::IndexTagNotes { .. }
+            | PluginOp::IndexTags { .. }
+            | PluginOp::IndexTasks { .. } => AnyOf(&["files", "files:readonly"]),
             PluginOp::FilesWrite { .. } => AnyOf(&["files"]),
             // Reading one's own code is not a grantable privilege: it is the bytes
             // the host was about to hand over anyway, and the op names no file.
@@ -122,11 +167,29 @@ impl PluginOp {
     /// Which rate budget this op spends (§260 3c-2c). On the op for the same reason
     /// the capability requirement is: so a new variant cannot quietly inherit the
     /// wrong bucket by being handled at some call site.
+    ///
+    /// §393 ‼️ No `_` arm (spec 0072 D8): a new op must pick its bucket here to compile. With
+    /// `_ => Default`, an op that walks a whole vault would inherit the budget of one file read.
     pub fn rate_class(&self) -> RateClass {
         match self {
             // The CORS-free proxy is the one op whose cost lands on a third party.
             PluginOp::HttpFetch { .. } => RateClass::Network,
-            _ => RateClass::Default,
+            // §393 A walk of a whole context: tags, notes with a tag, tasks, search (spec D8).
+            PluginOp::IndexSearch { .. }
+            | PluginOp::IndexTagNotes { .. }
+            | PluginOp::IndexTags { .. }
+            | PluginOp::IndexTasks { .. } => RateClass::Walk,
+            PluginOp::FilesList { .. }
+            | PluginOp::FilesRead { .. }
+            | PluginOp::FilesWrite { .. }
+            | PluginOp::IndexBacklinks { .. }
+            | PluginOp::IndexLinks { .. }
+            | PluginOp::SourceRead
+            | PluginOp::StagedRead
+            | PluginOp::StorageList
+            | PluginOp::StorageRead { .. }
+            | PluginOp::StorageRemove { .. }
+            | PluginOp::StorageWrite { .. } => RateClass::Default,
         }
     }
 }
@@ -347,6 +410,8 @@ mod tests {
                 "files_list" | "files_read" => AnyOf(&["files", "files:readonly"]),
                 "files_write" => AnyOf(&["files"]),
                 "http_fetch" => AnyOf(&["network"]),
+                "index_backlinks" | "index_links" | "index_search" | "index_tag_notes"
+                | "index_tags" | "index_tasks" => AnyOf(&["files", "files:readonly"]),
                 "source_read" | "staged_read" => None,
                 "storage_list" | "storage_read" | "storage_remove" | "storage_write" => {
                     AnyOf(&["storage"])
@@ -367,7 +432,7 @@ mod tests {
         }
         seen.sort_unstable();
         seen.dedup();
-        assert_eq!(seen.len(), 10, "every PluginOp variant must be mapped here");
+        assert_eq!(seen.len(), 16, "every PluginOp variant must be mapped here");
     }
 
     /// The point of `AnyOf`: a read-only grant is a real grant for reads, and the
@@ -590,6 +655,12 @@ mod tests {
             PluginOp::FilesRead { .. } => "files_read",
             PluginOp::FilesWrite { .. } => "files_write",
             PluginOp::HttpFetch { .. } => "http_fetch",
+            PluginOp::IndexBacklinks { .. } => "index_backlinks",
+            PluginOp::IndexLinks { .. } => "index_links",
+            PluginOp::IndexSearch { .. } => "index_search",
+            PluginOp::IndexTagNotes { .. } => "index_tag_notes",
+            PluginOp::IndexTags { .. } => "index_tags",
+            PluginOp::IndexTasks { .. } => "index_tasks",
             PluginOp::SourceRead => "source_read",
             PluginOp::StagedRead => "staged_read",
             PluginOp::StorageList => "storage_list",
@@ -683,6 +754,46 @@ mod tests {
                 },
                 Expect::Denied,
             ),
+            // §393 — the index reads answer what the files would, so they need a files grant
+            // like `FilesRead`; the paths in them are aimed at by the TS half of the fixture.
+            (
+                PluginOp::IndexBacklinks {
+                    context: None,
+                    path: "notes.md".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::IndexLinks {
+                    context: None,
+                    path: "notes.md".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::IndexSearch {
+                    context: None,
+                    options: SearchArgs::default(),
+                    query: "password".into(),
+                },
+                Expect::Denied,
+            ),
+            (
+                PluginOp::IndexTagNotes {
+                    context: None,
+                    tag: "secret".into(),
+                },
+                Expect::Denied,
+            ),
+            (PluginOp::IndexTags { context: None }, Expect::Denied),
+            (
+                PluginOp::IndexTasks {
+                    context: None,
+                    file: None,
+                    status: None,
+                },
+                Expect::Denied,
+            ),
             // Reading one's own bundle is how the sandbox boots, and the op names no file.
             (PluginOp::SourceRead, Expect::NeedsNoGrant),
             // Collecting an answer the host already decided to give. A plugin that holds
@@ -708,6 +819,12 @@ mod tests {
                 "files_read",
                 "files_write",
                 "http_fetch",
+                "index_backlinks",
+                "index_links",
+                "index_search",
+                "index_tag_notes",
+                "index_tags",
+                "index_tasks",
                 "source_read",
                 "staged_read",
                 "storage_list",
@@ -835,5 +952,119 @@ mod tests {
                 "{name} must be refused for a non-sandbox caller"
             );
         }
+    }
+
+    /// §393 Which bucket every op spends, written out by hand (spec 0072 D8) — `rate_class` has
+    /// no `_` arm, so a new op picks one to compile, and this pins what was picked. What fails
+    /// this: a walk on `Default` (its burst of 200 would let a plugin walk the vault 200 times
+    /// in a row) or a link read on `Walk`.
+    #[test]
+    fn rate_class_mapping_is_exhaustive() {
+        let expected = |name: &str| match name {
+            "http_fetch" => RateClass::Network,
+            "index_search" | "index_tag_notes" | "index_tags" | "index_tasks" => RateClass::Walk,
+            "files_list" | "files_read" | "files_write" | "index_backlinks" | "index_links"
+            | "source_read" | "staged_read" | "storage_list" | "storage_read"
+            | "storage_remove" | "storage_write" => RateClass::Default,
+            other => panic!("no expected rate class recorded for op \"{other}\""),
+        };
+        for (op, _) in adversary_ops() {
+            let name = kind_name(&op);
+            assert_eq!(op.rate_class(), expected(name), "{name}");
+        }
+    }
+
+    /// §393 `files:readonly` admits every index op (spec D3) — the mapping test pins the
+    /// requirement, this the grant meeting it. The pair: the same grant still refuses a write.
+    #[test]
+    fn a_readonly_files_grant_admits_every_index_read() {
+        let a = PluginAuthorizer::new();
+        a.register(
+            "plugin-reader".into(),
+            vec!["files:readonly".into()],
+            "/p/reader".into(),
+        );
+        let mut admitted = 0;
+        for (op, _) in adversary_ops() {
+            let name = kind_name(&op);
+            if name.starts_with("index_") {
+                assert_eq!(
+                    a.authorize_op("plugin-reader", &op).as_deref().ok(),
+                    Some("reader"),
+                    "{name}"
+                );
+                admitted += 1;
+            }
+        }
+        assert_eq!(admitted, 6);
+        let write = PluginOp::FilesWrite {
+            content: "x".into(),
+            context: None,
+            path: "a.md".into(),
+        };
+        assert!(matches!(
+            a.authorize_op("plugin-reader", &write),
+            Err(AuthzError::Denied(_))
+        ));
+    }
+
+    /// §393 The six index ops in the shape `sandbox/sandbox-index.ts` sends them
+    /// (`sandbox-client.index.test.ts` pins the same JSON on the other side). What fails this:
+    /// a field renamed on one side, `options` without `#[serde(default)]`, or a status word the
+    /// CLI does not take. The pair: an unknown status is refused.
+    #[test]
+    fn index_ops_deserialize_from_the_clients_wire_shape() {
+        let op = |json: serde_json::Value| serde_json::from_value::<PluginOp>(json);
+        assert!(matches!(
+            op(serde_json::json!({ "kind": "index_backlinks", "path": "a.md" })),
+            Ok(PluginOp::IndexBacklinks { context: None, .. })
+        ));
+        assert!(matches!(
+            op(serde_json::json!({ "context": "c", "kind": "index_links", "path": "a.md" })),
+            Ok(PluginOp::IndexLinks {
+                context: Some(_),
+                ..
+            })
+        ));
+        assert!(matches!(
+            op(serde_json::json!({ "kind": "index_tag_notes", "tag": "t" })),
+            Ok(PluginOp::IndexTagNotes { .. })
+        ));
+        assert!(matches!(
+            op(serde_json::json!({ "kind": "index_tags" })),
+            Ok(PluginOp::IndexTags { context: None })
+        ));
+        assert!(matches!(
+            op(serde_json::json!({ "file": "a.md", "kind": "index_tasks", "status": "done" })),
+            Ok(PluginOp::IndexTasks {
+                status: Some(TaskStatus::Done),
+                file: Some(_),
+                ..
+            })
+        ));
+        assert!(op(serde_json::json!({ "kind": "index_tasks", "status": "later" })).is_err());
+        assert!(matches!(
+            op(serde_json::json!({ "kind": "index_search", "query": "x" })),
+            Ok(PluginOp::IndexSearch { .. })
+        ));
+        let Ok(PluginOp::IndexSearch {
+            context,
+            options,
+            query,
+        }) = op(serde_json::json!({
+            "context": "c",
+            "kind": "index_search",
+            "options": { "caseSensitive": true, "folder": "docs", "limit": 5, "regex": true, "word": true },
+            "query": "x",
+        }))
+        else {
+            panic!("an index_search with every option must deserialize");
+        };
+        assert_eq!((context.as_deref(), query.as_str()), (Some("c"), "x"));
+        assert!(options.case_sensitive && options.regex && options.word);
+        assert_eq!(
+            (options.folder.as_deref(), options.limit),
+            (Some("docs"), Some(5))
+        );
     }
 }

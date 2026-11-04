@@ -48,6 +48,7 @@
 
 /* 12. Plugins */
 @import "./plugins.css";
+@import "./plugin-panels.css";
 
 /* 12a. §359 security-surface hosts — the shadow-isolated screens' light-DOM anchors.
    Their shadow content is NOT here, and deliberately so. `security-surfaces.css` is

@@ -11,11 +11,11 @@ import type {
   SandboxContext,
   SandboxFilesAPI,
   SandboxSettingsAPI,
-  SandboxUIAPI,
   StorageAPI,
 } from "../types";
 import type { PluginOp } from "./plugin-op";
 import type {
+  CodeBlockLangClaim,
   HostToSandbox,
   PromptHostRequest,
   SandboxHostRequest,
@@ -26,7 +26,10 @@ import type { SandboxTransport } from "./transport";
 import { logger } from "../../utils/logger";
 import { promptFrameProblem } from "../prompt-shape";
 import { isEditorRefusalCode } from "./protocol";
+import { createSandboxCodeBlocks } from "./sandbox-code-blocks";
 import { createSandboxEditorAPI } from "./sandbox-editor-client";
+import { createSandboxIndexAPI } from "./sandbox-index";
+import { createSandboxUI } from "./sandbox-ui";
 
 /**
  * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
@@ -218,22 +221,9 @@ export function startSandboxClient(
         path,
       }) as Promise<void>,
   };
-  // §260 Phase 4a — void-returning like the trusted tier's `UIAPI`, so a plugin is not
-  // forced to await a toast. The underlying request still has an answer: log a refusal
-  // (denied capability, undeclared item, throttled) rather than leaving an unhandled
-  // rejection, which in this realm would be invisible.
-  const fireUI = (request: SandboxHostRequest): void => {
-    void hostRequest(request).catch((err: unknown) => {
-      logger.warn(
-        `[Sandbox] ${request.kind} refused: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-  };
-  const ui: SandboxUIAPI = {
-    setStatusBarText: (id, text) => fireUI({ id, kind: "ui_status_bar", text }),
-    showNotification: (message, type) =>
-      fireUI({ kind: "ui_notify", message, type }),
-  };
+  // §260 Phase 4a · §394 · §395 — `ctx.ui`: the status bar, the toast, the declared panels and the three
+  // file tree methods (`sandbox-ui.ts`).
+  const ui = createSandboxUI(hostRequest);
 
   // §385 — host-drawn prompts (spec 0061 §9). Checked HERE before sending, because a frame Rust
   // refuses (over 8 MiB, a lone surrogate) is dropped without an answer and the plugin would wait
@@ -300,8 +290,21 @@ export function startSandboxClient(
 
   const editor = createSandboxEditorAPI(hostRequest, readStaged);
 
+  // §393 — brokered and exposed unconditionally, like `files`: the Rust authorizer admits the
+  // six index ops on `files` or `files:readonly`, and nothing here decides.
+  const index = createSandboxIndexAPI(brokerJson);
+
+  // §394 — `ctx.codeBlocks`; what the host told `activate` decides what it may register.
+  const codeBlocks = createSandboxCodeBlocks({
+    hostRequest,
+    readStaged,
+    runPanelAction: ui.runPanelAction,
+    send: (frame) => transport.send(frame),
+  });
+
   const ctx: SandboxContext = {
     ai,
+    codeBlocks: codeBlocks.api,
     commands: { register: (id, handler) => void commands.set(id, handler) },
     events: {
       emit(event, ...args) {
@@ -325,18 +328,24 @@ export function startSandboxClient(
     },
     editor,
     files,
+    index,
     network,
     prompts,
     settings,
     storage,
-    ui,
+    ui: ui.api,
   };
 
-  async function onActivate(): Promise<void> {
+  async function onActivate(
+    codeBlockLangs: CodeBlockLangClaim[] | undefined,
+    panelIds: string[] | undefined,
+  ): Promise<void> {
     if (activateState !== "idle") return; // M4: ignore repeated activate
     activateState = "activating";
     commands.clear(); // each attempt starts clean — no stale regs from a failed retry
     eventHandlers.clear();
+    codeBlocks.reset(codeBlockLangs);
+    ui.reset(panelIds);
     // …including host requests the previous attempt left outstanding (3c-2c code
     // review, LOW-4). Their promises belong to plugin code that is about to be
     // replaced, and each still holds a stall timer; rejecting them is both the honest
@@ -379,6 +388,7 @@ export function startSandboxClient(
       transport.send({
         type: "ready",
         registered: {
+          codeBlocks: codeBlocks.registered(),
           commands: [...commands.keys()],
           events: [...eventHandlers.keys()],
         },
@@ -424,7 +434,7 @@ export function startSandboxClient(
   transport.onMessage((m) => {
     switch (m.type) {
       case "activate":
-        void onActivate();
+        void onActivate(m.codeBlockLangs, m.panelIds);
         break;
       case "deactivate":
         transport.close();
@@ -450,8 +460,14 @@ export function startSandboxClient(
         p.onToken?.(m.token);
         break;
       }
+      case "invokeAction":
+        void codeBlocks.act(m);
+        break;
       case "invokeCommand":
         void onInvoke(m.callId, m.commandId, m.args);
+        break;
+      case "renderCodeBlock":
+        void codeBlocks.render(m);
         break;
     }
   });

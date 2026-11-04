@@ -6,7 +6,9 @@
 
 import type { HostRequestHandlerOptions } from "./host-ai-bridge";
 import type { EditorRequestHandlerOptions } from "./host-editor-bridge";
+import type { FileTreeRequestHandlerOptions } from "./host-file-tree-bridge";
 import type { PromptRequestHandlerOptions } from "./host-prompt-bridge";
+import type { RenderRequestHandlerOptions } from "./host-render-bridge";
 import type { SettingsRequestHandlerOptions } from "./host-settings-bridge";
 import type { UIRequestHandlerOptions } from "./host-ui-bridge";
 import type { SandboxHostRequest } from "./protocol";
@@ -14,13 +16,20 @@ import type { HostRequestHandler } from "./sandbox-session";
 
 import { createAIRequestHandler } from "./host-ai-bridge";
 import { createEditorRequestHandler } from "./host-editor-bridge";
+import { createFileTreeRequestHandler } from "./host-file-tree-bridge";
 import { createPromptRequestHandler } from "./host-prompt-bridge";
+import { createRenderRequestHandler } from "./host-render-bridge";
 import { createSettingsRequestHandler } from "./host-settings-bridge";
 import { createUIRequestHandler } from "./host-ui-bridge";
 
 export type HostServicesOptions = HostRequestHandlerOptions &
   Omit<EditorRequestHandlerOptions, "capabilities" | "pluginId"> &
+  Omit<
+    FileTreeRequestHandlerOptions,
+    "capabilities" | "pluginId" | "pluginName"
+  > &
   Omit<PromptRequestHandlerOptions, "pluginId" | "pluginName"> &
+  Omit<RenderRequestHandlerOptions, "capabilities" | "pluginId"> &
   Omit<SettingsRequestHandlerOptions, "capabilities" | "pluginId"> &
   Omit<UIRequestHandlerOptions, "capabilities" | "pluginId">;
 
@@ -38,7 +47,9 @@ export function createHostRequestHandler(
 ): HostRequestHandler {
   const ai = createAIRequestHandler(options);
   const editor = createEditorRequestHandler(options);
+  const fileTree = createFileTreeRequestHandler(options);
   const prompt = createPromptRequestHandler(options);
+  const render = createRenderRequestHandler(options);
   const settings = createSettingsRequestHandler(options);
   const ui = createUIRequestHandler(options);
   return async (request: SandboxHostRequest, onToken) => {
@@ -54,12 +65,20 @@ export function createHostRequestHandler(
       case "editor_insert_text":
       case "editor_set_markdown":
         return editor(request);
+      case "filetree_clear_decorations":
+      case "filetree_define_icon":
+      case "filetree_set_decorations":
+        return fileTree(request);
       case "prompt_input_box":
       case "prompt_quick_pick":
         return prompt(request, onToken);
+      case "render_get_source":
+      case "render_invalidate":
+        return render(request);
       case "settings_read":
         return settings(request);
       case "ui_notify":
+      case "ui_set_panel":
       case "ui_status_bar":
         return ui(request);
       default: {

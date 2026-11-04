@@ -47,15 +47,17 @@ Accessing an API whose capability was not declared throws a clear error
 | `editor:readonly` | Read document content (no modification) |               |
 | `events`          | Listen to editor events                 |               |
 | `extensions`      | Contribute a ProseMirror plugin to the editor (trusted tier only) | |
-| `files`           | Read and write files in the vault       | sensitive     |
-| `files:readonly`  | Read files in the vault (no writing)    |               |
-| `sidebar`         | Add panels to the sidebar               |               |
+| `files`           | Read and write files in the vault; also [`ctx.index`](/en/docs/plugin-dev/context-index/) and `vault:changed` | sensitive     |
+| `files:readonly`  | Read files in the vault (no writing); also [`ctx.index`](/en/docs/plugin-dev/context-index/) and `vault:changed` |               |
+| `sidebar`         | Add panels to the sidebar — a trusted plugin mounts its own DOM, a sandboxed one declares [panels](/en/docs/plugin-dev/sidebar-panels/) | |
 | `statusbar`       | Display items in the status bar         |               |
 | `settings`        | Declare options in the settings screen  |               |
 | `ai`              | Access AI/LLM features                  | **sensitive** |
 | `network`         | Make network requests                   | **sensitive** |
 | `storage`         | Use a plugin-private key/value store    | sensitive     |
 | `viewer`          | Register custom file-type viewers       |               |
+| `codeblocks`      | Draw code blocks of the languages it declares — see [Code block renderers](/en/docs/plugin-dev/code-blocks/) | |
+| `filetree`        | Decorate file tree rows with icons and badges — see [File tree decorations](/en/docs/plugin-dev/file-tree/) | |
 
 `ai` and `network` are the highest-sensitivity capabilities — see
 [Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for exactly what they allow.

@@ -67,6 +67,14 @@ describe("toGraphElements", () => {
     expect(result.edges).toHaveLength(0);
   });
 
+  // §56m What turns this red: labelling the node with `#` + its name as the index spells it —
+  // a front-matter tag `"#solo"` is the node `tag:#solo`, labelled `##solo`.
+  it("labels a tag node with one #", () => {
+    const graph: LinkGraph = { nodes: ["tag:#solo", "tag:plain"], edges: [] };
+    const labels = toGraphElements(graph).nodes.map((n) => n.data.label);
+    expect(labels).toEqual(["#solo", "#plain"]);
+  });
+
   it("converts nodes with labels and zero degree", () => {
     const graph: LinkGraph = {
       nodes: ["/vault/a.md", "/vault/b.md"],

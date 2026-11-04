@@ -19,7 +19,9 @@ import type { Plugin as PluginType } from "@tiptap/pm/state";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { deliverCodeBlockRegistryChange } from "../extensions/nodes/views/code-block-render-generation";
 import { logger } from "../utils/logger";
+import { onCodeBlockRegistryChange } from "./rendered/code-block-registry";
 
 /**
  * The host's own ProseMirror constructors, handed to every contribution.
@@ -83,6 +85,14 @@ const HOST_PROSEMIRROR: PluginProseMirror = Object.freeze({
 });
 
 const surfaces = new Set<Editor>();
+
+// §394 spec 0073 D6 — a renderer registered or gone reaches every surface, the hidden keep-alive
+// editors included: each gets the meta transaction that moves the changed languages' generation.
+// Subscribed once, for the life of the module.
+onCodeBlockRegistryChange((langs) => {
+  deliverCodeBlockRegistryChange([...surfaces], langs);
+});
+
 const contributions = new Map<string, Contribution>();
 /** Editor → pluginId → the keys installed on it, for exact removal. */
 const installed = new Map<Editor, Map<string, PluginKey[]>>();

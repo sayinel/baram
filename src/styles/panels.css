@@ -1180,7 +1180,17 @@
   color: var(--color-text-muted);
 }
 
+/* §394 A panel's icon is one grapheme of at most 16 UTF-16 units, which admits a base letter under
+   fifteen combining marks whose ink stacks far past the glyph. The span fills its button and clips
+   there, so that ink cannot paint over the neighbouring buttons. The button itself does not clip:
+   the active marker (.activity-bar-btn-active::before) sits outside it. */
 .activity-bar-plugin-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
   font-size: 18px;
   line-height: 1;
 }

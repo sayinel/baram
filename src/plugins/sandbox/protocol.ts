@@ -9,23 +9,63 @@
 // here when the 3c-2c frames were added.)
 import type {
   AICompleteOptions,
+  CodeBlockInfo,
   EditorRefusalCode,
   InputBoxOptions,
   QuickPickItem,
   QuickPickOptions,
+  SandboxFileDecorationUpdate,
 } from "../types";
 
 import { EDITOR_REFUSAL_CODES } from "../types";
 
+/**
+ * §394 plan 0125 P10 — one declared code block language as a load sees it: `drawnBy` names the
+ * plugin that holds it, `null` when this one does. The `activate` frame's table, and the host's
+ * `ClaimedLang` (`rendered/code-blocks-api.ts`); here so the sandbox realm can name it.
+ */
+export interface CodeBlockLangClaim {
+  drawnBy: null | string;
+  lang: string;
+}
+
 /** Main app → sandbox realm. */
 export type HostToSandbox =
   | {
+      // §394 spec 0073 D5 · plan 0125 P10 — each declared code block language and who draws it:
+      // `drawnBy` names the plugin that claimed it first, `null` when this plugin holds it. Absent
+      // without `codeblocks`, and then `ctx.codeBlocks` refuses every call. The host claims before
+      // it sends this, so `register` can refuse a lost language synchronously.
+      codeBlockLangs?: CodeBlockLangClaim[];
+      // §394 spec 0073 D14 · plan 0126 P11 — the panel ids declared in the manifest, whether or not
+      // consent granted `sidebar`, so `ui.setPanel` and `ui.onPanelAction` refuse any other at once.
+      // Absent without panels. The host gates every `ui_set_panel` on `sidebar` and refuses an
+      // undeclared id itself too (`host-ui-bridge.ts`).
+      panelIds?: string[];
       // §260 3c-2b — no URL here: the sandbox pulls its own bundle through the
       // broker (`source_read`, resolved in Rust from the caller's window label) and
       // imports it from a blob URL, so the realm needs no `asset:` and holds no
       // file-read power.
       pluginId: string;
       type: "activate";
+    }
+  | {
+      // §394 spec 0073 D11 ③ · D13 — a `data-action` click. `id` pairs the `actionResult`; it is a
+      // correlation id and nothing else. Ends at `CALL_TIMEOUT_MS` like `invokeCommand`.
+      action: string;
+      id: string;
+      target: RenderActionTarget;
+      type: "invokeAction";
+    }
+  | {
+      // §394 spec 0073 D13 — draw one block. `source` rides the frame while the whole serialized
+      // frame is at most `INLINE_SOURCE_MAX_FRAME_BYTES` UTF-8 bytes; otherwise it is absent and
+      // the sandbox pulls it (`render_get_source`). `id` pairs the `renderResult`.
+      id: string;
+      info: CodeBlockInfo;
+      lang: string;
+      source?: string;
+      type: "renderCodeBlock";
     }
   | {
       // §260 3c-2c — a streamed token for `ai_stream`, relayed by the host. The
@@ -157,9 +197,58 @@ export type SandboxHostRequest =
       markdown: string;
       replace?: string;
     }
+  | {
+      // §394 plan 0125 P11 — `ctx.codeBlocks.invalidate`. The host applies the declared · lost
+      // rule again (`invalidateDeclared`); the sandbox already threw for an undeclared language.
+      kind: "render_invalidate";
+      lang?: string;
+    }
+  | {
+      // §394 spec 0073 D13 — the source of render `id`, staged like a document read; the sandbox
+      // pulls it on its `readStaged` chain, so renders and document reads never race for the slot.
+      id: string;
+      kind: "render_get_source";
+    }
+  | {
+      // §394 spec 0073 D14 — a declared panel's content, as `ui.setPanel` was given it. The host checks
+      // the id against the manifest and the limits again and keeps the content as sent, unsanitized
+      // (plan 0126 P4).
+      css?: string;
+      html: string;
+      id: string;
+      kind: "ui_set_panel";
+    }
+  | {
+      // §395 spec 0074 D6 — `ui.defineFileIcon`. The host judges the name and the UTF-8 size
+      // (`iconCallProblem` in `file-decorations/validate.ts`, via `decoration-host.ts`) and the SVG after
+      // sanitizing (`file-decorations/icons.ts`).
+      kind: "filetree_define_icon";
+      name: string;
+      svg: string;
+    }
+  | {
+      // §395 spec 0074 D7 · D14 — `ui.setFileDecorations`, paths relative to a context root. The host
+      // resolves them when the request arrives (`host-file-tree-bridge.ts`) and judges every field.
+      kind: "filetree_set_decorations";
+      updates: SandboxFileDecorationUpdate[];
+    }
+  | {
+      // §395 spec 0074 D15 — `ui.clearFileDecorations`: the plugin's decorations go, its icons stay.
+      kind: "filetree_clear_decorations";
+    }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }
   | { kind: "ai_stream"; opts?: AICompleteOptions; prompt: string };
+
+/**
+ * §395 — the `filetree_*` half of `SandboxHostRequest`. One alias so the host bridge
+ * (`host-file-tree-bridge.ts`) and the sandbox client's file tree methods share one `Extract`, not two
+ * copies that could drift apart.
+ */
+export type FileTreeRequest = Extract<
+  SandboxHostRequest,
+  { kind: `filetree_${string}` }
+>;
 
 /**
  * §385 — the `prompt_*` half of `SandboxHostRequest`. One alias so the shape checker
@@ -178,12 +267,23 @@ export type PromptHostRequest = Extract<
  * validates this report against it (warns on divergence).
  */
 export interface SandboxRegisteredReport {
+  /** §394 — the code block languages `register` bound during activate; the host binds a proxy for each it holds. */
+  codeBlocks?: string[];
   commands: string[];
   events: string[];
 }
 
 /** Sandbox realm → main app. */
 export type SandboxToHost =
+  | {
+      // §394 spec 0073 D13 — a render's answer. The sandbox checks the byte caps and lone surrogates
+      // before sending (`renderedContentProblem`); the host checks again.
+      css?: string;
+      html: string;
+      id: string;
+      ok: true;
+      type: "renderResult";
+    }
   | {
       // §260 3c-2c — a host-mediated service call. `requestId` is the sandbox's own
       // correlation id; the host echoes it back and never treats it as an identity
@@ -195,7 +295,10 @@ export type SandboxToHost =
   | { args: unknown[]; event: string; type: "emitEvent" }
   | { callId: string; error: string; ok: false; type: "callResult" }
   | { callId: string; ok: true; type: "callResult"; value: unknown }
+  | { error: string; id: string; ok: false; type: "actionResult" }
+  | { error: string; id: string; ok: false; type: "renderResult" }
   | { error: string; type: "activateError" }
+  | { id: string; ok: true; type: "actionResult" }
   | { registered: SandboxRegisteredReport; type: "ready" };
 
 /**
@@ -256,3 +359,16 @@ export function isEditorRefusalCode(
     (EDITOR_REFUSAL_CODES as readonly string[]).includes(value)
   );
 }
+
+/**
+ * §394 spec 0073 D13 — what a `data-action` click names: a code block (its language, note and
+ * context) or a sandboxed panel (plan B). The sandbox checks the shape (`isActionTarget`).
+ */
+export type RenderActionTarget =
+  | {
+      context: null | string;
+      kind: "codeBlock";
+      lang: string;
+      path: null | string;
+    }
+  | { kind: "panel"; panelId: string };

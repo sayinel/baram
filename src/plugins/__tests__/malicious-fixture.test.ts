@@ -58,6 +58,13 @@ const EXPECTED_ATTACKS = [
   "files_read_absolute",
   "files_read_traversal",
   "files_read_app_state",
+  "index_backlinks",
+  "index_links",
+  "index_tag_notes",
+  "index_tags",
+  "index_tasks",
+  "index_search",
+  "index_search_app_state",
   "ai_complete",
   "ai_stream",
   "ai_list_models",
@@ -80,6 +87,12 @@ const OP_COVERAGE: Record<PluginOp["kind"], "attacked" | { exempt: string }> = {
   files_read: "attacked",
   files_write: "attacked",
   http_fetch: "attacked",
+  index_backlinks: "attacked",
+  index_links: "attacked",
+  index_search: "attacked",
+  index_tag_notes: "attacked",
+  index_tags: "attacked",
+  index_tasks: "attacked",
   source_read: {
     exempt:
       "needs no grant — reading one's own bundle is how the sandbox boots, and the op names no file",
@@ -103,10 +116,15 @@ const ATTACKED_OPS = Object.entries(OP_COVERAGE)
 const OP_FIELDS = [
   "content",
   "context",
+  "file",
   "init",
   "key",
   "kind",
+  "options",
   "path",
+  "query",
+  "status",
+  "tag",
   "url",
   "value",
 ];
@@ -252,6 +270,13 @@ describe("the malicious fixture is refused everywhere (§260 Phase 6)", () => {
       "files_read",
       "files_write",
       "http_fetch",
+      "index_backlinks",
+      "index_links",
+      "index_search",
+      "index_search_app_state",
+      "index_tag_notes",
+      "index_tags",
+      "index_tasks",
       "storage_list",
       "storage_read",
       "storage_remove",
@@ -299,6 +324,11 @@ describe("the malicious fixture is refused everywhere (§260 Phase 6)", () => {
       .filter((o) => "key" in o)
       .map((o) => (o as { key: string }).key);
     expect(keys).toContain("../baram-word-count/config.json");
+    // §393 — and a search `folder`, the one path an index op carries inside `options`.
+    const folders = brokerOps.flatMap((o) =>
+      o.kind === "index_search" ? [o.options.folder] : [],
+    );
+    expect(folders).toContain(".baram/snapshots");
   });
 });
 

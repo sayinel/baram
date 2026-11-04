@@ -153,6 +153,10 @@ NodeView 안에 **PM 본문이 아닌 입력 요소**(input/textarea/select/CM �
 - **보안 불변식**: 마커는 앱 capability다. HTML/SVG/외부 마크다운을 처리하는 sanitizer는 반드시
   `VIM_ISLAND_MARKERS`를 제거할 것 (DOMPurify는 `data-*`·`tabindex`를 기본 허용하므로 공유 문서가
   suspension을 자칭하거나 실제 island에서 거부해 사용자 타이핑을 vim 명령으로 실행시킬 수 있다).
+  문서 내용을 처리하는 sanitizer는 `PLUGIN_BLOCK_MARKER`(`utils/plugin-block-marker.ts`, §394)도 그 옆에서 제거할 것
+  (`sanitizeHtmlBlock`·`sanitizeSvg`가 그렇게 한다) — export가 이 표시로 플러그인 블록을 라이브 블록과 짝짓고 settle이
+  그것을 기다리므로, 문서가 위조한 표시는 export를 stall 예산(15초)만큼 붙잡고 짝을 밀어낸다(`isAuthoredMarkup`은
+  `.html-block-render` 안만 걸러 준다).
 
 ## atom 블록의 vim 편집 세션 (§298)
 

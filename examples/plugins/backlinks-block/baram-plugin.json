@@ -1,0 +1,17 @@
+{
+  "id": "baram-backlinks-block",
+  "name": "Backlinks Block",
+  "description": "Draws a ```backlinks code block as the note's backlinks, each one a link to its note. The reference code block renderer.",
+  "version": "1.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "dist/index.mjs",
+  "engines": { "baram": ">=0.7.7" },
+  "trust": "sandboxed",
+  "capabilities": ["codeblocks", "files:readonly"],
+  "contributions": {
+    "codeBlocks": [{ "lang": "backlinks" }]
+  },
+  "icon": "↩",
+  "keywords": ["backlinks", "code block", "example"]
+}

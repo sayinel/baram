@@ -14,6 +14,7 @@ import {
   THEME_COLOR_VALUE_RE,
   themeFieldFor,
 } from "../../types/theme";
+import { tagName } from "../../utils/tags/tag-name";
 import { noteHydrationFailure } from "../system/hydration";
 import { tauriStorage } from "../system/tauri-storage";
 import {
@@ -222,7 +223,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 28,
+      version: 29,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -681,6 +682,30 @@ export const useSettingsStore = create<SettingsState>()(
               ...(state.appearanceOverrides as DialValues | undefined),
               ...moved,
             };
+          }
+        }
+
+        // v28 → v29: §56m A tag colour is keyed by the name the tag panel listed. The panel
+        // listed a front-matter tag spelled `"#solo"` as the row `#solo`, so a colour set there
+        // was keyed `#solo`; the panel now lists the tag by its name (`tagName`, `solo`), and
+        // that key would never be read again. A key starting with `#` moves to the name, unless
+        // the name already has a colour — that one, set on the body tag's row, wins. A key of
+        // only `#`s names no tag and is dropped. Built with `Object.fromEntries` so a key such
+        // as `__proto__` stays an own property, as `setTagColor`'s computed key keeps it.
+        if (version < 29) {
+          const colors = state.tagColors;
+          if (colors && typeof colors === "object" && !Array.isArray(colors)) {
+            const entries = Object.entries(colors).filter(
+              ([key]) => !key.startsWith("#"),
+            );
+            const named = new Set(entries.map(([key]) => key));
+            for (const [key, color] of Object.entries(colors)) {
+              const name = tagName(key);
+              if (key === name || !name || named.has(name)) continue;
+              named.add(name);
+              entries.push([name, color]);
+            }
+            state.tagColors = Object.fromEntries(entries);
           }
         }
 

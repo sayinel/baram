@@ -208,6 +208,14 @@ describe("extractFrontmatterFields", () => {
     const { tags } = extractFrontmatterFields(content);
     expect(tags).toEqual(["여행", "운동"]);
   });
+
+  // §56m What turns this red: keeping the value's `#` — `"#여행"` was the tag `#여행`.
+  it("reads a #-spelled tag as its name", () => {
+    const content = mkContent(`tags: ["#여행"]`);
+    expect(extractFrontmatterFields(content).tags).toEqual(["여행"]);
+    const block = mkContent(`tags:\n  - "#운동"`);
+    expect(extractFrontmatterFields(block).tags).toEqual(["운동"]);
+  });
 });
 
 describe("extractDateFromPath", () => {
@@ -284,6 +292,19 @@ describe("filterByFrontmatter", () => {
       "/j/2026-02-01.md",
       "/j/2026-03-15.md",
     ]);
+  });
+
+  // §56m What turns this red: comparing the filter and the front matter as written — a
+  // `"#여행"` entry did not match `여행`, nor an entry `여행` the filter `#여행`.
+  it("tags filter matches by name, either side spelled with #", () => {
+    const tagged = [
+      r("/j/a.md", `tags: ["#여행"]`),
+      r("/j/b.md", "tags: [여행]"),
+    ];
+    for (const filter of ["여행", "#여행"]) {
+      const res = filterByFrontmatter(tagged, { tagsFilter: [filter] });
+      expect(res.map((x) => x.path)).toEqual(["/j/a.md", "/j/b.md"]);
+    }
   });
 
   it("tags filter empty array = no filter", () => {

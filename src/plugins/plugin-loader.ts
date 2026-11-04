@@ -33,12 +33,28 @@ import {
   setEditorInstance,
   unregisterPluginUI,
 } from "./extension-context";
+import {
+  deliverFileNoticeToSandbox,
+  watchFileNotices,
+} from "./file-decorations/file-notice-delivery";
 import { validateManifest } from "./manifest";
+import { declaredPanels } from "./manifest-panels";
 import { grantableCapabilities } from "./plugin-consent";
 import { registerEntryContributions } from "./plugin-entry-points";
 import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { legacyInstallMessage, pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
+import {
+  claimCodeBlocks,
+  type ClaimedLang,
+  invalidateDeclared,
+  releaseCodeBlocks,
+  wireSandboxCodeBlocks,
+} from "./rendered/code-blocks-api";
+import {
+  registerDeclaredPanels,
+  wireSandboxPanels,
+} from "./rendered/panels-host";
 import { blocksLoad, revocationFor, revocationReason } from "./revocation";
 import { createHostRequestHandler } from "./sandbox/host-request-router";
 import {
@@ -318,6 +334,27 @@ export class PluginLoader {
       // fails. Registering here makes the documented behaviour the real one, and the
       // rollback below removes them if the load does not complete.
       this.registerDeclaredStatusBar(manifest, disposables);
+      // §394 spec 0073 D14 · plan 0126 P9 — the declared panels go up here too, before any grant or
+      // webview: their buttons show while the sandbox boots, and a panel takes content only once open.
+      registerDeclaredPanels(manifest, disposables);
+      const panelIds = declaredPanels(manifest).map((p) => p.id);
+      // §394 plan 0126 P11 — every panel id the manifest declares, granted or not, for `activate`: the
+      // sandbox's `setPanel` and `onPanelAction` refuse any other at once. Not `panelIds`, which is empty
+      // when consent withheld `sidebar` (`narrowToConsent`): a call naming a declared panel in the
+      // plugin's `activate` would then throw and fail the load. Named, a `setPanel` meets the host's
+      // `sidebar` gate instead, which refuses it, and the sandbox logs the refusal.
+      const manifestPanelIds = (manifest.contributions?.panels ?? []).map(
+        (p) => p.id,
+      );
+      // §394 plan 0125 P10 — the declared code block languages are claimed before the sandbox
+      // starts, so its `register` refuses a language a plugin loaded earlier draws. A throw below
+      // is rolled back by `rollbackSandboxLoad`, whose `unregisterPluginUI` releases them.
+      const codeBlockLangs = manifest.capabilities.includes("codeblocks")
+        ? claimCodeBlocks(manifest, "sandboxed")
+        : undefined;
+      // The render bridge needs the session to read a waiting render's source; the session is made
+      // by `start`, after the handler — so the handler reads it through this.
+      let started: null | SandboxSession = null;
       // installPath goes to RUST, never to the sandbox: it binds which directory
       // `source_read` may read, so the executed bundle matches this manifest.
       await pluginSandboxRegister(
@@ -337,6 +374,8 @@ export class PluginLoader {
         // from the sandbox to a model.
         createHostRequestHandler({
           capabilities: manifest.capabilities,
+          // §394 plan 0126 P8 — the panel ids `ui_set_panel` may name: the ones registered above.
+          declaredPanelIds: panelIds,
           // §260 Phase 4a — `ui` rides the same mediated channel. The declared item ids
           // travel with it because the host, not the plugin, decides which items exist.
           declaredStatusBarIds: (manifest.contributions?.statusBar ?? []).map(
@@ -347,11 +386,24 @@ export class PluginLoader {
           // through `declaredSettingsFor`, which is also what the form uses, so a field the
           // plugin can read and a field the user can edit are the same set.
           declaredSettings: declaredSettingsFor(manifest),
+          // §394 — `render_invalidate` and `render_get_source` (spec 0073 D13, plan 0125 P11).
+          invalidate: (lang) =>
+            invalidateDeclared(manifest.id, codeBlockLangs ?? [], lang),
           pluginId: manifest.id,
           pluginName: manifest.name,
+          renderSource: (id) => started?.renderSource(id),
         }),
+        codeBlockLangs,
+        // §394 plan 0126 P11 — absent when the manifest declares no panels.
+        manifestPanelIds.length > 0 ? manifestPanelIds : undefined,
       );
-      this.wireSandboxContributions(manifest, session, disposables);
+      started = session;
+      this.wireSandboxContributions(
+        manifest,
+        session,
+        disposables,
+        codeBlockLangs,
+      );
       // §391 spec 0070 §5 — after `start` resolved (activation succeeded) and the handlers
       // above exist. A throw from here on is rolled back by `rollbackSandboxLoad`, whose
       // `unregisterPluginUI` takes the entry down again.
@@ -583,14 +635,21 @@ export class PluginLoader {
 
     // 5. Activate with timeout
     if (typeof module.activate === "function") {
-      await withTimeout(
-        Promise.resolve(module.activate(context)),
-        ACTIVATE_TIMEOUT,
-        tr("plugin.error.activationTimeout", {
-          id: manifest.id,
-          ms: String(ACTIVATE_TIMEOUT),
-        }),
-      );
+      try {
+        await withTimeout(
+          Promise.resolve(module.activate(context)),
+          ACTIVATE_TIMEOUT,
+          tr("plugin.error.activationTimeout", {
+            id: manifest.id,
+            ms: String(ACTIVATE_TIMEOUT),
+          }),
+        );
+      } catch (err) {
+        // §394 plan 0125 P10 — a failed activate is not unwound (see `unwindAfterActivate`), but the
+        // languages `createExtensionContext` claimed would keep every other plugin from drawing them.
+        releaseCodeBlocks(manifest.id);
+        throw err;
+      }
     }
 
     // §260 스펙 0050 §4 — activate 가 성공한 뒤에만. 키가 네임스페이스를 어기면
@@ -759,13 +818,15 @@ export class PluginLoader {
   /**
    * Map a started sandbox's declared commands onto the host and subscribe it to app
    * events. Everything it registers is pushed onto `disposables`, which is both the
-   * unload path and the rollback path. (The status bar is registered earlier, before the
-   * sandbox starts — see `registerDeclaredStatusBar`.)
+   * unload path and the rollback path. (The status bar and the declared panels are
+   * registered earlier, before the sandbox starts — see `registerDeclaredStatusBar` and
+   * `registerDeclaredPanels`.)
    */
   private wireSandboxContributions(
     manifest: PluginManifest,
     session: SandboxSession,
     disposables: Disposable[],
+    codeBlockLangs: ClaimedLang[] | undefined,
   ): void {
     for (const cmd of session.contributions?.commands ?? []) {
       const fullId = `${manifest.id}.${cmd.id}`;
@@ -826,6 +887,28 @@ export class PluginLoader {
         pluginId: manifest.id,
       }),
     });
+    // §395 — and to the app's own renames and deletions (spec 0074 D11), on the same grant and route as
+    // `vault:changed`: paths made relative first (`deliverFileNoticeToSandbox`).
+    disposables.push({
+      dispose: watchFileNotices({
+        capabilities: manifest.capabilities,
+        deliver: (notice) =>
+          deliverFileNoticeToSandbox(
+            (event, args) => session.deliverEvent(event, args),
+            notice,
+          ),
+        label: "Sandbox",
+        pluginId: manifest.id,
+      }),
+    });
+    // §394 — renderers for what the sandbox registered during activate, and its action dispatch.
+    if (codeBlockLangs !== undefined) {
+      wireSandboxCodeBlocks(manifest.id, codeBlockLangs, session, disposables);
+    }
+    // §394 plan 0126 P13 — from here a panel's `data-action` click crosses as `invokeAction`.
+    if (declaredPanels(manifest).length > 0) {
+      wireSandboxPanels(manifest.id, session, disposables);
+    }
     // …and tell it what is already open, so its first useful moment does not depend on
     // the user switching tabs (the normal case at startup).
     replayCurrentState(subscriber, activeFilePath());

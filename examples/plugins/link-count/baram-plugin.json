@@ -1,0 +1,23 @@
+{
+  "id": "baram-link-count",
+  "name": "Link Count",
+  "description": "Shows how many links point at the open note and how many of its tasks are open, in the status bar. The reference reader of ctx.index.",
+  "version": "1.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "dist/index.mjs",
+  "engines": { "baram": ">=0.7.7" },
+  "trust": "sandboxed",
+  "capabilities": ["events", "files:readonly", "statusbar"],
+  "contributions": {
+    "statusBar": [
+      {
+        "id": "links",
+        "text": "← — · ☐ —",
+        "tooltip": "Links to the open note · its open tasks"
+      }
+    ]
+  },
+  "icon": "🔗",
+  "keywords": ["links", "backlinks", "tasks", "example"]
+}

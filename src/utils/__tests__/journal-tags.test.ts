@@ -92,6 +92,34 @@ tags: [shared, frontonly]
       "shared",
     ]);
   });
+
+  // §56m What turns these red: keeping the front-matter value as written — `"#solo"` became
+  // the tag `#solo` beside `solo`, which the Zettel inbox showed as `##solo`.
+  it("reads a #-spelled front-matter item as its name", () => {
+    const content = `---
+tags: ["#solo", "##deep", plain]
+---
+
+body`;
+    expect(extractTagsFromContent(content)).toEqual(["deep", "plain", "solo"]);
+  });
+
+  // §56m What turns this red: scanning the whole note for `#tags` — a `#solo` in another
+  // front-matter field became a tag the backend's index (which scans the body) does not count.
+  it("reads #tags in the body only, not in other front-matter fields", () => {
+    const content = `---\ntitle: about #solo\ntags: [a]\n---\n\n#body`;
+    expect(extractTagsFromContent(content)).toEqual(["a", "body"]);
+  });
+
+  it("reads a quoted block item without its quotes or #", () => {
+    const content = `---
+tags:
+  - "#solo"
+  - 'b'
+---
+`;
+    expect(extractTagsFromContent(content)).toEqual(["b", "solo"]);
+  });
 });
 
 describe("buildTagIndex", () => {

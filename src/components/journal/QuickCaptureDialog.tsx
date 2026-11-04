@@ -27,6 +27,7 @@ import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
 import { extractPendingMedia } from "../../utils/media-data-url";
 import { dirname } from "../../utils/path-utils";
+import { isBodyTagName } from "../../utils/tags/tag-name";
 import { resolveTasksHome } from "../../utils/tasks/tasks-home";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import {
@@ -280,6 +281,14 @@ export function QuickCaptureDialog() {
 
     if (capture.isEmpty) {
       setSaveError(t("journal.capture.error.empty"));
+      return;
+    }
+
+    // §56m 태그는 본문이 `#`으로 쓸 수 있는 이름만 받는다 — 그 밖의 이름은 프론트매터에만 있는
+    // 태그가 되고, 따옴표나 괄호는 다른 이름으로 되읽힌다. 아무것도 저장하지 않고 칸을 그대로 둔다.
+    const refused = tags.list.find((tag) => !isBodyTagName(tag));
+    if (refused !== undefined) {
+      setSaveError(t("journal.capture.error.tagName", { tag: refused }));
       return;
     }
 

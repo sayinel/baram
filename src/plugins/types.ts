@@ -20,6 +20,64 @@ export interface AIModel {
   name: string;
 }
 
+/** §394 The block a code block renderer draws (spec 0073 §4). */
+export interface CodeBlockInfo {
+  /** The registered context holding the note; `null` for an unsaved note or one in no context. */
+  context: null | string;
+  lang: string;
+  /**
+   * The note's path — sandboxed: `/`-relative to the context root (`null` without a context), and
+   * `""` when the context is a single file (§89) — the note itself, as the path gate of the file and
+   * index calls spells it (Rust `plugin_target_path` takes only `""` or `"."` against such a
+   * context); trusted: absolute (spec 0072 D6). `null` for an unsaved note.
+   */
+  path: null | string;
+}
+
+/**
+ * §394 Draws one block: the fenced source in, HTML · SVG and CSS out — strings, never DOM, in both
+ * tiers (spec 0073 D3). A trusted renderer runs on the app's thread: only an asynchronous one can be
+ * timed out.
+ */
+export type CodeBlockRenderer = (
+  source: string,
+  info: CodeBlockInfo,
+) => Promise<RenderedContent> | RenderedContent;
+
+/**
+ * §394 `ctx.codeBlocks` — the `codeblocks` capability opens it; the same in both tiers (spec 0073 §4).
+ * Without the capability it is a proxy that throws.
+ */
+export interface CodeBlocksAPI {
+  /**
+   * Drop the cache of `lang` (every language this plugin draws when omitted) and draw its visible
+   * blocks again; off-screen blocks draw when they come into view. Throws for an undeclared
+   * language; does nothing for a declared one another plugin draws.
+   */
+  invalidate(lang?: string): void;
+  /**
+   * A click on an element with `data-action` inside your rendered output. While the handler's
+   * promise is pending, `ctx.prompts` may open — for at most 30 s; in the sandboxed tier that clock,
+   * the one a command runs on, stops while a prompt is open and starts again from 30 s when it
+   * closes.
+   */
+  onAction(
+    handler: (action: RenderedAction) => Promise<void> | void,
+  ): Disposable;
+  /**
+   * Draw ```` ```lang ```` blocks. Only a language declared in `contributions.codeBlocks`; throws when
+   * another plugin, loaded first, draws it. Register in `activate`.
+   *
+   * In the sandboxed tier the app binds a language when `activate` finishes and keeps it bound
+   * until the plugin unloads. A language first registered after `activate` is not drawn;
+   * registering a language that is already bound replaces its renderer, and its cached results
+   * are dropped as in the trusted tier. `dispose()` only stops your renderer answering — a block
+   * drawn after it shows an error (a cached result still shows), where in the trusted tier the
+   * language falls back to plain code blocks.
+   */
+  register(lang: string, render: CodeBlockRenderer): Disposable;
+}
+
 export interface CommandRegisterOptions {
   paletteVisible?: boolean;
   title?: string;
@@ -158,15 +216,47 @@ export interface EventsAPI {
     event: "vault:changed",
     handler: (change: VaultChange) => void,
   ): Disposable;
+  /**
+   * §395 Baram renamed or moved a file or folder (spec 0074 D11): its own rename, move, journal migration
+   * or zettel promotion — never a change made outside Baram or by Baram's own git operations, which only
+   * `vault:changed` reports. Absolute
+   * paths; a folder is one notice, and what it held moved with it. Comes before the same change's
+   * `vault:changed` (except in a vault registered through a symlink or another spelling of its folder).
+   * Needs `files` or `files:readonly`, not `events`; without either the subscription is accepted and
+   * never fires.
+   */
+  on(
+    event: "file:rename",
+    handler: (oldPath: string, newPath: string, isDir: boolean) => void,
+  ): Disposable;
+  /**
+   * §395 Baram deleted (moved to the trash) a file or folder (spec 0074 D10): its own tree delete or zettel
+   * inbox delete — never a change made outside Baram, and not what Baram's own git operations do to the
+   * working tree, which only `vault:changed` reports. Absolute path; a folder is one notice and what it
+   * held went with it. Comes before the same change's `vault:changed` (except in a vault registered
+   * through a symlink or another spelling of its folder). Needs `files` or `files:readonly`, not `events`;
+   * without either the subscription is accepted and never fires.
+   */
+  on(
+    event: "file:delete",
+    handler: (path: string, isDir: boolean) => void,
+  ): Disposable;
   on(event: string, handler: (...args: unknown[]) => void): Disposable;
 }
 
 export interface ExtensionContext {
   ai: AIAPI;
+  /**
+   * §394 Needs `codeblocks` — see {@link CodeBlocksAPI}. `CodeBlockInfo.path` is absolute, or `null`
+   * for an unsaved note.
+   */
+  codeBlocks: CodeBlocksAPI;
   commands: CommandsAPI;
   editor: EditorAPI;
   events: EventsAPI;
   files: FilesAPI;
+  /** §393 Needs `files` or `files:readonly` — see {@link IndexAPI}. Paths are absolute. */
+  index: IndexAPI;
   network: NetworkAPI;
   pluginId: string;
   pluginPath: string;
@@ -179,10 +269,159 @@ export interface ExtensionContext {
   ui: UIAPI;
 }
 
+/**
+ * §395 What a plugin puts on one file tree row (spec 0074 D4). Every field is optional, and a
+ * decoration with none left after the limits below is the same as `null`: no decoration. The
+ * colour reaches the badge and the icon, never the file name.
+ */
+export interface FileDecoration {
+  /** One or two characters (grapheme clusters), at most 16 UTF-16 units: a chip at the row's right end, before the git dot. */
+  badge?: string;
+  /** The badge's and the icon's colour: a palette name, which follows the theme, or `#rrggbb`. */
+  color?: `#${string}` | FileDecorationPaletteColor;
+  /** Replaces the default file or folder icon: one character, or the name of an icon `defineFileIcon` defined. */
+  icon?: { glyph: string } | { svg: string };
+  /**
+   * One line of at most 120 UTF-16 units — a longer one is cut and ends in `…`. The row's hover text
+   * shows `{plugin name}: {tooltip}`.
+   */
+  tooltip?: string;
+}
+
+/** §395 The palette names (spec 0074 D5). Each is drawn with a theme colour, so it follows the theme. */
+export type FileDecorationPaletteColor =
+  "accent" | "blue" | "gray" | "green" | "orange" | "purple" | "red" | "yellow";
+
+/** §395 One update for the trusted `UIAPI.setFileDecorations`: an absolute path, and its decoration or `null`. */
+export interface FileDecorationUpdate {
+  decoration: FileDecoration | null;
+  path: string;
+}
+
 export interface FilesAPI {
   listDir(path: string): Promise<string[]>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
+}
+
+/**
+ * §393 Reads of one registered vault or folder: its links, tags, tasks and text (spec 0072 §4).
+ * `files` or `files:readonly` opens it. Answers come from the files on disk — text not saved yet
+ * is not in them. Paths follow the tier's file paths (sandboxed: `/`-relative to the context
+ * root; trusted: absolute); lines count from 1; a field with no value is `null`, never left out.
+ * Read again on `vault:changed`.
+ */
+export interface IndexAPI {
+  /** Links to `path`, in (path, line) order, one per line. The note need not exist yet; a folder is refused. */
+  backlinks(path: string, opts?: IndexOptions): Promise<IndexBacklink[]>;
+  /** The links `path` holds, in line order. The note must exist. */
+  links(path: string, opts?: IndexOptions): Promise<IndexLink[]>;
+  /** The notes carrying `tag`, in path order. Every leading `#` is dropped; case is not compared. */
+  notesWithTag(tag: string, opts?: IndexOptions): Promise<string[]>;
+  /** Full-text search of the `.md` files. Stops after `limit` matches; two matches on one line are two rows. */
+  search(query: string, opts?: IndexSearchOptions): Promise<IndexSearchResult>;
+  /** The tags and how often each occurs, most frequent first, then by name. */
+  tags(opts?: IndexOptions): Promise<IndexTag[]>;
+  /** Tasks in (path, line) order, without the folders the app's task panel excludes. */
+  tasks(opts?: IndexTaskOptions): Promise<IndexTask[]>;
+}
+
+/** §393 One link to a note (`IndexAPI.backlinks`). */
+export interface IndexBacklink {
+  /** The block a block reference or embed names; `null` for a wikilink. */
+  blockId: null | string;
+  line: number;
+  /** The note that holds the link. */
+  path: string;
+  /** The text of the line the link is on, trimmed and cut at 200 bytes with `…`. */
+  snippet: string;
+  type: IndexLinkType;
+}
+
+/** §393 One link a note holds (`IndexAPI.links`). */
+export interface IndexLink {
+  blockId: null | string;
+  line: number;
+  /** Only when `resolution` is `"resolved"`: the file the link leads to — a non-note file too (`[[Paper.pdf]]`). */
+  path: null | string;
+  resolution: "otherVault" | "resolved" | "unresolved";
+  /** The name inside the brackets, without alias, heading or display text: a block reference's or embed's target with its escapes undone (`%29` is `)`), a wikilink's as written. */
+  target: string;
+  type: IndexLinkType;
+  /** Only when `resolution` is `"otherVault"`: the vault alias the link names. */
+  vault: null | string;
+}
+
+/** §393 The grammar a link is written in: `[[…]]`, `((…#^id))`, `{{embed ((…#^id))}}`. */
+export type IndexLinkType = "blockEmbed" | "blockRef" | "wikilink";
+
+/** §393 Which context a read answers from. */
+export interface IndexOptions {
+  /**
+   * A registered context id. Omitted — sandboxed: the active context. Trusted: a read that
+   * takes a path (`backlinks`, `links`, `tasks` with `file`, `search` with `folder`) answers
+   * from the innermost vault or folder holding that path, the others from the active context.
+   */
+  context?: string;
+}
+
+/** §393 One search match (`IndexSearchResult.items`). */
+export interface IndexSearchMatch {
+  line: number;
+  path: string;
+  /** The matched line, cut about 100 bytes either side of the match and to at most 300 of its characters, so a long match is cut too; a `…` marks each cut end (302 characters at most). */
+  snippet: string;
+}
+
+/** §393 `IndexAPI.search` options. */
+export interface IndexSearchOptions extends IndexOptions {
+  caseSensitive?: boolean;
+  /** Only this folder: the search starts there, so `docs` does not also search `docs-old`. */
+  folder?: string;
+  /** From 1 to 1000, default 200 — the number of matches, not of lines or files. */
+  limit?: number;
+  regex?: boolean;
+  /** A word boundary (`\b`) at each end of the match, around the whole query (`\b(?:…)\b`): with `regex`, `a|b` finds the word `a` or the word `b`. */
+  word?: boolean;
+}
+
+/** §393 What `IndexAPI.search` found, and whether it stopped at `limit` with more to find. */
+export interface IndexSearchResult {
+  items: IndexSearchMatch[];
+  truncated: boolean;
+}
+
+/** §393 A tag and how many times it occurs — occurrences, not notes. */
+export interface IndexTag {
+  count: number;
+  tag: string;
+}
+
+/** §393 One task (`IndexAPI.tasks`) — the fields of the `baram tasks` row. */
+export interface IndexTask {
+  cancelled: null | string;
+  created: null | string;
+  done: null | string;
+  due: null | string;
+  /** From 1, through front matter: the line an editor shows. */
+  line: number;
+  links: string[];
+  path: string;
+  priority: number;
+  recurrence: null | string;
+  scheduled: null | string;
+  start: null | string;
+  state: "cancelled" | "doing" | "done" | "todo";
+  tags: string[];
+  text: string;
+}
+
+/** §393 `IndexAPI.tasks` options. */
+export interface IndexTaskOptions extends IndexOptions {
+  /** Only this note's tasks. */
+  file?: string;
+  /** Default `"open"` — todo and doing. */
+  status?: "all" | "cancelled" | "done" | "open";
 }
 
 /**
@@ -252,6 +491,7 @@ export interface NetworkAPI {
 
 export type PluginCapability =
   | "ai"
+  | "codeblocks"
   | "commands"
   | "editor"
   | "editor:readonly"
@@ -259,6 +499,7 @@ export type PluginCapability =
   | "extensions"
   | "files"
   | "files:readonly"
+  | "filetree"
   | "network"
   | "settings"
   | "sidebar"
@@ -280,6 +521,12 @@ export interface PluginConsent {
    * registry (spec 0058 §9.2).
    */
   channel?: RegistryChannel;
+  /**
+   * §394 — the code block languages approved with `codeblocks` (spec 0073 D4), sorted. Present only
+   * when the approved manifest held `codeblocks`; absent on every record written before §394, and
+   * absent means "accept the next manifest's languages", not "none".
+   */
+  codeBlocks?: string[];
   /**
    * §382 — the login shown as the publisher. Display only; `publisherId` decides. An update
    * that asks nothing still re-records this field's current value (a rename is not a change
@@ -305,6 +552,13 @@ export interface PluginConsent {
  * registers each declared command with `ctx.commands.register` under the same id.
  */
 export interface PluginContributions {
+  /**
+   * §394 Fenced-code languages this plugin draws (spec 0073 D5), at most 10 — each registered with
+   * `ctx.codeBlocks.register`. Needs the `codeblocks` capability, and the capability needs at least
+   * one. `lang` matches `^[a-z0-9][a-z0-9-]{0,31}$` and is neither a language Baram draws itself
+   * (`mermaid`, `query`, `svg`, `journal-…`) nor one its code blocks highlight (`js`, `python`, …).
+   */
+  codeBlocks?: Array<{ lang: string }>;
   /** At most 50 (spec 0070 D11). */
   commands?: Array<{ id: string; palette?: boolean; title: string }>;
   /**
@@ -317,6 +571,13 @@ export interface PluginContributions {
     title?: string;
     when?: "selection";
   }>;
+  /**
+   * §394 A sandboxed plugin's sidebar panels (spec 0073 D14), at most 3 — each shows what
+   * `ctx.ui.setPanel` sends it. Needs the `sidebar` capability; a trusted manifest declares none (that
+   * tier mounts its own DOM with `ui.addSidebarPanel`). `id` follows the contribution id rule; `icon`,
+   * when given, is one character (an emoji or a letter) of at most 16 UTF-16 units.
+   */
+  panels?: Array<{ icon?: string; id: string; title: string }>;
   settings?: PluginSettingField[];
   /** Items at the end of the slash menu, at most 10. */
   slash?: Array<{
@@ -348,6 +609,14 @@ export interface PluginFetchResponse {
 }
 
 /**
+ * §395 What `file:delete` carries in the sandboxed tier (spec 0074 §4): where the entry was, and whether it
+ * was a folder.
+ */
+export interface PluginFileDelete extends PluginFileEvent {
+  isDir: boolean;
+}
+
+/**
  * §260 Phase 4a — what a sandboxed plugin is told when a file event fires. Carries a
  * VAULT-RELATIVE path and the context to resolve it against; no absolute path ever
  * crosses the sandbox boundary (see `SandboxFilesAPI`). Pass `context` straight back to
@@ -357,6 +626,13 @@ export interface PluginFetchResponse {
 export interface PluginFileEvent {
   context: string;
   path: string;
+}
+
+/** §395 What `file:rename` carries in the sandboxed tier (spec 0074 §4). */
+export interface PluginFileRename {
+  from: PluginFileEvent;
+  isDir: boolean;
+  to: PluginFileEvent;
 }
 
 /**
@@ -728,6 +1004,32 @@ export interface RegistryIndex {
   updatedAt?: string;
 }
 
+/** §394 A click on a `data-action` element of a rendered block (spec 0073 §4). */
+export interface RenderedAction extends CodeBlockInfo {
+  /** The clicked element's `data-action` value. */
+  action: string;
+}
+
+/**
+ * §394 What a renderer returns; the host sanitizes it before drawing (spec 0073 D8 · D9).
+ */
+export interface RenderedContent {
+  /**
+   * Goes into this block's shadow root only. `url()` (also `data:`), URL-taking functions
+   * (`image-set()` …), at-rules other than `@media` · `@supports` · `@keyframes` · `@container`,
+   * `:host`-family selectors, and the text `</` (an export writes this CSS into a `<style>`, which
+   * it would close) are refused. `</` in a comment can be refused too: most comments are dropped
+   * first, but some are kept, a top-level `/*!` one among them. `!important` is removed. At most
+   * 64 KiB.
+   */
+  css?: string;
+  /**
+   * HTML · SVG. Scripts, handlers, `style`, form inputs, media elements and remote URLs are removed;
+   * images are `data:image/*`. At most 1 MiB.
+   */
+  html: string;
+}
+
 /**
  * What a sandboxed plugin's `activate` receives — the sandboxed tier's counterpart to
  * `ExtensionContext`.
@@ -759,6 +1061,12 @@ export interface SandboxContext {
    * `plugin-*` window holds no `llm_*` ACL grant.
    */
   ai: AIAPI;
+  /**
+   * §394 — the same API as the trusted tier's (spec 0073 D3), with `CodeBlockInfo.path` relative to
+   * the context root (see its doc for `null` and `""`). Without `codeblocks` every call throws.
+   * Register in `activate`: the app draws only the languages registered before it finishes.
+   */
+  codeBlocks: CodeBlocksAPI;
   commands: {
     register(id: string, handler: (...args: unknown[]) => unknown): void;
   };
@@ -773,6 +1081,16 @@ export interface SandboxContext {
     /** §393 See `EventsAPI.on("vault:changed")` — the same event, the same payload. */
     on(event: "vault:changed", handler: (change: VaultChange) => void): void;
     /**
+     * §395 See `EventsAPI.on("file:rename")`. `from` and `to` are each relative to their own context — a
+     * move between nested vaults names two. Not sent when either path is in no registered context.
+     */
+    on(event: "file:rename", handler: (rename: PluginFileRename) => void): void;
+    /** §395 See `EventsAPI.on("file:delete")`. Not sent for a path in no registered context. */
+    on(
+      event: "file:delete",
+      handler: (deletion: PluginFileDelete) => void,
+    ): void;
+    /**
      * §260 Phase 4a — overloaded so the file events' payload actually reaches plugin
      * code as `PluginFileEvent` (code review nit): with only the `unknown[]` signature an
      * author had to cast to learn the shape of the very thing this phase added.
@@ -784,6 +1102,12 @@ export interface SandboxContext {
     on(event: string, handler: (...args: unknown[]) => void): void;
   };
   files: SandboxFilesAPI;
+  /**
+   * §393 — brokered like `files`, and exposed unconditionally for the same reason: the Rust
+   * authorizer admits the six index ops on `files` or `files:readonly`. Paths are relative to the
+   * context root, as in `files`; pass `opts.context` from a `PluginFileEvent` or a `VaultChange`.
+   */
+  index: IndexAPI;
   network: NetworkAPI;
   /**
    * §385 — host-drawn prompts. The `PromptsAPI` contract (see its doc comment) plus two
@@ -799,16 +1123,31 @@ export interface SandboxContext {
   settings: SandboxSettingsAPI;
   storage: StorageAPI;
   /**
-   * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is
-   * no DOM or CSS here (that is the trusted tier's `UIAPI`). Host-mediated like `ai`,
-   * and gated there — attribution, sanitising and rate limiting cannot be enforced in
-   * this realm.
+   * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is no DOM here
+   * (that is the trusted tier's `UIAPI`); a panel's HTML and CSS are strings the host sanitizes (§394).
+   * Host-mediated like `ai`, and gated there — attribution, sanitising and rate limiting cannot be
+   * enforced in this realm.
    */
   ui: SandboxUIAPI;
 }
 
 /** @deprecated The same as `EditorAPI` since §388 — kept so existing type references compile. */
 export type SandboxEditorAPI = EditorAPI;
+
+/**
+ * §395 One update for the sandboxed `SandboxUIAPI.setFileDecorations` (spec 0074 D7): `path` is names joined
+ * by "/", at most 4,096 UTF-16 units — no leading "/", no empty, "." or ".." name, no "\"
+ * (`""` is the context root itself, and the only path a single-file context takes); `context` is a
+ * registered context id. Left out, it is the context the app shows when the call arrives. That can differ
+ * from the one `ctx.files` reads without a context while the user switches vaults, and after the app
+ * switches to a single-file context only `""` is accepted: a context-less call with another path is refused
+ * whole.
+ */
+export interface SandboxFileDecorationUpdate {
+  context?: string;
+  decoration: FileDecoration | null;
+  path: string;
+}
 
 export interface SandboxFileOptions {
   /** Registered context id to resolve `path` against. Default: the active context. */
@@ -857,12 +1196,50 @@ export interface SandboxSettingsAPI {
 }
 
 /**
- * §260 Phase 4a — the sandboxed tier's UI surface: no DOM, no CSS, no element handle.
- * Everything here is data the host renders on the plugin's behalf, which is why it can
- * be offered to code the app does not trust. Arbitrary-DOM panels and injected styles
+ * §260 Phase 4a — the sandboxed tier's UI surface: no DOM and no element handle. Everything here is
+ * data the host renders on the plugin's behalf, which is why it can be offered to code the app does
+ * not trust. §394 — a panel's content is HTML and CSS as strings, which the host sanitizes before it
+ * draws them, as it does a code block renderer's result. Arbitrary-DOM panels and injected styles
  * remain trusted-tier only (see `UIAPI`).
  */
 export interface SandboxUIAPI {
+  /** §395 Remove every decoration this plugin set (spec 0074 D15); its icons stay defined. Needs `filetree`. */
+  clearFileDecorations(): Promise<void>;
+  /**
+   * §395 Define or redefine icon `name` for `FileDecoration.icon.svg` (spec 0074 D6) — the same rules as
+   * `UIAPI.defineFileIcon`. Needs `filetree`.
+   */
+  defineFileIcon(name: string, svg: string): Promise<void>;
+  /**
+   * §394 A click on an element with `data-action` inside panel `id`'s content: `handler` gets the
+   * value. Only a panel declared in `contributions.panels`; throws for any other. While the handler's
+   * promise is pending, `ctx.prompts` may open — for the 30 s a command runs on, which stops while a
+   * prompt is open and starts again from 30 s when it closes. Several handlers may listen to one panel.
+   */
+  onPanelAction(
+    id: string,
+    handler: (action: string) => Promise<void> | void,
+  ): Disposable;
+  /**
+   * §395 Set, or with `decoration: null` remove, this plugin's decoration of each path (spec 0074 D2 · D7).
+   * Paths are relative to a context root, in the form `SandboxFileDecorationUpdate` describes.
+   * The limits and the order of calls are `UIAPI.setFileDecorations`'s; a call this realm can tell is
+   * malformed or too large to send is refused before it is sent. Needs `filetree`.
+   */
+  setFileDecorations(updates: SandboxFileDecorationUpdate[]): Promise<void>;
+  /**
+   * §394 Show `content` in panel `id`, one declared in `contributions.panels` (which needs `sidebar`).
+   * Throws at once for an undeclared id and for content over a limit — 1 MiB of HTML or 64 KiB of CSS
+   * in UTF-8, or a lone surrogate. The user approves every capability the manifest lists in one
+   * answer, at install and again when an update adds one, so there is no install without `sidebar`.
+   * The app withholds it only when the approval it recorded for the plugin does not cover it; then no
+   * panel button appears and the app refuses each `setPanel` without throwing. The app keeps the last
+   * content and draws it while the panel is shown, at most once every `PANEL_UPDATE_INTERVAL_MS`
+   * milliseconds (the app's update interval); a call made while the previous one is on its way
+   * replaces the content waiting to go, so the last call's content is the one sent last. What the
+   * HTML and CSS may hold is a code block renderer's rule (`RenderedContent`).
+   */
+  setPanel(id: string, content: RenderedContent): void;
   /**
    * Update one status-bar item this plugin DECLARED in `contributions.statusBar`. The
    * host resolves `id` against that declaration, so a plugin can neither invent an item
@@ -992,7 +1369,26 @@ export interface UIAPI {
   addSettingsTab(opts: PluginSettingsTabOptions): Disposable;
   addSidebarPanel(opts: PluginSidebarPanelOptions): Disposable;
   addStyle(css: string): Disposable;
+  /** §395 Remove every decoration this plugin set (spec 0074 D15); its icons stay defined. Needs `filetree`. */
+  clearFileDecorations(): Promise<void>;
+  /**
+   * §395 Define or redefine icon `name` for `FileDecoration.icon.svg` (spec 0074 D6). `name` is 1–64
+   * of A–Z, a–z, 0–9, `_` and `-`; `svg` is at most 8 KiB of UTF-8 and must be one `<svg>` element once
+   * Baram has sanitized it. Drawn as a one-colour mask in the decoration's colour, or the row's text colour when the decoration has none (D5); 64 icons a plugin.
+   * Needs `filetree`. Up to 64 calls are taken at once, then one every 250 ms — a call beyond that waits.
+   */
+  defineFileIcon(name: string, svg: string): Promise<void>;
   registerFileViewer(opts: PluginFileViewerOptions): Disposable;
+  /**
+   * §395 Set, or with `decoration: null` remove, this plugin's decoration of each absolute `path`
+   * (spec 0074 D2 · D4). At most 1,000 updates a call, 4,096 UTF-16 units a `path` and 20,000 decorated
+   * paths a plugin; an update over a limit, or a malformed one, refuses the whole call and nothing is
+   * applied (D14). Needs `filetree`. The three file tree methods of one plugin are
+   * applied in the order called — eight decoration calls at once, then one every 250 ms; a call beyond
+   * that waits and is not refused — so they may be called together. Baram does not keep decorations:
+   * set them again in `activate`.
+   */
+  setFileDecorations(updates: FileDecorationUpdate[]): Promise<void>;
   showNotification(message: string, type?: "error" | "info" | "warning"): void;
   showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
 }
@@ -1004,9 +1400,10 @@ export interface VaultChange {
 
 /**
  * Capabilities that admit the `ui` surface. Shared by both tiers on purpose: the
- * trusted tier hands out a `UIAPI` when a plugin holds any of these, and the sandboxed
- * tier answers `ui` requests under the same rule (§260 Phase 4a). One list, so "may this
- * plugin use the `ui` surface?" cannot come to two different answers. (§385 `prompts`
+ * trusted `showNotification` and `addStyle` need one of these, and the sandboxed tier
+ * answers `ui` requests under the same rule (§260 Phase 4a). One list, so "may this
+ * plugin use the `ui` surface?" cannot come to two different answers. (`filetree` also
+ * opens the trusted `UIAPI` object, for its three file tree methods only — §395.) (§385 `prompts`
  * reach the screen without any of these — their bound is the prompt gate, spec 0061 D2.)
  */
 export const UI_CAPABILITIES: readonly PluginCapability[] = [
@@ -1109,4 +1506,6 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   network: "네트워크 요청을 보낼 수 있습니다",
   storage: "플러그인 전용 저장소를 사용할 수 있습니다",
   viewer: "파일 형식별 커스텀 뷰어를 등록할 수 있습니다",
+  codeblocks: "선언한 언어의 코드 블록을 그릴 수 있습니다",
+  filetree: "파일 트리에 아이콘 · 배지를 달고, 우클릭 메뉴에 항목을 더합니다",
 };

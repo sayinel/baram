@@ -1,6 +1,7 @@
 // §30.3b Graph View — node context-menu item builder
 import type { MenuItem } from "../toolbar/context-menu-types";
 
+import { tagName } from "../../utils/tags/tag-name";
 import { displayName } from "./graph-utils";
 
 const TAG_PREFIX = "tag:";
@@ -59,7 +60,7 @@ export function buildGraphNodeMenu(
 /** Copy a graph node as pasteable markdown: `#tag` for tags, `[[name]]` otherwise */
 export function nodeClipboardText(target: GraphNodeMenuTarget): string {
   if (target.isTag) {
-    return `#${target.nodeId.slice(TAG_PREFIX.length)}`;
+    return `#${tagName(target.nodeId.slice(TAG_PREFIX.length))}`;
   }
   // §390 D7 — the link text is composed (NFC), whatever spelling the disk stores.
   return `[[${displayName(target.nodeId).normalize("NFC")}]]`;

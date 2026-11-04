@@ -111,6 +111,7 @@ describe("§33 Auto-rename wikilink update", () => {
     // Verify the shape of RenameResult matches IPC types (issue 594 added
     // skippedFiles: referrers whose links could not be rewritten).
     const mockResult: RenameResult = {
+      moved: [],
       skippedFiles: ["/docs/locked.md"],
       updatedFiles: ["/docs/a.md", "/docs/b.md"],
     };

@@ -15,7 +15,7 @@ search/       ← regex 기반 전문 검색 — 파일 워킹 (§5.11)
 index/        ← 인메모리 링크/블록 인덱스 — HashMap (§29). 이름 · 링크 대상의 키는 `normalizer::fold_name`(NFC→소문자→NFC, §390)을 거친다 — `fold_gate.rs` 가 맨 대소문자 접기를 막는다
 context/      ← 컨텍스트 관리자 — Vault 시스템 (§88)
 approval/     ← vault 경계 승인 저장소 — 웹뷰가 못 건드리는 인가 기록 (§331)
-cli/          ← 명령줄 도구 — `baram <command>`, tauri 를 시작하지 않고 vault 를 읽는다 (§387)
+cli/          ← 명령줄 도구 — `baram <command>`, tauri 를 시작하지 않고 vault 를 읽는다 (§387) · cli/mcp/ 는 같은 명령을 stdio MCP 서버의 도구로 (§389)
 task/         ← 태스크 인덱스/필드 파싱 (§302~§318)
 embedding/    ← 임베딩 — Knowledge Q&A (§11.4)
 plugin/       ← 플러그인 **및 테마** 설치/레지스트리 (§69 · §360 — 같은 staging·swap 기계, InstallKind 로 트리만 가른다)
@@ -50,7 +50,8 @@ PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 �
 ## 명령줄 도구 규칙 (§387)
 
 `cli/` 는 IPC 커맨드가 아니다 — `main()` 이 `cli::mode_for(argv)` 로 갈라 `cli::run` 을 부르고, tauri 는 시작하지 않는다.
-설계는 `dev/design/specs/0066-cli-read-only-design.md`.
+설계는 `dev/design/specs/0066-cli-read-only-design.md`. `cli::run` 은 `mcp` 를 stdout 을 잡기 전에 `cli::mcp::run`(stdio MCP 서버, §389,
+`dev/design/specs/0068-mcp-server-design.md`)으로 보낸다 — 실행 파일의 모드는 셋이다: GUI · CLI 명령 · MCP 서버.
 
 - **읽기 전용이다.** 명령을 더할 때 vault · 앱의 `config.json` · 앱 로그에 쓰는 것을 넣지 않는다 — `tests/cli.rs` 의
   `no_command_writes_into_the_vault_the_config_or_the_logs` 가 아홉 명령(텍스트 · `--json`) 전후로 vault 와 `HOME` · `XDG_DATA_HOME`
@@ -64,6 +65,24 @@ PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 �
   넣지 않으면 그 실행이 CLI 사용법 오류로 끝난다.
 - **`config.json` 의 모양**(`baram:context` · `baram:settings`)을 CLI 가 Rust 에서 직접 읽는다. 프런트 스토어의 `partialize` 에서
   CLI 가 읽는 필드의 이름을 바꾸면 `src/stores/__tests__/cli-persisted-config-contract.test.ts` 가 깨진다.
+- **`baram mcp` 의 stdout 은 JSON-RPC 만 싣는다.** `mcp` 갈래 안에서 `print!` · `println!` 을 쓰지 않는다 — 경고 · 시작 오류는 stderr 로
+  (`tests/mcp.rs` 의 `stdout_carries_only_protocol_messages_when_the_config_warns` 가 세션의 stdout 줄이 모두 JSON 인지 본다).
+- **도구는 모두 `readOnlyHint: true` · `openWorldHint: false` 다**(`cli/mcp/catalog.rs` 의 `definitions`). 클라이언트가 그 표시로 확인을
+  건너뛸 수 있으므로, 쓰기 · 네트워크 · 디스크 캐시가 있는 도구를 이 표시로 더하지 않는다. 읽기 전용은
+  `a_session_writes_nothing_into_the_vault_the_config_or_the_logs` 가 CLI 와 같은 스냅샷으로 잰다.
+- **도구의 `vault` 는 허용 집합 안만 받는다**(`cli/mcp/scope.rs`) — 없는 경로와 집합 밖의 경로가 같은 메시지다. 경로 형태는 디스크에 묻지 않고 글자로
+  맞춘다(`cli/spelling.rs` 의 `letters`): 루트의 표기(정규 경로 · 그 폴더를 등록한 경로 · 그 루트를 부른 경로 형태 `--vault` — `Member::spellings`)와 같을 때만
+  받고, 도구의 절대 경로 인자도 그 표기로 시작해야 하며, 상대 경로 인자의 `..` 가 루트 밖으로 나가면 글자만으로 밖이다(`Vault::spellings` · `paths::written_path`. CLI 는 `None` 이라 디스크에서 푼 뒤 루트 안인지만 본다). 그 vault 안에서 도구의 파일
+  경계는 `paths::locate` · `note_names_first` · `folder_arg` 다 — 도구가 받는 노트 · 폴더 경로는 모두 이 셋을 거친다(`backlinks` 는 `locate` 를 직접,
+  `folder` 는 `folder_arg` 로, 노트를 읽는 `read_note` · `list_tasks` 의 `file` · `outgoing_links` 는 `note_names_first` 로 — CLI 의 `note_arg` 와
+  규칙은 같고, 노트 규칙을 파일이 있는지보다 먼저 묻는다. 그 답이 갈리는 경로는 `note_names_first` 의 doc). CLI 에서는 범위 규칙이지만(호출자의 셸이 그 파일을 어차피 읽을 수 있다), MCP 에서는 도구의 파일 경계다 —
+  호출자는 셸이 없는 모델이고, 그 인자는 노트 본문이 움직일 수 있다(스펙 D6).
+- **핸들러 경로는 패닉하지 않는다**: `unwrap` · `expect` · `unreachable!` · 색인 접근(`v[i]`, serde_json `Value` 의 `IndexMut` 도)을 두지 않고, 덧셈은
+  포화한다(`saturating_add`). 릴리스는 `panic = "abort"` 이고 `rmcp` 는 핸들러 패닉을 잡지 않는다.
+- **도구를 더할 때**: `ToolName` 에 변형을 더하면 `about` · `output_schema`(`cli/mcp/catalog.rs`) · `call`(`cli/mcp/tools.rs`) 의 `match` 가 컴파일을
+  멈춘다. 도구마다 `cli/mcp/catalog.rs` 의 인자 표(`About.arguments`) 하나에서 `cli/mcp/args.rs` 의 `schema` · `read` 가 입력 스키마와 인자 검사를
+  함께 만든다. `ToolName::ALL` 은 손으로 쓴 목록이라 `tools_list_gives_the_nine_tools_of_the_spec` 가 이름을 고정한다. 링크 인덱스를 짓는 도구는
+  `server.gate.run` 안에서 짓고, `cli/mcp/gate.rs` 의 `each_tool_that_builds_the_index_runs_inside_the_gate` 에 더한다 — 그 시험은 도구를 손으로 나열한다.
 
 ## IPC 커맨드 규칙
 
@@ -105,7 +124,7 @@ app_handle.emit("file:changed", FileChangedPayload {
 |------|--------------|
 | fs | read/write/list/rename/delete/copy, watch_dir, extract_zip, write_binary_file(vault 제약), export_binary_file(제약 없음) |
 | config | get/set/remove_config |
-| search | search_files (regex 전문 검색) |
+| search | search_files (regex 전문 검색) · replace_search_matches (검색 패널 바꾸기 — 글을 받아 같은 패턴 · 줄 단위로 바꾼 글을 돌려준다) |
 | index | 백링크/링크 그래프/인덱스 갱신, rename_file_with_links, unlinked mentions, block id |
 | context | 컨텍스트(Vault) 관리 (§88) |
 | embedding | Knowledge Q&A 임베딩 (§11.4) |

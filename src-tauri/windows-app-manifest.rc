@@ -1,0 +1,27 @@
+// The Windows application manifest: a dependency on Common Controls 6.0. build.rs links
+// this resource into EVERY target on windows-msvc (see
+// `embed_the_windows_manifest_in_every_target` there, which says why).
+//
+// The resource below is, line for line, what tauri-winres 0.3.5 writes into the resource
+// file tauri-build 2.7.2 compiles for its default manifest (`write_resource_file`: each
+// line trimmed and quoted, `"` doubled; `1` is the default FILETYPE, VFT_APP; `24` is
+// RT_MANIFEST). Keep it that way: the app exe then carries the same manifest bytes it
+// carried when tauri-build embedded them.
+#pragma code_page(65001)
+1 24
+{
+" <assembly xmlns=""urn:schemas-microsoft-com:asm.v1"" manifestVersion=""1.0""> "
+" <dependency> "
+" <dependentAssembly> "
+" <assemblyIdentity "
+" type=""win32"" "
+" name=""Microsoft.Windows.Common-Controls"" "
+" version=""6.0.0.0"" "
+" processorArchitecture=""*"" "
+" publicKeyToken=""6595b64144ccf1df"" "
+" language=""*"" "
+" /> "
+" </dependentAssembly> "
+" </dependency> "
+" </assembly> "
+}

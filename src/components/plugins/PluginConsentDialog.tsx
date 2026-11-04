@@ -6,13 +6,17 @@ import type { PluginConsent } from "../../plugins/types";
 import { TriangleAlert } from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { consentCovers } from "../../plugins/plugin-consent";
+import { consentCovers, newCodeBlockLangs } from "../../plugins/plugin-consent";
 import { securitySurfaceCss } from "../../utils/security-surface-css";
 import { ShadowIsolated } from "../ui/ShadowIsolated";
 import { capabilityLabel } from "./capability-label";
 
 interface PluginConsentDialogProps {
-  /** What is being asked for now — a registry claim, never a downloaded manifest. */
+  /**
+   * What is being asked for now — a registry claim, or a dev folder's manifest. §394: the
+   * post-download re-ask sets the claim's code block languages to the downloaded manifest's
+   * (`codeBlockReask`) — nothing else of that manifest.
+   */
   consent: PluginConsent;
   /**
    * What the user is actually doing, which is NOT derivable from `reason` (§260 Phase 5
@@ -28,8 +32,9 @@ interface PluginConsentDialogProps {
   onCancel: () => void;
   onConfirm: () => void;
   /**
-   * The recorded consent, when there is one to diff against. Drives the "NEW" markers — set
-   * for an `"update"`, and also for a `"load"` reload whose capabilities grew (§379 F2).
+   * The consent to diff against, when there is one. Drives the "NEW" markers — the recorded
+   * consent for an `"update"` and for a `"load"` reload whose request grew (§379 F2); for
+   * §394's post-download re-ask, the claim just approved, which carries the record's languages.
    */
   prior?: PluginConsent;
   /**
@@ -192,6 +197,35 @@ export function PluginConsentDialog({
                 ))}
               </ul>
             )}
+
+            {/* §394 spec 0073 D4 — where `codeblocks` reaches. Two consents carry languages,
+                both built from a manifest in hand: a dev folder's request (`devConsentToAsk`)
+                and the post-download re-ask (`codeBlockReask` — the download's set). A
+                registry claim names none, and `handleUpdate` carries the record's onto it
+                only after the dialog, so this lists what the version being approved draws.
+                NEW is `newCodeBlockLangs`, the rule `consentGaps` uses. */}
+            {consent.codeBlocks !== undefined &&
+              consent.codeBlocks.length > 0 && (
+                <>
+                  <p className="plugin-consent__lead">
+                    {t("plugin.consent.codeBlocks")}
+                  </p>
+                  <ul className="plugin-consent__caps">
+                    {consent.codeBlocks.map((lang) => (
+                      <li className="plugin-consent__cap" key={lang}>
+                        <code className="plugin-consent__cap-text">{lang}</code>
+                        {prior !== undefined &&
+                          newCodeBlockLangs(prior, { codeBlocks: [lang] })
+                            .length > 0 && (
+                            <span className="plugin-consent__new">
+                              {t("plugin.consent.new")}
+                            </span>
+                          )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
           </div>
 
           {/* Outside the scroll container on purpose — the gate and the decision must always

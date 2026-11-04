@@ -350,7 +350,11 @@ export function buildPipelineClosure(): Set<string> {
  * `markdown-parser.ts` likewise (2026-09-22, eleven → twelve, issue 669): the
  * `unified()` construction lifted unchanged out of `parse-mdast.ts` so the
  * text-path rename and the parity oracle read markdown with the same stack
- * the pipeline does. It carries no conversion logic — construction only.
+ * the pipeline does. It carries no conversion logic — construction only. It
+ * left this set again (2026-10-18, twelve → eleven) when `serializer.ts`
+ * began asking that stack whether a highlight's shorthand reads back as its
+ * text, which put it in the closure; its outside consumer is allowlisted in
+ * `buildAllowlist()`.
  */
 export const MD_TO_PM_ROUTE_FILES: ReadonlySet<string> = new Set([
   join(PIPELINE_DIR, "convert-block-special.ts"),
@@ -359,7 +363,6 @@ export const MD_TO_PM_ROUTE_FILES: ReadonlySet<string> = new Set([
   join(PIPELINE_DIR, "convert-inline.ts"),
   join(PIPELINE_DIR, "convert-list.ts"),
   join(PIPELINE_DIR, "convert-table-colwidths.ts"),
-  join(PIPELINE_DIR, "markdown-parser.ts"),
   join(PIPELINE_DIR, "md-to-pm.ts"),
   join(PIPELINE_DIR, "parse-async.ts"),
   join(PIPELINE_DIR, "parse-mdast.ts"),
@@ -410,7 +413,9 @@ export function buildPipelineInternalSet(): Set<string> {
  * for `import type` alone (issue 637) — a value import of it is red, and the
  * dead-entry check counts only type-only consumers for it. Nothing outside
  * the pipeline imports a TYPE from the closure today, so every entry below
- * is a value.
+ * is a value. `markdownParser` joined on 2026-10-18: its consumer was already
+ * there, and `markdown-parser.ts` entered the closure when `serializer.ts`
+ * began parsing a highlight's shorthand to see whether it reads back.
  */
 export function buildAllowlist(): Map<string, Map<string, AllowEntry>> {
   const value = (names: string[]): Map<string, AllowEntry> =>
@@ -426,6 +431,7 @@ export function buildAllowlist(): Map<string, Map<string, AllowEntry>> {
     "transformers",
     "wikilink-transformer.ts",
   );
+  const markdownParser = join(PIPELINE_DIR, "markdown-parser.ts");
   return new Map([
     [
       blockId,
@@ -461,6 +467,19 @@ export function buildAllowlist(): Map<string, Map<string, AllowEntry>> {
         // same regex-and-attrs parser the MD→PM direction uses; no PM doc,
         // no mdast tree.
         "parseImgHtml",
+      ]),
+    ],
+    [
+      markdownParser,
+      value([
+        // utils/editor/block-id-rename-markdown.ts (issue 594) — parses a
+        // note's markdown string with the app's one parser stack to find the
+        // ranges it reads as code, math, HTML, images, definitions or front
+        // matter (and tables), so a block ID rename leaves them alone. The
+        // stack reads markdown into mdast; nothing in it turns a PM doc into
+        // markdown (it joined the closure because `serializer.ts` asks it
+        // whether a shorthand reads back, 2026-10-18).
+        "markdownParser",
       ]),
     ],
     [

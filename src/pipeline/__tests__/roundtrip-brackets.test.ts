@@ -170,13 +170,31 @@ describe("a bracket shaped like a link, reference or span keeps today's bytes", 
 
 describe("a closing bracket right before a block reference", () => {
   // remark escapes a `(` after `]` in text, but a block reference is written
-  // verbatim, so `]((note#^abc))` is a live inline link destination. The
-  // highlight shorthand also writes its text verbatim, which leaves `==[x==`
-  // with an open bracket that this `]` would close.
+  // verbatim, so `]((note#^abc))` is a live inline link destination. A
+  // wikilink is written verbatim too, and a `[` in its display text leaves the
+  // wikilink's first `[` open (`[[t|x[y]]`) for that `]` to close. With the
+  // text's own `[w]` kept escaped, its `]` closes the open bracket first.
+  // (Without a `]` of its own before the last one the text cannot do that, and
+  // such a document still reads back with a link.)
   it("does not let an earlier open bracket become a link", () => {
-    const md = "==\\[x== \\[y] z]((note#^abc))\n";
-    expectSameDocumentAfterSave(md);
-    expect(linkHrefs(load(roundtrip(md)))).toEqual([]);
+    const doc = schema.nodeFromJSON({
+      content: [
+        {
+          content: [
+            { attrs: { display: "x[y", target: "t" }, type: "wikilink" },
+            { text: " [w] z]", type: "text" },
+            {
+              attrs: { blockId: "abc", target: "note" },
+              type: "blockReference",
+            },
+          ],
+          type: "paragraph",
+        },
+      ],
+      type: "doc",
+    });
+    expectSameAfterSave(doc);
+    expect(linkHrefs(load(prosemirrorToMarkdown(doc)))).toEqual([]);
   });
 });
 
@@ -415,5 +433,59 @@ describe("a space right before a line ending", () => {
     expect(
       JSON.stringify(load(prosemirrorToMarkdown(doc)).toJSON()),
     ).not.toContain("hardBreak");
+  });
+});
+
+describe("a web address's spelling with an escaped character in it", () => {
+  // micromark starts a link at `www.` or `http(s)://` and keeps the backslash
+  // of an escape inside it: `see www._1.` was written `see www.\_1.` and read
+  // back as a link to `www.\_1`, the text gaining the backslash. The `.` of
+  // `www.` and the `:` of `http(s)://` are now written escaped, so micromark
+  // starts no link there, and the autolink text transform — which reads the
+  // text after escapes are taken out — decides whether one forms, as it
+  // already did for a lowercase `http://`. What fails these: leaving those
+  // two characters to remark, which escapes the `.` only before a `-`, `.` or
+  // word character it does not escape itself, and the `:` only after a
+  // lowercase `p` or `s`.
+  it.each([
+    ["an underscore after `www.`", "see www._1. and WWW._2."],
+    ["an uppercase scheme", "see HTTP://w.w.a_b t"],
+  ])("%s reads back as text", (_label, text) => {
+    expectSameAfterSave(paragraphOf({ text, type: "text" }));
+  });
+
+  it.each([
+    ["an asterisk after `www.`", "see www.*x"],
+    ["a dollar after `WWW.`", "see WWW.$5 off"],
+    ["a bracket after `www.`", "see www.[x"],
+  ])("%s keeps its characters", (_label, text) => {
+    // A link may still form from the text itself; what must not happen is a
+    // backslash joining the text.
+    const reloaded = load(
+      prosemirrorToMarkdown(paragraphOf({ text, type: "text" })),
+    );
+    expect(reloaded.textContent).toBe(text);
+  });
+
+  it("keeps it plain after a highlighted `[`", () => {
+    expectSameAfterSave(
+      paragraphOf(
+        { marks: [{ type: "highlight" }], text: "[", type: "text" },
+        { text: " see www._1.", type: "text" },
+      ),
+    );
+  });
+
+  it("keeps an uppercase scheme in a superscript plain", () => {
+    expectSameAfterSave(
+      paragraphOf(
+        {
+          marks: [{ type: "superscript" }],
+          text: "HTTP://w.w.a_b",
+          type: "text",
+        },
+        { text: " t", type: "text" },
+      ),
+    );
   });
 });

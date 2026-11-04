@@ -477,6 +477,13 @@ mod tests {
                 "parity-dump: the case ran on the main thread, so every record \
                  would be filed under one name"
             );
+            let sha256 = Sha256::digest(md.as_bytes())
+                .iter()
+                .fold(String::new(), |mut s, b| {
+                    use std::fmt::Write as _;
+                    let _ = write!(s, "{b:02x}");
+                    s
+                });
             // ‼️ The lock is held across the write, not only across the
             // ordinal. While it covered only the ordinal, appending from
             // several test threads tore the lines apart — 267 of 284 were
@@ -492,7 +499,7 @@ mod tests {
             let line = serde_json::json!({
                 "test": test,
                 "ordinal": ordinal,
-                "sha256": format!("{:x}", Sha256::digest(md.as_bytes())),
+                "sha256": sha256,
                 "bytes": md.len(),
                 "markdown": md,
                 "markers": markers,

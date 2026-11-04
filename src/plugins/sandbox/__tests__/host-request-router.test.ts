@@ -2,6 +2,7 @@ import type { AIAPI } from "../../types";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { fileTreeCapabilityMessage } from "../../file-decorations/validate";
 import { PROMPT_HEARTBEAT_MS } from "../host-prompt-bridge";
 import { createHostRequestHandler } from "../host-request-router";
 
@@ -41,6 +42,15 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     expect(toasts).toEqual([{ message: "hello", source: "P" }]);
   });
 
+  /** §395 — the filetree kinds reach their own bridge, under its own gate. What fails this: a kind the
+   *  router does not route ("unsupported host request"). */
+  it("routes a file tree request to its bridge, under its own gate", async () => {
+    const { handler } = handlerFor(["statusbar"]);
+    await expect(
+      handler({ kind: "filetree_clear_decorations" }, noop),
+    ).rejects.toThrow(fileTreeCapabilityMessage("clearFileDecorations"));
+  });
+
   it("answers an ai request for a plugin that holds no ui capability", async () => {
     const { handler } = handlerFor(["ai"]);
     const tokens: string[] = [];
@@ -74,6 +84,15 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
     await expect(aiOnly({ kind: "settings_read" }, noop)).rejects.toThrow(
       /"settings" capability/,
     );
+  });
+
+  /** §394 plan 0126 — `ui_set_panel` reaches the ui bridge, under that bridge's `sidebar` gate. What
+   *  fails this: a kind the router does not route (it answers "unsupported host request"). */
+  it("routes a panel's content to the ui bridge, under its own gate", async () => {
+    const { handler } = handlerFor(["statusbar"]);
+    await expect(
+      handler({ html: "", id: "p", kind: "ui_set_panel" }, noop),
+    ).rejects.toThrow(/"sidebar" to call ui\.setPanel/);
   });
 
   it("keeps each service behind its OWN gate", async () => {

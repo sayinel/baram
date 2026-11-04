@@ -36,7 +36,12 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
       ctx.events.on("file:open", () => {});
     });
     await s.activate("p", DECLARED);
-    expect(s.registered).toEqual({ commands: ["add"], events: ["file:open"] });
+    // §394 — `codeBlocks` is always in the report: empty without a `register` (plan 0125 Task 11).
+    expect(s.registered).toEqual({
+      codeBlocks: [],
+      commands: ["add"],
+      events: ["file:open"],
+    });
   });
 
   it("runs a command handler and returns its value", async () => {
@@ -158,7 +163,11 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
     );
 
     await s.activate("p", { commands: [] });
-    expect(s.registered).toEqual({ commands: ["fresh"], events: [] });
+    expect(s.registered).toEqual({
+      codeBlocks: [],
+      commands: ["fresh"],
+      events: [],
+    });
   });
 });
 

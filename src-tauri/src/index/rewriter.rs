@@ -4,6 +4,7 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
+use super::block_ref_escape::{spell_block_ref_target, unescape_block_ref_target};
 use super::extractor::{extract_links, BLOCK_REF_RE};
 use super::judgement::{Judgement, Match, RenameTarget};
 use super::normalizer::{file_key, normalize_target};
@@ -43,16 +44,22 @@ static REF_REPLACE_RE: LazyLock<Regex> =
 /// root, `/private/tmp` for `/tmp`, has no `Path` key, so its path links
 /// are missed, never miswritten), and `target.local_aliases` are the ones
 /// the caller read when the rename started (a registration made since is not
-/// seen). The keys are a bare `[[Old.md]]`'s stem, and for a path-qualified
-/// `[[a/old]]` or a relative `[[./old]]` the file's path under a covering
-/// root. A file whose stem itself ends in `.md` (`diagram.md.txt`) never
-/// claims the note `diagram.md`'s links, and a link behind an alias that is
-/// not local (`[[work::old]]` naming another vault) is that vault's and stays.
+/// seen). The keys are a bare link's name (`name_key`: `[[Old.md]]` for a
+/// note's stem, `[[Paper.pdf]]` for another file's whole name), and for a
+/// path-qualified `[[a/old]]` or a relative `[[./old]]` the file's path
+/// under a covering root. A file that is no note (`diagram.md.txt`) never
+/// claims the note `diagram.md`'s links, which are filed under that note's
+/// stem; a bare link spelling the file's whole name that is also a note's
+/// stem (`[[x.txt]]` beside the note `x.txt.md`) names both, and is left and
+/// counted as ambiguous (`KnownPaths::note_stems`). A link behind an alias
+/// that is not local (`[[work::old]]` naming another vault) is that vault's
+/// and stays.
 /// A path link that a root holding the referrer reads as a different note
 /// that exists is ambiguous (`RenameTarget::judge`) and stays too; the pass
 /// counts those (`PassReport::ambiguous`) and the file rename reports the
 /// file. The new text is `RenameTarget::respell`, in NFC (§390): the new
-/// stem, or the new path, with the `.md` or `.markdown` the link was spelled
+/// name (`RenameTarget::new_stem` — a note's stem, any other file's whole
+/// name), or the new path, with the `.md` or `.markdown` the link was spelled
 /// with when the new file name ends in one too, and without it otherwise.
 ///
 /// A stem no wikilink can spell (`wikilink_can_spell`) is never written —
@@ -251,7 +258,10 @@ pub fn replace_block_id_refs_to(
                         .get_or_insert_with(|| Literal::of(content))
                         .overlaps(line.offset + whole.start()..line.offset + whole.end())
                 };
-                if id == old_id && refers_to_target(target) && in_prose() {
+                if id == old_id
+                    && refers_to_target(&unescape_block_ref_target(target))
+                    && in_prose()
+                {
                     matched += 1;
                     format!("(({target}#^{new_id}{display}))")
                 } else {
@@ -281,7 +291,9 @@ pub fn replace_block_id_refs_to(
 /// the file's path under such a root is respelled with the new path (issue
 /// 619), one that names another file's path stays, a self-reference names
 /// no target and stays, a literal region is never touched (issue 620), and a
-/// file whose stem ends in `.md` never claims the note's references.
+/// file that is no note, keyed by its whole name (`name_key`), never claims
+/// the references of the note its stem would name (`diagram.md.txt` and the
+/// note `diagram.md`).
 ///
 /// A stem no reference can spell (`block_reference_can_spell`) is never
 /// written: the reference would parse as nothing, silently. The content comes
@@ -305,25 +317,23 @@ pub fn replace_block_reference_target(
         |captured, id, display, m| {
             spellable.then(|| {
                 let new = target.respell(ref_path, m, captured);
-                format!("(({new}#^{id}{display}))")
+                format!("(({}#^{id}{display}))", spell_block_ref_target(&new))
             })
         },
     )
 }
 
 /// Whether a block reference can name a file with this stem. `)`, `#` and `|`
-/// end the target of `REF_REPLACE_RE` (and of the index's `BLOCK_REF_RE`);
-/// a line break ends the line every scanner reads, so a reference holding one
-/// straddles two lines and parses as nothing. A file name may hold any of
-/// these: APFS and ext4 permit them, refusing only `/` and NUL. A stricter
-/// file system only shrinks what reaches here, which this gate, refusing
-/// rather than trusting, does not mind. The frontend's
-/// percent-escapes (§275.4) have no reader on this side, so escaping here
-/// would file the reference under a key nothing resolves; the rename leaves
-/// such references and reports their files instead. A stem the reader would
-/// fold to another key is refused too (`link_reads_back_as_the_file`).
+/// end the target of `REF_REPLACE_RE` (and of the index's `BLOCK_REF_RE`),
+/// and are written escaped (`spell_block_ref_target`, §275.4), as the
+/// frontend writes them and as both the index and the editor read them back.
+/// A line break ends the line every scanner reads, so a reference holding one
+/// straddles two lines and parses as nothing; a file name may hold one (APFS
+/// and ext4 refuse only `/` and NUL), and this gate refuses it rather than
+/// trusting a stricter file system. A stem the reader would fold to another
+/// key is refused too (`link_reads_back_as_the_file`).
 pub fn block_reference_can_spell(stem: &str) -> bool {
-    !stem.contains([')', '#', '|', '\n', '\r']) && link_reads_back_as_the_file(stem)
+    !stem.contains(['\n', '\r']) && link_reads_back_as_the_file(stem)
 }
 
 /// The pass under `replace_block_reference_target`: on the lines the
@@ -373,10 +383,12 @@ fn visit_block_references_to(
                         .get_or_insert_with(|| Literal::of(content))
                         .overlaps(line.offset + whole.start()..line.offset + whole.end())
                 };
-                match judge(captured) {
+                // The target as the index read it, its escapes undone.
+                let captured = unescape_block_ref_target(captured);
+                match judge(&captured) {
                     Judgement::Ours(m) if in_prose() => {
                         visited += 1;
-                        respell(captured, id, display, &m)
+                        respell(&captured, id, display, &m)
                             .unwrap_or_else(|| whole.as_str().to_string())
                     }
                     Judgement::Ambiguous if in_prose() => {
@@ -789,6 +801,18 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn a_block_id_rename_reads_an_escaped_target_as_its_name() {
+        // §275.4 `((t (1%29#^a))` names the note `t (1)`, as the editor reads
+        // it: its block ID follows the rename, the escaped target kept as
+        // written. What fails this: judging the captured target as written in
+        // `replace_block_id_refs_to` — `t (1%29` is no file, and the ID stays.
+        assert_eq!(
+            rename_in("((t (1%29#^a)) and ((t (1%29#^a|x))", "t (1)", "a", "b"),
+            "((t (1%29#^b)) and ((t (1%29#^b|x))"
+        );
+    }
+
+    #[test]
     fn test_replace_block_id_refs_to_leaves_other_targets_with_the_same_id() {
         // issue 594: two notes carry ^id1; only the reference to `a` changes.
         let content = "((a#^id1)) and ((b#^id1)) and ((a#^id2))";
@@ -969,21 +993,13 @@ pub(super) mod tests {
 
     #[test]
     fn a_file_rename_to_a_stem_no_block_reference_can_spell_leaves_the_references_alone() {
-        // `((target#^id))` cannot hold `)`, `#` or `|` in its target — the
-        // reference regex stops at them — nor a line break, which the
-        // scanners never read across; and the Rust side has no escape
-        // convention (the frontend's percent-escapes are its own). Writing
-        // such a stem would leave a reference nothing parses, silently; the
-        // references stay, and the rename reports the file instead.
-        for stem in [
-            "note (draft)",
-            "c#",
-            "a|b",
-            "two\nlines",
-            "cr\rhere",
-            "foo.md",
-            " padded ",
-        ] {
+        // A block reference's target cannot hold a line break, which the
+        // scanners never read across, nor a stem the reader folds to another
+        // key (`foo.md` reads as the note `foo`, ` padded ` as `padded`).
+        // Writing one would leave a reference nothing parses, or one to
+        // another note, silently; the references stay, and the rename reports
+        // the file instead.
+        for stem in ["two\nlines", "cr\rhere", "foo.md", " padded "] {
             let content = "see ((old#^a)) and {{embed ((old#^a))}}";
             assert_eq!(
                 block_refs(content, "/v/referrer.md", "old", stem),
@@ -991,6 +1007,35 @@ pub(super) mod tests {
                 "{stem}"
             );
         }
+    }
+
+    #[test]
+    fn a_file_rename_writes_a_stem_holding_a_target_delimiter_escaped() {
+        // `)`, `#` and `|` end a block reference's target, so the new stem is
+        // written with them escaped (§275.4, `spell_block_ref_target`), as the
+        // frontend writes a highlight reference and as the index reads it
+        // back. A reference already escaped is read as its name: `((t (1%29#^a))`
+        // names `t (1).md`, and is rewritten too.
+        // What fails this: writing the stem as it is — `((note (draft)#^a))`
+        // ends its target at the `)`; reading the captured target as written,
+        // its escapes kept — `((t (1%29#^a))` is not the renamed file's.
+        let content = "see ((old#^a)) and {{embed ((old#^a))}}";
+        for (stem, written) in [
+            ("note (draft)", "note (draft%29"),
+            ("c#", "c%23"),
+            ("a|b", "a%7Cb"),
+            ("50% off", "50% off"),
+        ] {
+            assert_eq!(
+                block_refs(content, "/v/referrer.md", "old", stem),
+                format!("see (({written}#^a)) and {{{{embed (({written}#^a))}}}}"),
+                "{stem}"
+            );
+        }
+        assert_eq!(
+            block_refs("((t (1%29#^a))", "/v/referrer.md", "t (1)", "u (2)"),
+            "((u (2%29#^a))"
+        );
     }
 
     #[test]
@@ -1057,18 +1102,23 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn a_file_whose_stem_ends_in_md_does_not_claim_the_notes_links() {
-        // The index files a FILE under its lowercased stem (`normalize_file_path`)
-        // and a LINK under `normalize_target`, which also strips `.md`. For a
-        // note the two agree; for `diagram.md.txt` the file's key is
-        // `diagram.md` while `[[diagram]]` and `[[diagram.md]]` are the note
-        // `diagram.md`'s links, filed under `diagram`. Renaming the file must
-        // not touch them — and renaming the note must (the pair below).
+    fn a_file_that_is_no_note_claims_its_whole_name_and_not_the_notes_links() {
+        // The index files a file that is no note under its whole name
+        // (`name_key`) and a LINK under `normalize_target`, which strips a
+        // note extension. `[[diagram.md.txt]]` is the text file's link;
+        // `[[diagram]]` and `[[diagram.md]]` are the note `diagram.md`'s,
+        // filed under `diagram`. Renaming the file rewrites its own link and
+        // must not touch the note's — and renaming the note must (the pair
+        // below).
+        // What fails this: keying the file by its stem (`Path::file_stem`,
+        // `diagram.md`) — `[[diagram.md.txt]]` is left; reading that stem
+        // by the link rule (`normalize_target`, `diagram`) — the note's
+        // links are claimed.
         let content = "see [[diagram]] [[diagram.md]] [[diagram.md.txt]] ((diagram#^a))\n";
         let txt = rename_target("/v/diagram.md.txt", "/v/chart.txt");
         assert_eq!(
             replace_wikilink_target(content, "/v/r.md", &v(), &txt),
-            content
+            "see [[diagram]] [[diagram.md]] [[chart.txt]] ((diagram#^a))\n"
         );
         assert_eq!(
             replace_block_reference_target(content, "/v/r.md", &v(), &txt),

@@ -88,9 +88,18 @@ export function promptFrameProblem(request: PromptHostRequest): null | string {
       ? quickPickProblem(request.items, request.opts)
       : inputBoxProblem(request.opts);
   if (shape !== null) return shape;
-  // Serialised ONCE: `text` is reused for both the lone-surrogate walk (via `JSON.parse`, so an
-  // extra key or a `toJSON` result is inspected exactly as it will be — or was — sent) and the
-  // byte count below.
+  return sandboxReportProblem(request);
+}
+
+/**
+ * Why a sandbox must not send `request` as a host request, or `null`: two of the three things Rust drops
+ * WITHOUT answering (spec 0061 §6) — a lone surrogate, which `serde_json::Value` refuses to deserialise,
+ * and a report over `MAX_SANDBOX_REPORT_BYTES` (`check_report_size`). Two callers: `promptFrameProblem`
+ * and §395's file tree calls (`sandbox/sandbox-file-tree.ts`). Throws what `JSON.stringify` throws.
+ */
+export function sandboxReportProblem(request: unknown): null | string {
+  // Serialised ONCE: `text` is reused for both the lone-surrogate walk (via `JSON.parse`, so an extra
+  // key or a `toJSON` result is inspected exactly as it will be — or was — sent) and the byte count.
   const text = JSON.stringify(request);
   if (hasLoneSurrogate(JSON.parse(text) as unknown)) {
     return "a string holds a lone surrogate (half of an emoji or another astral character — often from slicing one), which Baram's IPC cannot carry";

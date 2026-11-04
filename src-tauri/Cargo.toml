@@ -12,6 +12,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Links the Windows manifest into every target, test harnesses included (build.rs,
+# `embed_the_windows_manifest_in_every_target`). Already in the tree under tauri-build,
+# through tauri-winres.
+embed-resource = "3"
 
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api"] }
@@ -36,6 +40,14 @@ regex = "1"
 # and error context. Unlike the crates promoted below, clap is NEW to the lock file —
 # nothing in the tree pulled it before.
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+# §389 `baram mcp`, the MCP server (spec 0068 D1). Without `macros`: the tools are listed
+# by hand in `cli/mcp/catalog.rs` (`definitions`) and dispatched by hand in
+# `cli/mcp/tools.rs` (`call`), because their arguments are read by hand (D12), so the
+# macros' argument extraction and schema generation would go unused.
+rmcp = { version = "~3.7", default-features = false, features = ["server", "transport-io"] }
+# The tools' output schemas (`cli/mcp/`). schemars 1 is already in the tree through
+# serde_with, without `derive`; the derive adds schemars_derive at the same version.
+schemars = "1"
 # §387 Where the app keeps config.json, without starting tauri: tauri's own `app_data_dir`
 # is `dirs::data_dir().join(identifier)` (tauri/src/path/desktop.rs). Already in the tree
 # through tauri; this promotes it to a direct dependency.
@@ -78,9 +90,9 @@ git2 = { version = "0.20", features = ["vendored-openssl"] }
 # call sites need: `plugin-release.yml` packs with `zip -r` (Deflated) and Notion
 # exports are Deflated. Adding a codec back here re-arms the above — do it only with
 # the allocation behaviour of that decoder in hand.
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 similar = "3"
-sha2 = "0.10"
+sha2 = "0.11"
 # §69 revocation-list signing. Both were already in the tree via tauri-plugin-updater, so
 # the `deny` job has been vetting them all along — this promotes them to direct deps rather
 # than adding supply-chain surface. Same scheme and same file format as the updater, so the

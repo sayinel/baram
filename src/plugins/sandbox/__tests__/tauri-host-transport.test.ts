@@ -16,6 +16,20 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: (...args: unknown[]) => listen(...args),
 }));
 
+import {
+  MAX_DECORATION_UPDATES,
+  MAX_FILE_ICON_NAME_CHARS,
+  MAX_FILE_ICON_SVG_BYTES,
+} from "../../file-decorations/limits";
+import { CODE_BLOCK_LANG } from "../../manifest-code-blocks";
+import {
+  MAX_CODE_BLOCK_LANG_CHARS,
+  MAX_FRAME_ID_CHARS,
+  MAX_PANEL_ID_CHARS,
+  MAX_RENDER_ERROR_CHARS,
+  MAX_RENDERED_CSS_BYTES,
+  MAX_RENDERED_HTML_BYTES,
+} from "../../rendered/limits";
 import { SandboxSession } from "../sandbox-session";
 import { createHostTransport } from "../tauri-host-transport";
 
@@ -265,6 +279,212 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(3);
   });
 
+  // §394 spec 0073 D13 — the F1 lesson above, for the render frames: `sandbox-code-blocks.test.ts`
+  // drives the in-memory pair, which has no validator, so only this row sees a well-formed render
+  // frame or request that the record drops, or a broken one it lets through. Each bound is met at
+  // its value and refused one past it; the language bound is the manifest's (`CODE_BLOCK_LANG`).
+  it("§394 delivers well-formed render frames and requests and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    const asked = (request: unknown) => ({
+      request,
+      requestId: "r",
+      type: "hostRequest",
+    });
+    for (const msg of [
+      { id: "render-1", ok: true, type: "renderResult" }, // no html
+      {
+        html: "x".repeat(MAX_RENDERED_HTML_BYTES + 1),
+        id: "render-1",
+        ok: true,
+        type: "renderResult",
+      },
+      { css: 1, html: "", id: "render-1", ok: true, type: "renderResult" },
+      { id: "render-1", ok: false, type: "renderResult" }, // no error
+      {
+        error: "e".repeat(MAX_RENDER_ERROR_CHARS * 4 + 1),
+        id: "render-1",
+        ok: false,
+        type: "renderResult",
+      },
+      {
+        html: "",
+        id: "r".repeat(MAX_FRAME_ID_CHARS + 1),
+        ok: true,
+        type: "renderResult",
+      },
+      { ok: true, type: "actionResult" }, // no id
+      {
+        id: "r".repeat(MAX_FRAME_ID_CHARS + 1),
+        ok: true,
+        type: "actionResult",
+      },
+      { id: "action-1", ok: false, type: "actionResult" }, // no error
+      {
+        error: "e".repeat(MAX_RENDER_ERROR_CHARS * 4 + 1),
+        id: "action-1",
+        ok: false,
+        type: "actionResult",
+      },
+      {
+        registered: { codeBlocks: [1], commands: [], events: [] },
+        type: "ready",
+      },
+      asked({ kind: "render_get_source" }),
+      asked({
+        id: "r".repeat(MAX_FRAME_ID_CHARS + 1),
+        kind: "render_get_source",
+      }),
+      asked({ kind: "render_invalidate", lang: 3 }),
+      asked({
+        kind: "render_invalidate",
+        lang: "x".repeat(MAX_CODE_BLOCK_LANG_CHARS + 1),
+      }),
+    ]) {
+      deliver({ msg, pluginId: "alpha" });
+    }
+    expect(seen).toEqual([]);
+    for (const msg of [
+      { html: "", id: "render-1", ok: true, type: "renderResult" },
+      {
+        html: "",
+        id: "r".repeat(MAX_FRAME_ID_CHARS),
+        ok: true,
+        type: "renderResult",
+      },
+      { css: "", html: "", id: "render-1", ok: true, type: "renderResult" },
+      { error: "e", id: "render-1", ok: false, type: "renderResult" },
+      { id: "action-1", ok: true, type: "actionResult" },
+      { error: "e", id: "action-1", ok: false, type: "actionResult" },
+      {
+        error: "e".repeat(MAX_RENDER_ERROR_CHARS * 4),
+        id: "r".repeat(MAX_FRAME_ID_CHARS),
+        ok: false,
+        type: "actionResult",
+      },
+      {
+        registered: { codeBlocks: ["chart"], commands: [], events: [] },
+        type: "ready",
+      },
+      asked({ id: "render-1", kind: "render_get_source" }),
+      asked({ kind: "render_invalidate" }),
+      asked({
+        kind: "render_invalidate",
+        lang: "x".repeat(MAX_CODE_BLOCK_LANG_CHARS),
+      }),
+    ]) {
+      deliver({ msg, pluginId: "alpha" });
+    }
+    expect(seen).toHaveLength(11);
+    // The bound above is the longest language a manifest may declare, and no longer.
+    expect(CODE_BLOCK_LANG.test("x".repeat(MAX_CODE_BLOCK_LANG_CHARS))).toBe(
+      true,
+    );
+    expect(
+      CODE_BLOCK_LANG.test("x".repeat(MAX_CODE_BLOCK_LANG_CHARS + 1)),
+    ).toBe(false);
+  });
+
+  /** §394 plan 0126 P8 — `ui_set_panel` has its validator (`isSetPanel`): an id of at most
+   *  `MAX_PANEL_ID_CHARS`, `html`, an optional `css`, each within the UTF-16 floor of its byte cap.
+   *  What fails this: a validator that skips one of the fields or the id's bound (its broken request
+   *  below is then delivered), or a bound below the longest id a manifest may declare (the max-length
+   *  id is then dropped). The record is a mapped type, so a missing entry does not compile. */
+  it("§394 plan 0126 delivers a well-formed ui_set_panel and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    const asked = (request: unknown) => ({
+      msg: { request, requestId: "r", type: "hostRequest" },
+      pluginId: "alpha",
+    });
+    for (const request of [
+      { html: "", kind: "ui_set_panel" }, // no id
+      { html: "", id: 1, kind: "ui_set_panel" },
+      {
+        html: "",
+        id: "p".repeat(MAX_PANEL_ID_CHARS + 1),
+        kind: "ui_set_panel",
+      },
+      { id: "p", kind: "ui_set_panel" }, // no html
+      { css: 1, html: "", id: "p", kind: "ui_set_panel" },
+      {
+        html: "x".repeat(MAX_RENDERED_HTML_BYTES + 1),
+        id: "p",
+        kind: "ui_set_panel",
+      },
+      {
+        css: "x".repeat(MAX_RENDERED_CSS_BYTES + 1),
+        html: "",
+        id: "p",
+        kind: "ui_set_panel",
+      },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toEqual([]);
+    for (const request of [
+      { html: "", id: "p", kind: "ui_set_panel" },
+      { html: "", id: "p".repeat(MAX_PANEL_ID_CHARS), kind: "ui_set_panel" },
+      {
+        css: "",
+        html: "x".repeat(MAX_RENDERED_HTML_BYTES),
+        id: "p",
+        kind: "ui_set_panel",
+      },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toHaveLength(3);
+  });
+
+  /** §395 plan 0127 P10 — the three filetree requests have validators: shapes and the UTF-16 floor of
+   *  their caps; the bridge judges every field. What fails this: a kind missing from
+   *  `HOST_REQUEST_VALIDATORS` (the well-formed batch would be dropped — the record is a mapped type,
+   *  so that one is a compile error too) or a validator that skips a field (a broken one delivered). */
+  it("§395 delivers well-formed filetree requests and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+    const asked = (request: unknown) => ({
+      msg: { request, requestId: "r", type: "hostRequest" },
+      pluginId: "alpha",
+    });
+    for (const request of [
+      { kind: "filetree_set_decorations" },
+      { kind: "filetree_set_decorations", updates: {} },
+      {
+        kind: "filetree_set_decorations",
+        updates: Array.from({ length: MAX_DECORATION_UPDATES + 1 }, () => ({})),
+      },
+      { kind: "filetree_define_icon", svg: "<svg/>" },
+      { kind: "filetree_define_icon", name: "a" },
+      { kind: "filetree_define_icon", name: "a", svg: ["<svg/>"] },
+      {
+        kind: "filetree_define_icon",
+        name: "a".repeat(MAX_FILE_ICON_NAME_CHARS + 1),
+        svg: "<svg/>",
+      },
+      {
+        kind: "filetree_define_icon",
+        name: "a",
+        svg: "x".repeat(MAX_FILE_ICON_SVG_BYTES + 1),
+      },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toEqual([]);
+    for (const request of [
+      { kind: "filetree_clear_decorations" },
+      { kind: "filetree_define_icon", name: "a", svg: "<svg/>" },
+      { kind: "filetree_set_decorations", updates: [] },
+    ]) {
+      deliver(asked(request));
+    }
+    expect(seen).toHaveLength(3);
+  });
+
   it("caps the document a plugin may install, at the frame", async () => {
     // §260 Phase 4b security review (MEDIUM-2) — `editor_set_markdown` is parsed and then
     // replaces the whole document in one transaction (a full re-render with NodeView
@@ -489,6 +709,7 @@ describe("createHostTransport (§260 host end)", () => {
       requestId: "req-live",
       value: 1,
     });
+    await new Promise((r) => setTimeout(r, 0)); // plan 0127 P31 — let the chain settle that send
     invoke.mockClear();
     deliver({
       pluginId: "alpha",

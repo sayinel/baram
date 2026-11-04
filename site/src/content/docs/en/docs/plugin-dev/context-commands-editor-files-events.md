@@ -192,7 +192,7 @@ fires within about two seconds of a change, even while files keep changing, only
 active one and any opened this session); one that makes Baram re-read the vault (a folder moved in, a
 `.baramignore` edit) fires after that read. Never for names starting with `.`, or inside [folders Baram leaves
 out](/en/docs/workspace/excluded-folders/): build output and `.git` by default plus what `.baramignore` lists.
-Your own `files.writeFile` can fire it too: skip unchanged writes to avoid a loop.
+Your own `files.writeFile` can fire it too: skip unchanged writes to avoid a loop. Read the vault again with [`ctx.index`](/en/docs/plugin-dev/context-index/). The renames, moves and deletions Baram makes in its file tree, a journal migration, a zettel promotion or a zettel inbox delete also arrive as `"file:rename"` and `"file:delete"`, before the same change's `"vault:changed"` (except in a vault registered through a symlink or another spelling of its folder) — see [File tree decorations](/en/docs/plugin-dev/file-tree/#filerename-and-filedelete-requires-files-or-filesreadonly).
 
 `"file:open"` fires once the opened file's content is actually loaded into the
 editor — not at the moment the tab opens — so for markdown files

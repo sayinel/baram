@@ -25,6 +25,9 @@ examples/plugins/
   plugin-api.d.ts       # generated public type barrel (commit this)
   types.d.ts            # generated sibling the barrel re-exports from (commit this)
   word-count/           # the canonical sandboxed plugin, published by Baram
+  link-count/           # the reference reader of ctx.index (§393), sandboxed — NOT published
+  backlinks-block/      # the reference code block renderer (§394), sandboxed — NOT published
+  tree-badges/          # the reference file tree decorator (§395), sandboxed — NOT published
   community-template/   # ← START HERE to publish your own plugin (see below)
   bullet-threading/     # full-trust editor-contribution example, published by Baram
   sketch-pad/           # full-trust editable file viewer example (§392), one file — NOT published
@@ -67,6 +70,29 @@ intend to publish.
 `sketch-pad/` is the example for **editable file viewers** (§392): a trusted viewer that draws
 on `.strokes` files, hands its text back to Baram and lets Baram save it. It is one hand-written
 `index.mjs` with no build step, and it runs only in a development build (its README says why).
+
+`link-count/` is the example for **`ctx.index`** (§393): a sandboxed plugin that shows the open
+note's backlinks and open tasks in the status bar and reads them again on `vault:changed`. It is
+not published — read it for the pattern, and copy `community-template/` to publish your own.
+
+`backlinks-block/` is the example for **`ctx.codeBlocks`** (§394): a sandboxed renderer that draws
+a `backlinks` code block as the backlinks of the note it sits in, read with `ctx.index.backlinks`:
+one row per linking line, the linking note as a `data-note` link and the line's text. On
+`vault:changed` it calls `ctx.codeBlocks.invalidate`, so its blocks draw again (one off screen
+when it comes into view). Its list sits in a box of its own with `overflow-x: auto`, because
+Baram clips a rendered block's output at the block's width. It is not published — read it for the
+pattern, and copy `community-template/` to publish your own.
+
+`tree-badges/` is the example for **file tree decorations** (§395): a sandboxed plugin that puts the
+number of open tasks on the notes `ctx.index.tasks()` returns as a blue badge (`9+` above nine), counted
+again on `vault:changed`. Every count sends a badge for every counted note, so a refused call is repaired
+by the next count whose calls are accepted, and it sends `null` for a note whose last open task closed. It
+sends everything again in `activate`, because Baram does not keep decorations. A note whose path holds a
+backslash cannot be badged: a sandboxed path takes no `\`, and `setFileDecorations` refuses the whole call
+that carries one. It reads the active vault only, so after a vault switch the new vault's badges appear at
+that vault's first change, and the vault left keeps the badges last sent to it. A note in that vault that
+loses its tasks by an outside edit keeps its stale badge even after the user returns and the vault
+changes. It is not published — read it for the pattern, and copy `community-template/` to publish your own.
 
 `sandbox-smoke/` and `malicious-fixture/` are **not examples to copy**. Both are internal §260
 fixtures written to be diagnostic rather than idiomatic: `sandbox-smoke/` reports by THROWING

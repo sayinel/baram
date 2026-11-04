@@ -1,6 +1,6 @@
 ---
 title: "컨텍스트: UI 와 Shadow DOM 격리"
-sourceHash: "3a78d5d2f8eb"
+sourceHash: "bb07d98c130c"
 ---
 
 ## `context.ui`
@@ -29,9 +29,14 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 // PluginFileViewerContext = { assetUrl: string; filePath: string;
 //   refreshKey: number; zoomLevel: number; edit?: PluginFileViewerEdit }
 // PluginFileViewerEdit = { tabId: string; text: string; markChanged(): void }
+
+setFileDecorations(updates: FileDecorationUpdate[]): Promise<void>;
+clearFileDecorations(): Promise<void>;
+defineFileIcon(name: string, svg: string): Promise<void>;
+// 파일 트리 장식 참조
 ```
 
-`context.ui` 자체는 매니페스트가 `sidebar`·`statusbar`·`settings`·`viewer` 중 하나라도 선언하면
+`context.ui` 자체는 매니페스트가 `sidebar`·`statusbar`·`settings`·`viewer`·`filetree` 중 하나라도 선언하면
 쓸 수 있지만(하나만 있어도 객체가 열립니다), 메서드마다 자기 관문이 있습니다.
 
 | 메서드               | 필요한 권한                                            |
@@ -40,11 +45,18 @@ registerFileViewer(opts: PluginFileViewerOptions): Disposable;
 | `addSidebarPanel`    | `sidebar`                                              |
 | `addSettingsTab`     | `settings`                                             |
 | `registerFileViewer` | `viewer` (`editable: true` 면 `files` 도)              |
+| `setFileDecorations` · `clearFileDecorations` · `defineFileIcon` | `filetree` |
 | `showNotification`   | `sidebar` / `statusbar` / `settings` / `viewer` 중 하나 |
 | `addStyle`           | `sidebar` / `statusbar` / `settings` / `viewer` 중 하나 |
 
 답을 돌려받는 선택창 · 입력창은 [컨텍스트: 선택창과 입력창](/ko/docs/plugin-dev/context-prompts/)을
 보십시오 — `ui` 권한이 필요 없습니다.
+
+sandboxed 플러그인에는 `addSidebarPanel`이 없습니다. 패널을 매니페스트에 선언하고 내용을 보냅니다 —
+[사이드바 패널](/ko/docs/plugin-dev/sidebar-panels/)을 보십시오.
+
+파일 트리 메서드 셋은 두 티어 모두에 있고, trusted 티어는 절대 경로를, sandboxed 티어는 컨텍스트 기준 상대 경로를
+씁니다 — [파일 트리 장식](/ko/docs/plugin-dev/file-tree/)을 보십시오.
 
 참고:
 

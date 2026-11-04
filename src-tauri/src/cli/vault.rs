@@ -38,12 +38,17 @@ pub(crate) struct Registered {
 pub(crate) struct Vault {
     pub name: String,
     pub root: PathBuf,
+    /// The spellings an absolute path argument may start with, matched by their letters
+    /// (`paths::locate`) — `baram mcp`'s, built per call by `mcp::scope` (spec 0068 §3.2).
+    /// `None` on the command line, where an absolute path is resolved on disk and then
+    /// checked against `root`.
+    pub spellings: Option<Vec<String>>,
 }
 
 /// Registered roots that are directories right now, canonical, one per directory.
 /// Vault contexts are taken first, so where a vault and a folder context name the same
 /// directory the vault's label and kind are the ones kept.
-fn live(registered: &[Registered]) -> Vec<(&Registered, PathBuf)> {
+pub(crate) fn live(registered: &[Registered]) -> Vec<(&Registered, PathBuf)> {
     let mut out: Vec<(&Registered, PathBuf)> = Vec::new();
     for kind in [RootKind::Vault, RootKind::Folder] {
         for entry in registered.iter().filter(|r| r.kind == kind) {
@@ -104,12 +109,53 @@ fn is_path_form(arg: &str) -> bool {
         || arg.starts_with('~')
 }
 
-fn from_path(
+pub(crate) fn from_path(
     arg: &str,
     cwd: Result<&Path, &CliError>,
     home: Option<&Path>,
     registered: &[Registered],
 ) -> Result<Vault, CliError> {
+    let path = spelled(arg, cwd, home)?;
+    match directory_at(&path) {
+        Ok(()) => {}
+        Err(None) => {
+            return Err(CliError::new(
+                ErrorCode::VaultNotFound,
+                format!("no directory at {}", path.display()),
+            ))
+        }
+        Err(Some(source)) => {
+            return Err(CliError::new(
+                ErrorCode::Io,
+                format!("cannot read {}: {source}", path.display()),
+            ))
+        }
+    }
+    let root = resolve_canonical(&path.to_string_lossy()).map_err(|e| {
+        CliError::new(
+            ErrorCode::Io,
+            format!("cannot resolve {}: {e}", path.display()),
+        )
+    })?;
+    let name = live(registered)
+        .into_iter()
+        .find(|(_, seen)| seen == &root)
+        .map(|(entry, _)| entry.label.clone())
+        .unwrap_or_else(|| folder_name(&root));
+    Ok(Vault {
+        name,
+        root,
+        spellings: None,
+    })
+}
+
+/// A path-form `--vault` as the path it spells, before the disk is asked: `~` expanded
+/// against `home`, and a path still relative after that joined to `cwd`.
+pub(crate) fn spelled(
+    arg: &str,
+    cwd: Result<&Path, &CliError>,
+    home: Option<&Path>,
+) -> Result<PathBuf, CliError> {
     let separators = ['/', std::path::MAIN_SEPARATOR];
     let expanded = match arg.strip_prefix('~') {
         Some(rest) if rest.is_empty() || rest.starts_with(separators) => {
@@ -123,32 +169,37 @@ fn from_path(
         }
         _ => PathBuf::from(arg),
     };
-    let path = if expanded.is_absolute() {
+    Ok(if expanded.is_absolute() {
         expanded
     } else {
         cwd.map_err(CliError::clone)?.join(expanded)
-    };
-    if !path.is_dir() {
-        return Err(CliError::new(
-            ErrorCode::VaultNotFound,
-            format!("no directory at {}", path.display()),
-        ));
-    }
-    let root = resolve_canonical(&path.to_string_lossy()).map_err(|e| {
-        CliError::new(
-            ErrorCode::Io,
-            format!("cannot resolve {}: {e}", path.display()),
-        )
-    })?;
-    let name = live(registered)
-        .into_iter()
-        .find(|(_, seen)| seen == &root)
-        .map(|(entry, _)| entry.label.clone())
-        .unwrap_or_else(|| folder_name(&root));
-    Ok(Vault { name, root })
+    })
 }
 
-fn folder_name(root: &Path) -> String {
+/// Whether `path` is a directory, asked of `std::fs::metadata` — `Path::is_dir` is false
+/// whenever the metadata cannot be read, so a vault behind a folder that cannot be entered
+/// would be reported as absent. `Err(None)`: no directory — nothing there (`NotFound`), a
+/// file where a directory on the way should be (`NotADirectory`), something that is not a
+/// directory, or a path the system refuses as written (`InvalidInput`, `InvalidFilename`:
+/// a NUL, a name too long, which spec 0068 §3.5 keeps VAULT_NOT_FOUND). `Err(Some(_))`:
+/// any other failure, with the OS's reason — a folder on the way that cannot be entered, a
+/// loop of links.
+fn directory_at(path: &Path) -> Result<(), Option<std::io::Error>> {
+    use std::io::ErrorKind;
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.is_dir() => Ok(()),
+        Ok(_) => Err(None),
+        Err(source) => match source.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::NotADirectory
+            | ErrorKind::InvalidInput
+            | ErrorKind::InvalidFilename => Err(None),
+            _ => Err(Some(source)),
+        },
+    }
+}
+
+pub(crate) fn folder_name(root: &Path) -> String {
     root.file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| root.to_string_lossy().into_owned())
@@ -158,7 +209,7 @@ fn folder_name(root: &Path) -> String {
 /// directory exists, one per canonical path. Counting fields instead would make a vault
 /// ambiguous with itself — a vault's default alias is its default label — and counting
 /// list entries would trip over the same path persisted twice.
-fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, CliError> {
+pub(crate) fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, CliError> {
     let wanted = name.to_lowercase();
     let matched: Vec<Registered> = registered
         .iter()
@@ -175,16 +226,34 @@ fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, CliError> {
         [(entry, root)] => Ok(Vault {
             name: entry.label.clone(),
             root: root.clone(),
+            spellings: None,
         }),
         [] if matched.is_empty() => Err(CliError::new(
             ErrorCode::VaultNotFound,
             format!("no registered vault is named `{name}`"),
         )
         .with_candidates(candidates(registered.iter()))),
-        [] => Err(CliError::new(
-            ErrorCode::VaultNotFound,
-            format!("the vault named `{name}` is registered, but its directory is missing"),
-        )
+        // No directory of that name is there to read. One that could not be read is said
+        // so, with the OS's reason; otherwise each is missing.
+        [] => Err(match matched.iter().find_map(|entry| {
+            directory_at(Path::new(&entry.path))
+                .err()
+                .flatten()
+                .map(|source| (entry, source))
+        }) {
+            Some((entry, source)) => CliError::new(
+                ErrorCode::Io,
+                format!(
+                    "the vault named `{name}` is registered, but its directory {} cannot be \
+                     read: {source}",
+                    entry.path
+                ),
+            ),
+            None => CliError::new(
+                ErrorCode::VaultNotFound,
+                format!("the vault named `{name}` is registered, but its directory is missing"),
+            ),
+        }
         .with_candidates(candidates(matched.iter()))),
         _ => Err(CliError::new(
             ErrorCode::VaultAmbiguous,
@@ -207,7 +276,7 @@ fn from_name(name: &str, registered: &[Registered]) -> Result<Vault, CliError> {
 /// `/x/Vault-secret`. Among several, a vault context beats a folder context and the
 /// outermost wins — the app's task scan drops roots that sit under another root, and
 /// its default scope reads vault contexts only (spec 0066 §3.3-2).
-fn from_cwd(cwd: &Path, registered: &[Registered]) -> Result<Vault, CliError> {
+pub(crate) fn from_cwd(cwd: &Path, registered: &[Registered]) -> Result<Vault, CliError> {
     let here = resolve_canonical(&cwd.to_string_lossy()).map_err(|e| {
         CliError::new(
             ErrorCode::Io,
@@ -233,6 +302,7 @@ fn from_cwd(cwd: &Path, registered: &[Registered]) -> Result<Vault, CliError> {
         .map(|(entry, root)| Vault {
             name: entry.label.clone(),
             root,
+            spellings: None,
         })
         .ok_or_else(|| {
             CliError::new(
@@ -326,6 +396,80 @@ mod tests {
         for arg in ["./nope", "./file.md"] {
             let error = resolve(Some(arg), Ok(&base), None, &[]).unwrap_err();
             assert_eq!(error.code, ErrorCode::VaultNotFound, "{arg}");
+        }
+    }
+
+    /// What `metadata` says of a `--vault` path decides the code (spec 0066 §3.3-1): nothing
+    /// there, a file, a path through a file, and a path the system refuses as written — a NUL,
+    /// a name too long, which spec 0068 §3.5 keeps VAULT_NOT_FOUND — are VAULT_NOT_FOUND; a
+    /// directory that could not be reached — behind a folder that cannot be entered, or a
+    /// loop of links — is IO with the OS's reason, by path and by registered name alike.
+    ///
+    /// What fails this: `from_path` or `from_name` deciding by `Path::is_dir`, which is false
+    /// for every case here (the two IO cases are then VAULT_NOT_FOUND, "no directory at" and
+    /// "its directory is missing").
+    #[cfg(unix)]
+    #[test]
+    fn a_vault_that_cannot_be_reached_is_io_and_one_that_is_not_there_is_not_found() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_t, base) = tree(&["locked/v"]);
+        std::fs::write(base.join("file.md"), "x").unwrap();
+        std::os::unix::fs::symlink(base.join("loop"), base.join("loop")).unwrap();
+        let locked = base.join("locked");
+        let list = [registered(
+            "Locked",
+            None,
+            &locked.join("v"),
+            RootKind::Vault,
+        )];
+        let long = format!("./{}", "x".repeat(300));
+        let args = [
+            "./nope",
+            "./file.md",
+            "./file.md/x",
+            "./a\0b",
+            long.as_str(),
+            "./locked/v",
+            "./loop",
+            "Locked",
+        ];
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let readable = std::fs::read_dir(&locked).is_ok();
+        let results: Vec<Result<Vault, CliError>> = args
+            .iter()
+            .map(|arg| resolve(Some(arg), Ok(&base), None, &list))
+            .collect();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            !readable,
+            "mode 0o000 must make the folder unreadable (run as root, it does not)"
+        );
+        for (arg, result) in args.iter().zip(results) {
+            let error = result.unwrap_err();
+            let path = base.join(arg);
+            let expected = match *arg {
+                "./locked/v" | "./loop" => {
+                    (ErrorCode::Io, format!("cannot read {}: ", path.display()))
+                }
+                "Locked" => (
+                    ErrorCode::Io,
+                    format!(
+                        "the vault named `Locked` is registered, but its directory {} cannot \
+                         be read: ",
+                        locked.join("v").display()
+                    ),
+                ),
+                _ => (
+                    ErrorCode::VaultNotFound,
+                    format!("no directory at {}", path.display()),
+                ),
+            };
+            assert_eq!(error.code, expected.0, "{arg:?}: {}", error.message);
+            assert!(
+                error.message.starts_with(&expected.1),
+                "{arg:?}: {}",
+                error.message
+            );
         }
     }
 

@@ -1,13 +1,13 @@
 // §260 Phase 4b — large host→sandbox payloads, staged in Rust and pulled as an invoke
 // RESULT instead of pushed as a channel frame.
 //
-// WHY this exists at all: `channels.rs` documents that any host→sandbox frame ≥8 KiB is
-// staged in tauri's app-global `ChannelDataIpcQueue` and fetched through
-// `FETCH_CHANNEL_DATA_COMMAND`, which is ACL-EXEMPT and takes a guessable sequential id —
-// so another sandboxed plugin could race that fetch and steal (or wedge) the frame. Every
-// frame sent before this phase was far under the threshold. `editor.getMarkdown()` is what
-// changes that: a 10,000-line document is hundreds of KiB, and it is the user's document
-// text.
+// WHY this exists at all: a host→sandbox frame of 8 KiB or more is parked in tauri's
+// `ChannelDataIpcQueue` and fetched through `FETCH_CHANNEL_DATA_COMMAND` (`channels.rs`). Phase 4b
+// built staging when that queue was app-global and fetchable by any webview with a guessable id, so
+// another sandboxed plugin could have raced that fetch. At tauri 2.12.2 the queue is per webview and
+// that premise no longer holds (spec 0074 §10); staging still keeps a large payload out of the frame
+// path, delivered as an invoke result instead. `editor.getMarkdown()` is what first needed it: a
+// 10,000-line document is hundreds of KiB, and it is the user's document text.
 //
 // WHY staging rather than chunking: 3c-2b already solved this for the plugin's own bundle.
 // `PluginOp::SourceRead` returns it as a `plugin_call` RESULT, which tauri returns through

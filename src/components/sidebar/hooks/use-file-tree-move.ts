@@ -2,6 +2,10 @@
 import { useCallback } from "react";
 
 import { renameFile } from "../../../ipc/invoke";
+import {
+  beginFileOperation,
+  notifyRenamed,
+} from "../../../plugins/file-decorations/operation-notices";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { findEntryByPath } from "../../../stores/file/file-tree-ops";
@@ -38,7 +42,15 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
           );
           continue;
         }
+        // §395 spec 0074 D10 — whether the moved item is a folder, read before the tree moves it.
+        const isDir =
+          findEntryByPath(useFileStore.getState().fileTree, from)?.isDir ??
+          false;
+        // §395 spec 0074 D12 — each item's move holds the vault:changed of the contexts holding
+        // either path; raised as the first statement of the try whose finally releases it.
+        let release: (() => void) | undefined;
         try {
+          release = beginFileOperation([from, to]);
           await renameFile(from, to);
           moveFileEntry(from, targetPath);
           const { tabs } = useEditorStore.getState();
@@ -53,9 +65,15 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
               );
             }
           }
+          // D10 — after the tree and the tabs follow the move, in the tree update's synchronous span (no
+          // await between `moveFileEntry` and here), so a trusted plugin's `file:rename` handler finds the
+          // tabs already on `to`.
+          notifyRenamed(from, to, isDir);
         } catch (err) {
           logger.error("[FileTree] Move failed:", from, err);
           failed.push(from.split("/").pop() ?? from);
+        } finally {
+          release?.();
         }
       }
       // §29 #824 each `rename_file` announced its own index change.

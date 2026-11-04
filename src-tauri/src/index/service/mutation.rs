@@ -14,7 +14,9 @@ pub(super) enum Mutation {
     Update { path: PathBuf, content: String },
     /// A file is gone under this path (renamed away).
     Remove { path: PathBuf },
-    /// §278 A non-markdown file appeared: a link target only (issue 790).
+    /// §278 A file to register as a link target only (issue 790): one that appeared since
+    /// that is no note, one the app saved that is no note, or a file a rename moved that is a
+    /// note under neither name. A note that cannot be read is `Unreadable`.
     Target { path: PathBuf },
     /// #824 A note that exists but cannot be read: registered, without content — what
     /// a fresh build makes of it (`LinkIndex::mark_unreadable`).

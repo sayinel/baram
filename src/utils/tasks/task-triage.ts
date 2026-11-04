@@ -440,12 +440,11 @@ function relativeIso(token: "m" | "t", now: Date): string {
  * 행이 된다. 두 어휘 중 **쓰는 쪽**을 봐야 라벨과 동작이 같은 사실을 본다(`lineHasTag`).
  *
  * ‼️ 이 결함을 만든 가장 흔한 형태(`#someday-maybe` — 읽는 쪽만 하이픈에서 끊었다)는
- * 이제 닫혔다. 그래도 이 관문은 남는다: 두 어휘가 유니코드 가장자리에서 아직 다르다.
- * `md::INLINE_TAG_RE`의 `\w`는 결합 문자(`\p{M}`)와 `\p{Pc}`를 포함하지만
- * `is_tag_char`의 `is_alphanumeric()`은 포함하지 않고, 반대로 `\p{Nl}`·`\p{No}`는
- * `is_alphanumeric()`만 포함한다. 실무에서 만날 일은 드물지만 **관문을 지우면 그때
- * 죽은 조작이 조용히 돌아온다.** 여기서 지키는 것은 정직함이다: 할 수 없는 일을
- * 약속하지 않는다.
+ * 이제 닫혔고, 글자 집합도 한 정의(`md::TAG_PART_CLASS`)에서 짓는다. 그래도 이 관문은
+ * 남는다: `#someday/`처럼 뒤에 마디가 없는 `/`가 붙은 줄은 읽는 쪽이 `someday`로 읽는데
+ * 쓰는 쪽은 `/`를 태그 글자로 보아 지울 것을 찾지 못한다(`tag-boundary.json`의 행).
+ * **관문을 지우면 그때 죽은 조작이 조용히 돌아온다.** 여기서 지키는 것은 정직함이다:
+ * 할 수 없는 일을 약속하지 않는다.
  */
 function somedayVerdict(task: TaskEntry): SomedayVerdict {
   if (!task.tags.includes(SOMEDAY_TAG)) return "add";

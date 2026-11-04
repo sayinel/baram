@@ -16,6 +16,7 @@ describe("ActivityBar plugin panels", () => {
       sidebarPanels: [
         {
           icon: "🔌",
+          kind: "dom" as const,
           onMount: () => {},
           panelId: "p1:notes",
           pluginId: "p1",
@@ -33,6 +34,7 @@ describe("ActivityBar plugin panels", () => {
   it("switching between two plugin panels does not close the sidebar", () => {
     const panelA = {
       icon: "🔌",
+      kind: "dom" as const,
       onMount: () => {},
       panelId: "p1:a",
       pluginId: "p1",
@@ -40,6 +42,7 @@ describe("ActivityBar plugin panels", () => {
     };
     const panelB = {
       icon: "🔌",
+      kind: "dom" as const,
       onMount: () => {},
       panelId: "p1:b",
       pluginId: "p1",
@@ -63,6 +66,7 @@ describe("ActivityBar plugin panels", () => {
   it("re-clicking the already-active plugin panel closes the sidebar", () => {
     const panelA = {
       icon: "🔌",
+      kind: "dom" as const,
       onMount: () => {},
       panelId: "p1:a",
       pluginId: "p1",
@@ -77,5 +81,27 @@ describe("ActivityBar plugin panels", () => {
     const btnA = screen.getByRole("button", { name: "Panel A" });
     fireEvent.click(btnA);
     expect(useUIStore.getState().sidebarOpen).toBe(false);
+  });
+
+  /** P6 — a sandboxed panel's button names its plugin: its title and icon are the plugin's and could
+   *  copy one of the app's panels. What fails this: a label of the title alone. The pair: a trusted
+   *  panel's label is its title (the first row of this file). */
+  it("names the plugin on a sandboxed panel's button", () => {
+    usePluginUIStore.setState({
+      sidebarPanels: [
+        {
+          kind: "rendered",
+          panelId: "sb:recent",
+          pluginId: "sb",
+          sourceName: "SB",
+          title: "Recent",
+        },
+      ],
+    });
+    render(<ActivityBar />);
+    expect(
+      screen.getByRole("button", { name: "Recent · Plugin · SB" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Recent" })).toBeNull();
   });
 });

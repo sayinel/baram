@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useContextStore } from "../../stores/context/context";
 import { createExtensionContext } from "../extension-context";
+import { locateInContext } from "../locate-in-context";
 import {
-  locateInContext,
   notifyEditorReady,
   notifyFileOpen,
   notifyFileSave,

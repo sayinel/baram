@@ -14,7 +14,7 @@ import type {
   PluginSettingValue,
 } from "./types";
 
-import { sanitizePluginText } from "./plugin-text";
+import { sanitizePluginText, sliceWholeChars } from "./plugin-text";
 import { SETTING_TYPES, SETTING_VALUE_TYPES } from "./types";
 
 /**
@@ -209,14 +209,11 @@ const MAX_SETTING_LABEL_CHARS = 80;
  *
  * `slice` counts UTF-16 code units, so a value ending on an astral character — an emoji, a
  * rarer CJK ideograph — would hand the plugin a lone surrogate (§260 Phase 4c code review,
- * N12). Dropping the orphan costs one character and keeps the string well-formed.
+ * N12). Dropping the orphan costs one character and keeps the string well-formed. The rule is
+ * `sliceWholeChars`'s (§394 plan 0125 P30), so the two cuts cannot drift apart.
  */
 function clampChars(value: string): string {
-  if (value.length <= MAX_SETTING_VALUE_CHARS) return value;
-  const cut = value.slice(0, MAX_SETTING_VALUE_CHARS);
-  const last = cut.charCodeAt(cut.length - 1);
-  const isLoneHighSurrogate = last >= 0xd800 && last <= 0xdbff;
-  return isLoneHighSurrogate ? cut.slice(0, -1) : cut;
+  return sliceWholeChars(value, MAX_SETTING_VALUE_CHARS);
 }
 
 /**

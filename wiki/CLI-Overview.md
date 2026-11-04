@@ -26,7 +26,7 @@ vault 를 읽는 명령은 앱과 같은 Rust 함수를 부른다 — 앱과 같
 2. 그 다음은 관심 영역으로. 경로 인자를 더하거나 고친다면
    **[Paths and vault boundary](CLI-Paths-and-vault-boundary)**, 출력이나 오류를 건드린다면
    **[Output contract](CLI-Output-contract)**, CLI 와 앱의 답이 갈린다는 보고를 받았다면
-   **[Links and app parity](CLI-Links-and-app-parity)**.
+   **[Links and app parity](CLI-Links-and-app-parity)**, `baram mcp` 를 건드린다면 **[MCP server](CLI-MCP-server)**.
 3. **[Decisions and history](CLI-Decisions-and-history)** — 결정을 되짚거나 뒤집기 전에 읽는다.
 
 ## 어디까지 와 있나

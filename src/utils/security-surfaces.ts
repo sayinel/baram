@@ -45,11 +45,11 @@ export const SECURITY_SURFACE_FILES: readonly string[] = [
  * 없다(위 파일 헤더의 두 검사가 강제하는 것 — "아무것도 그리지 않는다"는 더 강한
  * 주장이고 여기서는 하지 않는다). shadow DOM 대상이 아니다.
  *
- *  - usePluginActions.ts(:187,:333) — `revocationReason`으로 "설치 차단" 에러 텍스트를
- *    만든다. 이 파일이 `.tsx`가 아니라 `.ts`인 것은 이 코퍼스 스캔과 무관한 기존
- *    관례다: 같은 디렉터리의 `plugin-ui-i18n.test.tsx`가 `.tsx`만 보므로, JSX를 담지
- *    않는 이 훅을 `.ts`로 분리해 뒀다(파일 자체 헤더 주석 :17-19). 코퍼스가 `.tsx`만
- *    봤다면 이 파일은 조용히 빠졌을 것 — 그래서 코퍼스를 `.ts`까지 넓혔다.
+ *  - usePluginActions.ts(`handleInstall`·`handleUpdate`) — `revocationReason`으로 "설치
+ *    차단" 에러 텍스트를 만든다. 이 파일이 `.tsx`가 아니라 `.ts`인 것은 이 코퍼스
+ *    스캔과 무관한 기존 관례다: 같은 디렉터리의 `plugin-ui-i18n.test.tsx`가 `.tsx`만
+ *    보므로, JSX를 담지 않는 이 훅을 `.ts`로 분리해 뒀다(파일 자체 헤더 주석). 코퍼스가
+ *    `.tsx`만 봤다면 이 파일은 조용히 빠졌을 것 — 그래서 코퍼스를 `.ts`까지 넓혔다.
  *  - use-theme-actions.ts — `themeConsentSentences` 를 **정의**하고(같은 파일이라 자기
  *    소스에 그 이름이 있다) `showConsentHistory`(§10.3 의 consentHistory 어포던스)가
  *    부른다. `.ts`이고 훅 하나가 JSX 없이 상태·부수효과만 다루는, `usePluginActions.ts`

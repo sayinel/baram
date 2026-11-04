@@ -1,11 +1,18 @@
-// §358 CSS 안에서 "자원의 이름" 이 어디에 나타나는가 — 테마 CSS 를 검사하는
-// 쪽(`sanitize.ts`), 자산을 인라인하는 쪽(`inline-assets.ts`), 저장된 결과를 로드
-// 시점에 다시 보는 쪽(`verify.ts`)이 함께 쓰는 원시 층.
-//
-// 세 쪽의 **정책은 다르다**: sanitize 는 패키지 상대 경로만 허용하고 `data:` 를
-// 거부하며, inline 은 그 상대 경로를 `data:` 로 바꾸고, verify 는 `data:` 말고는
-// 아무것도 받지 않는다. 여기 있는 것은 정책이 아니라 "무엇이 자원의 이름인가"
-// 하나뿐이다 — 그 판정이 세 벌이 되면 한쪽만 고쳐진 채로 갈린다.
+// §358 · §394 CSS 안에서 "자원의 이름" 이 어디에 나타나는가 — 여섯 파일이 import 하는 원시 층
+// (시험 밖의 import 를 `git grep css-refs` 로 셌다). 여섯의 **정책은 다르다**:
+//  - `sanitize.ts`(저자가 쓴 테마 CSS): 패키지 상대 경로만 허용하고 `data:` 를 거부한다.
+//  - `inline-assets.ts`(테마 설치): 그 상대 경로를 `data:` 로 바꾼다.
+//  - `verify.ts`(저장된 테마 CSS): `data:` 말고는 아무것도 받지 않는다.
+//  - `css-pipeline.ts`: 테마와 플러그인 CSS 가 함께 도는 파서 파이프라인 — 찾은 자원 이름과
+//    URL 을 받는 함수는 호출자의 정책(`CssPipelinePolicy` 의 `resource`·`urlFunction`)에 넘기고,
+//    읽지 못한 조각(자원을 실을 토큰을 품은 `Raw`)은 정책과 무관하게 거부한다.
+//  - `plugins/rendered/sanitize-css.ts`(§394 플러그인 CSS): `data:`·상대 경로까지 모든 참조를
+//    거부한다 — 그 판정은 `css-pipeline.ts` 를 거치고, 여기서 직접 가져가는 것은 `cssName` 뿐이다.
+//  - `plugins/rendered/sanitize-markup.ts`(§394 D8 ④): 어느 속성이든 값이 CSS 식으로 자원을
+//    부르거나 깨진 url·문자열 토큰을 품으면 지운다 — 값이 정확히 `url(#…)` 하나(SVG paint
+//    server)일 때만 남긴다.
+// 여기 있는 것은 정책이 아니라 "무엇이 자원의 이름인가" 하나뿐이다 — 그 판정이 여러 벌이
+// 되면 한쪽만 고쳐진 채로 갈린다.
 //
 // ‼️ 판정은 전부 파서가 준 것으로 한다. 문자열·정규식 검사는 CSS 이스케이프
 // (`url(\68 ttp://…)`)와 대소문자·공백 변형에 뚫린다 — 이 리포는 링크 scheme
@@ -68,6 +75,22 @@ export const URL_BEARING_FUNCTIONS: ReadonlySet<string> = new Set([
   "image-set",
   "src",
   "url",
+]);
+
+/**
+ * 자원의 이름을 실어 나를 수 있는 토큰. 두 곳이 읽는다: `css-pipeline.ts` 는 `Raw` 안에서 이 중
+ * 하나라도 보이면 그 조각이 검사되지 않은 참조를 숨기고 있을 수 있다고 본다(`Function` 까지
+ * 넣는 이유는 `url( "x" )` 처럼 공백이 끼면 url-token 이 아니라 function-token 으로 쪼개지기
+ * 때문이다). {@link forEachUrlBearingFunction} 은 URL 을 받는 함수의 인자에 이 중 하나라도
+ * 있으면 `argument` 를 `null` 로 준다 — 그 인자의 판정을 이 방문이 하지 않는다는 표시일
+ * 뿐, 안전하다는 말이 아니다(그 방문의 문서가 `url` 이라는 이름의 예외를 적는다).
+ */
+export const RESOURCE_NAMING_TOKENS: ReadonlySet<number> = new Set([
+  csstree.tokenTypes.BadString,
+  csstree.tokenTypes.BadUrl,
+  csstree.tokenTypes.Function,
+  csstree.tokenTypes.String,
+  csstree.tokenTypes.Url,
 ]);
 
 /**
@@ -184,6 +207,67 @@ export function forEachResourceName(
           : null;
     if (value === null) return;
     visit(value, raw, open.length === 0 ? null : open[open.length - 1].name);
+  });
+}
+
+/**
+ * §394 Every function token whose decoded name is in {@link URL_BEARING_FUNCTIONS}, with what its
+ * argument names (spec 0073 D9).
+ *
+ * ‼️ Why the token itself is a reference: css-tree 3.2.1's tokenizer compares a name's RAW spelling
+ * with `url` before it makes a url token, and the browser compares the DECODED name (CSS Syntax,
+ * consume an ident-like token). So `u\72l(//evil/x)` is a remote url token to the browser and a
+ * function token plus loose tokens to css-tree — {@link forEachResourceName} visits none of it.
+ * Measured: `sanitizeThemeCss` passed `u\72l(//evil/x)`, `u\72l(https\3a //evil/x)`,
+ * `--x:u\72l(//evil/x)` used as `var(--x)` and `image-set(u\72l(//evil/x) 1x)`.
+ *
+ * `argument` is the argument read the way a url token's value is (`csstree.url.decode`, so
+ * `https\3a //evil/x` reads `https://evil/x`) when the argument holds none of
+ * {@link RESOURCE_NAMING_TOKENS}. Otherwise `null`, and `null` means only "this visit does not
+ * judge the argument": a string or url inside is {@link forEachResourceName}'s (handing
+ * `"data:…" 1x` whole to a `data:` check reads it as not `data:`), a nested function is visited
+ * on its own turn, and a `BadString`/`BadUrl` is refused earlier by `assertWellFormed`.
+ * `raw` is the token's span through its closing parenthesis.
+ *
+ * ‼️ `null` is a safe hand-off for `image-set`, `-webkit-image-set`, `image` and `src`, where
+ * css-tree and the browser both make a function token. It is NOT for the decoded name `url`: the
+ * browser makes a function token only when the first non-whitespace token after `(` is a string
+ * (CSS Syntax, consume an ident-like token) and otherwise a url or bad-url token, so after
+ * `u\72l(a");}b{background:url(https://evil/x)}c{x:")}` css-tree sees one string where the browser
+ * sees the rule `b` (measured in headless Chrome). A caller must judge a `url` visit from `raw`,
+ * not from `argument`.
+ *
+ * Policy is the caller's: the theme sanitizer judges `argument` with `isRemoteUrl` and refuses a
+ * `url` visit that does not open with a string; the plugin CSS sanitizer refuses every visit
+ * whatever the argument. For themes `verifyStoredThemeCss` (`hasUrlSpelledAsFunction`) stays the
+ * gate on install and load.
+ */
+export function forEachUrlBearingFunction(
+  css: string,
+  visit: (name: string, argument: null | string, raw: string) => void,
+): void {
+  const stream = new csstree.TokenStream(css, csstree.tokenize);
+  stream.forEachToken((type, start, end, index) => {
+    if (type !== csstree.tokenTypes.Function) return;
+    const name = cssName(css.slice(start, end - 1));
+    if (!URL_BEARING_FUNCTIONS.has(name)) return;
+    // No pair means the function stays open to EOF.
+    const pair = stream.getBlockTokenPairIndex(index);
+    const close = pair === -1 ? stream.tokenCount : pair;
+    let plain = true;
+    for (let i = index + 1; i < close; i++) {
+      if (RESOURCE_NAMING_TOKENS.has(stream.getTokenType(i))) {
+        plain = false;
+        break;
+      }
+    }
+    const argumentEnd = pair === -1 ? css.length : stream.getTokenStart(pair);
+    const rawEnd = pair === -1 ? css.length : stream.getTokenEnd(pair);
+    visit(
+      name,
+      plain ? csstree.url.decode(`url(${css.slice(end, argumentEnd)})`) : null,
+      css.slice(start, rawEnd),
+    );
   });
 }
 

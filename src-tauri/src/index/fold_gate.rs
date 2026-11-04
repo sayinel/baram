@@ -90,14 +90,23 @@ const ALLOWED: &[(&str, &str, &str)] = &[
          (D8); non-ASCII case stays two names",
     ),
     (
-        "extractor.rs",
-        r#"Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]")"#,
-        "the front-matter key `tags`, not a name",
+        "markdown_links.rs",
+        ".is_some_and(|head| head.eq_ignore_ascii_case(prefix))",
+        "media_forms: an `http://`, `https://` or `data:` prefix in any ASCII \
+         case, as the frontend's `isRemoteOrData` matches it — a scheme, not a \
+         name",
     ),
     (
-        "extractor.rs",
-        r#"Regex::new(r"(?i)^tags\s*:\s*$")"#,
-        "the front-matter key `tags`, not a name",
+        "html_media.rs",
+        "markup.eq_ignore_ascii_case(name)",
+        "named: an HTML tag or attribute name (`img`, `src`) in any ASCII case, \
+         as the HTML parser reads markup names — markup, not a file name",
+    ),
+    (
+        "service/rename/pdf_highlights.rs",
+        r#"if !rel.get(cut..)?.eq_ignore_ascii_case(".pdf") {"#,
+        "highlight_paths: the extension `.pdf` in any ASCII case, as the \
+         frontend's `/\\.pdf$/i` matches it — an extension, not a name",
     ),
     (
         "extractor.rs",

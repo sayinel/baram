@@ -3,6 +3,7 @@ mod append;
 mod archive;
 mod fields;
 mod parse;
+mod status;
 mod tag;
 mod write;
 
@@ -10,6 +11,7 @@ pub use append::{append_line, append_lines};
 pub use archive::{archive_tasks, ArchiveItem, ArchiveOutcome};
 pub use parse::normalize_line;
 pub use parse::{parse_task_line, TaskState};
+pub use status::TaskStatus;
 pub use tag::{apply_tag, set_task_tag};
 pub use write::{
     apply_field, apply_state, delete_line, set_task_field, set_task_state, StateWrite,
@@ -61,7 +63,8 @@ fn body_aligned_with_source(content: &str) -> String {
     if fm.is_empty() {
         return strip_code_blocks(&body);
     }
-    // split_frontmatter는 body를 `rest[end + 4..]`로 자르므로 **선행 \n을 이미 포함**한다.
+    // split_frontmatter는 body를 닫는 `\n---` 바로 뒤에서 자르므로(`md::cut_frontmatter`의
+    // `FrontMatterCut::body`) **선행 \n을 이미 포함**한다.
     // 따라서 채울 것은 여는 "---" 한 줄 + 프론트매터 줄 수뿐이다(닫는 "---"는 그 \n이 담당).
     //   ---\ntags: [a]\n---\nbody  →  body="\nbody", 정답 index 3, offset=1+1=2
     let offset = fm.lines().count() + 1;

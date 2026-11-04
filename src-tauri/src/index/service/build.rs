@@ -12,7 +12,9 @@ use super::state::{BuildToken, LinkIndexState};
 /// gate started was invalidated the same way. The next attempt sees the new
 /// registrations. Renaming without the index would rename the file and
 /// rewrite none of its references, silently.
-const INDEX_NOT_READY: &str = "The link index for this vault is not ready. Try again in a moment.";
+/// §393 `context_reads` gives the same refusal when the slot is missing after the gate.
+pub(super) const INDEX_NOT_READY: &str =
+    "The link index for this vault is not ready. Try again in a moment.";
 
 /// A refresh reports this as its error; a namespace rename that already moved
 /// its files treats it as "the index will be somebody else's" (see

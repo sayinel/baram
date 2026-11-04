@@ -1135,7 +1135,7 @@ mod tests {
             let file = std::fs::File::open(&out_path).unwrap();
             let mut zip = zip::ZipArchive::new(file).unwrap();
             let names: Vec<String> = (0..zip.len())
-                .map(|i| zip.by_index(i).unwrap().name().to_string())
+                .map(|i| zip.by_index(i).unwrap().name().unwrap().into_owned())
                 .collect();
             let media: Vec<&String> = names.iter().filter(|n| n.starts_with(media_dir)).collect();
             // The vault image, the diagram, and the vault image again by its

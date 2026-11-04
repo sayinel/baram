@@ -48,6 +48,18 @@ function handlerLookups(): string[] {
 }
 
 /**
+ * §394 plan 0126 P28 — every production file that runs a plugin's action handler under prompt
+ * rights. `runPluginAction` grants rights as `beginPluginInvocation` does; this pins who reaches it.
+ */
+function runActionCallSites(): string[] {
+  return scanProductionFiles((source) =>
+    /\brunPluginAction\(/u.test(
+      source.replaceAll("function runPluginAction(", ""),
+    ),
+  );
+}
+
+/**
  * §385 — `showPluginPrompt` draws the window WITHOUT checking the gate itself (that is
  * `prompts-api.ts`'s job, before it ever calls this). A second caller could draw a prompt with
  * none of the refusal order, the limits or the sanitising in front of it.
@@ -91,12 +103,28 @@ describe("who may start a plugin command", () => {
     ]);
   });
 
-  it("grants rights only through the primitive in plugin-host-registry.ts", () => {
-    // `beginPluginInvocation` is what actually grants prompt rights; `executePluginCommand`
-    // is the one gesture-gated caller of it today, but this is the invariant that matters —
-    // a new direct call site anywhere else grants rights outside a user gesture.
+  it("grants rights only through the two primitives: plugin-host-registry.ts and plugin-action.ts", () => {
+    // `beginPluginInvocation` is what actually grants prompt rights. Two gesture-gated callers:
+    // `executePluginCommand` (a user command, §385) and `runPluginAction` (a real click on a
+    // plugin-rendered block's `data-action`, §394 spec 0073 D11 ③). A new direct call site
+    // anywhere else grants rights outside a user gesture.
     expect(beginInvocationCallSites()).toEqual([
+      "plugins/plugin-action.ts",
       "plugins/plugin-host-registry.ts",
+    ]);
+  });
+
+  it("runs a plugin's action only from the two rendered areas' click dispatch", () => {
+    // §394 — `runPluginAction` grants rights the way `beginPluginInvocation` does. Its callers are a
+    // code block's click dispatch (`dispatchRenderedAction`) and a sandboxed panel's
+    // (`dispatchPanelAction`). Production references to the two, by `grep -rn` over `src/` minus
+    // `__tests__/`: `dispatchRenderedAction` is called in `rendered-code-block-view.ts` and
+    // `dispatchPanelAction` in `panels-host.ts`, each inside the `action` handler that its view hands to
+    // `handleRenderedClicks` (after `isTrusted`). A new caller grants rights outside a click on plugin
+    // output.
+    expect(runActionCallSites()).toEqual([
+      "plugins/rendered/code-blocks-api.ts",
+      "plugins/rendered/panels-host.ts",
     ]);
   });
 

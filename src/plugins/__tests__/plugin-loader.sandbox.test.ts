@@ -21,12 +21,22 @@ import type { PluginManifest } from "../types";
 
 import { type Locale, t as lookup } from "../../i18n";
 import { publishVaultChange } from "../../services/vault-changes";
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
 import { executePluginCommand } from "../extension-context";
+import {
+  notifyDeleted,
+  notifyRenamed,
+} from "../file-decorations/operation-notices";
 import { PluginLoader } from "../plugin-loader";
 import { legacyInstallMessage } from "../plugin-trust";
 import { usePluginUIStore } from "../plugin-ui-store";
+import {
+  __resetCodeBlockRegistry,
+  codeBlockRendererFor,
+} from "../rendered/code-block-registry";
+import { __resetRenderQueue } from "../rendered/render-queue";
 import {
   deliverSandboxEvent,
   resetSandboxEventBridge,
@@ -52,6 +62,10 @@ function fakeHost() {
       // §260 3c-2c/4a — the host-mediated service handler. Typed here so a test can
       // reach it: it is where the `ui` capability check and the declared-item set live.
       _hostRequestHandler?: (request: unknown) => Promise<unknown>,
+      // §394 plan 0125 P10 — the claimed code block table, `undefined` without `codeblocks`.
+      _codeBlockLangs?: unknown,
+      // §394 plan 0126 P11 — the declared panel ids, `undefined` without panels.
+      _panelIds?: unknown,
     ) => ({
       contributions: declared,
       deliverEvent,
@@ -128,11 +142,15 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     // directory from the sandbox's window label when it asks for its bundle.
     // The third argument (§260 3c-2c) is the host-mediated service handler, which
     // carries the `ai` capability check — hence a function, and hence the assertion
-    // that it is one: a session started WITHOUT it silently loses `ai`.
+    // that it is one: a session started WITHOUT it silently loses `ai`. The fourth (§394
+    // plan 0125 P10) is the claimed code block table — `undefined` without `codeblocks`. The
+    // fifth (§394 plan 0126 P11) is the declared panel ids — `undefined` without panels.
     expect(f.start).toHaveBeenCalledWith(
       "demo",
       manifest.contributions,
       expect.any(Function),
+      undefined,
+      undefined,
     );
     expect(loader.isLoaded("demo")).toBe(true);
 
@@ -830,6 +848,132 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
       f.deliverEvent.mockClear();
       publishVaultChange("ctx-1");
       expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("file:rename · file:delete (§395)", () => {
+    beforeEach(() => {
+      useContextStore.setState({
+        contexts: [{ contextType: "vault", id: "ctx-1", path: "/v" }] as never,
+      });
+    });
+    afterEach(() => {
+      useContextStore.setState({ contexts: [] } as never);
+    });
+
+    /** The loader's own lines. What fails this: no watcher next to `watchVaultChanges`. */
+    it("delivers relative paths to a sandboxed plugin with files:readonly", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "files:readonly"] }),
+      );
+      f.deliverEvent.mockClear();
+      notifyRenamed("/v/a.md", "/v/b.md", false);
+      notifyDeleted("/v/b.md", false);
+      expect(f.deliverEvent.mock.calls).toEqual([
+        [
+          "file:rename",
+          [
+            {
+              from: { context: "ctx-1", path: "a.md" },
+              isDir: false,
+              to: { context: "ctx-1", path: "b.md" },
+            },
+          ],
+        ],
+        ["file:delete", [{ context: "ctx-1", isDir: false, path: "b.md" }]],
+      ]);
+    });
+
+    it("does not deliver to a sandboxed plugin without a file capability", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "events"] }),
+      );
+      f.deliverEvent.mockClear();
+      notifyRenamed("/v/a.md", "/v/b.md", false);
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+
+    it("stops delivering after unload", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["commands", "files"] }),
+      );
+      await loader.unloadPlugin("demo");
+      f.deliverEvent.mockClear();
+      notifyDeleted("/v/a.md", false);
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("code blocks (§394 plan 0125 P10 · P11)", () => {
+    afterEach(() => {
+      __resetCodeBlockRegistry();
+      __resetRenderQueue();
+    });
+
+    /** The loader's own lines, which `sandbox-code-blocks.test.ts` wires by hand. What fails
+     *  this: claiming after `start` (no table reaches `activate`), not binding what the `ready`
+     *  report names, the handler built without `invalidate` or `renderSource`, or a render
+     *  bridge reading the session before `start` returned it. */
+    it("hands activate the claimed table, binds what the sandbox registered, and routes its requests", async () => {
+      const f = fakeHost();
+      const info = { context: "ctx-1", lang: "chart", path: "a.md" };
+      const renderCodeBlock = vi.fn(async () => ({ html: "<p>x</p>" }));
+      const invokeAction = vi.fn(async () => {});
+      f.start.mockImplementation(
+        async (_id, declared) =>
+          ({
+            contributions: declared,
+            deliverEvent: f.deliverEvent,
+            invokeAction,
+            invokeCommand: vi.fn(),
+            registered: { codeBlocks: ["chart"], commands: [], events: [] },
+            renderCodeBlock,
+            renderSource: (id: string) =>
+              id === "render-1" ? "src" : undefined,
+          }) as never,
+      );
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({
+          capabilities: ["codeblocks"],
+          contributions: { codeBlocks: [{ lang: "chart" }] },
+        }),
+      );
+
+      expect(f.start.mock.calls[0][3]).toEqual([
+        { drawnBy: null, lang: "chart" },
+      ]);
+      const binding = codeBlockRendererFor("chart")!;
+      expect(binding.tier).toBe("sandboxed");
+      await binding.render("s", info);
+      expect(renderCodeBlock).toHaveBeenCalledWith("chart", "s", info);
+      await binding.act({ action: "go", ...info });
+      expect(invokeAction).toHaveBeenCalledWith(
+        { context: "ctx-1", kind: "codeBlock", lang: "chart", path: "a.md" },
+        "go",
+      );
+
+      const handler = f.start.mock.calls[0][2]!;
+      await expect(
+        handler({ id: "render-1", kind: "render_get_source" }),
+      ).resolves.toBeUndefined();
+      expect(pluginSandboxStage).toHaveBeenCalledWith("demo", "src");
+      await expect(
+        handler({ kind: "render_invalidate", lang: "nope" }),
+      ).rejects.toThrow('codeBlocks.invalidate: "nope" is not declared');
+
+      await loader.unloadPlugin("demo");
+      expect(codeBlockRendererFor("chart")).toBeNull();
     });
   });
 });

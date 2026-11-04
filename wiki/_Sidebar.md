@@ -37,6 +37,7 @@
 - [Paths and vault boundary](CLI-Paths-and-vault-boundary)
 - [Output contract](CLI-Output-contract)
 - [Links and app parity](CLI-Links-and-app-parity)
+- [MCP server](CLI-MCP-server)
 - Testing methodology — 미작성
 - Code map — 미작성
 - [Decisions and history](CLI-Decisions-and-history)

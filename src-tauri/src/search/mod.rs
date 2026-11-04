@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;
 
+pub(crate) mod replace;
+
 /// A single search match with file path, line/column, and context snippet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,52 +56,139 @@ impl Default for SearchOptions {
 /// What recursive file collection leaves out.
 use crate::fs::VaultExclusion;
 
-/// Build a regex pattern from the query and options.
+/// Build a regex pattern from the query and options, for every search `search_files` runs:
+/// the app's through `commands::search_cmd` with no check before it (the search panel, the
+/// journal's search and the PDF highlight reference count call that command), and
+/// `baram search`, the MCP `search` tool and a plugin's search after `check_query`.
 ///
-/// The CLI builds it too, before it searches (`cli::ops::search`): `search_files` reports
-/// a pattern it cannot build and a root it cannot search both as a String, told apart
-/// only by its wording.
+/// `whole_word` puts the pattern in a group between the boundaries, `\b(?:…)\b`, so the
+/// boundaries hold every alternative: `a|b` finds the word `a` or the word `b`, where the
+/// wrap without the group, `\ba|b\b`, reads as `\ba` or `b\b`. A flag the expression sets,
+/// such as `(?-u)`, ends with the group, so both boundaries keep the search's own flags.
+///
+/// The wrap is text, and it can turn an invalid expression into a valid one — `a)|(b`
+/// becomes `\b(?:a)|(b)\b`, whose parentheses the wrap closed and opened. So a `regex` query
+/// is built as typed first, and its error quotes it as typed. A verbose-mode (`(?x)`)
+/// comment that runs to the end of a query valid as typed comments out the wrap's `)\b` as
+/// well: that pattern does not build, and the query is refused rather than searched without
+/// its closing boundary — with the regex crate's error, which quotes the wrapped pattern.
 pub(crate) fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, regex::Error> {
-    let pattern = if opts.regex {
-        query.to_string()
-    } else {
-        regex::escape(query)
+    let build = |pattern: &str| {
+        RegexBuilder::new(pattern)
+            .case_insensitive(!opts.case_sensitive)
+            .build()
     };
-
-    let pattern = if opts.whole_word {
-        format!(r"\b{}\b", pattern)
+    if !opts.regex {
+        let pattern = regex::escape(query);
+        return if opts.whole_word {
+            build(&format!(r"\b(?:{pattern})\b"))
+        } else {
+            build(&pattern)
+        };
+    }
+    let typed = build(query)?;
+    if opts.whole_word {
+        build(&format!(r"\b(?:{query})\b"))
     } else {
-        pattern
-    };
-
-    RegexBuilder::new(&pattern)
-        .case_insensitive(!opts.case_sensitive)
-        .build()
+        Ok(typed)
+    }
 }
 
-/// Build a snippet around a match, showing up to ~100 chars of context on each side.
-/// All offsets are byte-based (from regex::Match), so we must snap to char boundaries.
-fn build_snippet(line_text: &str, match_start: usize, match_end: usize) -> String {
-    let max_context = 100;
+/// Why `check_query` refuses a query. Each of its two callers words it in its own contract:
+/// `cli::ops_search::search` (`baram search` and the MCP server's `search` tool) and a
+/// plugin's search (`plugin::index_reads`).
+#[derive(Debug)]
+pub(crate) enum QueryRefusal {
+    /// The query is empty — `search_files` would answer it with no hits.
+    Empty,
+    /// With `regex`, the query is not an expression: as typed, or as the search builds it.
+    InvalidRegex(regex::Error),
+    /// Without `regex`, the escaped query does not build — case-insensitively, a long enough
+    /// literal exceeds the size limit.
+    Unsearchable(regex::Error),
+}
 
+/// §387 · §393 Whether the search can build a pattern from `query` and `opts` — asked before
+/// the search, because `search_files` reports a pattern it cannot build and a root it cannot
+/// search both as a String, told apart only by its wording.
+///
+/// The pattern is built as the search builds it (`build_pattern`, which judges a `regex`
+/// query as typed before the whole-word wrap), from the same options — those change what is
+/// built: case-insensitively, `k{50000}` as a regex and fifty thousand `k`s as text both
+/// fail, and case-sensitively both build.
+pub(crate) fn check_query(query: &str, opts: &SearchOptions) -> Result<(), QueryRefusal> {
+    if query.is_empty() {
+        return Err(QueryRefusal::Empty);
+    }
+    build_pattern(query, opts).map(drop).map_err(|error| {
+        if opts.regex {
+            QueryRefusal::InvalidRegex(error)
+        } else {
+            QueryRefusal::Unsearchable(error)
+        }
+    })
+}
+
+/// §5.11 The lines of `content` as `str::lines` yields them, each with the ending `lines` strips
+/// — `\r\n` or `\n`, or nothing for a last line without one; a lone `\r` ends no line — so the
+/// text can be put back together byte for byte. `search_files` numbers its lines by this and
+/// `replace::replace_matches` replaces by it, so the two count the same lines.
+pub(crate) fn lines_with_endings(content: &str) -> impl Iterator<Item = (&str, &str)> {
+    content.split_inclusive('\n').map(|chunk| {
+        let line = chunk
+            .strip_suffix('\n')
+            .map(|rest| rest.strip_suffix('\r').unwrap_or(rest))
+            .unwrap_or(chunk);
+        (line, chunk.get(line.len()..).unwrap_or(""))
+    })
+}
+
+/// The context a snippet takes on each side of a match: up to this many bytes, widened to
+/// the nearest character boundary.
+const SNIPPET_CONTEXT: usize = 100;
+
+/// The most characters of the line a snippet holds; a `…` at each end the line is cut at
+/// comes on top, so a snippet is at most 302 characters. The context before a match is at
+/// most `SNIPPET_CONTEXT` bytes widened back to a character boundary — at most 100
+/// characters — so the cap never cuts into it or the match's start: what it cuts is a long
+/// match and what follows it. The context after a match is at most 100 characters the same
+/// way, so a match up to 100 characters long is never cut. The numbers are in the contracts
+/// that describe a snippet: `cli::ops_search::SearchRow::snippet`, the MCP `search` tool's
+/// description (`cli::mcp::catalog`), the plugin API's `IndexSearchMatch.snippet`
+/// (`src/plugins/types.ts`, and the `examples/plugins/types.d.ts` generated from it) and the
+/// en and ko `plugin-dev/context-index` pages.
+const SNIPPET_CHARS: usize = 300;
+
+/// The line around a match for a result row: up to `SNIPPET_CONTEXT` bytes either side of
+/// the match, then at most `SNIPPET_CHARS` characters of that, with `…` where the line is
+/// cut — before the snippet, after it, or both. Offsets are the regex's byte offsets, so
+/// each cut is moved to a character boundary.
+fn build_snippet(line_text: &str, match_start: usize, match_end: usize) -> String {
     // Snap start backward to nearest char boundary
-    let mut snippet_start = match_start.saturating_sub(max_context);
+    let mut snippet_start = match_start.saturating_sub(SNIPPET_CONTEXT);
     while snippet_start > 0 && !line_text.is_char_boundary(snippet_start) {
         snippet_start -= 1;
     }
 
     // Snap end forward to nearest char boundary
-    let mut snippet_end = (match_end + max_context).min(line_text.len());
+    let mut snippet_end = match_end
+        .saturating_add(SNIPPET_CONTEXT)
+        .min(line_text.len());
     while snippet_end < line_text.len() && !line_text.is_char_boundary(snippet_end) {
         snippet_end += 1;
     }
 
+    let around = line_text.get(snippet_start..snippet_end).unwrap_or("");
+    let (kept, capped) = match around.char_indices().nth(SNIPPET_CHARS) {
+        Some((at, _)) => (around.get(..at).unwrap_or(""), true),
+        None => (around, false),
+    };
     let mut snippet = String::new();
     if snippet_start > 0 {
         snippet.push('…');
     }
-    snippet.push_str(&line_text[snippet_start..snippet_end]);
-    if snippet_end < line_text.len() {
+    snippet.push_str(kept);
+    if capped || snippet_end < line_text.len() {
         snippet.push('…');
     }
     snippet
@@ -222,6 +311,21 @@ pub async fn search_files(
     query: &str,
     opts: &SearchOptions,
 ) -> Result<Vec<SearchResult>, String> {
+    search_page(root, exclusion, query, opts, 0).await
+}
+
+/// `search_files` from the `skip`-th match on, in the order the search finds matches: by
+/// file (the sorted paths `collect_files` gives), then line, then position in the line. The
+/// first `skip` matches are counted and not kept — no snippet is built and no path copied
+/// for them — and up to `opts.max_results` after them are returned, so a page far into a
+/// search holds no more than one page of results (§389, the MCP server's `search` offset).
+pub(crate) async fn search_page(
+    root: &str,
+    exclusion: &VaultExclusion,
+    query: &str,
+    opts: &SearchOptions,
+    skip: usize,
+) -> Result<Vec<SearchResult>, String> {
     if query.is_empty() {
         return Ok(Vec::new());
     }
@@ -242,6 +346,7 @@ pub async fn search_files(
     )
     .await;
     let mut results = Vec::new();
+    let mut skipped: usize = 0;
 
     for file_path in files {
         if results.len() >= opts.max_results {
@@ -253,7 +358,7 @@ pub async fn search_files(
             Err(_) => continue,
         };
 
-        for (line_idx, line_text) in content.lines().enumerate() {
+        for (line_idx, (line_text, _)) in lines_with_endings(&content).enumerate() {
             if results.len() >= opts.max_results {
                 break;
             }
@@ -262,11 +367,15 @@ pub async fn search_files(
                 if results.len() >= opts.max_results {
                     break;
                 }
+                if skipped < skip {
+                    skipped = skipped.saturating_add(1);
+                    continue;
+                }
 
                 results.push(SearchResult {
                     file_path: file_path.clone(),
-                    line: line_idx + 1,      // 1-based
-                    column: mat.start() + 1, // 1-based
+                    line: line_idx.saturating_add(1),      // 1-based
+                    column: mat.start().saturating_add(1), // 1-based
                     snippet: build_snippet(line_text, mat.start(), mat.end()),
                 });
             }
@@ -312,6 +421,35 @@ mod tests {
         assert!(!re.is_match("testing case"));
     }
 
+    /// `word` holds the whole expression between its boundaries: `a|b` finds the word `a`
+    /// or the word `b`. What fails this: the expression wrapped without a group, `\ba|b\b`,
+    /// which reads as `\ba` or `b\b` and finds the `a` of `ab` and the `b` of `xb`.
+    #[test]
+    fn word_holds_every_alternative_of_a_regex_between_its_boundaries() {
+        let re = build_pattern("a|b", &options(true, true, false)).unwrap();
+        assert!(re.is_match("x a y"));
+        assert!(re.is_match("x b y"));
+        assert!(!re.is_match("ab"), "a word starting with a");
+        assert!(!re.is_match("xb"), "a word ending with b");
+    }
+
+    /// A verbose-mode comment runs to the end of the line, and the wrap is on that line. What
+    /// fails this: a wrap that a trailing comment reduces to `\ba` without the group — the
+    /// search would find `a` at the start of `ab`, with no boundary after it.
+    #[test]
+    fn a_trailing_verbose_comment_with_word_is_refused_not_searched_half_bounded() {
+        let opts = options(true, true, false);
+        assert!(Regex::new("(?x)a #c").is_ok(), "valid as typed");
+        assert!(matches!(
+            check_query("(?x)a #c", &opts),
+            Err(QueryRefusal::InvalidRegex(_))
+        ));
+        assert!(
+            build_pattern("(?x) a | b ", &opts).is_ok(),
+            "verbose mode without a comment"
+        );
+    }
+
     #[test]
     fn test_build_pattern_regex() {
         let opts = SearchOptions {
@@ -333,6 +471,98 @@ mod tests {
         assert!(build_pattern(r"[invalid", &opts).is_err());
     }
 
+    fn options(regex: bool, word: bool, case_sensitive: bool) -> SearchOptions {
+        SearchOptions {
+            case_sensitive,
+            whole_word: word,
+            regex,
+            ..Default::default()
+        }
+    }
+
+    /// §393 What fails this: the empty check dropped — `build_pattern("")` builds, and
+    /// `search_files` answers an empty query with no hits instead of a refusal.
+    #[test]
+    fn check_query_refuses_an_empty_query() {
+        for opts in [options(false, false, false), options(true, true, true)] {
+            assert!(matches!(check_query("", &opts), Err(QueryRefusal::Empty)));
+        }
+    }
+
+    /// §393 `word` wraps the expression as text, and `a)|(b` becomes `\b(?:a)|(b)\b` — a
+    /// pattern that builds (the first assertion). So `build_pattern` judges the expression
+    /// as typed first, and `check_query` refuses it through `build_pattern`. What fails
+    /// this: judging only the wrapped pattern, which lets `a)|(b` through, or a message
+    /// quoting the wrapped pattern instead of the typed one.
+    #[test]
+    fn a_regex_is_judged_as_typed_before_the_word_wrap() {
+        let opts = options(true, true, false);
+        assert!(
+            Regex::new(r"\b(?:a)|(b)\b").is_ok(),
+            "the wrap alone hides it"
+        );
+
+        let Err(error) = build_pattern("a)|(b", &opts) else {
+            panic!("a)|(b is not a valid expression");
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("a)|(b") && !message.contains(r"\b"),
+            "{message}"
+        );
+        assert!(matches!(
+            check_query("a)|(b", &opts),
+            Err(QueryRefusal::InvalidRegex(_))
+        ));
+    }
+
+    /// The app's search panel (`commands::search_cmd`) calls `search_files` without
+    /// `check_query`. What fails this: the as-typed check kept in `check_query` alone — the
+    /// panel would search `a)|(b` as `\b(?:a)|(b)\b` and list the `a` of `ab`.
+    #[tokio::test]
+    async fn search_files_refuses_a_regex_only_the_word_wrap_makes_valid() {
+        let tmp = TempDir::new().unwrap();
+        std_fs::write(tmp.path().join("a.md"), "ab\n").unwrap();
+        let error = search_files(
+            tmp.path().to_str().unwrap(),
+            &VaultExclusion::default(),
+            "a)|(b",
+            &options(true, true, false),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.starts_with("Invalid search pattern: "), "{error}");
+    }
+
+    /// §393 Case-insensitively, `k{50000}` as a regex and fifty thousand `k`s as text both
+    /// exceed the size limit when built; each is refused under its own kind. What fails this:
+    /// the build dropped from `check_query`, a build that ignores `case_sensitive` (both
+    /// build case-sensitively), or the two kinds swapped. The pair: case-sensitively both
+    /// build and pass.
+    #[test]
+    fn check_query_refuses_a_pattern_the_search_cannot_build() {
+        let ks = "k".repeat(50000);
+        assert!(matches!(
+            check_query("k{50000}", &options(true, false, false)),
+            Err(QueryRefusal::InvalidRegex(_))
+        ));
+        assert!(matches!(
+            check_query(&ks, &options(false, false, false)),
+            Err(QueryRefusal::Unsearchable(_))
+        ));
+        assert!(check_query("k{50000}", &options(true, false, true)).is_ok());
+        assert!(check_query(&ks, &options(false, false, true)).is_ok());
+    }
+
+    /// §393 What fails this: a literal query compiled as typed — `(` is no expression, but
+    /// as text it is searched for as written.
+    #[test]
+    fn check_query_passes_a_query_the_search_can_build() {
+        assert!(check_query("(", &options(false, false, false)).is_ok());
+        assert!(check_query("needle", &options(false, true, false)).is_ok());
+        assert!(check_query(r"hel+o", &options(true, true, false)).is_ok());
+    }
+
     #[test]
     fn test_build_snippet_short_line() {
         let snippet = build_snippet("hello world", 6, 11);
@@ -346,6 +576,37 @@ mod tests {
         assert!(snippet.starts_with('…'));
         assert!(snippet.ends_with('…'));
         assert!(snippet.len() < long.len());
+    }
+
+    /// A snippet holds at most `SNIPPET_CHARS` characters of the line, the `…` marks aside,
+    /// and always the start of the match: a match longer than that is cut, and so is what
+    /// follows it. A short match keeps its context on both sides.
+    ///
+    /// What fails this: the match kept whole (`.*` over a line of a million characters gave a
+    /// snippet of a million characters); the cap counted in bytes (the Hangul snippet holds a
+    /// third as many characters); the cut made from the start of the line (the match's start
+    /// is lost behind its context).
+    #[test]
+    fn a_snippet_is_bounded_in_characters_and_keeps_the_start_of_the_match() {
+        let line = "x".repeat(1_000_000);
+        let snippet = build_snippet(&line, 0, line.len());
+        assert_eq!(snippet, format!("{}…", "x".repeat(SNIPPET_CHARS)));
+        let line = "\u{AC00}".repeat(1_000);
+        let snippet = build_snippet(&line, 0, line.len());
+        assert_eq!(snippet, format!("{}…", "\u{AC00}".repeat(SNIPPET_CHARS)));
+        let line = format!("{}{}", "a".repeat(500), "b".repeat(1_000));
+        let snippet = build_snippet(&line, 500, line.len());
+        assert_eq!(
+            snippet,
+            format!("…{}{}…", "a".repeat(100), "b".repeat(SNIPPET_CHARS - 100))
+        );
+        // Cut at both ends: the longest a snippet is.
+        assert_eq!(snippet.chars().count(), SNIPPET_CHARS + 2);
+        let line = format!("{}needle{}", "a".repeat(150), "c".repeat(150));
+        assert_eq!(
+            build_snippet(&line, 150, 156),
+            format!("…{}needle{}…", "a".repeat(100), "c".repeat(100))
+        );
     }
 
     #[test]
@@ -436,6 +697,66 @@ mod tests {
         .unwrap();
 
         assert_eq!(results.len(), 10);
+    }
+
+    /// A page from `skip` is the slice `[skip, skip + max_results)` of the whole search, in
+    /// the order the search finds the matches — the skip counted by match, not by line or by
+    /// file: one start lands inside a line that holds three matches, another crosses from one
+    /// file into the next, and a third lies past the last match.
+    ///
+    /// What fails this: the skip counted per line or per file (the page starts at another
+    /// match); a skipped match kept, or `max_results` counted with the skipped ones (the
+    /// page is longer or shorter).
+    #[tokio::test]
+    async fn a_page_from_an_offset_is_that_slice_of_the_whole_search() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std_fs::write(root.join("a.md"), "x x x\nnone\nx\n").unwrap();
+        std_fs::write(root.join("b.md"), "one x\nx and x\n").unwrap();
+        let root = root.to_str().unwrap();
+        let all = search_files(
+            root,
+            &VaultExclusion::default(),
+            "x",
+            &SearchOptions::default(),
+        )
+        .await
+        .unwrap();
+        let key = |hits: &[SearchResult]| -> Vec<(String, usize, usize, String)> {
+            hits.iter()
+                .map(|hit| {
+                    (
+                        hit.file_path.clone(),
+                        hit.line,
+                        hit.column,
+                        hit.snippet.clone(),
+                    )
+                })
+                .collect()
+        };
+        // Four matches in a.md (three on its first line), three in b.md.
+        assert_eq!(all.len(), 7);
+        for (skip, max) in [
+            (0, 3),
+            (1, 2),
+            (2, 3),
+            (3, 2),
+            (4, 3),
+            (6, 5),
+            (7, 2),
+            (99, 2),
+        ] {
+            let options = SearchOptions {
+                max_results: max,
+                ..Default::default()
+            };
+            let page = search_page(root, &VaultExclusion::default(), "x", &options, skip)
+                .await
+                .unwrap();
+            let end = skip.saturating_add(max).min(all.len());
+            let expected = all.get(skip.min(all.len())..end).unwrap_or(&[]);
+            assert_eq!(key(&page), key(expected), "skip {skip}, max {max}");
+        }
     }
 
     #[tokio::test]

@@ -1,0 +1,59 @@
+/* §394 spec 0073 D10 — a code block a plugin draws. The root (data-plugin-block) sits OUTSIDE the
+   block's shadow root, where the plugin's CSS cannot select it. Paint containment there makes the
+   root the containing block of fixed and absolutely positioned descendants and clips what they
+   paint to its box (CSS Containment Level 1); the top layer is the exception, and its entrances
+   are removed by the sanitizer. The root never carries the code block wrapper class: the tables
+   stylesheet lowers a top-level code block wrapper to layout containment. */
+[data-plugin-block] {
+  position: relative;
+  margin: 0.5em 0;
+  contain: layout paint;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* Source mode (plan 0125 P16): the shadow host is not displayed (plan 0125 Task 10's applyMode
+   hides .plugin-block-body, which holds it), so nothing of the plugin's paints, and the wrapped
+   CodeMirror keeps the floating language tab of the "paper" style unclipped. Two attribute
+   selectors outrank the tables stylesheet's top-level-block rule. */
+[data-plugin-block][data-mode="source"] {
+  contain: layout;
+  overflow: visible;
+  border: none;
+}
+
+.plugin-block-chrome {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-0-5) var(--space-2);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-subtle);
+}
+
+.plugin-block-chrome-spacer {
+  flex: 1;
+}
+
+.plugin-block-error {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.75rem;
+  color: var(--color-status-danger);
+}
+
+/* The body scrolls inside the box; its max height is set from limits.ts by the view. */
+.plugin-block-body {
+  overflow: auto;
+}
+
+.plugin-block-host {
+  display: block;
+  contain: paint;
+  overflow: hidden;
+}
+
+.plugin-block-stale .plugin-block-host {
+  opacity: 0.5;
+}

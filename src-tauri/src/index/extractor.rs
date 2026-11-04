@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::sync::LazyLock;
 
+use super::block_ref_escape::unescape_block_ref_target;
 use super::normalizer::{fold_name, nfc};
 use super::IndexError;
 use super::{LinkEntry, LinkKind};
@@ -34,17 +35,6 @@ pub(super) static BLOCK_REF_RE: LazyLock<Regex> =
 static BLOCK_EMBED_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
 });
-
-// Frontmatter tags: tags: [tag1, tag2]
-static FM_TAGS_INLINE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]").unwrap());
-
-// Frontmatter tags block header: tags:
-static FM_TAGS_BLOCK_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*$").unwrap());
-
-// Frontmatter tags block item:   - tag
-static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
 
 /// §34 Unlinked mention result returned to the frontend
 #[derive(Debug, Clone, Serialize)]
@@ -80,63 +70,11 @@ pub(crate) fn file_stem_from_path(path: &str) -> String {
 
 /// Extract all tags (#tag, frontmatter tags) from file content, deduplicated.
 pub(crate) fn extract_file_tags(content: &str) -> Vec<String> {
-    let mut tags = std::collections::HashSet::new();
-
-    // Split frontmatter
-    let (frontmatter, body) = {
-        let mut lines = content.splitn(2, '\n');
-        let first = lines.next().unwrap_or("").trim();
-        if first == "---" {
-            let rest = lines.next().unwrap_or("");
-            if let Some(end) = rest.find("\n---") {
-                (rest[..end].to_string(), rest[end + 4..].to_string())
-            } else {
-                (String::new(), content.to_string())
-            }
-        } else {
-            (String::new(), content.to_string())
-        }
-    };
-
-    // Extract frontmatter tags
-    if !frontmatter.is_empty() {
-        let fm_lines: Vec<&str> = frontmatter.lines().collect();
-        let mut i = 0;
-        while i < fm_lines.len() {
-            let line = fm_lines[i];
-            if let Some(cap) = FM_TAGS_INLINE_RE.captures(line) {
-                let inner = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-                for part in inner.split(',') {
-                    let t = part.trim().trim_matches('"').trim_matches('\'').to_string();
-                    if !t.is_empty() {
-                        tags.insert(t);
-                    }
-                }
-            } else if FM_TAGS_BLOCK_RE.is_match(line) {
-                i += 1;
-                while i < fm_lines.len() {
-                    if let Some(cap) = FM_TAGS_ITEM_RE.captures(fm_lines[i]) {
-                        let t = cap
-                            .get(1)
-                            .map(|m| m.as_str())
-                            .unwrap_or("")
-                            .trim()
-                            .trim_matches('"')
-                            .trim_matches('\'')
-                            .to_string();
-                        if !t.is_empty() {
-                            tags.insert(t);
-                        }
-                        i += 1;
-                    } else {
-                        break;
-                    }
-                }
-                continue;
-            }
-            i += 1;
-        }
-    }
+    let (frontmatter, body) = crate::md::split_frontmatter(content);
+    let mut tags: std::collections::HashSet<String> =
+        crate::tag::extract_frontmatter_tags(&frontmatter)
+            .into_iter()
+            .collect();
 
     // Extract inline #tags (outside code blocks). issue 666: the tag index's
     // reader (`get_vault_tags`) and writer (`rename_tag`) share these two
@@ -234,11 +172,12 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Self-ref ((#^id)) → use current file stem as target
+            // Self-ref ((#^id)) → use current file stem as target; any other target is
+            // read as the editor reads it, its escapes undone (`block_ref_escape`).
             let target = if raw_target.is_empty() {
                 file_stem_from_path(file_path)
             } else {
-                raw_target.to_string()
+                unescape_block_ref_target(raw_target).into_owned()
             };
 
             entries.push(LinkEntry {
@@ -280,11 +219,12 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 continue;
             }
 
-            // Self-ref ((#^id)) → use current file stem as target
+            // Self-ref ((#^id)) → use current file stem as target; any other target is
+            // read as the editor reads it, its escapes undone (`block_ref_escape`).
             let target = if raw_target.is_empty() {
                 file_stem_from_path(file_path)
             } else {
-                raw_target.to_string()
+                unescape_block_ref_target(raw_target).into_owned()
             };
 
             entries.push(LinkEntry {
@@ -779,10 +719,11 @@ mod tests {
     async fn an_unlinked_mention_inside_code_is_not_a_mention() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_string_lossy().to_string();
-        let note = format!("{root}/note.md");
+        // The walk's spelling of the note (the OS separator), the one the app hands in.
+        let note = dir.path().join("note.md").to_string_lossy().into_owned();
         tokio::fs::write(&note, "# note\n").await.unwrap();
         tokio::fs::write(
-            format!("{root}/other.md"),
+            dir.path().join("other.md"),
             "`note` in a span, then ```\n```\nnote in a fence\n```\n[[note]] linked, note here\n",
         )
         .await
@@ -867,5 +808,29 @@ mod tests {
         let mut shared = crate::md::extract_inline_tags(&crate::md::strip_code_blocks(body));
         shared.sort();
         assert_eq!(tags, shared);
+    }
+
+    /// §56m The graph's front-matter tags come from the tag index's reader
+    /// (`tag::extract_frontmatter_tags`), so `"#solo"` there is the body's
+    /// `#solo` — one tag node, not `tag:#solo` beside `tag:solo`. Case stays as
+    /// written here (the graph does not fold it), so `"#Solo"` is a node of its
+    /// own. What fails this: a front-matter reader that keeps the `#`.
+    #[test]
+    fn a_front_matter_hash_tag_is_the_graphs_body_tag() {
+        let body = "---\ntags: [\"#solo\", '#a/b', \"#Solo\"]\n---\nbody #solo #a/b\n";
+        let mut tags = extract_file_tags(body);
+        tags.sort();
+        assert_eq!(tags, vec!["Solo", "a/b", "solo"]);
+    }
+
+    /// §56m An unindented `tags:` block list gives the graph its tags, through
+    /// the same reader; a later key's list does not. What fails this: an item
+    /// pattern that requires indentation (only the body's `#body` is a node).
+    #[test]
+    fn an_unindented_front_matter_tag_list_gives_graph_nodes() {
+        let body = "---\ntags:\n- solo\n- \"#a/b\"\nrelated:\n- notatag\n---\n#body\n";
+        let mut tags = extract_file_tags(body);
+        tags.sort();
+        assert_eq!(tags, vec!["a/b", "body", "solo"]);
     }
 }

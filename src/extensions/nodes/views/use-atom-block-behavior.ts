@@ -58,8 +58,13 @@ interface UseAtomBlockBehaviorParams {
    * Called before exiting the block, so the view can persist unsaved changes.
    * For most views this calls `updateAttributes({ key: localValue })`.
    * For block-embed this calls `commitEdit()`.
+   *
+   * When saving put other content where the block was (an HTML block's text
+   * can read back as several blocks), it returns that content's size, which
+   * an exit downward steps over instead of `nodeSize`. Nothing, or
+   * block-embed's promise (which nobody waits for), leaves `nodeSize`.
    */
-  onSaveBeforeExit: () => void;
+  onSaveBeforeExit: () => number | Promise<void> | void;
 
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
@@ -112,12 +117,13 @@ export function useAtomBlockBehavior({
       const pos = getPos();
       if (typeof pos !== "number") return;
 
-      onSaveBeforeExit();
+      const savedSize = onSaveBeforeExit();
 
       if (direction === "up") {
         editor.chain().setTextSelection(pos).scrollIntoView().run();
       } else {
-        const afterPos = pos + nodeSize;
+        const afterPos =
+          pos + (typeof savedSize === "number" ? savedSize : nodeSize);
         const { doc } = editor.state;
         const $after = doc.resolve(afterPos);
         if ($after.parentOffset >= $after.parent.content.size) {

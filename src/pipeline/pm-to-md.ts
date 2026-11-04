@@ -1,4 +1,3 @@
-import type { HighlightNode, SubscriptNode, SuperscriptNode } from "./types";
 import type { Mark, Node as PmNode } from "@tiptap/pm/model";
 import type {
   Content,
@@ -138,46 +137,6 @@ function appendBlockIdToMdast(node: Content, blockId: string): void {
   children.push({ type: "text", value: ` ^${blockId}` } as PhrasingContent);
 }
 
-/** Coalesce adjacent custom mark nodes of the same type (highlight, subscript, superscript).
- *  Merges e.g. ==part1== + ==part2== → ==part1part2== */
-function coalesceCustomMarkNodes(nodes: PhrasingContent[]): PhrasingContent[] {
-  const DELIMS: Record<string, { close: string; open: string }> = {
-    highlight: { open: "==", close: "==" },
-    subscript: { open: "~", close: "~" },
-    superscript: { open: "^", close: "^" },
-  };
-  const result: PhrasingContent[] = [];
-
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const delim = DELIMS[node.type];
-
-    if (delim) {
-      // Collect adjacent nodes of the same type
-      // Custom mark nodes (highlight, subscript, superscript) are Literal nodes with value
-      let merged = (node as HighlightNode | SubscriptNode | SuperscriptNode)
-        .value;
-      while (i + 1 < nodes.length && nodes[i + 1].type === node.type) {
-        i++;
-        const next = (
-          nodes[i] as HighlightNode | SubscriptNode | SuperscriptNode
-        ).value;
-        // Strip close+open delimiters at boundary: ==a== + ==b== → ==ab==
-        merged =
-          merged.slice(0, -delim.close.length) + next.slice(delim.open.length);
-      }
-      result.push({
-        type: node.type,
-        value: merged,
-      } as HighlightNode | SubscriptNode | SuperscriptNode);
-    } else {
-      result.push(node);
-    }
-  }
-
-  return result;
-}
-
 /** 커스텀 인라인 마크와 밑줄이 쓰는 HTML 태그 토큰 */
 const INLINE_TAG_TOKENS = new Set([
   "</mark>",
@@ -255,6 +214,13 @@ const CUSTOM_MARK_TAG_DELIMITERS: Record<
  * 앞뒤가 공백이 아닐 때만 되돌린다. 정규식을 여기서 흉내 내면 둘이 갈라질 수 있고,
  * 갈라지는 쪽이 곧 데이터 손실이다. 엄격해서 손해 보는 것은 `<mark>` 가 조금 더
  * 자주 나오는 것뿐이다.
+ *
+ * 내용은 텍스트 노드 그대로 자식이 되어 직렬화기의 `text` 핸들러가 다른 본문처럼
+ * escape 한다. 바깥 이웃이 단축 구문을 바꾸는지는 두 곳이 본다 — remark 가 이웃으로
+ * 쓰는 글자(취소선의 `~~` 등)는 직렬화기의 핸들러(`serializer.ts`)가, 로더가 읽는
+ * escape 를 푼 글자는 여기서 다음 텍스트 노드로 본다(아래 `next`). escape 한 글이
+ * 파서에서 그 글 그대로 돌아오는지(끝의 웹 주소가 닫는 구분자를 링크로 삼키는지)도
+ * 직렬화기의 핸들러가 파서에 물어 본다.
  */
 function collapsePlainCustomMarkTags(
   nodes: PhrasingContent[],
@@ -288,16 +254,27 @@ function collapsePlainCustomMarkTags(
       // 보면 `a=` 가 통과하는데, 그러면 `==a===` 가 되어 되읽을 때 끝의 `=` 가
       // 마크 밖으로 떨어진다(바이트는 안정이라 마크를 봐야만 보인다).
       const edge = shape.delim[0];
+      // 아래첨자 바로 뒤 텍스트가 `~` 로 시작해도 안 된다. remark 가 그 `~` 를 `\~` 로
+      // 쓰면 직렬화기의 핸들러는 첫 글자 `\` 만 보지만, 로더는 escape 를 푼 텍스트에서
+      // 정규식을 걸어 `~b~~` 로 읽는다(아래첨자가 사라졌다). 앞 텍스트의 `\~` 는 `~` 가
+      // 마지막 글자라 핸들러가 본다. `==` · `^` 는 뒤의 같은 글자가 읽기를 바꾸지 않는다
+      // (`serializer.ts` 의 `CUSTOM_MARKS`).
+      const next = nodes[i + 3];
       const safe =
         text.length > 0 &&
         !text.includes(shape.delim) &&
         !text.startsWith(edge) &&
         !text.endsWith(edge) &&
-        (!needsHug || (!/^\s/.test(text) && !/\s$/.test(text)));
+        (!needsHug || (!/^\s/.test(text) && !/\s$/.test(text))) &&
+        !(
+          shape.delim === "~" &&
+          next?.type === "text" &&
+          (next as Text).value.startsWith(edge)
+        );
       if (safe) {
         result.push({
+          children: [inner],
           type: shape.type,
-          value: `${shape.delim}${text}${shape.delim}`,
         } as PhrasingContent);
         i += 2;
         continue;
@@ -334,8 +311,8 @@ function canMergeWrapperNodes(a: PhrasingContent, b: PhrasingContent): boolean {
  * node by convertTextWithMarks. Left unmerged, remark-stringify serializes
  * each wrapper with its own delimiters (`**text****code**** more**`) instead
  * of one continuous span (`**text `code` more**`), corrupting the file on
- * save. Custom marks (highlight/subscript/superscript) already get the same
- * treatment via coalesceCustomMarkNodes — this covers the standard ones.
+ * save. Custom marks (highlight/subscript/superscript) are joined as tag
+ * tokens instead (coalesceInlineTagPairs) — this covers the standard ones.
  */
 function coalesceAdjacentWrapperNodes(
   nodes: PhrasingContent[],
@@ -426,12 +403,10 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
   });
 
   // 태그 짝을 먼저 합쳐 구간을 하나로 만든 뒤, 평문 구간만 단축 구문으로 되돌리고,
-  // 남은 값 노드와 wrapper 노드를 합친다. 순서가 뜻을 가진다 — 합치기 전에 되돌리면
-  // 여러 노드에 걸친 구간이 조각마다 다른 형태로 굳는다.
+  // wrapper 노드를 합친다. 순서가 뜻을 가진다 — 합치기 전에 되돌리면 여러 노드에 걸친
+  // 구간이 조각마다 다른 형태로 굳는다.
   return coalesceAdjacentWrapperNodes(
-    coalesceCustomMarkNodes(
-      collapsePlainCustomMarkTags(coalesceInlineTagPairs(result)),
-    ),
+    collapsePlainCustomMarkTags(coalesceInlineTagPairs(result)),
   );
 }
 

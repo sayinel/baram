@@ -54,14 +54,35 @@ export interface PluginSettingsTab {
   title: string;
 }
 
-export interface PluginSidebarPanel {
+/** What every panel on the sidebar's plugin seat has (§69 · §394 plan 0126 P5). */
+interface SidebarPanelBase {
   icon?: string;
-  onMount: (el: HTMLElement) => void;
-  onUnmount?: (el: HTMLElement) => void;
   panelId: string; // namespaced: `${pluginId}:${id}`
   pluginId: string;
   title: string;
 }
+
+/** A trusted plugin's `ui.addSidebarPanel`: its own DOM, mounted in a shadow root (`PluginShadowMount`). */
+interface DomSidebarPanel extends SidebarPanelBase {
+  kind: "dom";
+  onMount: (el: HTMLElement) => void;
+  onUnmount?: (el: HTMLElement) => void;
+}
+
+/**
+ * §394 spec 0073 D14 — a sandboxed plugin's declared panel: the host draws the content the plugin
+ * sends (`ui_set_panel`, kept by `panel-contents.ts`) by the rendered-area rules (`RenderedPanelView`).
+ * Whoever registers one sanitizes its `title` and `icon` first — they are the plugin's, and the
+ * activity bar draws them as they are.
+ */
+export interface RenderedSidebarPanel extends SidebarPanelBase {
+  kind: "rendered";
+  /** The plugin's name as a badge (`pluginSourceLabel`): the panel's `Plugin · {name}` (D10). */
+  sourceName: string;
+}
+
+/** A panel on the sidebar's plugin seat: a trusted plugin's DOM, or a sandboxed plugin's rendered content. */
+export type PluginSidebarPanel = DomSidebarPanel | RenderedSidebarPanel;
 
 export interface PluginStatusBarItem {
   align: "left" | "right";

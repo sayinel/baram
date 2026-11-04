@@ -13,6 +13,7 @@ import { EditorView as CMView } from "@codemirror/view";
 
 import { attachTooltip } from "../../../components/tooltip-core";
 import { t } from "../../../i18n";
+import { codeBlockRendererFor } from "../../../plugins/rendered/code-block-registry";
 import { useAIStore } from "../../../stores/ai/ai";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
@@ -62,6 +63,9 @@ export class CodeBlockNodeView implements NodeView {
   // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
   // PM editable without triggering NodeView.update(), and broadcasts instead.
   private readOnlyCompartment = new Compartment();
+  /** §394 spec 0073 D6 — whether this block's language had a bound renderer when the view was made.
+   *  A change of that answer rebuilds the view as the other branch (`update` returns false). */
+  private readonly renderedAtCreation: boolean;
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
   private unregisterEditableSync: (() => void) | null = null;
@@ -91,6 +95,7 @@ export class CodeBlockNodeView implements NodeView {
     // [data-node-view-content] can shadow it).
     wrapper.setAttribute("data-vim-suspend", "");
     const lang = (node.attrs.language as string) || "";
+    this.renderedAtCreation = codeBlockRendererFor(lang) !== null;
     wrapper.dataset.language = lang;
     wrapper.dataset.style = useSettingsStore.getState().codeBlockStyle;
 
@@ -377,6 +382,13 @@ export class CodeBlockNodeView implements NodeView {
   /** Called by ProseMirror when the node is updated (e.g. undo/redo) */
   update(node: PMNode): boolean {
     if (node.type !== this.node.type) return false;
+    // §394 spec 0073 D6 — like `JournalBlockNodeView.update`, a branch change rebuilds the view:
+    // ProseMirror asks again (a registry decoration, or the language select) and `addNodeView`
+    // chooses. A language change within one branch still reconfigures in place, below.
+    const nextLang = (node.attrs.language as string) || "";
+    if ((codeBlockRendererFor(nextLang) !== null) !== this.renderedAtCreation) {
+      return false;
+    }
 
     const oldLang = (this.node.attrs.language as string) || "";
     this.node = node;

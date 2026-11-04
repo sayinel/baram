@@ -18,6 +18,7 @@ import { useTranslation } from "../../i18n/useTranslation";
 import { TASK_STATE_MARKER } from "../../ipc/types";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useUIStore } from "../../stores/ui/ui";
+import { isBodyTagName, tagName } from "../../utils/tags/tag-name";
 import { resolveDateInput } from "../../utils/tasks/task-date-input";
 import {
   applyTargetLine,
@@ -63,6 +64,12 @@ export function TaskEditDialog() {
   // 두 글자를 칠 수 없다. 확정은 blur와 저장 시점에 한다.
   const [dateText, setDateText] = useState<Record<string, string>>({});
   const [tagText, setTagText] = useState("");
+  // §56m 태그 칸에 친 이름은 본문의 `#`이 쓸 수 있는 이름(`isBodyTagName`)만 줄에 들어간다 —
+  // `a b`를 받으면 `#a b`가 되어 태그 `a`와 본문 단어 `b`로 갈라진다. 단 열 때 줄에 이미
+  // 있던 태그(`#a.b`처럼 그 규칙 밖의 것도)는 그대로 둔다: 태그 칸을 고쳤다는 이유로 줄에
+  // 있던 글자가 사라지면 안 된다. 받지 않은 이름은 칸에 남고 미리보기에 없다.
+  const lineTagsRef = useRef<string[]>([]);
+  const [tagRefused, setTagRefused] = useState(false);
 
   useEffect(() => {
     if (!taskEditOpen) {
@@ -112,6 +119,8 @@ export function TaskEditDialog() {
       Object.fromEntries(DATE_KINDS.map((k) => [k, read.dates[k] ?? ""])),
     );
     setTagText(read.tags.join(", "));
+    lineTagsRef.current = read.tags;
+    setTagRefused(false);
   }, [taskEditOpen, editor, closeTaskEdit]);
 
   /** 지금 폼이 뜻하는 줄. 미리보기와 저장이 **같은 함수**를 본다. */
@@ -239,20 +248,22 @@ export function TaskEditDialog() {
         <label className="task-edit-field">
           <span>{t("tasks.edit.tags")}</span>
           <input
-            className="settings-input"
+            aria-invalid={tagRefused}
+            // 두 이름을 한 문자열로 — prettier-plugin-tailwindcss 가 `" is-invalid"` 의 앞 공백을 지운다.
+            className={
+              tagRefused ? "settings-input is-invalid" : "settings-input"
+            }
             onChange={(e) => {
               setTagText(e.target.value);
-              setDraft((d) =>
-                d
-                  ? {
-                      ...d,
-                      tags: e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    }
-                  : d,
+              const names = e.target.value
+                .split(",")
+                .map((s) => tagName(s.trim()))
+                .filter(Boolean);
+              const taken = names.filter(
+                (n) => isBodyTagName(n) || lineTagsRef.current.includes(n),
               );
+              setTagRefused(taken.length < names.length);
+              setDraft((d) => (d ? { ...d, tags: taken } : d));
             }}
             placeholder={t("tasks.edit.tags.placeholder")}
             value={tagText}

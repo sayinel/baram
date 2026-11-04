@@ -265,6 +265,14 @@
   border-color: var(--color-accent-default);
 }
 
+/* §72 YAML text that is not valid YAML there stays in the input, unwritten. Without a cue the
+   box reads one value while the file holds another. After the focus rule, so it shows while
+   typing; `aria-invalid` rather than `:invalid` so the styling and what a screen reader
+   announces come from the same attribute. */
+.properties-input[aria-invalid="true"] {
+  border-color: var(--color-status-danger);
+}
+
 .properties-select {
   padding: var(--space-1) var(--space-2);
   font-size: 0.82rem;

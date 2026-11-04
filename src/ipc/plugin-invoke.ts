@@ -5,6 +5,8 @@ import type { Channel } from "@tauri-apps/api/core";
 import type { PluginOp } from "../plugins/sandbox/plugin-op";
 import type {
   CommunityRegistryIndex,
+  IndexSearchOptions,
+  IndexTaskOptions,
   InstalledPlugin,
   PluginConsent,
   PluginFetchInit,
@@ -84,6 +86,23 @@ export interface DevModeSnapshot {
   folders: DevFolderRow[];
 }
 
+/**
+ * §393 One `ctx.index` read as `plugin_index_read` takes it — Rust `IndexRead`
+ * (`src-tauri/src/plugin/index_reads/mod.rs`), tagged on `read`. Paths are absolute: only the
+ * trusted tier calls this command.
+ */
+export type PluginIndexRead =
+  | { file?: string; read: "tasks"; status?: IndexTaskOptions["status"] }
+  | {
+      options: Omit<IndexSearchOptions, "context">;
+      query: string;
+      read: "search";
+    }
+  | { path: string; read: "backlinks" }
+  | { path: string; read: "links" }
+  | { read: "notesWithTag"; tag: string }
+  | { read: "tags" };
+
 /** §260 sandbox broker — the only privileged channel a plugin-* window has. */
 export async function pluginCall(op: PluginOp): Promise<unknown> {
   return invoke<unknown>("plugin_call", { op });
@@ -136,6 +155,26 @@ export async function pluginHttpFetch(
   init?: PluginFetchInit,
 ): Promise<PluginFetchResponse> {
   return invoke<PluginFetchResponse>("plugin_http_fetch", { url, init });
+}
+
+/** §393 `ctx.index` for a trusted plugin — host windows only; resolves with the rows. */
+export async function pluginIndexRead<T>(
+  context: string | undefined,
+  read: PluginIndexRead,
+): Promise<T> {
+  return invoke<T>("plugin_index_read", { context, read });
+}
+
+/**
+ * §394 The note a plugin-rendered block's `data-note` link names — `path` relative to context
+ * `context`'s root. Resolves with the absolute path to open; rejects with a fixed sentence when
+ * the link names no existing note under that root (spec 0073 D11 ②). Host windows only.
+ */
+export async function pluginNoteLink(
+  context: string,
+  path: string,
+): Promise<string> {
+  return invoke<string>("plugin_note_link", { context, path });
 }
 
 /**

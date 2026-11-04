@@ -1,0 +1,757 @@
+{
+  "contract": "\u00a756m The tag names a note's front matter gives through its `tags:` lists, read as `tag::extract_frontmatter_tags` reads them: an inline list `tags: [a, b]` split at its commas, or the `- item` lines after a `tags:` line, indented or not, up to the first line that is not one; a block item without the comment YAML reads after it (the whitespace at the end of the line is trimmed first, any Unicode whitespace; a quoted item ends at its closing quote when nothing follows it, or spaces and tabs and a `#` comment; an item that starts with a quote and does not end that way is read whole, `#`s and all, as `\"a\" b # c` is; an unquoted item ends before the first `#` that follows a space or a tab, the only whitespace that sets a comment off after an item (the dash takes any Unicode whitespace after it, so `- ` + U+3000 + `#` holds no item, where YAML reads the string U+3000 + `#`); an item that is `#`s and then whitespace or nothing is a comment and names nothing); each entry trimmed of Unicode whitespace (`White_Space`), of which YAML keeps in a value all but spaces, tabs and line breaks (`a` + U+00A0 + ` # c` names `a`, where YAML reads `a` + U+00A0; a lone `\\r` ending the last line is one yaml 2.9.1 keeps and js-yaml drops), then its double and then its single quotes taken off, then every leading `#` (`tag::bare_tag`); empty names left out; case as written. `frontmatter` is the text between the two `---` lines, as `md::split_frontmatter` gives it. The Rust test `tag::frontmatter::tests::the_reader_agrees_with_the_shared_fixture` reads this file; another reader of front-matter tags (the app reads them in TypeScript too) can read it to agree. These are a line reader's answers, not a YAML parser's: where `yaml` 2.9.1 or `js-yaml` 4.3.2 rejects the text or reads a different value for the list (2026-10-26, and 2026-11-01 for the rows on comments), `why` says so; a YAML value keeps the `#`s this reader takes off, which no case repeats. `cases` are front matters to read; `names` (see `names_contract`) are names to rename to. Every character outside ASCII is written as a JSON unicode escape. A case may also carry `frontendTags` and `frontendWhy`: the names the app's frontend reader (`readFrontmatterLists` in `src/utils/markdown/frontmatter-list.ts`) gives where it reads the text differently on purpose \u2014 it does not split an inline list at a comma inside a quoted entry, so that its writer keeps the entry whole. The Rust test reads `tags`; the frontend's test (`src/utils/__tests__/frontmatter-tag-readers.test.ts`) reads `frontendTags` where a case has it.",
+  "cases": [
+    {
+      "frontmatter": "tags: [\"#solo\"]",
+      "tags": [
+        "solo"
+      ],
+      "why": "a double-quoted entry loses its quotes, then every leading # (tag::bare_tag): the body's #solo is the same tag"
+    },
+    {
+      "frontmatter": "tags: [\"#Solo\"]",
+      "tags": [
+        "Solo"
+      ],
+      "why": "case is kept as written; the tag index lowercases after reading, the graph does not"
+    },
+    {
+      "frontmatter": "tags: ['#sq']",
+      "tags": [
+        "sq"
+      ],
+      "why": "a single-quoted entry, likewise"
+    },
+    {
+      "frontmatter": "tags: [#unq]",
+      "tags": [
+        "unq"
+      ],
+      "why": "not YAML (# cannot begin a plain scalar), but read as written: the app's own tag writers have written such lines (they joined tags unquoted), and notes written that way keep them"
+    },
+    {
+      "frontmatter": "tags: [plain, #unq2]",
+      "tags": [
+        "plain",
+        "unq2"
+      ],
+      "why": "an unquoted # after a comma, likewise: not YAML either"
+    },
+    {
+      "frontmatter": "tags:   [ a ,  \"#b\" ]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "whitespace around the brackets and the commas is not part of a name"
+    },
+    {
+      "frontmatter": "tags: [solo, \"plain\"]",
+      "tags": [
+        "solo",
+        "plain"
+      ],
+      "why": "a name without # is read as it is"
+    },
+    {
+      "frontmatter": "tags: [\"##double\"]",
+      "tags": [
+        "double"
+      ],
+      "why": "every leading # goes, not one"
+    },
+    {
+      "frontmatter": "tags: [\"#a/b\"]",
+      "tags": [
+        "a/b"
+      ],
+      "why": "a nested tag keeps its /: the body's #a/b is the same tag"
+    },
+    {
+      "frontmatter": "tags: [solo.x, my solo, \"#solo\"]",
+      "tags": [
+        "solo.x",
+        "my solo",
+        "solo"
+      ],
+      "why": "an entry is one name, whatever it holds: solo.x and my solo are not solo"
+    },
+    {
+      "frontmatter": "tags: [\"#\", ##, '', , \"#\"\"\", a]",
+      "tags": [
+        "a"
+      ],
+      "why": "an entry of only #s, or of nothing, names no tag and is left out (not YAML: the unquoted ## begins a comment)"
+    },
+    {
+      "frontmatter": "tags:\n  - \"#blockq\"\n  - '#blockq2'",
+      "tags": [
+        "blockq",
+        "blockq2"
+      ],
+      "why": "block-list items, quoted"
+    },
+    {
+      "frontmatter": "tags:\n  - solo\n  - 'plain'",
+      "tags": [
+        "solo",
+        "plain"
+      ],
+      "why": "block-list items without #"
+    },
+    {
+      "frontmatter": "tags:\n  - #blockunq",
+      "tags": [
+        "blockunq"
+      ],
+      "why": "a YAML comment (the item is null), read as written for the same reason as [#unq]"
+    },
+    {
+      "frontmatter": "tags:\n  - project/baram",
+      "tags": [
+        "project/baram"
+      ],
+      "why": "a nested tag in a block list"
+    },
+    {
+      "frontmatter": "tags:\n  - \"#\"\n  - ##\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "block items of only #s name no tag (to YAML the ## item is a comment, so null)"
+    },
+    {
+      "frontmatter": "tags:\n  - \"#solo\"   # keep me",
+      "tags": [
+        "solo"
+      ],
+      "why": "a quoted block item ends at its closing quote: the blanks and the # comment after it are not part of the name, as YAML reads the line"
+    },
+    {
+      "frontmatter": "tags:\n  - plain # memo",
+      "tags": [
+        "plain"
+      ],
+      "why": "a # after a space begins a comment, which is not part of an unquoted block item, as YAML reads the line"
+    },
+    {
+      "frontmatter": "tags:\n  - a\t# tab\n  - 'b'\t# tab",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a tab before the # sets off a comment as a space does, after an unquoted item and after a quoted one, as YAML reads the lines"
+    },
+    {
+      "frontmatter": "tags:\n  - a#b",
+      "tags": [
+        "a#b"
+      ],
+      "why": "a # with no space or tab before it is part of the item, as YAML reads it"
+    },
+    {
+      "frontmatter": "tags:\n  - \"q # in\"",
+      "tags": [
+        "q # in"
+      ],
+      "why": "a # inside a quoted item is text, as YAML reads it"
+    },
+    {
+      "frontmatter": "tags:\n  - \"a\\\"b\" # c",
+      "tags": [
+        "a\\\"b"
+      ],
+      "why": "a backslash escapes the next character in a double-quoted item, so the escaped quote does not end it and the comment after the closing quote goes; no escape is read in the name, which keeps the backslash (YAML reads a\"b)"
+    },
+    {
+      "frontmatter": "tags:\n  - #solo # memo",
+      "tags": [
+        "solo"
+      ],
+      "why": "an unquoted block item that starts with # and then a name is read as written, as #blockunq is, and the comment after it is cut off; to YAML the first # already begins a comment, so the item is null"
+    },
+    {
+      "frontmatter": "tags:\n  - # memo\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "a # and then a space right after the dash begins a comment: the line holds no item and names no tag, and the list goes on (YAML reads null, then a)"
+    },
+    {
+      "frontmatter": "tags:\n  - ## memo\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "#s and then whitespace right after the dash are a comment too, however many #s (YAML reads null, then a)"
+    },
+    {
+      "frontmatter": "tags:\n  - #\u3000memo",
+      "tags": [],
+      "why": "after the #s any whitespace, here an ideographic space (U+3000), makes the line a comment, as YAML reads it (null: the # is set off by the space after the dash); no name the body can spell begins with whitespace"
+    },
+    {
+      "frontmatter": "tags:\n  - 'it''s' # c",
+      "tags": [
+        "it''s"
+      ],
+      "why": "a single-quoted item ends at the first quote that is not doubled, and the comment after it goes; no escape is read, so the doubled quote stays two (YAML reads it's)"
+    },
+    {
+      "frontmatter": "tags:\n  - \"q # in",
+      "tags": [
+        "q # in"
+      ],
+      "why": "a quote that never closes: the whole text after the dash is the item, # and all (YAML rejects the text)"
+    },
+    {
+      "frontmatter": "tags:\n  - \"a\" b # c",
+      "tags": [
+        "a\" b # c"
+      ],
+      "why": "text after the closing quote that is not a comment: the whole text after the dash is the item, # and all (YAML rejects the text)"
+    },
+    {
+      "frontmatter": "tags:\n  - a\u3000# b",
+      "tags": [
+        "a\u3000# b"
+      ],
+      "why": "an ideographic space (U+3000) is whitespace but not a space or a tab, so the # after it does not begin a comment, as YAML reads the line"
+    },
+    {
+      "frontmatter": "tags:\r\n  - 'x' # c\r",
+      "tags": [
+        "x"
+      ],
+      "why": "CRLF: the last line keeps the \\r before the closing ---, and the quoted item and its comment read as on any other line, as YAML reads them"
+    },
+    {
+      "frontmatter": "tags: [a, b] # c",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a comment after an inline list's ] is not part of the list, as YAML reads the line"
+    },
+    {
+      "frontmatter": "tags:\n- solo\n- \"#b\"",
+      "tags": [
+        "solo",
+        "b"
+      ],
+      "why": "a block list at its key's own indentation, as YAML reads tags: followed by - solo"
+    },
+    {
+      "frontmatter": "tags:\n- '#solo'\r\n- c\r",
+      "tags": [
+        "solo",
+        "c"
+      ],
+      "why": "unindented items with CRLF line endings (yaml 2.9.1 keeps the last \\r in the value: c\\r)"
+    },
+    {
+      "frontmatter": "aliases:\n- x\ntags:\n- a\n- b\nrelated:\n- x\n- y",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a list ends at the first line that is not an item: the next key's - x items, and those of a key before tags:, are not tags"
+    },
+    {
+      "frontmatter": "related:\n- x\ntitle: t",
+      "tags": [],
+      "why": "a list under another key is not tags"
+    },
+    {
+      "frontmatter": "tags:\r\n  - '#solo'\r\n  - c\r",
+      "tags": [
+        "solo",
+        "c"
+      ],
+      "why": "CRLF: a line is read without its line ending, and the last line keeps the \\r before the closing ---, which is not part of the name (yaml 2.9.1 keeps it in the value: c\\r)"
+    },
+    {
+      "frontmatter": "Tags: [a]",
+      "tags": [
+        "a"
+      ],
+      "why": "the key is matched without case (to YAML this is the key Tags, which a lookup of tags would not find)"
+    },
+    {
+      "frontmatter": "tags : [b]",
+      "tags": [
+        "b"
+      ],
+      "why": "space before the colon"
+    },
+    {
+      "frontmatter": "TAGS:\n  - c",
+      "tags": [
+        "c"
+      ],
+      "why": "a block list under an upper-case key (to YAML this is the key TAGS, which a lookup of tags would not find)"
+    },
+    {
+      "frontmatter": "tags: [\"#\ud55c\uae00\", '\ud560-\uc77c']",
+      "tags": [
+        "\ud55c\uae00",
+        "\ud560-\uc77c"
+      ],
+      "why": "Korean names, a hyphen inside one"
+    },
+    {
+      "frontmatter": "title: about #solo\nkeywords: [a]",
+      "tags": [],
+      "why": "a # in another field and a list under another key are not tags (to YAML the # begins a comment)"
+    },
+    {
+      "frontmatter": "tags: [\ufeffa]",
+      "tags": [
+        "\ufeffa"
+      ],
+      "why": "U+FEFF is not whitespace (White_Space) and stays in the name; JavaScript's trim would take it off"
+    },
+    {
+      "frontmatter": "tags: [a\u0085]",
+      "tags": [
+        "a"
+      ],
+      "why": "U+0085 (NEL) is whitespace (White_Space) and trimmed; JavaScript's trim keeps it, and so does YAML, which reads a\\u0085"
+    },
+    {
+      "frontmatter": "tags:\n\u3000- a",
+      "tags": [
+        "a"
+      ],
+      "why": "an ideographic space (U+3000) before the dash is whitespace to the item pattern, so the line is an item; YAML rejects the text"
+    },
+    {
+      "frontmatter": "tags:\u3000\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "U+3000 after the colon is whitespace to the key pattern, so the key line opens a block list; YAML reads one string, not a list"
+    },
+    {
+      "frontmatter": "tags:\n  -\u3000a",
+      "tags": [
+        "a"
+      ],
+      "why": "U+3000 after the dash separates the item; YAML reads the string -\\u3000a, not a list"
+    },
+    {
+      "frontmatter": "tags: [a]\ntags: [b]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "every tags list is read, in order; YAML rejects the repeated key"
+    },
+    {
+      "frontmatter": "tags:\n  - a\ntags: [b]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a block list, then an inline list under a second key: both are read; YAML rejects the repeated key"
+    },
+    {
+      "frontmatter": "Tags: [a]\ntags:\n  - b",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "keys that differ in case are each read; YAML keeps them as two keys"
+    },
+    {
+      "frontmatter": "x: 1\u2028tags: [a]",
+      "tags": [],
+      "why": "lines are cut at \\n only, so the text after U+2028 is not the start of a line; YAML rejects the text"
+    },
+    {
+      "frontmatter": "title: t\rtags: [a]",
+      "tags": [],
+      "why": "a lone \\r does not end a line; yaml rejects the text, js-yaml reads tags [a]"
+    },
+    {
+      "frontmatter": "tags:\n  - a\ntags:\n  - b",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "two block lists under two keys: both are read; YAML rejects the repeated key"
+    },
+    {
+      "frontmatter": "tags:\n  - a\n  - b\n  - c\nTags: [d]",
+      "tags": [
+        "a",
+        "b",
+        "c",
+        "d"
+      ],
+      "why": "a block list, then an inline list under a key in another case; YAML keeps them as two keys"
+    },
+    {
+      "frontmatter": "tags:\n  - a\u2028b",
+      "tags": [
+        "a\u2028b"
+      ],
+      "why": "U+2028 inside an item is text: the line is cut at \\n only, and the trim takes whitespace off the ends"
+    },
+    {
+      "frontmatter": "tags:\n  - a\r\r\n  - b",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "one \\r goes with the \\n and the trim takes the other; yaml reads a\\r, js-yaml a"
+    },
+    {
+      "frontmatter": "tags:\r\r\n  - a",
+      "tags": [
+        "a"
+      ],
+      "why": "the key line keeps one \\r, which the key pattern's trailing whitespace takes; yaml reads a string, js-yaml the list [a]"
+    },
+    {
+      "frontmatter": "tags: [\"a, b\", c]",
+      "tags": [
+        "a",
+        "b",
+        "c"
+      ],
+      "why": "an inline list is split at every comma, quoted or not",
+      "frontendTags": [
+        "a, b",
+        "c"
+      ],
+      "frontendWhy": "the frontend reader does not split inside a quoted entry, so its writer keeps the entry whole; YAML reads the same as the frontend"
+    },
+    {
+      "frontmatter": "tags: ['a, b']",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a single-quoted entry is split at its comma too",
+      "frontendTags": [
+        "a, b"
+      ],
+      "frontendWhy": "one quoted entry to the frontend reader, as to YAML"
+    },
+    {
+      "frontmatter": "tags: [\"a\\\", b\"]",
+      "tags": [
+        "a\\",
+        "b"
+      ],
+      "why": "no escape is read: the \\\" is a backslash and the end of a quoted part, then the split",
+      "frontendTags": [
+        "a\\\", b"
+      ],
+      "frontendWhy": "the frontend reader skips an escaped quote while it looks for the end of a quoted entry, and reads no escape in the name; YAML reads a\", b"
+    },
+    {
+      "frontmatter": "tags: [\"a, b]",
+      "tags": [
+        "a",
+        "b"
+      ],
+      "why": "a quote that never closes is a character like any other: the split, then the quotes stripped, read a and b",
+      "frontendTags": [
+        "a, b"
+      ],
+      "frontendWhy": "the frontend reader looks for the end of the quoted entry and finds none, so the rest of the list is that one entry; it marks the list not read to its end, and its writers leave the field alone. YAML does not parse the line"
+    }
+  ],
+  "names_contract": "`names`: new tag names, with their leading `#`s already off, and what `tag::rename_tag` does with each. `accepted` follows the rule on `rename_tag`: the body's reader reads `#name` back as the whole name, the name is not `-` alone, and it has a base character (not every character is default-ignorable or a combining mark). For an accepted name, `bare` is how it is written into a bare list entry (no quote character, no leading `#`) by `frontmatter::yaml_string`: plain only when the plain-spelling rule allows it (a letter, digit or `_` first, then letters, marks, digits and `_-./`) and no YAML reader would read it as something other than text; quoted otherwise. These rows are the contract any copy of the rule is held to, in Rust or another language; the Rust test `tag::frontmatter::tests::the_new_name_rule_agrees_with_the_shared_fixture` reads them. Every row uses characters old enough to be in every Unicode table the two languages ship.",
+  "names": [
+    {
+      "name": "solo",
+      "accepted": true,
+      "bare": "solo",
+      "why": "letters"
+    },
+    {
+      "name": "project/baram",
+      "accepted": true,
+      "bare": "project/baram",
+      "why": "/ joins two non-empty parts"
+    },
+    {
+      "name": "\ud560-\uc77c",
+      "accepted": true,
+      "bare": "\ud560-\uc77c",
+      "why": "Korean, a hyphen inside"
+    },
+    {
+      "name": "deep_work",
+      "accepted": true,
+      "bare": "deep_work",
+      "why": "an underscore"
+    },
+    {
+      "name": "Focus2",
+      "accepted": true,
+      "bare": "Focus2",
+      "why": "case and a decimal digit"
+    },
+    {
+      "name": "\u0939\u093f\u0928\u094d\u0926\u0940",
+      "accepted": true,
+      "bare": "\u0939\u093f\u0928\u094d\u0926\u0940",
+      "why": "Hindi: the virama U+094D is a mark, and marks are tag characters"
+    },
+    {
+      "name": "\u0e19\u0e49\u0e33",
+      "accepted": true,
+      "bare": "\u0e19\u0e49\u0e33",
+      "why": "Thai: the tone mark U+0E49 is a mark"
+    },
+    {
+      "name": "cafe\u0301",
+      "accepted": true,
+      "bare": "cafe\u0301",
+      "why": "a decomposed (NFD) accent is a mark"
+    },
+    {
+      "name": "e\u0301",
+      "accepted": true,
+      "bare": "e\u0301",
+      "why": "a combining mark on a letter"
+    },
+    {
+      "name": "\u306f\u309a",
+      "accepted": true,
+      "bare": "\u306f\u309a",
+      "why": "a decomposed (NFD) kana sound mark"
+    },
+    {
+      "name": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645",
+      "accepted": true,
+      "bare": "\"\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645\"",
+      "why": "a ZWNJ inside a Persian word is a tag character (join control); the plain spelling rule quotes it, since after the first character it allows only letters, marks, digits and _-./"
+    },
+    {
+      "name": "a\u203fb",
+      "accepted": true,
+      "bare": "\"a\u203fb\"",
+      "why": "connector punctuation U+203F is a tag character; quoted for the same reason"
+    },
+    {
+      "name": "\u3200",
+      "accepted": true,
+      "bare": "\"\u3200\"",
+      "why": "a Hangul-script symbol is a tag character; a plain spelling must start with a letter, digit or _"
+    },
+    {
+      "name": "\u3164a",
+      "accepted": true,
+      "bare": "\u3164a",
+      "why": "a Hangul filler next to a visible letter"
+    },
+    {
+      "name": "\u0663",
+      "accepted": true,
+      "bare": "\u0663",
+      "why": "an Arabic-Indic digit: a decimal digit, and not a number to YAML"
+    },
+    {
+      "name": "_",
+      "accepted": true,
+      "bare": "_",
+      "why": "an underscore alone"
+    },
+    {
+      "name": "\u216b",
+      "accepted": true,
+      "bare": "\u216b",
+      "why": "a Roman numeral is a number of category Nl, which is Alphabetic: a tag character, and plain to YAML"
+    },
+    {
+      "name": "2024/x",
+      "accepted": true,
+      "bare": "2024/x",
+      "why": "starts with a digit, but the / keeps YAML from reading a number"
+    },
+    {
+      "name": "null",
+      "accepted": true,
+      "bare": "\"null\"",
+      "why": "YAML reads plain null as null"
+    },
+    {
+      "name": "True",
+      "accepted": true,
+      "bare": "\"True\"",
+      "why": "YAML reads plain True as a boolean"
+    },
+    {
+      "name": "yes",
+      "accepted": true,
+      "bare": "\"yes\"",
+      "why": "a YAML 1.1 reader takes plain yes for a boolean"
+    },
+    {
+      "name": "y",
+      "accepted": true,
+      "bare": "\"y\"",
+      "why": "a YAML 1.1 reader takes plain y for a boolean"
+    },
+    {
+      "name": "123",
+      "accepted": true,
+      "bare": "\"123\"",
+      "why": "YAML reads plain 123 as a number"
+    },
+    {
+      "name": "1e3",
+      "accepted": true,
+      "bare": "\"1e3\"",
+      "why": "YAML reads plain 1e3 as a number"
+    },
+    {
+      "name": "0x1F",
+      "accepted": true,
+      "bare": "\"0x1F\"",
+      "why": "YAML reads plain 0x1F as a number"
+    },
+    {
+      "name": "2024-01-01",
+      "accepted": true,
+      "bare": "\"2024-01-01\"",
+      "why": "YAML can read a plain date as a date"
+    },
+    {
+      "name": "-x",
+      "accepted": true,
+      "bare": "\"-x\"",
+      "why": "the plain spelling rule starts with a letter, digit or _ (YAML itself reads -x as the text)"
+    },
+    {
+      "name": "--",
+      "accepted": true,
+      "bare": "\"--\"",
+      "why": "likewise"
+    },
+    {
+      "name": "",
+      "accepted": false,
+      "why": "nothing is left once the #s are off"
+    },
+    {
+      "name": "-",
+      "accepted": false,
+      "why": "refused by choice: the writer would quote it, but an unquoted dash alone is a list marker to YAML (tags: [-] is rejected, - - is a nested list), so every list written by hand that holds this tag breaks"
+    },
+    {
+      "name": "a\"b",
+      "accepted": false,
+      "why": "a quote is not a tag character: the body reads #a\"b as the tag a"
+    },
+    {
+      "name": "x, y",
+      "accepted": false,
+      "why": "a comma and a space are not tag characters"
+    },
+    {
+      "name": "x]",
+      "accepted": false,
+      "why": "a bracket is not a tag character"
+    },
+    {
+      "name": "a: b",
+      "accepted": false,
+      "why": "a colon is not a tag character"
+    },
+    {
+      "name": "a #b",
+      "accepted": false,
+      "why": "the body reads #a #b as two tags"
+    },
+    {
+      "name": "a b",
+      "accepted": false,
+      "why": "a space ends a tag"
+    },
+    {
+      "name": "@at",
+      "accepted": false,
+      "why": "@ is not a tag character"
+    },
+    {
+      "name": "a.b",
+      "accepted": false,
+      "why": "a dot ends a tag"
+    },
+    {
+      "name": "dad's",
+      "accepted": false,
+      "why": "an apostrophe is not a tag character"
+    },
+    {
+      "name": "/a",
+      "accepted": false,
+      "why": "/ only joins two non-empty parts"
+    },
+    {
+      "name": "a/",
+      "accepted": false,
+      "why": "likewise"
+    },
+    {
+      "name": "a//b",
+      "accepted": false,
+      "why": "likewise"
+    },
+    {
+      "name": "a\u00b2",
+      "accepted": false,
+      "why": "a superscript two is a number of category No, which the reader's class leaves out"
+    },
+    {
+      "name": "\u00bd",
+      "accepted": false,
+      "why": "a vulgar fraction (category No), likewise"
+    },
+    {
+      "name": "\u3164",
+      "accepted": false,
+      "why": "a Hangul filler alone shows as a blank tag (default-ignorable)"
+    },
+    {
+      "name": "\uffa0",
+      "accepted": false,
+      "why": "a half-width Hangul filler alone, likewise"
+    },
+    {
+      "name": "\u115f\u1160",
+      "accepted": false,
+      "why": "Hangul choseong and jungseong fillers, likewise"
+    },
+    {
+      "name": "\u200c",
+      "accepted": false,
+      "why": "a ZWNJ alone, likewise"
+    },
+    {
+      "name": "\u200d",
+      "accepted": false,
+      "why": "a ZWJ alone, likewise"
+    },
+    {
+      "name": "\ufe0f",
+      "accepted": false,
+      "why": "a variation selector alone, likewise"
+    },
+    {
+      "name": "\u0301",
+      "accepted": false,
+      "why": "a combining mark alone has no base character to sit on"
+    },
+    {
+      "name": "\u0301\u200c",
+      "accepted": false,
+      "why": "a mark and a ZWNJ, likewise no base character"
+    }
+  ]
+}

@@ -108,6 +108,7 @@ export const TITLES = {
   "versioning/file-snapshots": "Version history",
   "export": "Export",
   "command-line": "Command line",
+  "mcp": "MCP server",
   "customization/settings-and-themes": "Settings and appearance",
   "customization/themes": "Themes",
   "customization/creating-themes": "Creating themes",
@@ -119,9 +120,13 @@ export const TITLES = {
   "plugin-dev/manifest": "The plugin manifest",
   "plugin-dev/entry-point-and-types": "Entry point and public types",
   "plugin-dev/context-commands-editor-files-events": "Context: commands, editor, files, events",
+  "plugin-dev/context-index": "Context: index",
   "plugin-dev/context-ui-and-shadow-dom": "Context: UI and Shadow-DOM isolation",
   "plugin-dev/editable-file-viewers": "Editable file viewers",
   "plugin-dev/context-prompts": "Context: prompts",
+  "plugin-dev/code-blocks": "Code block renderers",
+  "plugin-dev/sidebar-panels": "Sidebar panels",
+  "plugin-dev/file-tree": "File tree decorations",
   "plugin-dev/context-ai-network-storage-settings": "Context: AI, network, storage, settings",
   "plugin-dev/commands-and-tiptap-extensions": "Command palette and Tiptap extensions",
   "plugin-dev/local-development-and-bundling": "Local development and bundling",
@@ -246,8 +251,9 @@ export const PAGES = [
 
   { slug: "export", src: UG, items: [
     { h2: "Export" }, "HTML", "PDF", "Notion", "Pandoc Formats (Word, LaTeX, EPUB, RST)" ] },
-  // 이주 뒤에 새로 쓴 페이지(스펙 0066 §6) — 원문이 없으므로 src·items 이력 필드도 없다.
+  // 이주 뒤에 새로 쓴 페이지(스펙 0066 §6 · 0068 §6) — 원문이 없으므로 src·items 이력 필드도 없다.
   { slug: "command-line" },
+  { slug: "mcp" },
 
   // ── 사용자 설정
   { slug: "customization/settings-and-themes", src: UG, items: [
@@ -277,11 +283,19 @@ export const PAGES = [
     { h2: "ExtensionContext API" },
     "context.commands (requires commands)", "context.editor (requires editor or editor:readonly)",
     "context.files (requires files or files:readonly)", "context.events (requires events)" ] },
+  // §393 스펙 0072 §10 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
+  { slug: "plugin-dev/context-index" },
   { slug: "plugin-dev/context-ui-and-shadow-dom", src: PD, items: [
     "context.ui", "Shadow-DOM UI isolation" ] },
   // §392 스펙 0071 §11 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
   { slug: "plugin-dev/editable-file-viewers" },
   { slug: "plugin-dev/context-prompts" },
+  // §394 스펙 0073 §9 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
+  { slug: "plugin-dev/code-blocks" },
+  // §394 스펙 0073 §9 · 계획 0126 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
+  { slug: "plugin-dev/sidebar-panels" },
+  // §395 스펙 0074 §9 · 계획 0127 — 이주 뒤에 새로 쓴 쪽이라 원문 이력(src·items)이 없다.
+  { slug: "plugin-dev/file-tree" },
   { slug: "plugin-dev/context-ai-network-storage-settings", src: PD, items: [
     "context.ai (requires ai)", "context.network (requires network)",
     "context.storage (requires storage)", "context.settings (requires settings)",

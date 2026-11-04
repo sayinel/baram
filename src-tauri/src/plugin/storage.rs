@@ -176,7 +176,11 @@ pub async fn storage_remove(plugin_id: String, key: String) -> Result<(), String
 pub(super) fn hex_sha256(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
-    format!("{:x}", hasher.finalize())
+    hasher.finalize().iter().fold(String::new(), |mut s, b| {
+        use std::fmt::Write;
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 /// Returns the single safe path segment of `s`, or `None` if `s` is empty,

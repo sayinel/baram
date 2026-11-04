@@ -231,7 +231,16 @@ export function ActivityBar() {
           </Tooltip>
         ))}
         {sidebarPanels.map((panel) => (
-          <Tooltip key={panel.panelId} label={panel.title}>
+          <Tooltip
+            key={panel.panelId}
+            label={
+              // §394 plan 0126 P6 — a sandboxed panel's title and icon are the plugin's and could copy
+              // one of the app's panels, so its button names the plugin. A trusted panel is unchanged.
+              panel.kind === "rendered"
+                ? `${panel.title} · ${t("plugin.prompt.source", { name: panel.sourceName })}`
+                : panel.title
+            }
+          >
             <button
               className={`activity-bar-btn ${
                 sidebarOpen &&

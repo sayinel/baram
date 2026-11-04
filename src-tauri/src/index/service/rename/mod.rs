@@ -3,8 +3,10 @@
 mod block_id;
 mod destination;
 mod file;
+mod markdown_referrers;
 mod namespace;
 mod passes;
+mod pdf_highlights;
 mod referrers;
 mod scope;
 
@@ -49,8 +51,27 @@ pub struct RenameResult {
     /// not. A referrer in the other vault is never visited, so not listed. For both renames: a file
     /// holding a path reference another root reads as a different existing
     /// note, which is left as written (`judgement::Judgement::Ambiguous`),
-    /// updated or not. A block ID rename lists referrers only.
+    /// updated or not. For a file rename, too: a note of the file's contexts
+    /// holding a markdown link, image or link definition the move leaves
+    /// pointing at the old name (`markdown_referrers`) — never rewritten,
+    /// updated or not — and, for a PDF, a highlight file that could not
+    /// follow it, by its old path, with what the highlight note's own rename
+    /// reported (`pdf_highlights`). A block ID rename lists referrers only.
     pub skipped_files: Vec<String>,
+    /// Every file the rename moved besides the one it was asked to rename —
+    /// a PDF's highlight note and sidecar (`pdf_highlights`) — so the caller
+    /// can move what it holds for each: an open tab left on the old path
+    /// would write the file back there on its next save. Empty for a block
+    /// ID rename.
+    pub moved: Vec<MovedFile>,
+}
+
+/// A file a rename moved from `from` to `to`, spelled as the rename spells
+/// the paths it reports.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MovedFile {
+    pub from: String,
+    pub to: String,
 }
 
 /// §61 Result of renaming a namespace (directory) with wikilink updates

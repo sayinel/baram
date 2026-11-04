@@ -134,10 +134,12 @@ describe("§30a Block ID Roundtrip", () => {
     expect(roundtrip(input)).toBe(input);
   });
 
-  it("block ID with underscore (remark escapes _ to \\_)", () => {
+  it("block ID with underscore", () => {
     const input = "text ^block_id_1\n";
-    // remark-stringify escapes _ in text; data is preserved, raw form stabilizes
-    expect(roundtrip(input)).toBe("text ^block\\_id\\_1\n");
+    // An `_` between two characters that are neither whitespace nor
+    // punctuation cannot open emphasis; mdast-util-to-markdown 2.2.0 stopped
+    // escaping it (2.1.2 wrote `^block\_id\_1`)
+    expect(roundtrip(input)).toBe(input);
   });
 
   it("list item paragraph with block ID", () => {

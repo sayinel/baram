@@ -1,3 +1,4 @@
+use super::attachments::at;
 use super::*;
 
 #[tokio::test]
@@ -19,18 +20,18 @@ async fn a_rename_to_a_stem_no_wikilink_can_spell_leaves_the_links_and_reports_t
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/a^b.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["a^b.md"]),
     )
     .await
     .unwrap();
     assert_eq!(
         result.updated_files,
-        vec![format!("{root}/both.md"), format!("{root}/r.md")]
+        vec![at(&root, &["both.md"]), at(&root, &["r.md"])]
     );
     assert_eq!(
         result.skipped_files,
-        vec![format!("{root}/both.md"), format!("{root}/w.md")]
+        vec![at(&root, &["both.md"]), at(&root, &["w.md"])]
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
@@ -47,12 +48,15 @@ async fn a_rename_to_a_stem_no_wikilink_can_spell_leaves_the_links_and_reports_t
 }
 
 #[tokio::test]
-async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_it_leaves() {
-    // issue 678: `((target#^id))` cannot hold `)` in its target, so the
-    // block references are left as they are — pointing at the old name —
-    // and every file they are left in is reported, whether or not a wikilink
-    // beside them, which can spell the name, was rewritten: `both.md` is
-    // updated AND reported.
+async fn a_rename_to_a_stem_holding_a_parenthesis_writes_it_escaped_in_block_references() {
+    // `)` ends a block reference's target, so the new stem goes into each
+    // block reference escaped (`((old (draft%29#^b1))`, §275.4), as the
+    // frontend writes one; a wikilink spells it as it is. The index reads
+    // the escaped reference back as the renamed note's, so the read-back
+    // gate passes, nothing is reported, and the references are backlinks.
+    // What fails this: the extractor reading a block reference's target as
+    // written (`extract_links`) — the gate reads `old (draft%29` and
+    // leaves `r.md` and `both.md`, reported.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678e", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n").unwrap();
@@ -62,25 +66,26 @@ async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_i
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/old (draft).md"),
-    )
-    .await
-    .unwrap();
+    let renamed = at(&root, &["old (draft).md"]);
+    let result = rename_file_with_links_inner(&state, &ctx, &at(&root, &["old.md"]), &renamed)
+        .await
+        .unwrap();
     assert_eq!(
         result.updated_files,
-        vec![format!("{root}/both.md"), format!("{root}/w.md")]
+        vec![
+            at(&root, &["both.md"]),
+            at(&root, &["r.md"]),
+            at(&root, &["w.md"])
+        ]
     );
-    assert_eq!(
-        result.skipped_files,
-        vec![format!("{root}/both.md"), format!("{root}/r.md")]
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
-        "see ((old#^b1))\n"
+        "see ((old (draft%29#^b1))\n"
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
@@ -88,47 +93,47 @@ async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_referrers_i
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
-        "[[old (draft)]] ((old#^b1))\n"
+        "[[old (draft)]] ((old (draft%29#^b1))\n"
+    );
+    assert_eq!(
+        backlink_lines(&state, &ctx, &renamed, &at(&root, &["r.md"])).await,
+        vec![1]
     );
 }
 
 #[tokio::test]
 async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_renamed_note_too() {
     // issue 678: the renamed note's own `((old#^b1))` is left pointing at
-    // the old name for the same reason a referrer's is, and it is reported
-    // the same way — under its new path, the one the user can open.
+    // the old name when no block reference can spell the new stem — `old.md`
+    // reads as the note `old` — and it is reported the way a referrer is,
+    // under its new path, the one the user can open.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678h", true).await;
     std::fs::write(dir.path().join("old.md"), "para ^b1\n\nsee ((old#^b1))\n").unwrap();
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/old (draft).md"),
-    )
-    .await
-    .unwrap();
+    let renamed = at(&root, &["old.md.md"]);
+    let result = rename_file_with_links_inner(&state, &ctx, &at(&root, &["old.md"]), &renamed)
+        .await
+        .unwrap();
     assert!(
         result.updated_files.is_empty(),
         "{:?}",
         result.updated_files
     );
-    assert_eq!(result.skipped_files, vec![format!("{root}/old (draft).md")]);
+    assert_eq!(result.skipped_files, vec![renamed]);
     assert_eq!(
-        std::fs::read_to_string(dir.path().join("old (draft).md")).unwrap(),
+        std::fs::read_to_string(dir.path().join("old.md.md")).unwrap(),
         "para ^b1\n\nsee ((old#^b1))\n"
     );
 }
 
 #[tokio::test]
-async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_renamed_note_it_partly_rewrote(
-) {
-    // issue 678: the renamed note's own wikilink is rewritten and its block
-    // reference is left, so the note is updated (an open tab follows the
-    // disk) AND reported (a reference still says the old name).
+async fn the_renamed_notes_own_references_follow_it_escaped_where_they_must_be() {
+    // issue 678: the renamed note's own wikilink and block reference to its
+    // old name both follow it — the block reference with the new stem's `)`
+    // escaped — so the note is updated and nothing is left to report.
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-678i", true).await;
     std::fs::write(
@@ -139,19 +144,19 @@ async fn a_rename_to_a_stem_no_block_reference_can_spell_reports_the_renamed_not
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
 
-    let result = rename_file_with_links_inner(
-        &state,
-        &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/old (draft).md"),
-    )
-    .await
-    .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/old (draft).md")]);
-    assert_eq!(result.skipped_files, vec![format!("{root}/old (draft).md")]);
+    let renamed = at(&root, &["old (draft).md"]);
+    let result = rename_file_with_links_inner(&state, &ctx, &at(&root, &["old.md"]), &renamed)
+        .await
+        .unwrap();
+    assert_eq!(result.updated_files, vec![renamed]);
+    assert!(
+        result.skipped_files.is_empty(),
+        "{:?}",
+        result.skipped_files
+    );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("old (draft).md")).unwrap(),
-        "para ^b1\n\nsee ((old#^b1)) and [[old (draft)]]\n"
+        "para ^b1\n\nsee ((old (draft%29#^b1)) and [[old (draft)]]\n"
     );
 }
 
@@ -177,13 +182,13 @@ async fn a_file_rename_to_a_stem_a_referrers_line_makes_literal_leaves_that_file
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/a`b.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["a`b.md"]),
     )
     .await
     .unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/w.md")]);
-    assert_eq!(result.skipped_files, vec![format!("{root}/pair.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["w.md"])]);
+    assert_eq!(result.skipped_files, vec![at(&root, &["pair.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("w.md")).unwrap(),
         "see [[a`b]]\n"
@@ -213,8 +218,8 @@ async fn a_file_rename_to_a_stem_that_closes_a_code_span_around_itself_leaves_ev
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/old.md"),
-        &format!("{root}/a`b`c.md"),
+        &at(&root, &["old.md"]),
+        &at(&root, &["a`b`c.md"]),
     )
     .await
     .unwrap();
@@ -225,7 +230,7 @@ async fn a_file_rename_to_a_stem_that_closes_a_code_span_around_itself_leaves_ev
     );
     assert_eq!(
         result.skipped_files,
-        vec![format!("{root}/both.md"), format!("{root}/a`b`c.md")]
+        vec![at(&root, &["both.md"]), at(&root, &["a`b`c.md"])]
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("both.md")).unwrap(),
@@ -258,8 +263,8 @@ async fn an_upper_case_suffix_that_belongs_to_the_stem_is_not_kept() {
     let result = rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/a/old.md.md"),
-        &format!("{root}/a/new.md"),
+        &at(&root, &["a", "old.md.md"]),
+        &at(&root, &["a", "new.md"]),
     )
     .await
     .unwrap();
@@ -267,7 +272,7 @@ async fn an_upper_case_suffix_that_belongs_to_the_stem_is_not_kept() {
         std::fs::read_to_string(dir.path().join("r.md")).unwrap(),
         "see [[new]] and [[a/new]]\n"
     );
-    assert_eq!(result.updated_files, vec![format!("{root}/r.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["r.md"])]);
     assert!(
         result.skipped_files.is_empty(),
         "{:?}",

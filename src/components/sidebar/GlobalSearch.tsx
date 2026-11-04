@@ -14,7 +14,12 @@ import {
 } from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { readFile, searchFiles, writeFile } from "../../ipc/invoke";
+import {
+  readFile,
+  replaceSearchMatches,
+  searchFiles,
+  writeFile,
+} from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -48,6 +53,9 @@ export function GlobalSearch() {
 
   const [showReplace, setShowReplace] = useState(false);
   const [replaceText, setReplaceText] = useState("");
+  // Why the last replace stopped. Apart from `error`, which replaces the list: after a refused
+  // replace the list is searched again and stays on screen.
+  const [replaceError, setReplaceError] = useState<null | string>(null);
   const [includeFilter, setIncludeFilter] = useState("");
   const [excludeFilter, setExcludeFilter] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -209,41 +217,41 @@ export function GlobalSearch() {
     [query],
   );
 
-  // Replace a single match on the given line
+  // Replace the match that starts at this line and column in the text being replaced — the
+  // list's position for it. The list was searched in the file on disk, maybe a while ago, and an
+  // open file is replaced in the file store's copy, which can differ from the disk: when nothing
+  // starts there any more nothing is replaced, and when the lines moved, another match can start
+  // there and is the one replaced. It is never text the query does not match, and the list is
+  // searched again after every replace, whether or not it went through.
   const handleReplace = useCallback(
-    async (filePath: string, line: number) => {
+    async (filePath: string, line: number, column: number) => {
       setReplacing(true);
+      setReplaceError(null);
       try {
         // Read from file-store cache (open file) or disk
         const cached = useFileStore.getState().openFiles.get(filePath);
         const content = cached ?? (await readFile(filePath));
-        const lines = content.split("\n");
-        const lineIdx = line - 1;
-        if (lineIdx >= 0 && lineIdx < lines.length) {
-          const originalLine = lines[lineIdx];
-          let searchText = query;
-          if (!useRegex)
-            searchText = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          if (wholeWord) searchText = `\\b${searchText}\\b`;
-          const flags = caseSensitive ? "" : "i"; // replace first occurrence only
-          const re = new RegExp(searchText, flags);
-          const newLine = originalLine.replace(re, replaceText);
-          if (newLine !== originalLine) {
-            lines[lineIdx] = newLine;
-            const newContent = lines.join("\n");
-            await writeFile(filePath, newContent);
-            // Sync editor cache if file is open
-            if (cached !== undefined) {
-              useFileStore.getState().setFileContent(filePath, newContent);
-            }
+        const newContent = await replaceSearchMatches(
+          content,
+          query,
+          { caseSensitive, regex: useRegex, wholeWord },
+          replaceText,
+          { column, kind: "one", line },
+        );
+        if (newContent !== content) {
+          await writeFile(filePath, newContent);
+          // Sync editor cache if file is open
+          if (cached !== undefined) {
+            useFileStore.getState().setFileContent(filePath, newContent);
           }
         }
+      } catch (err) {
+        logger.error("[GlobalSearch] Replace failed:", err);
+        setReplaceError(String(err));
+      } finally {
         // Signal editor to reload content from file-store
         useUIStore.getState().triggerContentReload();
         await doSearch(query);
-      } catch (err) {
-        logger.error("[GlobalSearch] Replace failed:", err);
-      } finally {
         setReplacing(false);
       }
     },
@@ -254,20 +262,22 @@ export function GlobalSearch() {
   const handleReplaceAll = useCallback(async () => {
     if (!query.trim()) return;
     setReplacing(true);
+    setReplaceError(null);
     try {
-      let searchText = query;
-      if (!useRegex) searchText = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (wholeWord) searchText = `\\b${searchText}\\b`;
-      const flags = caseSensitive ? "g" : "gi";
-      const re = new RegExp(searchText, flags);
-
       const groups = groupByFile(results);
       const { openFiles, setFileContent } = useFileStore.getState();
 
       for (const group of groups) {
         const cached = openFiles.get(group.filePath);
         const content = cached ?? (await readFile(group.filePath));
-        const newContent = content.replace(re, replaceText);
+        // Every match in the file, matched as the search matched the listed ones.
+        const newContent = await replaceSearchMatches(
+          content,
+          query,
+          { caseSensitive, regex: useRegex, wholeWord },
+          replaceText,
+          { kind: "all" },
+        );
         if (newContent !== content) {
           await writeFile(group.filePath, newContent);
           // Sync editor cache if file is open
@@ -276,12 +286,14 @@ export function GlobalSearch() {
           }
         }
       }
-      // Signal editor to reload content from file-store
-      useUIStore.getState().triggerContentReload();
-      await doSearch(query);
     } catch (err) {
       logger.error("[GlobalSearch] Replace All failed:", err);
+      setReplaceError(String(err));
     } finally {
+      // The files before one that failed are already written: reload and search again either
+      // way. Signal editor to reload content from file-store.
+      useUIStore.getState().triggerContentReload();
+      await doSearch(query);
       setReplacing(false);
     }
   }, [
@@ -409,6 +421,9 @@ export function GlobalSearch() {
           </div>
         </div>
       )}
+      {showReplace && replaceError && (
+        <div className="global-search-error">{replaceError}</div>
+      )}
 
       {showFilters && (
         <div className="global-search-filters">
@@ -482,9 +497,14 @@ export function GlobalSearch() {
                       <button
                         aria-label={t("globalSearch.replaceOne")}
                         className="global-search-replace-one"
+                        disabled={replacing}
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleReplace(match.filePath, match.line);
+                          handleReplace(
+                            match.filePath,
+                            match.line,
+                            match.column,
+                          );
                         }}
                         title={t("globalSearch.replaceOne")}
                       >

@@ -86,3 +86,22 @@ describe("sanitizeHtmlBlock — MathML follows the SVG route", () => {
     expect(doc.querySelector("math")).toBeNull();
   });
 });
+
+// §394 spec 0073 D12 — `data-plugin-block` marks a plugin-rendered code block's root, which the
+// export pairs with a live block and settle waits on. DOMPurify keeps `data-*`, so the marker is
+// forbidden explicitly, as the vim island markers are.
+describe("sanitizeHtmlBlock — the rendered-block marker is not document-grantable", () => {
+  /** What fails this: a FORBID_ATTR without the marker. The pair: another `data-*` stays. */
+  it("drops data-plugin-block and keeps the rest of the element", () => {
+    const doc = new DOMParser().parseFromString(
+      sanitizeHtmlBlock(
+        '<div data-plugin-block data-render-state="pending" data-other="1">x</div>',
+      ),
+      "text/html",
+    );
+    const div = doc.querySelector("div");
+    expect(div?.hasAttribute("data-plugin-block")).toBe(false);
+    expect(div?.getAttribute("data-other")).toBe("1");
+    expect(div?.textContent).toBe("x");
+  });
+});

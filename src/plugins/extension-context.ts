@@ -1,6 +1,7 @@
 // §69 Plugin Extension Context — Capability-gated API surface
 import type {
   AIAPI,
+  CodeBlocksAPI,
   CommandRegisterOptions,
   CommandsAPI,
   Disposable,
@@ -8,6 +9,7 @@ import type {
   EventsAPI,
   ExtensionContext,
   FilesAPI,
+  IndexAPI,
   NetworkAPI,
   PluginCapability,
   PluginManifest,
@@ -26,6 +28,12 @@ import {
 } from "../ipc/plugin-invoke";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
+import {
+  emitFileNotice,
+  FILE_DELETE_EVENT,
+  FILE_RENAME_EVENT,
+  watchFileNotices,
+} from "./file-decorations/file-notice-delivery";
 import { createAIAPI } from "./plugin-ai-policy";
 import {
   commandHandlers,
@@ -39,10 +47,15 @@ import { declaredSettingsFor, resolvePluginSettings } from "./plugin-settings";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { createPromptsAPI } from "./prompts-api";
 import {
+  claimCodeBlocks,
+  createCodeBlocksAPI,
+} from "./rendered/code-blocks-api";
+import {
   SETTINGS_CHANGED_EVENT,
   watchPluginSettings,
 } from "./settings-change-notifier";
 import { createEditorAPI } from "./trusted/editor-api";
+import { createIndexAPI } from "./trusted/index-api";
 import { createUIAPI } from "./trusted/ui-api";
 import {
   EDITOR_READ_CAPABILITIES,
@@ -175,6 +188,8 @@ function createDeniedProxy(
  * §393 `vault:changed` takes the same route for the same reasons: it goes to the per-plugin bus,
  * and subscribing without `files` / `files:readonly` is accepted and never fires — `files` buys
  * the delivery inside `watchVaultChanges`, as `settings` does inside `watchPluginSettings`.
+ * §395 `file:rename` and `file:delete` take it too, for the same reasons: the per-plugin bus, delivery bought by
+ * `files` / `files:readonly` inside `watchFileNotices`, and a subscription without them accepted and never fired.
  */
 function createEventsAPI(
   pluginId: string,
@@ -193,7 +208,12 @@ function createEventsAPI(
   // `emit` is checked against `EventsAPI` as written.
   const on = (event: string, handler: EventHandler): Disposable => {
     let disposable: Disposable;
-    if (event === SETTINGS_CHANGED_EVENT || event === VAULT_CHANGED_EVENT) {
+    if (
+      event === SETTINGS_CHANGED_EVENT ||
+      event === VAULT_CHANGED_EVENT ||
+      event === FILE_RENAME_EVENT ||
+      event === FILE_DELETE_EVENT
+    ) {
       const off = onScopedPluginEvent(pluginId, event, handler);
       disposable = { dispose: off };
     } else {
@@ -318,6 +338,16 @@ export function createExtensionContext(
     ? createAIAPI(manifest.id)
     : (createDeniedProxy("ai", "ai") as AIAPI);
 
+  // §394 — `codeblocks` opens it, and the declared languages are claimed NOW, before `activate`, so
+  // "the plugin loaded first draws" means what it says (plan 0125 P10).
+  const codeBlocks: CodeBlocksAPI = hasCapability("codeblocks")
+    ? createCodeBlocksAPI(
+        manifest.id,
+        claimCodeBlocks(manifest, "trusted"),
+        disposables,
+      )
+    : (createDeniedProxy("codeBlocks", "codeblocks") as CodeBlocksAPI);
+
   const commands: CommandsAPI = hasCapability("commands")
     ? createCommandsAPI(manifest.id, disposables)
     : (createDeniedProxy("commands", "commands") as CommandsAPI);
@@ -336,6 +366,13 @@ export function createExtensionContext(
     : hasCapability("files:readonly")
       ? createFilesAPI(true)
       : (createDeniedProxy("files", "files") as FilesAPI);
+
+  // §393 — the two grants that open `files` open the index too (spec D3): every answer is
+  // something those files could be read for.
+  const index: IndexAPI =
+    hasCapability("files") || hasCapability("files:readonly")
+      ? createIndexAPI()
+      : (createDeniedProxy("index", "files") as IndexAPI);
 
   // §0054 — `settings` is a second way in, for `settings:changed` alone; §393 — `files` and
   // `files:readonly` a third, for `vault:changed` alone. A plugin with none of the four still
@@ -365,10 +402,12 @@ export function createExtensionContext(
   // §260 Phase 4a code review (M5) — the SHARED list, not a second inline copy of it.
   // `UI_CAPABILITIES` claimed to be the one rule both tiers use while this chain was
   // still hand-written here; a comment that says "one list" over two lists is how one
-  // gets fixed and the other forgotten.
-  const ui: UIAPI = UI_CAPABILITIES.some(hasCapability)
-    ? createUIAPI(manifest.id, capabilities, disposables, manifest.name)
-    : (createDeniedProxy("ui", "sidebar") as UIAPI);
+  // gets fixed and the other forgotten. §395 plan 0127 P25 — `filetree` opens the object too, for its
+  // three file tree methods; it is not added to `UI_CAPABILITIES`, which also gates the sandboxed toast.
+  const ui: UIAPI =
+    UI_CAPABILITIES.some(hasCapability) || hasCapability("filetree")
+      ? createUIAPI(manifest.id, capabilities, disposables, manifest.name)
+      : (createDeniedProxy("ui", "sidebar") as UIAPI);
 
   // §0054 — the trusted tier's half of `settings:changed`. Installed HERE rather than on the
   // load path for one reason: `disposables` is `context.subscriptions`, so the watcher is torn
@@ -392,21 +431,40 @@ export function createExtensionContext(
   }
 
   // §393 — the trusted tier's half of `vault:changed`, installed here for the same reason as the
-  // settings watcher above: `disposables` is `context.subscriptions`, so unload tears it down.
+  // settings watcher above: `disposables` is `context.subscriptions`, so unload tears it down. §395 —
+  // and of `file:rename` / `file:delete` (spec 0074 D11), on the same grant, in the SAME entry:
+  // `trusted-file-notices.test.ts` "hears absolute paths with files:readonly, in one subscription entry"
+  // counts `subscriptions` (plan 0127 P39).
   if (hasCapability("files") || hasCapability("files:readonly")) {
+    const stopVaultChanges = watchVaultChanges({
+      capabilities: manifest.capabilities,
+      deliver: (change) =>
+        emitScopedPluginEvent(manifest.id, VAULT_CHANGED_EVENT, change),
+      label: "Plugin",
+      pluginId: manifest.id,
+    });
+    const stopFileNotices = watchFileNotices({
+      capabilities: manifest.capabilities,
+      deliver: (notice) =>
+        emitFileNotice(
+          (event, ...args) =>
+            emitScopedPluginEvent(manifest.id, event, ...args),
+          notice,
+        ),
+      label: "Plugin",
+      pluginId: manifest.id,
+    });
     disposables.push({
-      dispose: watchVaultChanges({
-        capabilities: manifest.capabilities,
-        deliver: (change) =>
-          emitScopedPluginEvent(manifest.id, VAULT_CHANGED_EVENT, change),
-        label: "Plugin",
-        pluginId: manifest.id,
-      }),
+      dispose: () => {
+        stopVaultChanges();
+        stopFileNotices();
+      },
     });
   }
 
   return {
     ai,
+    codeBlocks,
     pluginId: manifest.id,
     pluginPath,
     // §385 no capability (spec 0061 D2): what bounds a prompt is WHEN it may open — the gate.
@@ -415,6 +473,7 @@ export function createExtensionContext(
     commands,
     editor,
     files,
+    index,
     events,
     network,
     settings,

@@ -4,6 +4,7 @@
 import DOMPurify from "dompurify";
 
 import { SANITIZER_ALLOWED_URI_REGEXP } from "../link-href";
+import { PLUGIN_BLOCK_MARKER } from "../plugin-block-marker";
 import { VIM_ISLAND_MARKERS } from "../vim-island-markers";
 import { isSvgContent, sanitizeSvg } from "./svg-utils";
 
@@ -49,8 +50,10 @@ const SANITIZE_CONFIG = {
     "onerror",
     "onload",
     "onclick",
-    // vim island markers are an app capability — never document-grantable.
+    // vim island markers and the rendered-block marker (§394) are app
+    // capabilities — never document-grantable.
     ...VIM_ISLAND_MARKERS,
+    PLUGIN_BLOCK_MARKER,
   ],
 };
 

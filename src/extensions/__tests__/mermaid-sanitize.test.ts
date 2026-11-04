@@ -61,4 +61,21 @@ describe("sanitizeMermaidSvg", () => {
     );
     expect(host.querySelector(".nodeLabel math msup")?.textContent).toBe("x2");
   });
+
+  /** §394 spec 0073 D12 — `data-plugin-block` marks a plugin-rendered block's root, which the
+   *  export pairs with a live block and settle waits on. A mermaid block sits outside an HTML
+   *  block's `.html-block-render`, and its labels can carry HTML (`securityLevel: "antiscript"`),
+   *  so a label that spells the marker must lose it here — every mermaid SVG the editor shows comes
+   *  through this function (`renderMermaid`). What fails this: `sanitizeSvg` without the marker in
+   *  FORBID_ATTR. The pair: the label and its other `data-*` stay. */
+  it("drops the rendered-block marker from a label and from the diagram", () => {
+    const host = document.createElement("div");
+    host.innerHTML = sanitizeMermaidSvg(
+      `<svg id="m" xmlns="http://www.w3.org/2000/svg"><g class="node" data-plugin-block=""><foreignObject width="80" height="40"><div class="label"><span class="nodeLabel" data-plugin-block="" data-other="1">Forged</span></div></foreignObject></g></svg>`,
+    );
+    expect(host.querySelector("[data-plugin-block]")).toBeNull();
+    const label = host.querySelector(".nodeLabel");
+    expect(label?.textContent).toBe("Forged");
+    expect(label?.getAttribute("data-other")).toBe("1");
+  });
 });

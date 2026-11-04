@@ -34,6 +34,8 @@ const CAPABILITY_COLORS: Record<PluginCapability, string> = {
   network: "#ef4444",
   storage: "#14b8a6",
   viewer: "#0ea5e9",
+  codeblocks: "#84cc16",
+  filetree: "#a855f7",
 };
 
 interface PluginCapabilityBadgeProps {
