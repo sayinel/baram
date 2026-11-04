@@ -39,14 +39,14 @@ async fn a_saved_note_in_an_excluded_folder_does_not_enter_the_index() {
         &[("b.md", "target"), ("build/n.md", "see [[b]]")],
     )
     .await;
-    let target = format!("{root}/b.md");
+    let target = at(&root, &["b.md"]);
     assert!(get_backlinks_inner(&state, &ctx, &target)
         .await
         .unwrap()
         .is_empty());
 
     write(dir.path(), "build/n.md", "see [[b]] again");
-    update_file_index_inner(&state, &ctx, &format!("{root}/build/n.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["build", "n.md"]))
         .await
         .unwrap();
     assert!(get_backlinks_inner(&state, &ctx, &target)
@@ -55,11 +55,11 @@ async fn a_saved_note_in_an_excluded_folder_does_not_enter_the_index() {
         .is_empty());
 
     write(dir.path(), "notes/a.md", "see [[b]]");
-    update_file_index_inner(&state, &ctx, &format!("{root}/notes/a.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["notes", "a.md"]))
         .await
         .unwrap();
     let backlinks = get_backlinks_inner(&state, &ctx, &target).await.unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/notes/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["notes", "a.md"])]);
 }
 
 /// `!build/` in the vault's `.baramignore` brings the folder's notes back as backlinks,
@@ -79,18 +79,18 @@ async fn an_override_brings_an_excluded_folder_back() {
         ],
     )
     .await;
-    let target = format!("{root}/b.md");
+    let target = at(&root, &["b.md"]);
     let backlinks = get_backlinks_inner(&state, &ctx, &target).await.unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/build/n.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["build", "n.md"])]);
 
     write(dir.path(), "build/m.md", "and [[b]]");
-    update_file_index_inner(&state, &ctx, &format!("{root}/build/m.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["build", "m.md"]))
         .await
         .unwrap();
     let backlinks = get_backlinks_inner(&state, &ctx, &target).await.unwrap();
     assert_eq!(
         sources(&backlinks),
-        vec![format!("{root}/build/m.md"), format!("{root}/build/n.md")]
+        vec![at(&root, &["build", "m.md"]), at(&root, &["build", "n.md"])]
     );
 }
 
@@ -103,17 +103,17 @@ async fn a_vault_root_named_build_is_indexed() {
     let dir = parent.path().join("build");
     let (state, root) =
         indexed_vault(&ctx, &dir, &[("a.md", "see [[b]]"), ("b.md", "target")]).await;
-    let target = format!("{root}/b.md");
+    let target = at(&root, &["b.md"]);
     let backlinks = get_backlinks_inner(&state, &ctx, &target).await.unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
 
     write(&dir, "c.md", "also [[b]]");
-    update_file_index_inner(&state, &ctx, &format!("{root}/c.md"))
+    update_file_index_inner(&state, &ctx, &at(&root, &["c.md"]))
         .await
         .unwrap();
     let backlinks = get_backlinks_inner(&state, &ctx, &target).await.unwrap();
     assert_eq!(
         sources(&backlinks),
-        vec![format!("{root}/a.md"), format!("{root}/c.md")]
+        vec![at(&root, &["a.md"]), at(&root, &["c.md"])]
     );
 }

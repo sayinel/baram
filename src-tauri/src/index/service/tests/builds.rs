@@ -711,7 +711,7 @@ async fn a_refresh_dropped_mid_build_does_not_block_the_next_one() {
     let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["b.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/a.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["a.md"])]);
 }
 
 /// §393 What fails this: a `RemoveTree` that is applied to the live index but not journaled

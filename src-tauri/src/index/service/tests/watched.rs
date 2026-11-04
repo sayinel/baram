@@ -148,9 +148,9 @@ async fn an_empty_new_directory_rebuilds_nothing() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     std::fs::write(dir.path().join("c.md"), "see [[a]]").unwrap();
     std::fs::create_dir(dir.path().join("empty")).unwrap();
-    sync(&state, &ctx, &[format!("{root}/empty")]).await;
+    sync(&state, &ctx, &[at(&root, &["empty"])]).await;
     let graph = get_link_index_inner(&state, &ctx, None).await.unwrap();
-    assert!(!graph.nodes.contains(&format!("{root}/c.md")));
+    assert!(!graph.nodes.contains(&at(&root, &["c.md"])));
 }
 
 #[tokio::test]
@@ -159,7 +159,7 @@ async fn a_directory_event_rebuilds_every_context_that_contains_it() {
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-parent", true).await;
     std::fs::create_dir(dir.path().join("sub")).unwrap();
-    let sub = format!("{root}/sub");
+    let sub = at(&root, &["sub"]);
     ctx.add(info("ctx-sub", &sub, ContextType::Folder))
         .await
         .unwrap();
@@ -198,7 +198,7 @@ async fn a_structural_rebuild_never_coalesces_onto_a_build_that_read_the_old_lay
     // The folder moves in; the sync reads its version and parks on the lock.
     std::fs::create_dir(dir.path().join("moved")).unwrap();
     std::fs::write(dir.path().join("moved/m.md"), "see [[a]]").unwrap();
-    let paths = vec![format!("{root}/moved")];
+    let paths = vec![at(&root, &["moved"])];
     let task = {
         let (state, ctx) = (Arc::clone(&state), Arc::clone(&ctx));
         tokio::spawn(async move { units(&state, &ctx, &paths).await })
@@ -216,7 +216,7 @@ async fn a_structural_rebuild_never_coalesces_onto_a_build_that_read_the_old_lay
 
     assert!(task.await.unwrap().failed.is_empty());
     let graph = get_link_index_inner(&state, &ctx, None).await.unwrap();
-    assert!(graph.nodes.contains(&format!("{root}/moved/m.md")));
+    assert!(graph.nodes.contains(&at(&root, &["moved", "m.md"])));
 }
 
 /// Issue 794: a watched path is judged by the context root's `VaultExclusion`, the
@@ -238,7 +238,7 @@ async fn a_watched_path_is_judged_by_the_roots_baramignore() {
         std::fs::write(d.join("a.md"), "see [[paper.pdf]]").unwrap();
         let state = LinkIndexState::new();
         refresh_index_inner(&state, &ctx, &root).await.unwrap();
-        let target = format!("{root}/build/paper.pdf");
+        let target = at(&root, &["build", "paper.pdf"]);
         std::fs::create_dir(d.join("build")).unwrap();
         std::fs::write(&target, [0u8, 1, 2]).unwrap();
 
@@ -246,7 +246,7 @@ async fn a_watched_path_is_judged_by_the_roots_baramignore() {
 
         let synced = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
         assert_eq!(synced, fresh_shape(&root).await, "{baramignore:?}");
-        let edge = (format!("{root}/a.md"), target.clone());
+        let edge = (at(&root, &["a.md"]), target.clone());
         assert_eq!(synced.1.contains(&edge), applied, "{baramignore:?}");
     }
 }
@@ -264,11 +264,11 @@ async fn a_root_with_an_unusable_baramignore_takes_nothing_and_reports_the_path(
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     std::fs::write(d.join(crate::fs::BARAMIGNORE), "{unclosed\n").unwrap();
     std::fs::write(d.join("b.md"), "back to [[a]]").unwrap();
-    let path = format!("{root}/b.md");
+    let path = at(&root, &["b.md"]);
 
     let result = units(&state, &ctx, std::slice::from_ref(&path)).await;
     assert_eq!(result.failed, vec![path.clone()]);
     assert_eq!(result.applied, 0);
     let graph = shape(&get_link_index_inner(&state, &ctx, None).await.unwrap());
-    assert!(!graph.1.contains(&(path, format!("{root}/a.md"))));
+    assert!(!graph.1.contains(&(path, at(&root, &["a.md"]))));
 }

@@ -66,10 +66,10 @@ async fn a_folder_replaced_by_an_empty_one_loses_its_notes() {
     // 이것을 실패시키는 것: `directory_point` 가 빈 디렉터리 아래에 index 가 가진 항목을 보지 않는다.
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("sub/e.md", "see [[b]]")]).await;
-    let b = format!("{root}/b.md");
+    let b = at(&root, &["b.md"]);
     assert_eq!(
         sources_of(&state, &ctx, &b).await,
-        vec![format!("{root}/a.md"), format!("{root}/sub/e.md")]
+        vec![at(&root, &["a.md"]), at(&root, &["sub", "e.md"])]
     );
     std::fs::remove_dir_all(dir.path().join("sub")).unwrap();
     std::fs::create_dir(dir.path().join("sub")).unwrap();
@@ -78,7 +78,7 @@ async fn a_folder_replaced_by_an_empty_one_loses_its_notes() {
 
     assert_eq!(
         sources_of(&state, &ctx, &b).await,
-        vec![format!("{root}/a.md")]
+        vec![at(&root, &["a.md"])]
     );
 }
 
@@ -103,8 +103,8 @@ async fn a_deleted_folder_takes_its_notes_with_it_without_a_rebuild() {
     let rebuilt = applier_batch(&state, &ctx, &root, &["sub"]).await;
 
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
     assert!(!rebuilt, "a removal, not a rebuild");
 }
@@ -116,7 +116,7 @@ async fn a_deleted_folders_attachment_stops_resolving() {
     let (dir, root, state) =
         built(&ctx, &[("m.md", "see [[p.pdf]]"), ("docs/p.pdf", "%PDF")]).await;
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/m.md");
+    let note = at(&root, &["m.md"]);
     assert!(matches!(
         first_link(&state, &key, &note).await,
         crate::index::LinkResolution::Resolved(_)
@@ -144,8 +144,8 @@ async fn a_folder_replaced_under_the_same_name_loses_its_old_children() {
     applier_batch(&state, &ctx, &root, &["sub"]).await;
 
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md"), format!("{root}/sub/new.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"]), at(&root, &["sub", "new.md"])]
     );
 }
 
@@ -164,11 +164,11 @@ async fn a_moved_in_folders_note_and_attachment_are_indexed() {
     applier_batch(&state, &ctx, &root, &["sub"]).await;
 
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md"), format!("{root}/sub/e.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"]), at(&root, &["sub", "e.md"])]
     );
     assert!(matches!(
-        first_link(&state, &key, &format!("{root}/n.md")).await,
+        first_link(&state, &key, &at(&root, &["n.md"])).await,
         crate::index::LinkResolution::Resolved(_)
     ));
 }
@@ -180,7 +180,7 @@ async fn a_moved_in_folder_keeps_an_unreadable_note_as_a_link_target() {
     let ctx = ContextManager::new();
     let (dir, root, state) = built(&ctx, &[("n.md", "see [[bad]]")]).await;
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/n.md");
+    let note = at(&root, &["n.md"]);
     assert_eq!(
         first_link(&state, &key, &note).await,
         crate::index::LinkResolution::Unresolved
@@ -222,8 +222,8 @@ async fn deleted_notes_in_one_batch_are_one_exclusion_load_and_no_rebuild() {
     let rebuilt = applier_batch(&state, &ctx, &root, &names).await;
 
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
     assert_eq!(
         state
@@ -248,10 +248,10 @@ async fn an_external_case_only_rename_leaves_only_the_new_spelling() {
         eprintln!("the file system under {root} keeps case; the case-only test is not run");
         return;
     }
-    let b = format!("{root}/b.md");
+    let b = at(&root, &["b.md"]);
     assert_eq!(
         sources_of(&state, &ctx, &b).await,
-        vec![format!("{root}/Note.md"), format!("{root}/a.md")]
+        vec![at(&root, &["Note.md"]), at(&root, &["a.md"])]
     );
     std::fs::rename(dir.path().join("Note.md"), dir.path().join("note.md")).unwrap();
 
@@ -259,7 +259,7 @@ async fn an_external_case_only_rename_leaves_only_the_new_spelling() {
 
     assert_eq!(
         sources_of(&state, &ctx, &b).await,
-        vec![format!("{root}/a.md"), format!("{root}/note.md")]
+        vec![at(&root, &["a.md"]), at(&root, &["note.md"])]
     );
 }
 
@@ -279,7 +279,7 @@ async fn an_external_case_only_rename_of_an_attachment_resolves_to_the_new_spell
         return;
     }
     let key = active_index_key(&ctx).await.unwrap();
-    let note = format!("{root}/n.md");
+    let note = at(&root, &["n.md"]);
     let resolved = |p: &str| crate::index::LinkResolution::Resolved(format!("{root}/{p}"));
     assert_eq!(first_link(&state, &key, &note).await, resolved("Paper.pdf"));
     std::fs::rename(dir.path().join("Paper.pdf"), dir.path().join("paper.pdf")).unwrap();
@@ -304,7 +304,7 @@ async fn a_symlink_the_watcher_reports_is_not_indexed_and_its_target_keeps_its_l
     applier_batch(&state, &ctx, &root, &["link.md"]).await;
 
     assert_eq!(
-        sources_of(&state, &ctx, &format!("{root}/b.md")).await,
-        vec![format!("{root}/a.md")]
+        sources_of(&state, &ctx, &at(&root, &["b.md"])).await,
+        vec![at(&root, &["a.md"])]
     );
 }

@@ -23,6 +23,22 @@ impl Probe for CountingProbe {
     }
 }
 
+/// `rest`, an absolute path on Unix, made absolute on this host: Windows needs a drive, and
+/// `replace_open_files` keeps only absolute paths (`validate_path`).
+fn abs(rest: &str) -> String {
+    if cfg!(windows) {
+        format!("C:{rest}")
+    } else {
+        rest.to_string()
+    }
+}
+
+/// A path of exactly `bytes` bytes that is absolute on this host.
+fn abs_of_len(bytes: usize) -> String {
+    let prefix = if cfg!(windows) { "C:/" } else { "/" };
+    format!("{prefix}{}", "a".repeat(bytes - prefix.len()))
+}
+
 /// A registry that knows these open files.
 fn known(paths: &[&Path]) -> OpenFiles {
     let open = OpenFiles::default();
@@ -321,10 +337,10 @@ fn a_tab_without_an_absolute_path_is_skipped_not_registered() {
     let open = OpenFiles::default();
     replace_open_files(
         &open,
-        &["".into(), "untitled-1".into(), "/v/build/a.md".into()],
+        &["".into(), "untitled-1".into(), abs("/v/build/a.md")],
     )
     .unwrap();
-    assert!(holds(&open, "/v/build/a.md"));
+    assert!(holds(&open, &abs("/v/build/a.md")));
     assert!(!holds(&open, "untitled-1"));
     assert!(!holds(&open, ""));
 }
@@ -380,15 +396,17 @@ fn a_refused_registration_leaves_the_set_unknown_not_stale() {
     // 이것을 실패시키는 것: 상한을 넘은 호출이 이전 집합을 그대로 둔다.
     let open = OpenFiles::default();
     assert!(is_unknown(&open));
-    replace_open_files(&open, &["/v/kept.md".into()]).unwrap();
-    assert!(holds(&open, "/v/kept.md"));
+    replace_open_files(&open, &[abs("/v/kept.md")]).unwrap();
+    assert!(holds(&open, &abs("/v/kept.md")));
 
-    let over_count: Vec<String> = (0..=MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
+    let over_count: Vec<String> = (0..=MAX_OPEN_FILES)
+        .map(|i| abs(&format!("/v/{i}.md")))
+        .collect();
     assert!(replace_open_files(&open, &over_count).is_err());
     assert!(is_unknown(&open));
 
-    replace_open_files(&open, &["/v/kept.md".into()]).unwrap();
-    let long = format!("/{}", "a".repeat(MAX_OPEN_FILES_BYTES - 1));
+    replace_open_files(&open, &[abs("/v/kept.md")]).unwrap();
+    let long = abs_of_len(MAX_OPEN_FILES_BYTES);
     assert!(replace_open_files(&open, &[format!("{long}b")]).is_err());
     assert!(is_unknown(&open));
 }
@@ -397,14 +415,18 @@ fn a_refused_registration_leaves_the_set_unknown_not_stale() {
 fn set_open_files_accepts_its_limits_and_refuses_one_past_them() {
     // 이것을 실패시키는 것: `replace_open_files` 의 개수 또는 바이트 상한 검사를 지운다.
     let open = OpenFiles::default();
-    let at_count: Vec<String> = (0..MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
-    let over_count: Vec<String> = (0..=MAX_OPEN_FILES).map(|i| format!("/v/{i}.md")).collect();
-    let long = format!("/{}", "a".repeat(MAX_OPEN_FILES_BYTES - 1));
+    let at_count: Vec<String> = (0..MAX_OPEN_FILES)
+        .map(|i| abs(&format!("/v/{i}.md")))
+        .collect();
+    let over_count: Vec<String> = (0..=MAX_OPEN_FILES)
+        .map(|i| abs(&format!("/v/{i}.md")))
+        .collect();
+    let long = abs_of_len(MAX_OPEN_FILES_BYTES);
     assert!(replace_open_files(&open, &over_count).is_err());
     assert!(replace_open_files(&open, &[format!("{long}b")]).is_err());
     assert!(replace_open_files(&open, &[long]).is_ok());
     assert!(replace_open_files(&open, &at_count).is_ok());
-    assert!(holds(&open, "/v/0.md"));
+    assert!(holds(&open, &abs("/v/0.md")));
 }
 
 /// A non-recursive watch's filter, for `focus` files (#797).

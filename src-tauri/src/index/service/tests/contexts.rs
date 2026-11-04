@@ -163,7 +163,7 @@ async fn the_graph_builds_a_missing_index_once_and_then_only_reads_it() {
     // find. Zero builds per read means the next read does not see it.
     // 이것을 실패시키는 것: `ensure_indexes` 대신 `refresh_index_inner` 로 매번 build 한다.
     std::fs::write(dir.path().join("c.md"), "see [[a]]").unwrap();
-    let c = format!("{root}/c.md");
+    let c = at(&root, &["c.md"]);
     for _ in 0..3 {
         let graph = get_link_index_inner(&state, &ctx, None).await.unwrap();
         assert!(!graph.nodes.contains(&c));

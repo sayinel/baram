@@ -66,7 +66,7 @@ async fn a_unit_that_read_before_a_rebuild_began_does_not_put_its_read_back() {
     unit.await.unwrap();
     assert_eq!(
         links_from(&state, &ctx, &root, &path).await,
-        [format!("{root}/b.md")]
+        [at(&root, &["b.md"])]
     );
 }
 
@@ -94,7 +94,7 @@ async fn a_unit_that_read_before_a_build_began_stays_out_of_its_journal() {
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(0));
     assert_eq!(
         links_from(&state, &ctx, &root, &path).await,
-        [format!("{root}/b.md")]
+        [at(&root, &["b.md"])]
     );
 }
 
@@ -116,7 +116,7 @@ async fn a_unit_that_read_after_a_build_began_is_replayed_onto_it() {
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
     assert_eq!(
         links_from(&state, &ctx, &root, &path).await,
-        [format!("{root}/b.md")]
+        [at(&root, &["b.md"])]
     );
 }
 
@@ -133,7 +133,7 @@ async fn a_rename_s_own_rewrite_during_a_build_is_still_replayed() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let key = active_index_key(&ctx).await.unwrap();
     let (token, snapshot, stats) = staged_build(&state, &ctx, &key, &root).await;
-    let a = format!("{root}/a.md");
+    let a = at(&root, &["a.md"]);
     std::fs::write(dir.path().join("a.md"), "see [[c]]").unwrap();
     state
         .apply(
@@ -144,7 +144,7 @@ async fn a_rename_s_own_rewrite_during_a_build_is_still_replayed() {
     assert_eq!(state.publish(&key, token, snapshot, stats).await, Some(1));
     assert_eq!(
         links_from(&state, &ctx, &root, &a).await,
-        [format!("{root}/c.md")]
+        [at(&root, &["c.md"])]
     );
 }
 
@@ -156,21 +156,24 @@ async fn a_path_no_resolver_can_place_drops_the_indexes_it_may_be_in() {
     let (_dir, root) = vault_with_a_link(&ctx, "ctx-o", true).await;
     let (_other_dir, other) = vault_with_a_link(&ctx, "ctx-p", false).await;
     let state = LinkIndexState::new();
-    let at = |id: &'static str| {
+    let incarnation = |id: &'static str| {
         let ctx = ctx.clone();
         async move { ctx.registration(id).await.unwrap().1 }
     };
-    let inside = format!("{root}/sub/../x.md");
+    let inside = at(&root, &["sub", "..", "x.md"]);
     state.unresolvable.lock().unwrap().insert(inside.clone());
     let done = reconcile_path(&state, &ctx, &inside).await;
     assert!(done.failed);
-    assert_eq!(done.degrade, [(root.clone(), at("ctx-o").await)]);
+    assert_eq!(done.degrade, [(root.clone(), incarnation("ctx-o").await)]);
     // Under no registration's spelling: every directory registration.
     let nowhere = "/nowhere/at/all.md".to_string();
     state.unresolvable.lock().unwrap().insert(nowhere.clone());
     let mut all = reconcile_path(&state, &ctx, &nowhere).await.degrade;
     all.sort();
-    let mut expected = vec![(root, at("ctx-o").await), (other, at("ctx-p").await)];
+    let mut expected = vec![
+        (root, incarnation("ctx-o").await),
+        (other, incarnation("ctx-p").await),
+    ];
     expected.sort();
     assert_eq!(all, expected);
 }

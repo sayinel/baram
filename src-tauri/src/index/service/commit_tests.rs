@@ -3,6 +3,7 @@ use super::*;
 use crate::context::{ContextInfo, ContextType};
 use crate::index::service::build::refresh_index_inner;
 use crate::index::service::reconcile::Reconciled;
+use crate::index::service::tests::at;
 use std::sync::atomic::Ordering;
 use tauri::Listener;
 
@@ -71,7 +72,7 @@ async fn a_task_command_has_updated_the_index_when_it_returns() {
     // 이것을 실패시키는 것: `committed` 가 commit 뒤 `reconcile_effects` 를 부르지 않는다.
     let app = app();
     let (_dir, root) = vault(&app).await;
-    let inbox = format!("{root}/inbox.md");
+    let inbox = at(&root, &["inbox.md"]);
     crate::commands::task_cmd::append_task_line(
         app.handle().clone(),
         inbox.clone(),
@@ -79,7 +80,7 @@ async fn a_task_command_has_updated_the_index_when_it_returns() {
     )
     .await
     .unwrap();
-    assert!(edge(&app, &root, &inbox, &format!("{root}/b.md")).await);
+    assert!(edge(&app, &root, &inbox, &at(&root, &["b.md"])).await);
 }
 
 #[tokio::test]
@@ -122,15 +123,7 @@ async fn a_commit_that_fails_part_way_still_leaves_what_it_changed_in_the_index(
     })
     .await;
     assert!(done.result.is_err());
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/c.md")
-        )
-        .await
-    );
+    assert!(edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["c.md"])).await);
 }
 
 #[tokio::test]
@@ -141,16 +134,8 @@ async fn a_restore_that_fails_on_its_second_file_reconciles_the_first() {
     let id = crate::snapshot::io::create_snapshot(&root, "manual", None).unwrap();
     std::fs::write(dir.path().join("a.md"), "see [[c]]").unwrap();
     // Re-index the edit so the restore has something to undo in the index too.
-    reconcile_effects(app.handle(), &[Effect::Path(format!("{root}/a.md"))]).await;
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/c.md")
-        )
-        .await
-    );
+    reconcile_effects(app.handle(), &[Effect::Path(at(&root, &["a.md"]))]).await;
+    assert!(edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["c.md"])).await);
     let result = crate::commands::snapshot_cmd::restore_snapshot(
         app.handle().clone(),
         root.clone(),
@@ -159,15 +144,7 @@ async fn a_restore_that_fails_on_its_second_file_reconciles_the_first() {
     )
     .await;
     assert!(result.is_err());
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/b.md")
-        )
-        .await
-    );
+    assert!(edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["b.md"])).await);
 }
 
 #[tokio::test]
@@ -204,14 +181,7 @@ async fn a_cancelled_command_still_reconciles_its_commit() {
     release.notify_one();
     let mut fresh = false;
     for _ in 0..500 {
-        if edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/c.md"),
-        )
-        .await
-        {
+        if edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["c.md"])).await {
             fresh = true;
             break;
         }
@@ -245,15 +215,7 @@ async fn a_write_that_landed_is_reported_written_even_if_what_followed_panicked(
             index_fresh: false
         })
     );
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/c.md")
-        )
-        .await
-    );
+    assert!(edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["c.md"])).await);
 }
 
 #[tokio::test]
@@ -313,7 +275,7 @@ async fn discarding_named_files_reconciles_them_one_by_one_up_to_a_threshold() {
     repository(dir.path());
     let state = app.state::<LinkIndexState>();
     std::fs::write(dir.path().join("a.md"), "see [[c]]").unwrap();
-    reconcile_effects(app.handle(), &[Effect::Path(format!("{root}/a.md"))]).await;
+    reconcile_effects(app.handle(), &[Effect::Path(at(&root, &["a.md"]))]).await;
     let before = state.published.load(Ordering::SeqCst);
     crate::commands::git_cmd::git_discard(
         app.handle().clone(),
@@ -323,18 +285,10 @@ async fn discarding_named_files_reconciles_them_one_by_one_up_to_a_threshold() {
     .await
     .unwrap();
     assert_eq!(state.published.load(Ordering::SeqCst), before);
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/b.md")
-        )
-        .await
-    );
+    assert!(edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["b.md"])).await);
 
     std::fs::write(dir.path().join("a.md"), "see [[c]]").unwrap();
-    reconcile_effects(app.handle(), &[Effect::Path(format!("{root}/a.md"))]).await;
+    reconcile_effects(app.handle(), &[Effect::Path(at(&root, &["a.md"]))]).await;
     let mut many: Vec<String> = (0..256).map(|i| format!("absent-{i}.md")).collect();
     many.push("a.md".into());
     let before = state.published.load(Ordering::SeqCst);
@@ -342,15 +296,7 @@ async fn discarding_named_files_reconciles_them_one_by_one_up_to_a_threshold() {
         .await
         .unwrap();
     assert_eq!(state.published.load(Ordering::SeqCst), before + 1);
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/b.md")
-        )
-        .await
-    );
+    assert!(edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["b.md"])).await);
 }
 
 #[cfg(unix)]
@@ -359,25 +305,17 @@ async fn a_custom_export_that_fails_still_reconciles_what_it_wrote_in_the_vault(
     // 이것을 실패시키는 것: export 의 결과가 `Err` 일 때 reconcile 하지 않는다.
     let app = app();
     let (_dir, root) = vault(&app).await;
-    let file = format!("{root}/a.md");
+    let file = at(&root, &["a.md"]);
     let result = crate::commands::export_cmd::run_custom_export(
         app.handle().clone(),
         "sh -c \"cp ${file} ${vault_dir}/copy.md; exit 3\"".into(),
         file,
-        format!("{root}/out.pdf"),
+        at(&root, &["out.pdf"]),
         Some(root.clone()),
     )
     .await;
     assert!(result.is_err());
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/copy.md"),
-            &format!("{root}/b.md")
-        )
-        .await
-    );
+    assert!(edge(&app, &root, &at(&root, &["copy.md"]), &at(&root, &["b.md"])).await);
 }
 
 #[tokio::test]
@@ -546,8 +484,8 @@ async fn a_batch_reads_each_registration_s_rules_once_and_rebuilds_it_once() {
     reconcile_effects(
         app.handle(),
         &[
-            Effect::Path(format!("{root}/p")),
-            Effect::Path(format!("{root}/q")),
+            Effect::Path(at(&root, &["p"])),
+            Effect::Path(at(&root, &["q"])),
         ],
     )
     .await;
@@ -556,8 +494,8 @@ async fn a_batch_reads_each_registration_s_rules_once_and_rebuilds_it_once() {
         edge(
             &app,
             &root,
-            &format!("{root}/q/in.md"),
-            &format!("{root}/a.md")
+            &at(&root, &["q", "in.md"]),
+            &at(&root, &["a.md"])
         )
         .await
     );
@@ -712,7 +650,7 @@ async fn a_command_names_a_note_it_reconciled_even_when_its_links_did_not_change
     // 이것을 실패시키는 것: `emit_changed` 가 `watched` 를 보지 않고 바뀌지 않은 경로를 모두 뺀다.
     let app = app();
     let (_dir, root) = vault(&app).await;
-    let a = format!("{root}/a.md");
+    let a = at(&root, &["a.md"]);
     let seen = changes(&app);
     super::reconcile_effects(app.handle(), &[super::Effect::Path(a.clone())]).await;
     let seen = seen.lock().unwrap();
@@ -735,17 +673,9 @@ async fn a_command_write_through_a_link_is_a_write_to_its_target() {
 
     super::reconcile_effects(
         app.handle(),
-        &[super::Effect::Path(format!("{root}/link.md"))],
+        &[super::Effect::Path(at(&root, &["link.md"]))],
     )
     .await;
 
-    assert!(
-        edge(
-            &app,
-            &root,
-            &format!("{root}/a.md"),
-            &format!("{root}/c.md")
-        )
-        .await
-    );
+    assert!(edge(&app, &root, &at(&root, &["a.md"]), &at(&root, &["c.md"])).await);
 }

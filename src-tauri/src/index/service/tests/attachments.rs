@@ -7,7 +7,7 @@ use crate::index::LinkResolution;
 /// `root` with `parts` pushed on, as the walk joins a path (`Path::join`): an
 /// expected path is spelled the way the index spells one, with this host's
 /// separator.
-pub(super) fn at(root: &str, parts: &[&str]) -> String {
+pub(crate) fn at(root: &str, parts: &[&str]) -> String {
     let mut path = std::path::PathBuf::from(root);
     for part in parts {
         path.push(part);

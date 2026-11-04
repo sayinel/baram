@@ -59,15 +59,15 @@ async fn a_rule_added_since_the_build_is_what_the_rename_and_the_rebuild_apply()
     write(dir.path(), crate::fs::BARAMIGNORE, "drafts/\n");
 
     let result = rename(&state, &ctx, &root, "ns", "ns2").await.unwrap();
-    assert_eq!(result.updated_files, vec![format!("{root}/top.md")]);
+    assert_eq!(result.updated_files, vec![at(&root, &["top.md"])]);
     assert_eq!(
         std::fs::read_to_string(dir.path().join("drafts/ref.md")).unwrap(),
         "see [[../ns/a]]"
     );
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/ns2/a.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["ns2", "a.md"]))
         .await
         .unwrap();
-    assert_eq!(sources(&backlinks), vec![format!("{root}/top.md")]);
+    assert_eq!(sources(&backlinks), vec![at(&root, &["top.md"])]);
 }
 
 /// The reverse: `drafts/` was left out at build time and is not any more. The rename
@@ -83,18 +83,18 @@ async fn a_rule_removed_since_the_build_is_what_the_rename_and_the_rebuild_apply
     result.updated_files.sort();
     assert_eq!(
         result.updated_files,
-        vec![format!("{root}/drafts/ref.md"), format!("{root}/top.md")]
+        vec![at(&root, &["drafts", "ref.md"]), at(&root, &["top.md"])]
     );
     assert_eq!(
         std::fs::read_to_string(dir.path().join("drafts/ref.md")).unwrap(),
         "see [[../ns2/a]]"
     );
-    let backlinks = get_backlinks_inner(&state, &ctx, &format!("{root}/ns2/a.md"))
+    let backlinks = get_backlinks_inner(&state, &ctx, &at(&root, &["ns2", "a.md"]))
         .await
         .unwrap();
     assert_eq!(
         sources(&backlinks),
-        vec![format!("{root}/drafts/ref.md"), format!("{root}/top.md")]
+        vec![at(&root, &["drafts", "ref.md"]), at(&root, &["top.md"])]
     );
 }
 
@@ -154,8 +154,8 @@ async fn a_note_rename_across_what_the_walk_leaves_out_is_refused() {
     rename_file_with_links_inner(
         &state,
         &ctx,
-        &format!("{root}/top.md"),
-        &format!("{root}/top2.md"),
+        &at(&root, &["top.md"]),
+        &at(&root, &["top2.md"]),
     )
     .await
     .unwrap();
@@ -203,9 +203,9 @@ async fn the_boundary_walk_does_not_enter_a_folder_left_out_on_both_sides() {
     write(dir.path(), "ns/node_modules/pkg/index.md", "x");
 
     crate::fs::take_folders_read();
-    let ns = format!("{root}/ns");
+    let ns = at(&root, &["ns"]);
     let exclusion = crate::fs::VaultExclusion::load(std::path::Path::new(&root)).unwrap();
-    commit_namespace_rename(&ns, &format!("{root}/ns2"), &root, &exclusion)
+    commit_namespace_rename(&ns, &at(&root, &["ns2"]), &root, &exclusion)
         .await
         .unwrap();
     let read = crate::fs::take_folders_read();

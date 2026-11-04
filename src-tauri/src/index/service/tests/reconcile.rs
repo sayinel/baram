@@ -58,8 +58,8 @@ async fn a_watcher_unit_that_read_old_bytes_cannot_land_after_a_later_write() {
     watcher.await.unwrap();
     app.await.unwrap();
     let edges = graph(&state, &ctx, &root).await.1;
-    assert!(edges.contains(&(path.clone(), format!("{root}/b.md"))));
-    assert!(!edges.contains(&(path, format!("{root}/a.md"))));
+    assert!(edges.contains(&(path.clone(), at(&root, &["b.md"]))));
+    assert!(!edges.contains(&(path, at(&root, &["a.md"]))));
     assert_eq!(state.apply_guards_alive(), 0);
 }
 
@@ -108,7 +108,7 @@ async fn every_baramignore_transition_rebuilds_its_registration() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let ignore = dir.path().join(crate::fs::BARAMIGNORE);
     let ignore_path = ignore.to_string_lossy().into_owned();
-    let a = format!("{root}/a.md");
+    let a = at(&root, &["a.md"]);
     for (text, a_indexed) in [
         (Some("a.md\n"), false),
         (Some("b.md\n"), true),
@@ -143,15 +143,15 @@ async fn a_folder_replaced_by_a_file_of_the_same_name_leaves_nothing_below_it() 
     // One at a time: each rebuild reads the whole disk.
     std::fs::remove_dir_all(d.join("x.md")).unwrap();
     std::fs::write(d.join("x.md"), "see [[b]]").unwrap();
-    let done = reconcile_path(&state, &ctx, &format!("{root}/x.md")).await;
+    let done = reconcile_path(&state, &ctx, &at(&root, &["x.md"])).await;
     assert_eq!(done.rebuilt, vec![root.clone()]);
     std::fs::remove_dir_all(d.join("y")).unwrap();
     std::fs::write(d.join("y"), [0u8, 1]).unwrap();
-    let done = reconcile_path(&state, &ctx, &format!("{root}/y")).await;
+    let done = reconcile_path(&state, &ctx, &at(&root, &["y"])).await;
     assert_eq!(done.rebuilt, vec![root.clone()]);
     let now = graph(&state, &ctx, &root).await;
-    assert!(!now.0.contains(&format!("{root}/x.md/inner.md")));
-    assert!(!now.0.contains(&format!("{root}/y/in.md")));
+    assert!(!now.0.contains(&at(&root, &["x.md", "inner.md"])));
+    assert!(!now.0.contains(&at(&root, &["y", "in.md"])));
     assert_eq!(now, fresh_shape(&root).await);
 }
 
@@ -164,7 +164,7 @@ async fn a_note_replaced_by_a_folder_is_rebuilt() {
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     std::fs::remove_file(dir.path().join("a.md")).unwrap();
     std::fs::create_dir(dir.path().join("a.md")).unwrap();
-    let done = reconcile_path(&state, &ctx, &format!("{root}/a.md")).await;
+    let done = reconcile_path(&state, &ctx, &at(&root, &["a.md"])).await;
     assert_eq!(done.rebuilt, vec![root.clone()]);
     assert_eq!(graph(&state, &ctx, &root).await, fresh_shape(&root).await);
 }
@@ -184,16 +184,16 @@ async fn an_unreadable_note_stays_a_link_target_as_a_fresh_build_keeps_it() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     std::fs::write(d.join("sub/u.md"), [0xffu8, 0xfe, 0x00]).unwrap();
-    let done = reconcile_path(&state, &ctx, &format!("{root}/sub/u.md")).await;
+    let done = reconcile_path(&state, &ctx, &at(&root, &["sub", "u.md"])).await;
     assert!(done.reached && !done.failed);
     let now = graph(&state, &ctx, &root).await;
     assert!(now
         .1
-        .contains(&(format!("{root}/c.md"), format!("{root}/sub/u.md"))));
+        .contains(&(at(&root, &["c.md"]), at(&root, &["sub", "u.md"]))));
     assert!(!now
         .1
         .iter()
-        .any(|(from, _)| from == &format!("{root}/sub/u.md")));
+        .any(|(from, _)| from == &at(&root, &["sub", "u.md"])));
     assert_eq!(now, fresh_shape(&root).await);
 }
 
@@ -246,7 +246,7 @@ async fn apply_for_tells_a_stale_registration_from_one_with_no_index_yet() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().to_str().unwrap().to_string();
     std::fs::write(dir.path().join("a.md"), "see [[b]]").unwrap();
-    let a = format!("{root}/a.md");
+    let a = at(&root, &["a.md"]);
     // No slot, no build: the first build reads the disk afterwards.
     let m = Mutation::update(&a, "see [[c]]".into()).unwrap();
     assert_eq!(
@@ -337,7 +337,7 @@ async fn a_unit_names_the_path_in_every_covering_index_s_spelling() {
     assert!(done
         .spellings
         .contains(&resolved.to_string_lossy().into_owned()));
-    assert!(done.spellings.contains(&format!("{root}/n.md")));
+    assert!(done.spellings.contains(&at(&root, &["n.md"])));
 }
 
 #[tokio::test]
