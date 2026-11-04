@@ -1,6 +1,12 @@
 // §3.6 What the vault walk leaves out below a vault root — one default list plus the
 // vault's own `.baramignore` (issue 794).
 //
+// The default names are folders DIRECTLY below the vault root (`/build/`, #823 C): a
+// code repository opened as a vault keeps its build output there, and a notes folder that
+// happens to be named `build` deeper down (`Projects/build/`) is a user's, not a tool's.
+// A deeper build folder (`packages/app/dist/`) is the vault's to leave out with
+// `.baramignore`.
+//
 // The default names live in `default-excluded-dirs.json`, the one source for the
 // walkers (`collect_md_files`, `collect_all_files`, `search`), the file tree
 // (`list_dir`), the snapshot scan and the frontend's watcher-event filter
@@ -45,7 +51,7 @@ pub const MAX_BARAMIGNORE_BYTES: u64 = 64 * 1024;
 /// may hold. More is refused.
 pub const MAX_BARAMIGNORE_PATTERNS: usize = 1_000;
 
-/// Folder names the walk does not enter at any depth below a vault root, unless the
+/// Folder names the walk does not enter directly below a vault root, unless the
 /// vault's `.baramignore` re-includes them (`!build/`).
 pub static DEFAULT_EXCLUDED_DIRS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     serde_json::from_str(include_str!("default-excluded-dirs.json"))
@@ -231,7 +237,7 @@ fn defaults(root: &Path) -> GitignoreBuilder {
     let mut builder = GitignoreBuilder::new(root);
     for name in DEFAULT_EXCLUDED_DIRS.iter() {
         builder
-            .add_line(None, &format!("{name}/"))
+            .add_line(None, &format!("/{name}/"))
             .expect("a default name is a plain folder glob");
     }
     builder
@@ -314,6 +320,28 @@ mod tests {
         let mut all = Vec::new();
         collect_all_files(root, &exclusion, &mut all).await.unwrap();
         (rel(md), rel(all))
+    }
+
+    /// #823 C: the default list names folders directly under the vault root. A notes folder
+    /// of one of those names deeper down is a user's, and is walked; the root's own is not.
+    /// 이것을 실패시키는 것: `defaults` 의 패턴에서 앞의 `/` 를 빼는 것(어느 깊이에서든 걸러 `Projects/build`
+    /// 가 사라진다) — 또는 기본 목록을 지우는 것(루트의 `build` 가 걸린다).
+    #[tokio::test]
+    async fn the_default_list_leaves_out_only_folders_directly_under_the_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "build/out.md", "x");
+        write(root, "node_modules/pkg/readme.md", "x");
+        write(root, "Projects/build/notes.md", "x");
+        write(root, "Projects/node_modules/n.md", "x");
+        let (md, _) = walked(root).await;
+        assert_eq!(
+            md,
+            ["Projects/build/notes.md", "Projects/node_modules/n.md"]
+        );
+        let exclusion = VaultExclusion::load(root).unwrap();
+        assert!(exclusion.walk_skips(&root.join("build/out.md"), false));
+        assert!(!exclusion.walk_skips(&root.join("Projects/build/notes.md"), false));
     }
 
     /// Issue 794's criterion: 10,000 files under an excluded folder cost discovery no

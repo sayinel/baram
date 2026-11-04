@@ -110,9 +110,11 @@ fn scan_dir_recursive(
             continue;
         }
         // Build/cache dirs excluded from snapshot scan (hidden dirs already filtered above):
-        // the default list the vault walk starts from (issue 794). Not the vault's
-        // `.baramignore` — leaving a folder out of search does not drop its history.
-        if path.is_dir() && crate::fs::DEFAULT_EXCLUDED_DIRS.contains(&name.as_str()) {
+        // the default list the vault walk starts from (issue 794), directly below the vault
+        // root only, as the walk judges it (#823 C). Not the vault's `.baramignore` —
+        // leaving a folder out of search does not drop its history.
+        if dir == base && path.is_dir() && crate::fs::DEFAULT_EXCLUDED_DIRS.contains(&name.as_str())
+        {
             continue;
         }
 

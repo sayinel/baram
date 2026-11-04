@@ -247,9 +247,33 @@ pub async fn list_dir(
 ) -> Result<Vec<FileEntry>, String> {
     check(&path)?;
     check_vault(&path, &state, &ctx_mgr).await?;
-    crate::fs::list_dir(&path, recursive.unwrap_or(false))
+    let at_root = lists_from_a_root(&ctx_mgr, &path).await;
+    crate::fs::list_dir(&path, recursive.unwrap_or(false), at_root)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Whether a listing of `path` starts at a vault root, so the default list applies to its
+/// direct children (`fs::list_dir`, #823 C): `path` is a registered folder context's root,
+/// or no folder context holds it — a folder outside every vault is listed as a root of its
+/// own, as the walk would treat it. A folder below a root is listed in full.
+pub(crate) async fn lists_from_a_root(
+    ctx_mgr: &crate::context::ContextManager,
+    path: &str,
+) -> bool {
+    let holding: Vec<_> = ctx_mgr
+        .contexts_containing(path)
+        .await
+        .into_iter()
+        .filter(|c| c.info.context_type != crate::context::types::ContextType::File)
+        .collect();
+    if holding.is_empty() {
+        return true;
+    }
+    let Ok(canonical) = crate::context::manager::resolve_canonical(path) else {
+        return true;
+    };
+    holding.iter().any(|c| c.canonical_path == canonical)
 }
 
 #[tauri::command]

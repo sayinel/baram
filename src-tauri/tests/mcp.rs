@@ -936,8 +936,8 @@ fn a_folder_the_vault_walk_skips_is_refused_by_both_tools_that_take_one() {
         assert_eq!(
             tool_error(&result),
             "error[INVALID_ARGUMENT]: .obsidian is a folder the vault walk skips \
-             (hidden, one of: node_modules, target, build, dist, __pycache__, .next, .git, \
-             or left out by .baramignore)",
+             (hidden, one of: node_modules, target, build, dist, __pycache__, .next, .git \
+             directly under the vault root, or left out by .baramignore)",
             "{tool}"
         );
     }

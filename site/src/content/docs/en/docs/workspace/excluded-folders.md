@@ -6,7 +6,7 @@ A vault can hold more than notes. A code repository opened as a vault carries bu
 
 ## The default list
 
-Baram leaves out folders with these names, at any depth below the vault root:
+Baram leaves out folders with these names directly under the vault root:
 
 | Folder | Usually holds |
 | -- | -- |
@@ -22,7 +22,7 @@ Folders whose names start with `.` are left out as well, and so are such files e
 
 Names match exactly, including case: `Build` is not `build`, even on a disk that ignores case.
 
-Only folders **below** the vault root are judged. A vault whose own folder is named `build` opens and indexes like any other; a `build` folder inside it is left out.
+Only folders **directly under** the vault root are judged. A vault whose own folder is named `build` opens and indexes like any other; a `build` folder directly inside it is left out. A deeper folder of the same name — `Projects/build/` or `packages/app/dist/` — is read like any other folder: name it in `.baramignore` (`dist/`, which matches at any depth) to leave it out too.
 
 ## What a left-out folder is missing from
 

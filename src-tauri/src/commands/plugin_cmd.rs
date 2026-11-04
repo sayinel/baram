@@ -611,7 +611,13 @@ async fn execute_op(
             // strictly less than `FileEntry` (no sizes, no mtimes) for the same call.
             // Non-recursive: a recursive walk of a large vault is a cost a plugin
             // should have to pay per directory, where the rate limiter can see it.
-            let entries = crate::fs::list_dir(authorized_path_str(&resolved)?, false)
+            let listed = authorized_path_str(&resolved)?;
+            let at_root = super::fs_cmd::lists_from_a_root(
+                &app.state::<crate::context::ContextManager>(),
+                listed,
+            )
+            .await;
+            let entries = crate::fs::list_dir(listed, false, at_root)
                 .await
                 // §260 Phase 4a security review (MEDIUM-2) — the ONLY channel that leaked
                 // an absolute path into the sandboxed realm, which is the one thing this

@@ -194,12 +194,14 @@ async fn a_folder_rename_is_refused_when_any_entry_below_it_changes_side() {
 }
 
 /// The extra walk does not enter a folder left out on BOTH sides — nothing below it can
-/// be read on either. Counted: `ns/node_modules` is not listed, `ns` is.
+/// be read on either. Counted: `ns/node_modules` is not listed, `ns` is. The default list
+/// names folders directly under the root only (#823 C), so the fixture's `.baramignore`
+/// leaves a `node_modules` folder out at any depth.
 /// 이것을 실패시키는 것: `first_crossing` 의 `|| before` 가지치기를 지우는 것.
 #[tokio::test]
 async fn the_boundary_walk_does_not_enter_a_folder_left_out_on_both_sides() {
     let ctx = ContextManager::new();
-    let (dir, root, _state) = fixture(&ctx, None).await;
+    let (dir, root, _state) = fixture(&ctx, Some("node_modules/\n")).await;
     write(dir.path(), "ns/node_modules/pkg/index.md", "x");
 
     crate::fs::take_folders_read();

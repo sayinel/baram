@@ -152,7 +152,8 @@ pub(crate) fn folder_arg(vault: &Vault, input: &str) -> Result<PathBuf, CliError
         return Err(CliError::new(
             ErrorCode::InvalidArgument,
             format!(
-                "{input} is a folder the vault walk skips (hidden, one of: {}, or left out by {})",
+                "{input} is a folder the vault walk skips (hidden, one of: {} directly under \
+                 the vault root, or left out by {})",
                 crate::fs::DEFAULT_EXCLUDED_DIRS.join(", "),
                 crate::fs::BARAMIGNORE
             ),
@@ -659,14 +660,13 @@ mod tests {
     /// (`fs/default-excluded-dirs.json`).
     #[test]
     fn a_folder_the_walk_skips_is_refused_even_when_it_does_not_exist() {
-        let (_t, base) = tree(&["vault/docs", "vault/.obsidian", "vault/node_modules"]);
+        let (_t, base) = tree(&[
+            "vault/docs/node_modules",
+            "vault/.obsidian",
+            "vault/node_modules",
+        ]);
         let vault = vault_at(&base.join("vault"));
-        for input in [
-            ".obsidian",
-            "node_modules",
-            "docs/.cache",
-            "docs/node_modules/x",
-        ] {
+        for input in [".obsidian", "node_modules", "docs/.cache", "node_modules/x"] {
             let error = folder_arg(&vault, input).unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidArgument, "{input}");
             assert_eq!(
@@ -674,11 +674,14 @@ mod tests {
                 format!(
                     "{input} is a folder the vault walk skips \
                      (hidden, one of: node_modules, target, build, dist, __pycache__, .next, \
-                     .git, or left out by .baramignore)"
+                     .git directly under the vault root, or left out by .baramignore)"
                 ),
                 "{input}"
             );
         }
+        // The pair: the default list names folders directly under the root (#823 C), so a
+        // deeper folder of one of those names is walked and accepted.
+        assert!(folder_arg(&vault, "docs/node_modules").is_ok());
     }
 
     #[test]

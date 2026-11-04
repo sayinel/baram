@@ -324,10 +324,20 @@ fn app_write_key(path: &Path) -> String {
 }
 
 /// 디렉토리 목록 조회
-pub async fn list_dir(path: &str, recursive: bool) -> Result<Vec<FileEntry>, FsError> {
+/// The entries of `path`, below it too when `recursive`. Hidden names are never listed.
+/// `at_root`: `path` is a vault root (or the listing's own top, for a folder in no vault),
+/// so its DIRECT children named in the default list are left out — the vault walk's rule
+/// (`fs::exclusion`, #823 C). A listing that starts below a root leaves none of them out:
+/// the walk would not either. `.baramignore` is not read: the tree shows what it lists
+/// (issue 794).
+pub async fn list_dir(
+    path: &str,
+    recursive: bool,
+    at_root: bool,
+) -> Result<Vec<FileEntry>, FsError> {
     let path = Path::new(path);
     let mut entries = Vec::new();
-    list_dir_inner(path, recursive, &mut entries).await?;
+    list_dir_inner(path, recursive, at_root, &mut entries).await?;
     entries.sort_by(|a, b| {
         // 디렉토리 먼저, 그 다음 이름순
         b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name))
@@ -338,6 +348,7 @@ pub async fn list_dir(path: &str, recursive: bool) -> Result<Vec<FileEntry>, FsE
 async fn list_dir_inner(
     path: &Path,
     recursive: bool,
+    at_root: bool,
     entries: &mut Vec<FileEntry>,
 ) -> Result<(), FsError> {
     let mut read_dir = tokio::fs::read_dir(path).await.map_err(|e| {
@@ -357,10 +368,9 @@ async fn list_dir_inner(
             continue;
         }
 
-        // Build/cache dirs excluded from directory listing — the default list only: a
-        // listing is not told which vault root it is under, so `.baramignore` does not
-        // reach the tree (issue 794).
-        if metadata.is_dir() && DEFAULT_EXCLUDED_DIRS.contains(&name.as_str()) {
+        // Build/cache dirs directly below the root — the default list only, so
+        // `.baramignore` does not reach the tree (issue 794).
+        if at_root && metadata.is_dir() && DEFAULT_EXCLUDED_DIRS.contains(&name.as_str()) {
             continue;
         }
 
@@ -380,7 +390,7 @@ async fn list_dir_inner(
         entries.push(file_entry);
 
         if recursive && metadata.is_dir() {
-            Box::pin(list_dir_inner(&entry.path(), true, entries)).await?;
+            Box::pin(list_dir_inner(&entry.path(), true, false, entries)).await?;
         }
     }
     Ok(())
@@ -1640,6 +1650,51 @@ mod permission_tests {
     use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
+    /// #823 C: a vault root's listing leaves out the default list's folders directly under
+    /// it, and lists a deeper folder of the same name, as the vault walk does. A listing that
+    /// starts below the root leaves none out.
+    /// 이것을 실패시키는 것: `list_dir_inner` 가 재귀에서도 `at_root` 를 넘긴다(`Projects/build` 가 사라진다)
+    /// — 또는 `at_root` 를 보지 않는다(루트의 `build` 가 트리에 나온다).
+    #[tokio::test]
+    async fn list_dir_leaves_out_the_default_list_directly_under_the_root_only() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        for rel in ["build/out.md", "Projects/build/notes.md", "Projects/a.md"] {
+            let path = root.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "x").unwrap();
+        }
+        let names = |entries: Vec<FileEntry>| -> Vec<String> {
+            let mut out: Vec<String> = entries
+                .iter()
+                .map(|e| {
+                    Path::new(&e.path)
+                        .strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                })
+                .collect();
+            out.sort();
+            out
+        };
+        let from_root = list_dir(root.to_str().unwrap(), true, true).await.unwrap();
+        assert_eq!(
+            names(from_root),
+            [
+                "Projects",
+                "Projects/a.md",
+                "Projects/build",
+                "Projects/build/notes.md"
+            ]
+        );
+        let below = root.join("Projects");
+        let from_below = list_dir(below.to_str().unwrap(), false, false)
+            .await
+            .unwrap();
+        assert_eq!(names(from_below), ["Projects/a.md", "Projects/build"]);
+    }
+
     #[tokio::test]
     async fn list_dir_maps_permission_denied_to_sentinel() {
         let tmp = TempDir::new().unwrap();
@@ -1649,7 +1704,7 @@ mod permission_tests {
         // both map to std::io::ErrorKind::PermissionDenied).
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        let result = list_dir(dir.to_str().unwrap(), false).await;
+        let result = list_dir(dir.to_str().unwrap(), false, true).await;
 
         // Restore permissions so TempDir cleanup succeeds.
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();

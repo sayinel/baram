@@ -17,13 +17,15 @@ import {
   tabSaveInFlight,
 } from "../utils/editor/tab-save-in-flight";
 import { logger } from "../utils/logger";
+import { relativeToRoot } from "../utils/path-utils";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 import { useWatchLeases } from "./use-watch-leases";
 
 /**
- * Directories whose events the file tree ignores — the default list `list_dir` skips, read
- * from the file Rust compiles in, so the two cannot drift (issue 794). A vault's
- * `.baramignore` does not reach this filter or the tree.
+ * Directories whose events the file tree ignores — the default list `list_dir` skips
+ * directly under the vault root (`shouldSkip`), read from the file Rust compiles in, so the
+ * two cannot drift (issue 794). A vault's `.baramignore` does not reach this filter or the
+ * tree.
  */
 const SKIP_DIRS: ReadonlySet<string> = new Set(defaultExcludedDirs);
 
@@ -304,7 +306,13 @@ function parentDir(path: string): string {
 }
 
 function shouldSkip(path: string, isDir = false): boolean {
-  const parts = path.split("/");
+  // Judged below the vault root when the path is under it: the default list names folders
+  // DIRECTLY under the root (#823 C, as `list_dir` and the vault walk judge it), and a
+  // dot folder above the root is the vault's own location, not a hidden folder in it. A
+  // path outside the vault keeps every segment judged.
+  const root = useFileStore.getState().rootPath;
+  const relative = root ? relativeToRoot(path, root) : null;
+  const parts = (relative ?? path).split("/");
   // Apply dotfile filter only to directory segments (not the final filename),
   // so files like ".notes.md" or dirs like ".archive/" are handled correctly:
   // - directory components starting with "." are hidden system dirs → skip
@@ -313,9 +321,11 @@ function shouldSkip(path: string, isDir = false): boolean {
   //   the dotfile filter to it (e.g., a newly created ".hidden/" dir should skip)
   const dirs = parts.slice(0, -1);
   const lastName = parts[parts.length - 1] ?? "";
+  const skipped = (name: string, index: number) =>
+    SKIP_DIRS.has(name) && (relative === null || index === 0);
   return (
-    dirs.some((p) => p.startsWith(".") || SKIP_DIRS.has(p)) ||
-    SKIP_DIRS.has(lastName) ||
+    dirs.some((p, i) => p.startsWith(".") || skipped(p, i)) ||
+    skipped(lastName, parts.length - 1) ||
     (isDir && lastName.startsWith("."))
   );
 }

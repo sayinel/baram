@@ -179,8 +179,9 @@ impl ToolName {
                 description: "The Markdown notes (.md and .markdown) in the vault, or in one \
                               folder of it, by path: the files the app's walk finds for tags, \
                               tasks and links. Hidden files and folders are left out, and so are \
-                              build-output folders (node_modules, target, build, dist, \
-                              __pycache__, .next) and what the vault's .baramignore lists.",
+                              build-output folders directly under the vault root \
+                              (node_modules, target, build, dist, __pycache__, .next) and what \
+                              the vault's .baramignore lists.",
                 arguments: LIST_FILES,
             },
             ToolName::ReadNote => About {
