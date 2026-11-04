@@ -23,10 +23,12 @@ import { unregisterPluginUI } from "../trusted/ui-api";
 
 const entry = (pluginId: string, name: string): PluginEntryContributions => ({
   commands: [{ id: "go", title: "Go" }],
+  fileMenu: [],
   menu: [],
   name,
   pluginId,
   slash: [],
+  trust: "trusted",
 });
 
 const manifest = (overrides: Partial<PluginManifest> = {}): PluginManifest => ({
@@ -66,10 +68,12 @@ describe("registerEntryContributions (§5)", () => {
         { id: "insert", title: "Insert citation" },
         { id: "hidden", title: "Hidden from the palette" },
       ],
+      fileMenu: [],
       menu: [{ command: "insert", id: "m" }],
       name: "Cite",
       pluginId: "cite",
       slash: [{ command: "insert", id: "s" }],
+      trust: "trusted",
     });
   });
 
@@ -79,6 +83,7 @@ describe("registerEntryContributions (§5)", () => {
     expect(usePluginUIStore.getState().contributions).toEqual({});
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('"commands" capability');
+    expect(String(warn.mock.calls[0][0])).toContain("file tree menu");
   });
 
   it("does not ask a sandboxed plugin for it — the host wires a sandboxed plugin's declared commands", () => {
@@ -95,6 +100,32 @@ describe("registerEntryContributions (§5)", () => {
     );
     expect(usePluginUIStore.getState().contributions).toEqual({});
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  /** What fails this: `fileMenu` put up without reading `filetree` — a consent that withheld it would still show items. */
+  it("§395 — puts fileMenu up only with filetree in the (consent-narrowed) manifest, and records the tier", () => {
+    const fileMenu = [{ command: "insert", id: "f", when: "file" as const }];
+    const contributions = {
+      commands: [{ id: "insert", title: "Insert citation" }],
+      fileMenu,
+    };
+    const cite = () => usePluginUIStore.getState().contributions.cite;
+    registerEntryContributions(
+      manifest({ capabilities: ["commands", "filetree"], contributions }),
+    );
+    expect(cite()?.fileMenu).toEqual(fileMenu);
+    registerEntryContributions(
+      manifest({ capabilities: ["commands"], contributions }),
+    );
+    expect(cite()?.fileMenu).toEqual([]);
+    registerEntryContributions(
+      manifest({
+        capabilities: ["filetree"],
+        contributions,
+        trust: "sandboxed",
+      }),
+    );
+    expect(cite()?.trust).toBe("sandboxed");
   });
 });
 

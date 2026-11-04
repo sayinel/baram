@@ -13,6 +13,7 @@ import { useEditorContext } from "../../contexts/editor-context";
 import { useTranslation } from "../../i18n/useTranslation";
 import { pickApprovedDir } from "../../ipc/approval";
 import { readFile } from "../../ipc/invoke";
+import { livePluginEntrySource } from "../../plugins/plugin-entry-points";
 import { openFolder } from "../../services/vault-context-loader";
 import { useEditorStore } from "../../stores/editor/editor";
 import { type FileEntry, useFileStore } from "../../stores/file/file";
@@ -29,6 +30,7 @@ import {
   IconNewFolder,
 } from "./file-tree-icons";
 import { someSelectedIsDir } from "./file-tree-multi-ops";
+import { fileMenuTargets, fileTreePluginItems } from "./file-tree-plugin-menu";
 import { ancestorDirs } from "./file-tree-reveal";
 import { DRAG_EXPAND_DELAY_MS } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
@@ -376,6 +378,11 @@ export function FileTree(): React.JSX.Element {
         targetIsDir: isDir,
         selectionCount: count,
         selectionHasDir: hasDir,
+        // §395 spec 0074 D16 — the plugin items, decided now, from the selection this click acts on.
+        pluginItems: fileTreePluginItems(
+          fileMenuTargets(path, isDir, selectedPaths, fileTree),
+          livePluginEntrySource(),
+        ),
       });
     },
     [selectedPaths, selectSingle, fileTree],
@@ -395,6 +402,7 @@ export function FileTree(): React.JSX.Element {
           targetIsDir: false,
           selectionCount: 1,
           selectionHasDir: false,
+          pluginItems: [],
         });
       }
     },
@@ -695,6 +703,7 @@ export function FileTree(): React.JSX.Element {
           <FileTreeContextMenu
             menu={contextMenu}
             onAction={handleContextMenuAction}
+            onClose={() => setContextMenu(null)}
           />
         )}
         {moveModalSources && (

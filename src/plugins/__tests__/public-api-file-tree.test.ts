@@ -12,9 +12,11 @@ describe("the published plugin API names the file tree's types", () => {
     "FileDecoration",
     "FileDecorationPaletteColor",
     "FileDecorationUpdate",
+    "FileMenuTarget",
     "PluginFileDelete",
     "PluginFileRename",
     "SandboxFileDecorationUpdate",
+    "SandboxFileMenuTarget",
   ])("names %s", (name) => {
     expect(readFileSync(DTS, "utf8")).toMatch(new RegExp(`\\b${name}\\b`, "u"));
   });

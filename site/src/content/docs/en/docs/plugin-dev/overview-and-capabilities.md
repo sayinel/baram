@@ -57,7 +57,7 @@ Accessing an API whose capability was not declared throws a clear error
 | `storage`         | Use a plugin-private key/value store    | sensitive     |
 | `viewer`          | Register custom file-type viewers       |               |
 | `codeblocks`      | Draw code blocks of the languages it declares — see [Code block renderers](/en/docs/plugin-dev/code-blocks/) | |
-| `filetree`        | Decorate file tree rows with icons and badges — see [File tree decorations](/en/docs/plugin-dev/file-tree/) | |
+| `filetree`        | Decorate file tree rows with icons and badges, and add items to the file tree's right-click menu — see [File tree decorations](/en/docs/plugin-dev/file-tree/) | |
 
 `ai` and `network` are the highest-sensitivity capabilities — see
 [Trust model & security](/en/docs/plugin-dev/trust-model-and-errors/#trust-model--security) for exactly what they allow.

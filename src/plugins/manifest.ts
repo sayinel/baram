@@ -10,7 +10,10 @@ import {
   checkCodeBlockCapability,
   validateCodeBlocks,
 } from "./manifest-code-blocks";
-import { validateEntryPoints } from "./manifest-entry-points";
+import {
+  checkFileMenuDeclarations,
+  validateEntryPoints,
+} from "./manifest-entry-points";
 import { checkPanelDeclarations, validatePanels } from "./manifest-panels";
 import {
   isSafeSettingColor,
@@ -217,6 +220,15 @@ export function validateManifest(
   // §394 spec 0073 D14 — `contributions.panels`: a sandboxed plugin's, and with `sidebar`.
   checkPanelDeclarations(
     obj.trust,
+    obj.capabilities,
+    obj.contributions,
+    (field, message) => {
+      errors.push({ field, message });
+    },
+  );
+
+  // §395 spec 0074 D16 — `contributions.fileMenu`: either tier's, and with `filetree`.
+  checkFileMenuDeclarations(
     obj.capabilities,
     obj.contributions,
     (field, message) => {

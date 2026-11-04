@@ -671,6 +671,7 @@ exports[`간격·모서리 선언의 계산값이 그대로다 1`] = `
   "src/styles/file-tree.css|.file-tree-action-btn|border-radius|4px",
   "src/styles/file-tree.css|.file-tree-action-btn|padding|0",
   "src/styles/file-tree.css|.file-tree-context-menu-item|padding|6px 12px",
+  "src/styles/file-tree.css|.file-tree-context-menu-plugin-item|gap|8px",
   "src/styles/file-tree.css|.file-tree-context-menu-separator|margin|4px 0",
   "src/styles/file-tree.css|.file-tree-context-menu|border-radius|6px",
   "src/styles/file-tree.css|.file-tree-context-menu|padding|4px 0",

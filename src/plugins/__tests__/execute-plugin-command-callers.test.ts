@@ -93,10 +93,11 @@ function scanProductionFiles(matches: (source: string) => boolean): string[] {
 }
 
 describe("who may start a plugin command", () => {
-  it("is the command palette, the status bar and the §391 entry points, and nothing else", () => {
+  it("is the command palette, the status bar, the §391 entry points and the §395 file tree menu, and nothing else", () => {
     expect(callers()).toEqual([
       "components/command/CommandPalette.tsx",
       "components/layout/PluginStatusBarItems.tsx",
+      "components/sidebar/file-tree-plugin-menu.ts",
       "components/toolbar/context-menu-plugins.ts",
       "extensions/plugins/slash-command-items-plugins.ts",
       "hooks/use-global-keyboard.ts",

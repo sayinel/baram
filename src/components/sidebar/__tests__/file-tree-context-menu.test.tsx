@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileTreeContextMenu } from "../file-tree-context-menu";
 
 const base: ContextMenuState = {
+  pluginItems: [],
   x: 10,
   y: 20,
   targetPath: null,
@@ -16,7 +17,9 @@ const base: ContextMenuState = {
 
 describe("FileTreeContextMenu (baseline actions)", () => {
   it("빈 영역(targetPath=null)은 New File/New Folder만 보여준다", () => {
-    render(<FileTreeContextMenu menu={base} onAction={vi.fn()} />);
+    render(
+      <FileTreeContextMenu menu={base} onAction={vi.fn()} onClose={vi.fn()} />,
+    );
     expect(screen.getByText("New File")).toBeInTheDocument();
     expect(screen.getByText("New Folder")).toBeInTheDocument();
     expect(screen.queryByText("Rename")).not.toBeInTheDocument();
@@ -28,6 +31,7 @@ describe("FileTreeContextMenu (baseline actions)", () => {
       <FileTreeContextMenu
         menu={{ ...base, targetPath: "/r/a.md", targetIsDir: false }}
         onAction={vi.fn()}
+        onClose={vi.fn()}
       />,
     );
     expect(screen.getByText("Rename")).toBeInTheDocument();
@@ -40,6 +44,7 @@ describe("FileTreeContextMenu (baseline actions)", () => {
       <FileTreeContextMenu
         menu={{ ...base, targetPath: "/r/docs", targetIsDir: true }}
         onAction={vi.fn()}
+        onClose={vi.fn()}
       />,
     );
     expect(screen.getByText("New File")).toBeInTheDocument();
@@ -52,6 +57,7 @@ describe("FileTreeContextMenu (baseline actions)", () => {
       <FileTreeContextMenu
         menu={{ ...base, targetPath: "/r/a.md", targetIsDir: false }}
         onAction={onAction}
+        onClose={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByText("Delete"));
@@ -63,6 +69,7 @@ describe("FileTreeContextMenu (baseline actions)", () => {
       <FileTreeContextMenu
         menu={{ ...base, x: 42, y: 99 }}
         onAction={vi.fn()}
+        onClose={vi.fn()}
       />,
     );
     const el = container.querySelector<HTMLElement>(".file-tree-context-menu")!;
@@ -76,6 +83,7 @@ describe("FileTreeContextMenu (multi-selection)", () => {
     render(
       <FileTreeContextMenu
         menu={{
+          pluginItems: [],
           x: 0,
           y: 0,
           targetPath: "/r/a.md",
@@ -84,6 +92,7 @@ describe("FileTreeContextMenu (multi-selection)", () => {
           selectionHasDir: false,
         }}
         onAction={vi.fn()}
+        onClose={vi.fn()}
       />,
     );
     expect(screen.getByText("Move to…")).toBeInTheDocument();
@@ -97,6 +106,7 @@ describe("FileTreeContextMenu (multi-selection)", () => {
     render(
       <FileTreeContextMenu
         menu={{
+          pluginItems: [],
           x: 0,
           y: 0,
           targetPath: "/r/docs",
@@ -105,6 +115,7 @@ describe("FileTreeContextMenu (multi-selection)", () => {
           selectionHasDir: true,
         }}
         onAction={vi.fn()}
+        onClose={vi.fn()}
       />,
     );
     const dup = screen.getByText("Duplicate");
@@ -116,6 +127,7 @@ describe("FileTreeContextMenu (multi-selection)", () => {
     render(
       <FileTreeContextMenu
         menu={{
+          pluginItems: [],
           x: 0,
           y: 0,
           targetPath: "/r/docs",
@@ -124,6 +136,7 @@ describe("FileTreeContextMenu (multi-selection)", () => {
           selectionHasDir: true,
         }}
         onAction={onAction}
+        onClose={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByText("Duplicate"));
@@ -168,7 +181,7 @@ describe("FileTreeContextMenu (viewport clamping, §312)", () => {
 
   function menuElement(menu: ContextMenuState): HTMLElement {
     const { container } = render(
-      <FileTreeContextMenu menu={menu} onAction={vi.fn()} />,
+      <FileTreeContextMenu menu={menu} onAction={vi.fn()} onClose={vi.fn()} />,
     );
     return container.querySelector<HTMLElement>(".file-tree-context-menu")!;
   }

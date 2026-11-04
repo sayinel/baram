@@ -1,6 +1,10 @@
 // §4.3 File tree — shared type definitions
 
+import type { FileTreePluginItem } from "./file-tree-plugin-menu";
+
 export interface ContextMenuState {
+  /** §395 spec 0074 D16 — the plugin items of this menu, decided when it opened; `[]` on the empty area. */
+  pluginItems: readonly FileTreePluginItem[];
   selectionCount: number;
   selectionHasDir: boolean;
   targetIsDir: boolean;
