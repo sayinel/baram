@@ -77,12 +77,52 @@ export function onIndexChanged({
   rebuilt,
 }: IndexChanged): void {
   if (rebuilt.length === 0 && entries.length === 1) {
-    useLinkStore.getState().invalidate(spellingShown(entries[0]));
+    bump(spellingShown(entries[0]));
   } else if (rebuilt.length > 0 || entries.length > 0) {
-    useLinkStore.getState().invalidate();
+    bump(null);
   }
   // §393 After the bump: a plugin that reads the index on hearing reads the new state.
   contexts.forEach(publishVaultChange);
+}
+
+/** Open holds (`holdIndexBumps`); bumps wait while there is one. */
+let holds = 0;
+/**
+ * The bump held back, or `undefined` for none: the one file it names, or `null` when it
+ * names none or more than one bump was held.
+ */
+let held: null | string | undefined;
+
+/**
+ * Hold `indexVersion` bumps until the returned release runs, then bump once (#823 C: a
+ * file tree batch). A batch of N deletes or moves is N commands, each announcing its
+ * own `index:changed` one IPC round-trip apart, so no tick-based coalescing joins them;
+ * without the hold, Backlinks searches the whole vault for unlinked mentions N times and
+ * Graph redraws N times. The one bump names a file only when exactly one was held.
+ * Holds nest; the bump goes out when the last one is released. Releasing twice is a
+ * no-op. `vault:changed` is not held here: its own per-vault hold (`beginFileOperation`,
+ * §395 D12) already orders it.
+ */
+export function holdIndexBumps(): () => void {
+  holds += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holds -= 1;
+    if (holds > 0 || held === undefined) return;
+    const savedPath = held;
+    held = undefined;
+    useLinkStore.getState().invalidate(savedPath ?? undefined);
+  };
+}
+
+function bump(savedPath: null | string): void {
+  if (holds > 0) {
+    held = held === undefined ? savedPath : null;
+    return;
+  }
+  useLinkStore.getState().invalidate(savedPath ?? undefined);
 }
 
 function spellingShown(entry: IndexChanged["entries"][number]): string {

@@ -16,6 +16,7 @@ import {
   beginFileOperation,
   notifyDeleted,
 } from "../../../plugins/file-decorations/operation-notices";
+import { holdIndexBumps } from "../../../services/index-changes";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
@@ -101,32 +102,37 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
       );
       if (!confirmed) return;
       const failed: string[] = [];
-      for (const entry of entries) {
-        // §395 spec 0074 D12 — per item, after the one confirmation above.
-        let release: (() => void) | undefined;
-        try {
-          release = beginFileOperation([entry.path]);
-          if (entry.isDir) await deleteDir(entry.path);
-          else await deleteFile(entry.path);
-          const { tabs: currentTabs } = useEditorStore.getState();
-          for (const tab of currentTabs) {
-            if (
-              tab.filePath === entry.path ||
-              tab.filePath?.startsWith(entry.path + "/")
-            )
-              closeTab(tab.id);
+      // §29 #823 One bump for the batch, after its last delete (`holdIndexBumps`).
+      const releaseBumps = holdIndexBumps();
+      try {
+        for (const entry of entries) {
+          // §395 spec 0074 D12 — per item, after the one confirmation above.
+          let release: (() => void) | undefined;
+          try {
+            release = beginFileOperation([entry.path]);
+            if (entry.isDir) await deleteDir(entry.path);
+            else await deleteFile(entry.path);
+            const { tabs: currentTabs } = useEditorStore.getState();
+            for (const tab of currentTabs) {
+              if (
+                tab.filePath === entry.path ||
+                tab.filePath?.startsWith(entry.path + "/")
+              )
+                closeTab(tab.id);
+            }
+            removeFileEntry(entry.path);
+            // §395 spec 0074 D10 — in the tree update's synchronous span.
+            notifyDeleted(entry.path, entry.isDir);
+          } catch (err) {
+            logger.error("[FileTree] Delete failed:", entry.path, err);
+            failed.push(entry.name);
+          } finally {
+            release?.();
           }
-          removeFileEntry(entry.path);
-          // §395 spec 0074 D10 — in the tree update's synchronous span.
-          notifyDeleted(entry.path, entry.isDir);
-        } catch (err) {
-          logger.error("[FileTree] Delete failed:", entry.path, err);
-          failed.push(entry.name);
-        } finally {
-          release?.();
         }
+      } finally {
+        releaseBumps();
       }
-      // §29 #824 each delete command announced its own index change.
       if (failed.length > 0) {
         await showAlert(`Failed to move to Trash: ${failed.join(", ")}`);
       }

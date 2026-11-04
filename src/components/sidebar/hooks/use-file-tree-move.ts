@@ -6,6 +6,7 @@ import {
   beginFileOperation,
   notifyRenamed,
 } from "../../../plugins/file-decorations/operation-notices";
+import { holdIndexBumps } from "../../../services/index-changes";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { findEntryByPath } from "../../../stores/file/file-tree-ops";
@@ -28,55 +29,60 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
       const { moveFileEntry } = useFileStore.getState();
       const { renameTab } = useEditorStore.getState();
       const failed: string[] = [];
-      for (const { from, to } of moves) {
-        // Reject a move onto an already-occupied destination path before the
-        // rename IPC call — a file-onto-file collision otherwise leaves disk
-        // (rename overwrites), the tree (moveInTree's idempotent insert keeps
-        // the pre-existing node), openFiles, and open tabs in mutually
-        // inconsistent states. This check is a frontend-only guard: a TOCTOU
-        // race with the filesystem between this check and the rename call is
-        // an accepted gap for this local-desktop threat model.
-        if (findEntryByPath(useFileStore.getState().fileTree, to)) {
-          failed.push(
-            `${from.split("/").pop() ?? from} (destination already exists)`,
-          );
-          continue;
-        }
-        // §395 spec 0074 D10 — whether the moved item is a folder, read before the tree moves it.
-        const isDir =
-          findEntryByPath(useFileStore.getState().fileTree, from)?.isDir ??
-          false;
-        // §395 spec 0074 D12 — each item's move holds the vault:changed of the contexts holding
-        // either path; raised as the first statement of the try whose finally releases it.
-        let release: (() => void) | undefined;
-        try {
-          release = beginFileOperation([from, to]);
-          await renameFile(from, to);
-          moveFileEntry(from, targetPath);
-          const { tabs } = useEditorStore.getState();
-          for (const tab of tabs) {
-            if (tab.filePath === from) {
-              renameTab(from, to, to.split("/").pop() ?? "");
-            } else if (tab.filePath?.startsWith(from + "/")) {
-              renameTab(
-                tab.filePath,
-                to + tab.filePath.slice(from.length),
-                tab.title,
-              );
-            }
+      // §29 #823 One bump for the batch, after its last move (`holdIndexBumps`).
+      const releaseBumps = holdIndexBumps();
+      try {
+        for (const { from, to } of moves) {
+          // Reject a move onto an already-occupied destination path before the
+          // rename IPC call — a file-onto-file collision otherwise leaves disk
+          // (rename overwrites), the tree (moveInTree's idempotent insert keeps
+          // the pre-existing node), openFiles, and open tabs in mutually
+          // inconsistent states. This check is a frontend-only guard: a TOCTOU
+          // race with the filesystem between this check and the rename call is
+          // an accepted gap for this local-desktop threat model.
+          if (findEntryByPath(useFileStore.getState().fileTree, to)) {
+            failed.push(
+              `${from.split("/").pop() ?? from} (destination already exists)`,
+            );
+            continue;
           }
-          // D10 — after the tree and the tabs follow the move, in the tree update's synchronous span (no
-          // await between `moveFileEntry` and here), so a trusted plugin's `file:rename` handler finds the
-          // tabs already on `to`.
-          notifyRenamed(from, to, isDir);
-        } catch (err) {
-          logger.error("[FileTree] Move failed:", from, err);
-          failed.push(from.split("/").pop() ?? from);
-        } finally {
-          release?.();
+          // §395 spec 0074 D10 — whether the moved item is a folder, read before the tree moves it.
+          const isDir =
+            findEntryByPath(useFileStore.getState().fileTree, from)?.isDir ??
+            false;
+          // §395 spec 0074 D12 — each item's move holds the vault:changed of the contexts holding
+          // either path; raised as the first statement of the try whose finally releases it.
+          let release: (() => void) | undefined;
+          try {
+            release = beginFileOperation([from, to]);
+            await renameFile(from, to);
+            moveFileEntry(from, targetPath);
+            const { tabs } = useEditorStore.getState();
+            for (const tab of tabs) {
+              if (tab.filePath === from) {
+                renameTab(from, to, to.split("/").pop() ?? "");
+              } else if (tab.filePath?.startsWith(from + "/")) {
+                renameTab(
+                  tab.filePath,
+                  to + tab.filePath.slice(from.length),
+                  tab.title,
+                );
+              }
+            }
+            // D10 — after the tree and the tabs follow the move, in the tree update's synchronous span (no
+            // await between `moveFileEntry` and here), so a trusted plugin's `file:rename` handler finds the
+            // tabs already on `to`.
+            notifyRenamed(from, to, isDir);
+          } catch (err) {
+            logger.error("[FileTree] Move failed:", from, err);
+            failed.push(from.split("/").pop() ?? from);
+          } finally {
+            release?.();
+          }
         }
+      } finally {
+        releaseBumps();
       }
-      // §29 #824 each `renameFile` call announced its own index change.
       if (failed.length > 0) {
         await showAlert(`Failed to move: ${failed.join(", ")}`);
       }

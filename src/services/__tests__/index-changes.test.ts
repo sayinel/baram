@@ -14,7 +14,11 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
-import { installIndexChanges, onIndexChanged } from "../index-changes";
+import {
+  holdIndexBumps,
+  installIndexChanges,
+  onIndexChanged,
+} from "../index-changes";
 import { subscribeVaultChanges } from "../vault-changes";
 
 function changed(
@@ -141,5 +145,49 @@ describe("index:changed", () => {
     off();
     expect(heard).toEqual([]);
     expect(version()).toBe(1);
+  });
+});
+
+describe("holdIndexBumps", () => {
+  const one = (path: string) =>
+    changed([{ canonical: path, spellings: [path] }]);
+
+  // 이것을 실패시키는 것: hold 중에도 `invalidate` 를 부른다(묶음 하나에 N 번 오른다), 또는 release 가
+  // 붙잡아 둔 bump 를 버린다(0 번 오른다).
+  it("bumps once when released, however many events it held", () => {
+    const release = holdIndexBumps();
+    one("/v/a.md");
+    one("/v/b.md");
+    one("/v/c.md");
+    expect(version()).toBe(0);
+    release();
+    expect(version()).toBe(1);
+    expect(useLinkStore.getState().savedPath).toBeNull();
+  });
+
+  it("names the file when it held exactly one bump", () => {
+    const release = holdIndexBumps();
+    one("/v/a.md");
+    release();
+    expect(version()).toBe(1);
+    expect(useLinkStore.getState().savedPath).toBe("/v/a.md");
+  });
+
+  it("does not bump on release when it held nothing", () => {
+    holdIndexBumps()();
+    expect(version()).toBe(0);
+  });
+
+  it("waits for the last of nested holds, and a second release is a no-op", () => {
+    const outer = holdIndexBumps();
+    const inner = holdIndexBumps();
+    one("/v/a.md");
+    inner();
+    inner();
+    expect(version()).toBe(0);
+    outer();
+    expect(version()).toBe(1);
+    one("/v/b.md");
+    expect(version()).toBe(2);
   });
 });
