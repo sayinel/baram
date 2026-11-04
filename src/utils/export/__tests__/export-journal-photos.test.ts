@@ -113,7 +113,19 @@ describe("embedJournalPhotos", () => {
     stubFetch();
     photoThumbnail.mockImplementation(() => new Promise<string>(() => {}));
     const root = cells(10);
-    const result = await embedJournalPhotos(root, { deadlineMs: 30 });
+    // Fake timers, so the deadline passes when the test moves the clock and not
+    // when a loaded machine gets round to it: with real time, both workers can
+    // find the 30 ms already gone before their first request, and the count
+    // below drops under 2.
+    vi.useFakeTimers();
+    let result;
+    try {
+      const pending = embedJournalPhotos(root, { deadlineMs: 30 });
+      await vi.advanceTimersByTimeAsync(31);
+      result = await pending;
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(photoThumbnail).toHaveBeenCalledTimes(2);
     expect(result).toEqual({ embedded: 0, fallback: 10 });
