@@ -663,7 +663,8 @@ fn a_folder_argument_is_checked_before_anything_is_walked() {
                 assert_eq!(
                     json(&ran.stderr)["error"]["message"],
                     ".obsidian is a folder the vault walk skips \
-                     (hidden, or one of: node_modules, .git, .obsidian, .baram)",
+                     (hidden, one of: node_modules, target, build, dist, __pycache__, .next, \
+                     .git, or left out by .baramignore)",
                     "{command:?}"
                 );
             }
