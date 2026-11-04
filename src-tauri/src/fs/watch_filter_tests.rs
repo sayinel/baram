@@ -151,6 +151,34 @@ fn a_watcher_started_with_a_negation_lets_the_folder_through() {
 }
 
 #[test]
+fn a_folder_only_baramignore_leaves_out_still_reaches_the_file_tree() {
+    // The tree lists what the default list does not skip, whatever `.baramignore` says
+    // (`list_dir`), so `drafts/` stays on screen: dropping its events would leave a file
+    // another program creates there off the tree and a deleted one as a ghost entry.
+    // 이것을 실패시키는 것: `drops` 가 `listing`(기본 목록) 없이 `exclusion` 하나로 판정한다.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(BARAMIGNORE), "drafts/\n").unwrap();
+    let mut f = filter(dir.path());
+    let probe = CountingProbe::default();
+    let draft = dir.path().join("drafts/a.md");
+    assert_eq!(route_all(&mut f, &written(&draft), &probe).len(), 2);
+    let removed = Event::new(EventKind::Remove(RemoveKind::File)).add_path(draft);
+    assert_eq!(
+        route_all(&mut f, &[removed], &probe),
+        vec![Emit::Deleted {
+            path: dir
+                .path()
+                .join("drafts/a.md")
+                .to_string_lossy()
+                .into_owned()
+        }]
+    );
+    // The pair: a folder both rules leave out is still dropped.
+    let built = dir.path().join("build/out.md");
+    assert!(route_all(&mut f, &written(&built), &probe).is_empty());
+}
+
+#[test]
 fn an_unusable_baramignore_leaves_the_default_list_in_force() {
     // The walkers refuse such a vault; the watcher must keep the flood out anyway.
     // 이것을 실패시키는 것: `load_or_defaults` 가 실패에 `VaultExclusion::default()`(아무것도 빼지 않음)를 쓴다.

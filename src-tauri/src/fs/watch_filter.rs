@@ -8,7 +8,7 @@
 // relative to the watched root — so a vault whose root folder is itself named `build`
 // keeps its events, and `!build/` in `.baramignore` lets a build folder's back in.
 //
-// Two departures from the walk, both deliberate:
+// Three departures from the walk, all deliberate:
 //
 // 1. A file the user has OPEN passes whatever folder it is in. `file:changed` is how
 //    the editor learns that an open file changed on disk — the reload, the conflict
@@ -18,6 +18,13 @@
 // 2. Hidden NAMES are dropped only as folders. The walk skips a hidden file too, but
 //    the frontend keeps hidden files (`.notes.md`) and this keeps feeding it the same
 //    events it had: an event's last component is judged only by the matcher.
+// 3. An event is dropped only when the file tree leaves it out too. The tree lists
+//    what the default list does not skip (`list_dir`), whatever `.baramignore` says,
+//    so a folder only `.baramignore` leaves out (`drafts/`) is still on screen: its
+//    events pass, or a file another program creates there never appears and a deleted
+//    one stays as a ghost entry. The index is not fed what it leaves out by this: the
+//    applier judges each path by its own index's exclusion (`Mutation::apply_to`).
+//    The flood this filter exists for is the default list's.
 //
 // One matcher per watcher, loaded when the watch starts and again whenever an event
 // names `<root>/.baramignore`. A `.baramignore` that cannot be used (the walkers
@@ -197,6 +204,9 @@ pub(crate) struct WatchFilter {
     host: Option<PathBuf>,
     recursive: bool,
     exclusion: VaultExclusion,
+    /// The file tree's rule: the default list alone (`list_dir`). An event is dropped
+    /// only when this leaves it out as well as `exclusion` (departure 3 above).
+    listing: VaultExclusion,
     open: OpenFiles,
     focus: Focus,
     spellings: Spellings,
@@ -228,6 +238,7 @@ impl WatchFilter {
             } else {
                 VaultExclusion::defaults_only(root)
             },
+            listing: VaultExclusion::defaults_only(root),
             open,
             focus,
         }
@@ -254,14 +265,18 @@ impl WatchFilter {
         }
     }
 
-    /// Whether the event of `path`, not an open file, is dropped. No filesystem read
-    /// on the way: the walk's rule for the folders above it, the matcher alone for the
-    /// entry itself.
+    /// Whether the event of `path`, not an open file, is dropped: when the vault walk and
+    /// the file tree both leave it out (departure 3). No filesystem read on the way: the
+    /// walk's rule for the folders above it, the matcher alone for the entry itself.
     fn drops(&self, path: &Path) -> bool {
+        Self::leaves_out(&self.exclusion, path) && Self::leaves_out(&self.listing, path)
+    }
+
+    fn leaves_out(rule: &VaultExclusion, path: &Path) -> bool {
         let folders_skipped = path
             .parent()
-            .is_some_and(|parent| self.exclusion.walk_skips(parent, true));
-        folders_skipped || self.exclusion.excludes_entry(path, false)
+            .is_some_and(|parent| rule.walk_skips(parent, true));
+        folders_skipped || rule.excludes_entry(path, false)
     }
 
     /// Reload the matcher when the event names this root's `.baramignore` — a vault's
