@@ -1,4 +1,4 @@
-// §4.5/§35 Shared list-navigation for palette-style overlays (CommandPalette, QuickSwitcher)
+// §4.5/§35 Shared list-navigation for palette-style overlays (CommandPalette, QuickSwitcher, PluginPrompt)
 import type { Dispatch, KeyboardEvent, SetStateAction } from "react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -53,6 +53,14 @@ export function usePaletteListNav({
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // §385 `PluginPrompt`'s `onEscape` settles the prompt, which hands focus back to where
+        // it came from — the editor, when opened from it — inside this keydown. Left uncancelled,
+        // the keydown is followed by a `keypress` (charCode 27) that the macOS WebView sends to
+        // the newly focused element, and `prosemirror-view`'s keypress handler inserts it as text
+        // when the selection is not a text selection inside one parent (measured 2026-11-04: a
+        // right-click at a line end leaves such a selection). A cancelled keydown fires no
+        // keypress — the prompt's input box, which cancels its Escape, left none in that run.
+        e.preventDefault();
         onEscape();
         return;
       }
