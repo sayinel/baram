@@ -296,9 +296,9 @@ pub async fn find_unlinked_mentions(
         .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
 
     // The note itself is not searched — by identity, not spelling: the panel
-    // skips the search when this note is saved (issue 791), so a walk path
-    // that names the same file in another spelling must not be read as
-    // another note. Canonical paths settle a `..` segment (tested) and a
+    // does not search again when only this note changed on disk (issue 791,
+    // `Backlinks.tsx`), so a walk path that names the same file in another
+    // spelling must not be read as another note. Canonical paths settle a `..` segment (tested) and a
     // symlink; NFC against NFD or case on a folding volume are settled only as
     // far as `canonicalize` returns one spelling for both, which is not tested
     // here. Only walk paths whose file name folds (`fold_name`) to the
@@ -761,9 +761,9 @@ mod tests {
 
     #[tokio::test]
     async fn the_viewed_note_is_not_searched_in_another_spelling() {
-        // Issue 791: Backlinks skips this search when the viewed note itself
-        // is saved, which is right only if the note's own body is never part
-        // of it. Spelled with a `..` segment the path differs from the walk's
+        // Issue 791: Backlinks does not search again when only the viewed
+        // note changed, which is right only if the note's own body is never
+        // part of it. Spelled with a `..` segment the path differs from the walk's
         // as a string but names the same file.
         // 이것을 실패시키는 것: 자기 자신을 `md_path == file_path` 문자열 비교로만 건너뛴다.
         let dir = tempfile::tempdir().unwrap();

@@ -308,7 +308,7 @@ export function useFileOperations({
         // Only index markdown files (link indexing not relevant for code files)
         if (!isCode) {
           updateFileIndex(saveTab.filePath)
-            .then(() => useLinkStore.getState().invalidate(saveTab.filePath))
+            .then(() => useLinkStore.getState().invalidate())
             .catch(() => {});
         }
       } catch (err) {
@@ -330,7 +330,7 @@ export function useFileOperations({
         useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
         if (!isCode) {
           updateFileIndex(savePath)
-            .then(() => useLinkStore.getState().invalidate(savePath))
+            .then(() => useLinkStore.getState().invalidate())
             .catch(() => {});
         }
         // Update tab with real path
@@ -387,7 +387,7 @@ export function useFileOperations({
       useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
       if (!isCode) {
         updateFileIndex(savePath)
-          .then(() => useLinkStore.getState().invalidate(savePath))
+          .then(() => useLinkStore.getState().invalidate())
           .catch(() => {});
       }
       const fileName = savePath.split("/").pop() ?? "Unknown";

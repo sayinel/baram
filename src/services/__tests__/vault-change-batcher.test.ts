@@ -113,6 +113,25 @@ describe("createVaultChangeBatcher", () => {
     expect(calls[1].paths).toEqual([{ changedOnly: false, path: "/v/b.md" }]);
   });
 
+  it("hands each batch's paths to onBatch as it goes out, even when the sync fails", async () => {
+    // §34 issue 791 — the note-change signal reads the disk, not the index, so a failed sync must
+    // not lose it. Fails if `onBatch` moves after the awaited `sync` (it would not run on a reject).
+    const onBatch = vi.fn();
+    const sync = vi.fn().mockRejectedValueOnce(new Error("boom"));
+    const batcher = createVaultChangeBatcher({
+      onBatch,
+      onSynced: vi.fn(),
+      sync,
+    });
+    batcher.touch("/v/a.md", "changed");
+    batcher.touch("/v/b.md", "created");
+    batcher.touch("/v/a.md", "changed");
+    await vi.advanceTimersByTimeAsync(VAULT_SYNC_QUIET_MS);
+    await settle();
+    expect(onBatch).toHaveBeenCalledTimes(1);
+    expect(onBatch).toHaveBeenCalledWith(["/v/a.md", "/v/b.md"]);
+  });
+
   it("drops a failed batch and keeps working", async () => {
     // Fails if a rejection escapes `send` or the failed batch is re-queued (the second call would carry stale paths).
     const onSynced = vi.fn();

@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { FileEntry } from "./types";
 
+import { announceNoteChanges } from "../services/note-changes";
+
 /** §4.3 Sentinel emitted by the Rust `create_file` command when the path is taken. */
 const ALREADY_EXISTS_PREFIX = "ALREADY_EXISTS:";
 
@@ -79,6 +81,8 @@ export async function createFile(path: string, content: string): Promise<void> {
     }
     throw e;
   }
+  // §34 issue 791 — a note's text changed, heard now rather than from the watcher (`note-changes.ts`).
+  announceNoteChanges([path]);
 }
 
 export async function deleteDir(path: string): Promise<void> {
@@ -234,5 +238,7 @@ export async function writeBinaryFile(
 }
 
 export async function writeFile(path: string, content: string): Promise<void> {
-  return invoke<void>("write_file", { path, content });
+  await invoke<void>("write_file", { path, content });
+  // §34 issue 791 — a note's text changed, heard now rather than from the watcher (`note-changes.ts`).
+  announceNoteChanges([path]);
 }

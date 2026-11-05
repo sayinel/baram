@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { IndexSyncAnswer } from "../../ipc/types";
 
+import { onNoteChanges } from "../../services/note-changes";
 import { VAULT_SYNC_QUIET_MS } from "../../services/vault-change-batcher";
 import { subscribeVaultChanges } from "../../services/vault-changes";
 import { useLinkStore } from "../../stores/editor/link";
@@ -49,6 +50,20 @@ describe("useVaultChangeSync", () => {
     });
   });
   afterEach(() => vi.useRealTimers());
+
+  it("announces the batch's notes as changed, whatever the sync answers", async () => {
+    // §34 issue 791 — every note change on disk reaches the unlinked-mention search, links or not.
+    // Fails if the hook does not pass `announceNoteChanges` as the batcher's `onBatch`.
+    syncIndexPaths.mockResolvedValue({ contexts: [], linksChanged: false });
+    const heard: string[][] = [];
+    const stop = onNoteChanges((paths) => heard.push([...paths]));
+    try {
+      await syncOnePath();
+    } finally {
+      stop();
+    }
+    expect(heard).toEqual([["/v/a.md"]]);
+  });
 
   it("syncs the touched paths, then invalidates the panel and publishes each context", async () => {
     // Fails if `announce` does not invalidate when `linksChanged` (the second `indexVersion` check).

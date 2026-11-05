@@ -189,7 +189,7 @@ async function saveFromBuffer(
     // what `handleSave` already avoids on the manual path.
     if (reindexLinks) {
       updateFileIndex(filePath)
-        .then(() => useLinkStore.getState().invalidate(filePath))
+        .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
     }
   } catch {

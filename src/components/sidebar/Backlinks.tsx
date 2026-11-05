@@ -16,6 +16,7 @@ import {
   updateFileIndex,
   writeFile,
 } from "../../ipc/invoke";
+import { onNoteChanges } from "../../services/note-changes";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
@@ -39,7 +40,6 @@ export function Backlinks() {
     loading,
     error,
     indexVersion,
-    savedPath,
     setBacklinks,
     setUnlinkedMentions,
     setLoading,
@@ -51,7 +51,6 @@ export function Backlinks() {
       loading: s.loading,
       error: s.error,
       indexVersion: s.indexVersion,
-      savedPath: s.savedPath,
       setBacklinks: s.setBacklinks,
       setUnlinkedMentions: s.setUnlinkedMentions,
       setLoading: s.setLoading,
@@ -99,6 +98,8 @@ export function Backlinks() {
   fetchUnlinkedMentionsRef.current = fetchUnlinkedMentions;
   const filePathRef = useRef(filePath);
   filePathRef.current = filePath;
+  const rootPathRef = useRef(rootPath);
+  rootPathRef.current = rootPath;
 
   // Build index on vault open, then fetch backlinks
   useEffect(() => {
@@ -124,44 +125,37 @@ export function Backlinks() {
     // filePath/fetch callbacks are read via refs to avoid running on every file change.
   }, [rootPath]);
 
-  // The file the unlinked mentions on screen were searched for, and the
-  // indexVersion the effect below last ran at. A vault switch searches again
-  // in the rootPath effect above.
-  const mentionsForRef = useRef<null | string>(null);
-  const seenVersionRef = useRef(indexVersion);
-
-  // Fetch backlinks + unlinked mentions when active file changes or index is updated
+  // Fetch backlinks when the active file changes or the link index is updated
   useEffect(() => {
-    if (filePath) {
-      fetchBacklinks(filePath);
-      if (rootPath) {
-        // §34 The search reads the OTHER notes' bodies for this note's file
-        // name; saving this note changes neither, so its own save does not
-        // search again (issue 791). Any other bump — another note saved, a
-        // rename, an index rebuild — does, and so do two bumps that reached
-        // one render, since `savedPath` names only the later of them.
-        // `savedPath` is the one this render selected with `indexVersion`, not
-        // `getState()`: a later bump can land between this render and its
-        // effect and would pass its file off as this bump's.
-        const selfSave =
-          mentionsForRef.current === filePath &&
-          indexVersion === seenVersionRef.current + 1 &&
-          savedPath === filePath;
-        if (!selfSave) {
-          mentionsForRef.current = filePath;
-          fetchUnlinkedMentions(filePath, rootPath);
+    if (filePath) fetchBacklinks(filePath);
+  }, [filePath, indexVersion, fetchBacklinks]);
+
+  // §34 Unlinked mentions follow their own inputs, not `indexVersion` (issue 791). The search
+  // (`find_unlinked_mentions`) walks the vault and reads the OTHER notes' bodies from disk for this
+  // note's name; it never reads the link index. So it runs again when the name or the vault
+  // changes (here) and when another note changed on disk (below) — not when the link index
+  // changes, and not when only this note changed: its own saves change neither input.
+  useEffect(() => {
+    if (filePath && rootPath) fetchUnlinkedMentions(filePath, rootPath);
+  }, [filePath, rootPath, fetchUnlinkedMentions]);
+
+  // §34 Another note changed on disk (`note-changes.ts`: the webview's writes at once, every change
+  // from the watcher). A change that names only this note is its own save or that save's watcher
+  // echo. Compared as written: a path spelled differently from the tab's (another case, NFD, a
+  // symlinked folder) reads as another note and searches once more — an extra search, never a
+  // missed one.
+  useEffect(
+    () =>
+      onNoteChanges((paths) => {
+        const path = filePathRef.current;
+        const root = rootPathRef.current;
+        if (!path || !root) return;
+        if (paths.some((p) => p !== path)) {
+          fetchUnlinkedMentionsRef.current(path, root);
         }
-      }
-    }
-    seenVersionRef.current = indexVersion;
-  }, [
-    filePath,
-    rootPath,
-    indexVersion,
-    savedPath,
-    fetchBacklinks,
-    fetchUnlinkedMentions,
-  ]);
+      }),
+    [],
+  );
 
   // Handle clicking a backlink entry → open that file and scroll to line
   const handleClick = useCallback(

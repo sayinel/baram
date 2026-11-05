@@ -11,6 +11,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexSyncAnswer } from "../ipc/types";
 
 import { syncIndexPaths } from "../ipc/invoke";
+import { announceNoteChanges } from "../services/note-changes";
 import {
   createVaultChangeBatcher,
   type VaultEventKind,
@@ -22,6 +23,8 @@ import { logger } from "../utils/logger";
 export function useVaultChangeSync(): void {
   useEffect(() => {
     const batcher = createVaultChangeBatcher({
+      // §34 issue 791 — every note change on disk, whoever wrote it (`note-changes.ts`).
+      onBatch: announceNoteChanges,
       onSynced: announce,
       sync: syncIndexPaths,
     });
