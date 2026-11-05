@@ -18,7 +18,6 @@
 // the only thing standing between a failed replace and a user with no way
 // forward.
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 import { type Locale, t } from "../i18n";
@@ -26,6 +25,7 @@ import { useSettingsStore } from "../stores/settings/store";
 import { useAppUpdateStore } from "../stores/system/app-update";
 import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
+import { relaunchApp, saveBeforeExit } from "./app-exit";
 
 export const RELEASES_URL = "https://github.com/sayinel/baram/releases/latest";
 
@@ -87,7 +87,7 @@ export async function installAppUpdate(): Promise<void> {
   store.setDownloading();
   downloadedBytes = 0;
   try {
-    await update.downloadAndInstall((event) => {
+    await update.download((event) => {
       switch (event.event) {
         case "Finished":
           store.setInstalling();
@@ -107,7 +107,13 @@ export async function installAppUpdate(): Promise<void> {
           break;
       }
     });
-    await relaunch();
+    // §44 Save before installing, not only before the relaunch (#800): on Windows the
+    // plugin's install starts the installer and ends the process right there
+    // (`std::process::exit(0)` in tauri-plugin-updater's Windows `install_inner`), so
+    // `relaunchApp` below is never reached. On macOS and Linux the install returns and the
+    // relaunch saves again, which writes only what changed in between.
+    await saveBeforeExit();
+    await update.install();
   } catch (err) {
     // e.g. Linux deb/rpm: in-app install is unsupported by the plugin.
     logger.warn("[AppUpdate] install failed:", err);
@@ -115,6 +121,16 @@ export async function installAppUpdate(): Promise<void> {
       /* best-effort fallback — nothing more we can do here */
     });
     store.setError(err instanceof Error ? err.message : String(err), true);
+    return;
+  }
+  // §44 The update is installed. Save the chat history and relaunch (#800). A failure from
+  // here on is not an install failure — the releases page would only offer the same
+  // version again — so it keeps the installed state and asks for a manual restart.
+  try {
+    await relaunchApp();
+  } catch (err) {
+    logger.warn("[AppUpdate] relaunch after install failed:", err);
+    store.setInstalled();
   }
 }
 

@@ -9,7 +9,7 @@ import { useShallow } from "zustand/shallow";
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useAIStore } from "../../stores/ai/ai";
-import { useChatStore } from "../../stores/ai/chat";
+import { flushChatPersist, useChatStore } from "../../stores/ai/chat";
 import { useUIStore } from "../../stores/ui/ui";
 import {
   buildContextPrompt,
@@ -111,11 +111,14 @@ export function AIChatPanel() {
     updateLastMessage(streamSessionRef.current, text);
   }, [text, isStreaming, updateLastMessage]);
 
-  // When streaming completes
+  // When streaming completes — done, error or cancel all turn `isStreaming` off.
+  // §44 Save the finished reply now: during the stream the chat history is saved at most
+  // once per CHAT_SAVE_INTERVAL_MS, so the last tokens may not be on disk yet (#800).
   useEffect(() => {
-    if (!isStreaming && streamSessionRef.current && text) {
-      updateLastMessage(streamSessionRef.current, text);
+    if (!isStreaming && streamSessionRef.current) {
+      if (text) updateLastMessage(streamSessionRef.current, text);
       streamSessionRef.current = null;
+      void flushChatPersist();
     }
   }, [isStreaming, text, updateLastMessage]);
 

@@ -7,10 +7,14 @@ const openUrlMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: checkMock }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: relaunchMock }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));
+const flushChatPersistMock = vi.hoisted(() =>
+  vi.fn().mockResolvedValue(undefined),
+);
 
 import { useSettingsStore } from "../../stores/settings/store";
 import { useAppUpdateStore } from "../../stores/system/app-update";
 import { useUIStore } from "../../stores/ui/ui";
+import { registerExitSave } from "../app-exit";
 import {
   checkForAppUpdate,
   installAppUpdate,
@@ -18,6 +22,17 @@ import {
   startAppUpdateChecker,
   stopAppUpdateChecker,
 } from "../app-update";
+
+// §44 Every exit waits for the saves registered with `registerExitSave`; this test's save
+// stands in for the chat history's, which `stores/ai/chat` registers when it loads.
+let unregisterSave = () => {};
+beforeEach(() => {
+  unregisterSave = registerExitSave({
+    save: () => flushChatPersistMock(),
+    state: () => null,
+  });
+});
+afterEach(() => unregisterSave());
 
 function setPlatform(platform: string) {
   Object.defineProperty(navigator, "platform", {
@@ -56,7 +71,8 @@ describe("checkForAppUpdate", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: "notes",
-      downloadAndInstall: vi.fn(),
+      download: vi.fn(),
+      install: vi.fn(),
     });
 
     await checkForAppUpdate(true);
@@ -72,7 +88,8 @@ describe("checkForAppUpdate", () => {
     checkMock.mockResolvedValue({
       version: "0.5.0",
       body: null,
-      downloadAndInstall: vi.fn(),
+      download: vi.fn(),
+      install: vi.fn(),
     });
 
     await checkForAppUpdate(false);
@@ -130,7 +147,7 @@ describe("installAppUpdate — platform branching", () => {
   // for the exception is gone — see dev/guides/auto-update-206.md for the hop
   // verification this shipped with.
   it("macOS downloads, installs, and relaunches in place", async () => {
-    const downloadAndInstall = vi.fn().mockImplementation(async (onEvent) => {
+    const download = vi.fn().mockImplementation(async (onEvent) => {
       onEvent({ event: "Started", data: { contentLength: 100 } });
       onEvent({ event: "Progress", data: { chunkLength: 100 } });
       onEvent({ event: "Finished" });
@@ -138,14 +155,15 @@ describe("installAppUpdate — platform branching", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download,
+      install: vi.fn().mockResolvedValue(undefined),
     });
     await checkForAppUpdate(true);
 
     setPlatform("MacIntel");
     await installAppUpdate();
 
-    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(download).toHaveBeenCalledOnce();
     expect(relaunchMock).toHaveBeenCalledOnce();
     expect(openUrlMock).not.toHaveBeenCalled();
     expect(useAppUpdateStore.getState().progress).toEqual({
@@ -154,18 +172,87 @@ describe("installAppUpdate — platform branching", () => {
     });
   });
 
+  // §44 The relaunch takes the webview with it, so the chat history is saved first (#800).
+  // 이것을 실패시키는 것: app-update.ts 가 `relaunchApp()` 대신 plugin 의 `relaunch()` 를 바로 부르면 저장
+  // 없이 다시 시작한다.
+  it("saves the chat history before relaunching", async () => {
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
+    });
+    await checkForAppUpdate(true);
+    flushChatPersistMock.mockClear();
+
+    await installAppUpdate();
+
+    expect(relaunchMock).toHaveBeenCalledOnce();
+    const saves = flushChatPersistMock.mock.invocationCallOrder;
+    expect(saves.at(-1)).toBeLessThan(relaunchMock.mock.invocationCallOrder[0]);
+  });
+
+  // §44 #800 review: on Windows the plugin's install starts the installer and ends the
+  // process (`std::process::exit(0)`), so nothing after it runs — the save must come first.
+  // Stood in for here by an install that never returns.
+  // 이것을 실패시키는 것: app-update.ts 가 설치 앞의 `saveBeforeExit()` 를 빼고 `relaunchApp()` 에만 맡긴다
+  // (돌아오지 않는 설치에서는 저장이 0번이 된다).
+  it("saves the chat history before an install that never returns", async () => {
+    const install = vi.fn(() => new Promise<void>(() => {}));
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      download: vi.fn().mockResolvedValue(undefined),
+      install,
+    });
+    await checkForAppUpdate(true);
+    flushChatPersistMock.mockClear();
+
+    setPlatform("Win32");
+    void installAppUpdate();
+    await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+
+    expect(flushChatPersistMock).toHaveBeenCalledOnce();
+    expect(flushChatPersistMock.mock.invocationCallOrder[0]).toBeLessThan(
+      install.mock.invocationCallOrder[0],
+    );
+    expect(relaunchMock).not.toHaveBeenCalled();
+  });
+
+  // §44 A failure after the install is not an install failure: the releases page would only
+  // offer the version that is already installed (#800).
+  // 이것을 실패시키는 것: app-update.ts 에서 relaunchApp() 을 설치와 같은 try 로 되돌리면 재시작 실패가 설치
+  // 실패로 보고되고 releases 페이지가 열린다.
+  it("a failed relaunch after a good install asks for a manual restart", async () => {
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
+    });
+    await checkForAppUpdate(true);
+    relaunchMock.mockRejectedValueOnce(new Error("relaunch refused"));
+
+    await installAppUpdate();
+
+    expect(openUrlMock).not.toHaveBeenCalled();
+    expect(useAppUpdateStore.getState().status).toBe("installed");
+    expect(useAppUpdateStore.getState().fallbackOpened).toBe(false);
+  });
+
   // The fallback is platform-independent: if the in-place install throws on
   // macOS the way it does for a Linux deb, the user must still reach the
   // download. Pinned separately because the mac path no longer has a branch of
   // its own that could carry it.
   it("macOS install failure falls back to the releases page", async () => {
-    const downloadAndInstall = vi
+    const install = vi
       .fn()
       .mockRejectedValue(new Error("bundle replace failed"));
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download: vi.fn().mockResolvedValue(undefined),
+      install,
     });
     await checkForAppUpdate(true);
 
@@ -182,7 +269,7 @@ describe("installAppUpdate — platform branching", () => {
   });
 
   it("Windows downloads, installs, and relaunches", async () => {
-    const downloadAndInstall = vi.fn().mockImplementation(async (onEvent) => {
+    const download = vi.fn().mockImplementation(async (onEvent) => {
       onEvent({ event: "Started", data: { contentLength: 100 } });
       onEvent({ event: "Progress", data: { chunkLength: 100 } });
       onEvent({ event: "Finished" });
@@ -190,14 +277,15 @@ describe("installAppUpdate — platform branching", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download,
+      install: vi.fn().mockResolvedValue(undefined),
     });
     await checkForAppUpdate(true);
 
     setPlatform("Win32");
     await installAppUpdate();
 
-    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(download).toHaveBeenCalledOnce();
     expect(relaunchMock).toHaveBeenCalledOnce();
     expect(openUrlMock).not.toHaveBeenCalled();
     expect(useAppUpdateStore.getState().progress).toEqual({
@@ -207,13 +295,14 @@ describe("installAppUpdate — platform branching", () => {
   });
 
   it("Linux install failure (e.g. deb/rpm) falls back to the releases page", async () => {
-    const downloadAndInstall = vi
+    const install = vi
       .fn()
       .mockRejectedValue(new Error("unsupported package format"));
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download: vi.fn().mockResolvedValue(undefined),
+      install,
     });
     await checkForAppUpdate(true);
 
