@@ -71,7 +71,8 @@ describe("checkForAppUpdate", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: "notes",
-      downloadAndInstall: vi.fn(),
+      download: vi.fn(),
+      install: vi.fn(),
     });
 
     await checkForAppUpdate(true);
@@ -87,7 +88,8 @@ describe("checkForAppUpdate", () => {
     checkMock.mockResolvedValue({
       version: "0.5.0",
       body: null,
-      downloadAndInstall: vi.fn(),
+      download: vi.fn(),
+      install: vi.fn(),
     });
 
     await checkForAppUpdate(false);
@@ -145,7 +147,7 @@ describe("installAppUpdate — platform branching", () => {
   // for the exception is gone — see dev/guides/auto-update-206.md for the hop
   // verification this shipped with.
   it("macOS downloads, installs, and relaunches in place", async () => {
-    const downloadAndInstall = vi.fn().mockImplementation(async (onEvent) => {
+    const download = vi.fn().mockImplementation(async (onEvent) => {
       onEvent({ event: "Started", data: { contentLength: 100 } });
       onEvent({ event: "Progress", data: { chunkLength: 100 } });
       onEvent({ event: "Finished" });
@@ -153,14 +155,15 @@ describe("installAppUpdate — platform branching", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download,
+      install: vi.fn().mockResolvedValue(undefined),
     });
     await checkForAppUpdate(true);
 
     setPlatform("MacIntel");
     await installAppUpdate();
 
-    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(download).toHaveBeenCalledOnce();
     expect(relaunchMock).toHaveBeenCalledOnce();
     expect(openUrlMock).not.toHaveBeenCalled();
     expect(useAppUpdateStore.getState().progress).toEqual({
@@ -176,18 +179,44 @@ describe("installAppUpdate — platform branching", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
     });
     await checkForAppUpdate(true);
     flushChatPersistMock.mockClear();
 
     await installAppUpdate();
 
-    expect(flushChatPersistMock).toHaveBeenCalledOnce();
     expect(relaunchMock).toHaveBeenCalledOnce();
+    const saves = flushChatPersistMock.mock.invocationCallOrder;
+    expect(saves.at(-1)).toBeLessThan(relaunchMock.mock.invocationCallOrder[0]);
+  });
+
+  // §44 #800 review: on Windows the plugin's install starts the installer and ends the
+  // process (`std::process::exit(0)`), so nothing after it runs — the save must come first.
+  // Stood in for here by an install that never returns.
+  // 이것을 실패시키는 것: app-update.ts 가 설치 앞의 `saveBeforeExit()` 를 빼고 `relaunchApp()` 에만 맡긴다
+  // (돌아오지 않는 설치에서는 저장이 0번이 된다).
+  it("saves the chat history before an install that never returns", async () => {
+    const install = vi.fn(() => new Promise<void>(() => {}));
+    checkMock.mockResolvedValue({
+      version: "0.4.0",
+      body: null,
+      download: vi.fn().mockResolvedValue(undefined),
+      install,
+    });
+    await checkForAppUpdate(true);
+    flushChatPersistMock.mockClear();
+
+    setPlatform("Win32");
+    void installAppUpdate();
+    await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+
+    expect(flushChatPersistMock).toHaveBeenCalledOnce();
     expect(flushChatPersistMock.mock.invocationCallOrder[0]).toBeLessThan(
-      relaunchMock.mock.invocationCallOrder[0],
+      install.mock.invocationCallOrder[0],
     );
+    expect(relaunchMock).not.toHaveBeenCalled();
   });
 
   // §44 A failure after the install is not an install failure: the releases page would only
@@ -198,7 +227,8 @@ describe("installAppUpdate — platform branching", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
     });
     await checkForAppUpdate(true);
     relaunchMock.mockRejectedValueOnce(new Error("relaunch refused"));
@@ -215,13 +245,14 @@ describe("installAppUpdate — platform branching", () => {
   // download. Pinned separately because the mac path no longer has a branch of
   // its own that could carry it.
   it("macOS install failure falls back to the releases page", async () => {
-    const downloadAndInstall = vi
+    const install = vi
       .fn()
       .mockRejectedValue(new Error("bundle replace failed"));
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download: vi.fn().mockResolvedValue(undefined),
+      install,
     });
     await checkForAppUpdate(true);
 
@@ -238,7 +269,7 @@ describe("installAppUpdate — platform branching", () => {
   });
 
   it("Windows downloads, installs, and relaunches", async () => {
-    const downloadAndInstall = vi.fn().mockImplementation(async (onEvent) => {
+    const download = vi.fn().mockImplementation(async (onEvent) => {
       onEvent({ event: "Started", data: { contentLength: 100 } });
       onEvent({ event: "Progress", data: { chunkLength: 100 } });
       onEvent({ event: "Finished" });
@@ -246,14 +277,15 @@ describe("installAppUpdate — platform branching", () => {
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download,
+      install: vi.fn().mockResolvedValue(undefined),
     });
     await checkForAppUpdate(true);
 
     setPlatform("Win32");
     await installAppUpdate();
 
-    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    expect(download).toHaveBeenCalledOnce();
     expect(relaunchMock).toHaveBeenCalledOnce();
     expect(openUrlMock).not.toHaveBeenCalled();
     expect(useAppUpdateStore.getState().progress).toEqual({
@@ -263,13 +295,14 @@ describe("installAppUpdate — platform branching", () => {
   });
 
   it("Linux install failure (e.g. deb/rpm) falls back to the releases page", async () => {
-    const downloadAndInstall = vi
+    const install = vi
       .fn()
       .mockRejectedValue(new Error("unsupported package format"));
     checkMock.mockResolvedValue({
       version: "0.4.0",
       body: null,
-      downloadAndInstall,
+      download: vi.fn().mockResolvedValue(undefined),
+      install,
     });
     await checkForAppUpdate(true);
 

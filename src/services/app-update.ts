@@ -25,7 +25,7 @@ import { useSettingsStore } from "../stores/settings/store";
 import { useAppUpdateStore } from "../stores/system/app-update";
 import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
-import { relaunchApp } from "./app-exit";
+import { relaunchApp, saveBeforeExit } from "./app-exit";
 
 export const RELEASES_URL = "https://github.com/sayinel/baram/releases/latest";
 
@@ -87,7 +87,7 @@ export async function installAppUpdate(): Promise<void> {
   store.setDownloading();
   downloadedBytes = 0;
   try {
-    await update.downloadAndInstall((event) => {
+    await update.download((event) => {
       switch (event.event) {
         case "Finished":
           store.setInstalling();
@@ -107,6 +107,13 @@ export async function installAppUpdate(): Promise<void> {
           break;
       }
     });
+    // §44 Save before installing, not only before the relaunch (#800): on Windows the
+    // plugin's install starts the installer and ends the process right there
+    // (`std::process::exit(0)` in tauri-plugin-updater's Windows `install_inner`), so
+    // `relaunchApp` below is never reached. On macOS and Linux the install returns and the
+    // relaunch saves again, which writes only what changed in between.
+    await saveBeforeExit();
+    await update.install();
   } catch (err) {
     // e.g. Linux deb/rpm: in-app install is unsupported by the plugin.
     logger.warn("[AppUpdate] install failed:", err);
