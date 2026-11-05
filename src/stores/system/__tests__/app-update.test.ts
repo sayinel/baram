@@ -76,6 +76,25 @@ describe("useAppUpdateStore", () => {
     expect(useAppUpdateStore.getState().status).toBe("installing");
   });
 
+  // §206 The install waits for an answer about unsaved work: the dialog must not stay busy
+  // beneath that question, or Cancel would leave it with no way forward.
+  it("setInstallDeferred leaves the update available and drops the progress", () => {
+    const store = useAppUpdateStore.getState();
+    store.setAvailable("0.4.0", null);
+    useAppUpdateStore.setState({ lastCheckedAt: 1 });
+    store.setDownloading();
+    store.setProgress({ downloaded: 100, total: 100 });
+
+    store.setInstallDeferred();
+
+    const s = useAppUpdateStore.getState();
+    expect(s.status).toBe("available");
+    expect(s.availableVersion).toBe("0.4.0");
+    expect(s.progress).toBeNull();
+    // Not a check: "last checked" must not move.
+    expect(s.lastCheckedAt).toBe(1);
+  });
+
   it("openDialog / closeDialog toggle dialogOpen", () => {
     useAppUpdateStore.getState().openDialog();
     expect(useAppUpdateStore.getState().dialogOpen).toBe(true);

@@ -124,6 +124,8 @@ export function isRightPanelMode(value: unknown): value is RightPanelMode {
  *  open tab, not just the active one, so it saves the same set as quit);
  *  `closeWorkspace` = §81 File > Close Workspace, which closes every tab and
  *  every context, so it too answers for all dirty tabs rather than the active one;
+ *  `installUpdate` = §206 installing a downloaded update, which ends the process, so it
+ *  too answers for all dirty tabs;
  *  `closeContext` = §82 closing one or more contexts (the tab bar's x, its context
  *  menu's Close and Close Others, Settings > Vault's remove), which answers only for
  *  the dirty tabs inside those contexts — saving the rest would write files the user
@@ -133,6 +135,7 @@ export type UnsavedModalRequest =
   | { contextIds: string[]; intent: "closeContext" }
   | { intent: "closeTab"; tabId: string }
   | { intent: "closeWorkspace" }
+  | { intent: "installUpdate" }
   | { intent: "quit" }
   | { intent: "reload" };
 

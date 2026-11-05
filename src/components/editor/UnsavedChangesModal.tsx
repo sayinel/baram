@@ -1,8 +1,9 @@
 // §close-guard: Shared 3-button confirmation for unsaved changes. Used for
 // closing a single tab (X button / Cmd+W on an Untitled tab), quitting the
 // app, reloading (§479, View > Reload / CmdOrCtrl+R), closing the whole workspace
-// (§81, File > Close Workspace) and closing one context (§82, the context tab's x
-// and Settings > Vault's remove). Identical look and buttons in every case:
+// (§81, File > Close Workspace), closing one context (§82, the context tab's x and
+// Settings > Vault's remove) and installing an update (§206). Identical look and buttons
+// in every case:
 // Cancel / Don't Save / Save.
 import { useState } from "react";
 
@@ -18,6 +19,7 @@ import {
 } from "../../hooks/use-close-guard";
 import { useTranslation } from "../../i18n/useTranslation";
 import { quitApp, reloadWindow } from "../../services/app-exit";
+import { installDownloadedUpdate } from "../../services/app-update";
 import { closeContexts } from "../../services/close-context";
 import { useContextStore } from "../../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
@@ -36,6 +38,7 @@ const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.closeContextMessage",
   closeTab: "unsavedChanges.closeMessage",
   closeWorkspace: "unsavedChanges.closeWorkspaceMessage",
+  installUpdate: "unsavedChanges.installUpdateMessage",
   quit: "unsavedChanges.quitMessage",
   reload: "unsavedChanges.reloadMessage",
 };
@@ -44,6 +47,7 @@ const PRIMARY_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.saveAndCloseContext",
   closeTab: "unsavedChanges.saveAndClose",
   closeWorkspace: "unsavedChanges.saveAndCloseWorkspace",
+  installUpdate: "unsavedChanges.saveAndInstallUpdate",
   quit: "unsavedChanges.saveAndQuit",
   reload: "unsavedChanges.saveAndReload",
 };
@@ -105,7 +109,7 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
   const primaryLabel = t(PRIMARY_KEY[unsavedModal.intent]);
 
   // The terminal action once the decision is resolved: quit, reload, close the
-  // workspace, close one context, or close the tab.
+  // workspace, install the update, close one context, or close the tab.
   const proceed = async () => {
     if (unsavedModal.intent === "quit") {
       await quitApp();
@@ -113,6 +117,8 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
       await reloadWindow();
     } else if (unsavedModal.intent === "closeWorkspace") {
       useFileStore.getState().closeFolder();
+    } else if (unsavedModal.intent === "installUpdate") {
+      await installDownloadedUpdate();
     } else if (unsavedModal.intent === "closeContext") {
       await closeContexts(unsavedModal.contextIds);
     } else {

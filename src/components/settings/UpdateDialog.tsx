@@ -55,7 +55,7 @@ export function UpdateDialog() {
   // per dialogOpen mount (see the effect below) and must not act on a stale
   // "not busy" snapshot from when it was first attached. Without this, Escape
   // during a Windows/Linux download would close the dialog while
-  // downloadAndInstall()/relaunch() keep running in the background.
+  // download()/install()/relaunch() keep running in the background.
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     const s = useAppUpdateStore.getState();
@@ -72,10 +72,17 @@ export function UpdateDialog() {
   if (!dialogOpen) return null;
 
   const busy = status === "downloading" || status === "installing";
+  // The download is done by the time it installs. `progress` cannot say so: it is empty after
+  // the unsaved-changes question, and when the download's length was unknown.
   const percent =
-    progress?.total && progress.total > 0
-      ? Math.min(100, Math.round((progress.downloaded / progress.total) * 100))
-      : null;
+    status === "installing"
+      ? 100
+      : progress?.total && progress.total > 0
+        ? Math.min(
+            100,
+            Math.round((progress.downloaded / progress.total) * 100),
+          )
+        : null;
 
   return (
     <div
