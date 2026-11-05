@@ -10,14 +10,11 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));
 const flushChatPersistMock = vi.hoisted(() =>
   vi.fn().mockResolvedValue(undefined),
 );
-vi.mock("../../stores/ai/chat", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../stores/ai/chat")>()),
-  flushChatPersist: flushChatPersistMock,
-}));
 
 import { useSettingsStore } from "../../stores/settings/store";
 import { useAppUpdateStore } from "../../stores/system/app-update";
 import { useUIStore } from "../../stores/ui/ui";
+import { registerExitSave } from "../app-exit";
 import {
   checkForAppUpdate,
   installAppUpdate,
@@ -25,6 +22,17 @@ import {
   startAppUpdateChecker,
   stopAppUpdateChecker,
 } from "../app-update";
+
+// §44 Every exit waits for the saves registered with `registerExitSave`; this test's save
+// stands in for the chat history's, which `stores/ai/chat` registers when it loads.
+let unregisterSave = () => {};
+beforeEach(() => {
+  unregisterSave = registerExitSave({
+    save: () => flushChatPersistMock(),
+    state: () => null,
+  });
+});
+afterEach(() => unregisterSave());
 
 function setPlatform(platform: string) {
   Object.defineProperty(navigator, "platform", {

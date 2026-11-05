@@ -1,7 +1,13 @@
 // §44 The ways out of the main window that take the webview with it: quit, reload, and
-// relaunch after an update. Each saves the chat history first — it is written at most once
-// per interval (`stores/ai/chat.ts`, #800), so the last moments of a conversation may not
-// be on disk yet.
+// relaunch after an update. Each first runs the saves registered here
+// (`registerExitSave`) — today the chat history's, which is written at most once per
+// interval (`stores/ai/chat.ts`, #800), so the last moments of a conversation may not be on
+// disk yet.
+//
+// The dependency points INTO this module: a store that holds unsaved state registers its
+// save when it loads. This module is on the startup path (`use-close-guard` imports it), so
+// importing the chat store here would load and hydrate the whole chat history in every
+// session, opened or not; a store that never loaded has nothing waiting to be saved.
 //
 // The exits are `confirmQuit()`, `window.location.reload()` and the updater's `relaunch()`,
 // found with
@@ -16,10 +22,37 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 
 import { confirmQuit } from "../ipc/invoke";
-import { flushChatPersist, useChatStore } from "../stores/ai/chat";
 import { logger } from "../utils/logger";
 
 export const EXIT_SAVE_TIMEOUT_MS = 3_000;
+
+/** A save an exit waits for, and the state it saves (compared by identity, see `abandoned`). */
+export interface ExitSave {
+  save: () => Promise<void>;
+  state: () => unknown;
+}
+
+const exitSaves = new Set<ExitSave>();
+
+/**
+ * Have every exit wait for `entry.save` first (bounded, see EXIT_SAVE_TIMEOUT_MS). Returns
+ * the call that removes it again. A store registers when its module loads.
+ */
+export function registerExitSave(entry: ExitSave): () => void {
+  exitSaves.add(entry);
+  return () => {
+    exitSaves.delete(entry);
+  };
+}
+
+/** What every registered save would write now, in registration order. */
+function exitState(): unknown[] {
+  return [...exitSaves].map((entry) => entry.state());
+}
+
+function sameState(a: unknown[], b: unknown[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
 
 /** The current exit's bounded wait, shared by exits that start while it runs. */
 let waiting: null | Promise<void> = null;
@@ -27,10 +60,10 @@ let waiting: null | Promise<void> = null;
 /**
  * An exit whose save timed out, remembered so that RETRYING THAT EXIT does not wait again
  * behind the same stuck save. It is only a retry while nothing has changed: the terminal
- * action failing (the app did not leave) or the chat history changing (there is new
- * state to save) makes the next exit a fresh one, with a fresh bounded save.
+ * action failing (the app did not leave) or a registered store's state changing (there is
+ * new state to save) makes the next exit a fresh one, with a fresh bounded save.
  */
-let abandoned: null | { chat: unknown; save: Promise<void> } = null;
+let abandoned: null | { save: Promise<void>; state: unknown[] } = null;
 
 export async function quitApp(): Promise<void> {
   await saveBeforeExit();
@@ -60,17 +93,21 @@ async function leave(action: () => Promise<void> | void): Promise<void> {
 /** Save what must survive the exit; resolves within EXIT_SAVE_TIMEOUT_MS whatever happens. */
 export function saveBeforeExit(): Promise<void> {
   if (waiting) return waiting;
-  if (abandoned && abandoned.chat === useChatStore.getState()) {
+  if (abandoned && sameState(abandoned.state, exitState())) {
     logger.warn(
       "[app-exit] retrying an exit whose save never finished; leaving without waiting",
     );
     return Promise.resolve();
   }
   abandoned = null;
-  const chat = useChatStore.getState();
-  const save = flushChatPersist().catch((e: unknown) => {
-    logger.error("[app-exit] saving the chat history failed:", e);
-  });
+  const state = exitState();
+  const save = Promise.all(
+    [...exitSaves].map((entry) =>
+      entry.save().catch((e: unknown) => {
+        logger.error("[app-exit] a save before exit failed:", e);
+      }),
+    ),
+  ).then(() => undefined);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<"timeout">((resolve) => {
     timer = setTimeout(() => resolve("timeout"), EXIT_SAVE_TIMEOUT_MS);
@@ -79,10 +116,8 @@ export function saveBeforeExit(): Promise<void> {
     clearTimeout(timer);
     waiting = null;
     if (r === "timeout") {
-      logger.error(
-        "[app-exit] saving the chat history timed out; leaving anyway",
-      );
-      const entry = { chat, save };
+      logger.error("[app-exit] saving before exit timed out; leaving anyway");
+      const entry = { save, state };
       abandoned = entry;
       void save.then(() => {
         if (abandoned === entry) abandoned = null;

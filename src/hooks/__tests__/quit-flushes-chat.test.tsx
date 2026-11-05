@@ -21,10 +21,6 @@ const flushChatPersist = vi.fn(
     }),
 );
 
-vi.mock("../../stores/ai/chat", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../stores/ai/chat")>()),
-  flushChatPersist: () => flushChatPersist(),
-}));
 vi.mock("../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../ipc/invoke")>()),
   confirmQuit: vi.fn(async () => undefined),
@@ -32,9 +28,21 @@ vi.mock("../../ipc/invoke", async (importOriginal) => ({
 
 import { UnsavedChangesModal } from "../../components/editor/UnsavedChangesModal";
 import { confirmQuit } from "../../ipc/invoke";
+import { registerExitSave } from "../../services/app-exit";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useUIStore } from "../../stores/ui/ui";
 import { requestReload, useCloseGuard } from "../use-close-guard";
+
+// §44 Every exit waits for the saves registered with `registerExitSave`; this test's save
+// stands in for the chat history's, which `stores/ai/chat` registers when it loads.
+let unregisterSave = () => {};
+beforeEach(() => {
+  unregisterSave = registerExitSave({
+    save: () => flushChatPersist(),
+    state: () => null,
+  });
+});
+afterEach(() => unregisterSave());
 
 const originalLocation = window.location;
 const reload = vi.fn();

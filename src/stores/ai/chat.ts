@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+import { registerExitSave } from "../../services/app-exit";
 import { createCoalescingStorage } from "../system/coalescing-storage";
 import { tauriStorage } from "../system/tauri-storage";
 
@@ -164,3 +165,11 @@ export const useChatStore = create<ChatState>()(
     },
   ),
 );
+
+// §44 Every way out of the window waits for this save first (`services/app-exit`). Registered
+// here, when the chat store loads, so the startup path does not import this module: a session
+// that never opens the chat never hydrates its history, and has nothing waiting to be saved.
+registerExitSave({
+  save: flushChatPersist,
+  state: () => useChatStore.getState(),
+});

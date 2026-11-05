@@ -1,6 +1,6 @@
 // §44 창을 떠나는 모든 길은 채팅 기록을 저장한 뒤 떠나고, 저장이 멈춰도 떠날 수 있다 (#800).
 //
-// 저장(flushChatPersist)을 손으로 끝내는 promise 로 바꾼다. 끝내지 않으면 멈춘 IPC 와 같다.
+// 등록된 저장(registerExitSave)을 손으로 끝내는 promise 로 둔다. 끝내지 않으면 멈춘 IPC 와 같다.
 import type { RetainedEntry } from "../../hooks/use-retained-tabs";
 
 import { act, fireEvent, render, screen } from "@testing-library/react";
@@ -15,10 +15,6 @@ const flushChatPersist = vi.fn(
 );
 const relaunch = vi.hoisted(() => vi.fn(async () => undefined));
 
-vi.mock("../../stores/ai/chat", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../stores/ai/chat")>()),
-  flushChatPersist: () => flushChatPersist(),
-}));
 vi.mock("../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../ipc/invoke")>()),
   confirmQuit: vi.fn(async () => undefined),
@@ -32,9 +28,21 @@ import { useChatStore } from "../../stores/ai/chat";
 import {
   EXIT_SAVE_TIMEOUT_MS,
   quitApp,
+  registerExitSave,
   relaunchApp,
   reloadWindow,
 } from "../app-exit";
+
+// §44 Every exit waits for the saves registered with `registerExitSave`; this test's save
+// stands in for the chat history's, which `stores/ai/chat` registers when it loads.
+let unregisterSave = () => {};
+beforeEach(() => {
+  unregisterSave = registerExitSave({
+    save: () => flushChatPersist(),
+    state: () => useChatStore.getState(),
+  });
+});
+afterEach(() => unregisterSave());
 
 const originalLocation = window.location;
 const reload = vi.fn();
