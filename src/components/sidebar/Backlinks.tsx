@@ -29,6 +29,8 @@ import {
 } from "./backlink-utils";
 import { linkifyMention } from "./linkify-mention";
 
+const NO_MENTIONS: UnlinkedMention[] = [];
+
 export function Backlinks() {
   const { t } = useTranslation();
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -37,6 +39,7 @@ export function Backlinks() {
   const {
     backlinks,
     unlinkedMentions,
+    unlinkedMentionsFor,
     loading,
     error,
     indexVersion,
@@ -48,6 +51,7 @@ export function Backlinks() {
     useShallow((s) => ({
       backlinks: s.backlinks,
       unlinkedMentions: s.unlinkedMentions,
+      unlinkedMentionsFor: s.unlinkedMentionsFor,
       loading: s.loading,
       error: s.error,
       indexVersion: s.indexVersion,
@@ -75,15 +79,24 @@ export function Backlinks() {
     [setBacklinks, setLoading, setError],
   );
 
-  // §34 Fetch unlinked mentions
+  // §34 Fetch unlinked mentions. Only the latest search may answer (issue 791): moving from A to B
+  // quickly can bring B's answer back first and A's last, and A's must not land as B's — the panel
+  // would show A's mentions under B, and "Link" would write them as links to B. The answer is kept
+  // with the note it was searched for (`unlinkedMentionsFor`); a failed search answers nothing
+  // rather than an empty list for this note, so the next change searches again.
+  const mentionRequestRef = useRef(0);
   const fetchUnlinkedMentions = useCallback(
     async (path: string, root: string) => {
+      const request = ++mentionRequestRef.current;
       try {
         const entries = await getUnlinkedMentions(path, root);
-        setUnlinkedMentions(entries);
+        if (request === mentionRequestRef.current) {
+          setUnlinkedMentions(path, entries);
+        }
       } catch {
         // Non-fatal — silently ignore
-        setUnlinkedMentions([]);
+        if (request === mentionRequestRef.current)
+          setUnlinkedMentions(null, []);
       }
     },
     [setUnlinkedMentions],
@@ -206,12 +219,13 @@ export function Backlinks() {
   // §34 Convert unlinked mention to wikilink
   const handleLinkify = useCallback(
     async (mention: UnlinkedMention) => {
-      if (!filePath || !rootPath) return;
+      // §34 Link to the note these mentions were searched FOR (issue 791) — the panel shows them
+      // only while that is the viewed note, and naming the note from the answer rather than the
+      // tab keeps a click from ever writing another note's mentions as links to this one.
+      const target = unlinkedMentionsFor;
+      if (!target || !rootPath) return;
 
-      const currentStem = extractFileNameFromPath(filePath).replace(
-        /\.md$/,
-        "",
-      );
+      const currentStem = extractFileNameFromPath(target).replace(/\.md$/, "");
 
       try {
         const content = await readFile(mention.sourcePath);
@@ -240,7 +254,7 @@ export function Backlinks() {
         logger.error("[Backlinks] Failed to linkify:", err);
       }
     },
-    [filePath, rootPath],
+    [unlinkedMentionsFor, rootPath],
   );
 
   const [wrapBacklinks, setWrapBacklinks] = useState(false);
@@ -261,7 +275,10 @@ export function Backlinks() {
   const nsGroups = rootPath
     ? groupBacklinksByNamespace(backlinks, rootPath)
     : [{ namespace: "", fileGroups: groupBacklinksByFile(backlinks) }];
-  const unlinkedGroups = groupUnlinkedByFile(unlinkedMentions);
+  // §34 Only the viewed note's answer is shown — a search still running for it shows nothing yet.
+  const shownMentions =
+    unlinkedMentionsFor === filePath ? unlinkedMentions : NO_MENTIONS;
+  const unlinkedGroups = groupUnlinkedByFile(shownMentions);
 
   return (
     <div className="backlinks">
@@ -333,7 +350,7 @@ export function Backlinks() {
 
       {/* §34 Unlinked mentions */}
       <div className="backlinks-header backlinks-header-unlinked">
-        {t("backlinks.unlinked")} ({unlinkedMentions.length})
+        {t("backlinks.unlinked")} ({shownMentions.length})
         <button
           aria-label={t("backlinks.wrap")}
           aria-pressed={wrapUnlinked}

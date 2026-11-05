@@ -82,15 +82,25 @@ interface LinkState {
   setPendingScrollHeading: (heading: null | string) => void;
   /** Set pending scroll line (consumed by App.tsx after tab switch) */
   setPendingScrollLine: (line: null | number) => void;
-  /** §34 Set unlinked mentions data */
-  setUnlinkedMentions: (entries: UnlinkedMention[]) => void;
-  /** §34 Unlinked mentions for the currently viewed file */
+  /**
+   * §34 Set unlinked mentions data — `path` is the note they were searched FOR, or `null` when
+   * the search failed (issue 791: an answer is kept with its question, so a late answer for
+   * another note is never shown or acted on as this note's).
+   */
+  setUnlinkedMentions: (
+    path: null | string,
+    entries: UnlinkedMention[],
+  ) => void;
+  /** §34 Unlinked mentions of `unlinkedMentionsFor` — read the two together, never this alone */
   unlinkedMentions: UnlinkedMention[];
+  /** §34 The note `unlinkedMentions` were searched for; `null` when none was answered */
+  unlinkedMentionsFor: null | string;
 }
 
 export const useLinkStore = create<LinkState>((set, get) => ({
   backlinks: [],
   unlinkedMentions: [],
+  unlinkedMentionsFor: null,
   loading: false,
   error: null,
   cachedPath: null,
@@ -99,7 +109,8 @@ export const useLinkStore = create<LinkState>((set, get) => ({
   setBacklinks: (path, entries) =>
     set({ backlinks: entries, cachedPath: path, loading: false, error: null }),
 
-  setUnlinkedMentions: (entries) => set({ unlinkedMentions: entries }),
+  setUnlinkedMentions: (path, entries) =>
+    set({ unlinkedMentions: entries, unlinkedMentionsFor: path }),
 
   setLoading: (loading) => set({ loading }),
 
@@ -109,6 +120,7 @@ export const useLinkStore = create<LinkState>((set, get) => ({
     set({
       backlinks: [],
       unlinkedMentions: [],
+      unlinkedMentionsFor: null,
       loading: false,
       error: null,
       cachedPath: null,

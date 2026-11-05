@@ -3,7 +3,8 @@
 // The search (`getUnlinkedMentions` → `find_unlinked_mentions`) walks the vault and reads the OTHER
 // notes' bodies for the viewed note's name. Its inputs are that name, the vault, and other notes'
 // text on disk — `announceNoteChanges` (`services/note-changes.ts`), not `indexVersion`. Counted by
-// calls.
+// calls; the answer's ownership (a late answer for another note) is checked on screen and in the
+// store.
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,7 @@ vi.mock("../../../ipc/invoke", () => ({
   setConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
+import type { UnlinkedMention } from "../../../ipc/types";
 import type { EditorTab } from "../../../stores/editor/editor";
 
 import { announceNoteChanges } from "../../../services/note-changes";
@@ -33,6 +35,18 @@ import { Backlinks } from "../Backlinks";
 const A = "/v/Alpha.md";
 const B = "/v/Beta.md";
 const C = "/v/c.md";
+
+function mention(sourcePath: string, context: string): UnlinkedMention {
+  const matchText = /Alpha|Beta/.exec(context)?.[0] ?? "";
+  return { context, line: 1, matchText, sourcePath };
+}
+
+/** A search whose answer the test hands back when it chooses. */
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
 
 /** 마운트 뒤 첫 검색(rootPath effect 와 파일 effect)이 끝난 상태에서 센다. */
 async function mounted() {
@@ -61,7 +75,11 @@ beforeEach(() => {
   getUnlinkedMentions.mockReset().mockResolvedValue([]);
   writeFile.mockReset().mockResolvedValue(undefined);
   useFileStore.setState({ rootPath: "/v" });
-  useLinkStore.setState({ indexVersion: 0, unlinkedMentions: [] });
+  useLinkStore.setState({
+    indexVersion: 0,
+    unlinkedMentions: [],
+    unlinkedMentionsFor: null,
+  });
   show(A);
 });
 
@@ -129,5 +147,83 @@ describe("§34 Backlinks — when the unlinked-mention search runs (issue 791)",
 
     expect(getUnlinkedMentions).toHaveBeenCalledTimes(1);
     expect(getUnlinkedMentions).toHaveBeenCalledWith(C, "/v");
+  });
+});
+
+describe("§34 Backlinks — an answer belongs to the note it was searched for (issue 791)", () => {
+  // 리뷰의 사례: A 에서 B 로 빠르게 옮겨 B 의 답이 먼저, A 의 답이 나중에 온다.
+  // 이것을 실패시키는 것: `fetchUnlinkedMentions` 의 `request === mentionRequestRef.current`
+  // 검사를 지운다 — A 의 답이 B 의 화면을 덮는다.
+  it("drops a late answer for the note it moved away from", async () => {
+    const forA = deferred<UnlinkedMention[]>();
+    const forB = deferred<UnlinkedMention[]>();
+    const view = await mounted();
+    getUnlinkedMentions.mockImplementation((path: string) =>
+      path === A ? forA.promise : forB.promise,
+    );
+    act(() => announceNoteChanges([C])); // A 를 다시 찾는다 — 답은 아직
+    act(() => show(B)); // B 로 옮긴다 — B 도 찾는다
+    await settle();
+
+    await act(async () => forB.resolve([mention(C, "c says Beta here")]));
+    await act(async () => forA.resolve([mention(C, "c says Alpha here")]));
+    await settle();
+
+    expect(useLinkStore.getState().unlinkedMentionsFor).toBe(B);
+    expect(view.container.textContent).toContain("c says Beta here");
+    expect(view.container.textContent).not.toContain("c says Alpha here");
+  });
+
+  // 이것을 실패시키는 것: 렌더의 `unlinkedMentionsFor === filePath` 관문을 지운다.
+  it("shows nothing of another note's answer while the viewed note's search runs", async () => {
+    const forB = deferred<UnlinkedMention[]>();
+    const view = await mounted();
+    act(() =>
+      useLinkStore
+        .getState()
+        .setUnlinkedMentions(A, [mention(C, "c says Alpha here")]),
+    );
+    expect(view.container.textContent).toContain("c says Alpha here");
+
+    getUnlinkedMentions.mockImplementation(() => forB.promise);
+    act(() => show(B));
+    await settle();
+
+    expect(view.container.textContent).not.toContain("c says Alpha here");
+  });
+
+  // 긍정 짝 — "Link" 는 답이 찾아진 노트(`unlinkedMentionsFor`)의 이름으로 쓴다. 다른 노트의 답은
+  // 위의 렌더 관문이 보이지 않게 하므로, 그 답의 버튼은 누를 수 없다.
+  it("links a mention to the note it was found for", async () => {
+    const view = await mounted();
+    act(() =>
+      useLinkStore
+        .getState()
+        .setUnlinkedMentions(A, [mention(C, "a line that says Alpha here")]),
+    );
+
+    const link = view.container.querySelector<HTMLElement>(
+      ".backlinks-linkify-btn",
+    );
+    expect(link).not.toBeNull();
+    await act(async () => link!.click());
+    await settle();
+
+    expect(writeFile).toHaveBeenCalledWith(
+      C,
+      "a line that says [[Alpha]] here",
+    );
+  });
+
+  // 이것을 실패시키는 것: 실패한 검색이 `setUnlinkedMentions(path, [])` 로 "이 노트의 답은 0개" 를
+  // 남긴다 — 다음 검색 전까지 실패가 답처럼 보인다.
+  it("keeps a failed search from passing for an empty answer", async () => {
+    await mounted();
+    getUnlinkedMentions.mockRejectedValueOnce(new Error("walk failed"));
+
+    act(() => announceNoteChanges([B]));
+    await settle();
+
+    expect(useLinkStore.getState().unlinkedMentionsFor).toBeNull();
   });
 });
