@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+import { clearSearchIfFindClosed } from "../extensions/plugins/find-replace";
 import { pluginLoader } from "../plugins/plugin-loader";
 import {
   type KeepalivePool,
@@ -49,6 +50,16 @@ export function useKeepaliveEditors(
       // Keep plugin editor API pointed at the ACTIVE editor (keep-alive or shared)
       // synchronously — the tab-switch effect emits file:open in the same tick.
       pluginLoader.setEditor(e ?? editor);
+      // §5.6 Find 가 닫혀 있으면 새 활성 편집기의 검색을 지운다(#792). 탭 전환이 활성 편집기를
+      // 정하는 호출은 모두 이 콜백이다 — use-tab-switching 의 null 넷, resume-keepalive-tab ·
+      // load-tab-content 의 편집기 하나씩(`grep -rn "onActiveEditorChange(" src`, 테스트 제외).
+      // 이 콜백을 거치지 않는 변화는 위 `handleEviction` 의 null 뿐이다. 그것을 부르는 pool 호출은
+      // 탭 전환 안의 acquire(load-tab-content — 곧이어 이 콜백) · release 둘(use-tab-switching —
+      // 곧이어 이 콜백, gc-closed-tabs — 이 콜백이 이미 null 을 정한 load 경로 안)과 언마운트의
+      // destroyAll 이다. 동기로 지우므로 탭 전환이 그 뒤 타이머로 넣는 Global Search 강조와
+      // 순서가 정해진다 — 지우기가 먼저다.
+      const next = e ?? editor;
+      if (next) clearSearchIfFindClosed(next.view);
     },
     [editor],
   );
