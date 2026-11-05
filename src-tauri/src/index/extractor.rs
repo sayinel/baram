@@ -251,9 +251,6 @@ pub(crate) fn strip_wikilinks(line: &str) -> String {
         .to_string()
 }
 
-/// §34 Find unlinked mentions — text occurrences of a file stem in other files,
-/// NOT inside [[wikilink]] brackets. Case-insensitive, word-boundary aware.
-/// The name is matched as typed (NFC) and as stored (§390).
 /// A path's file name through `fold_name` (NFC and case) — the forms one
 /// file can be spelled in on a volume that folds normalization or case.
 fn folded_file_name(path: &str) -> String {
@@ -263,6 +260,9 @@ fn folded_file_name(path: &str) -> String {
         .unwrap_or_default()
 }
 
+/// §34 Find unlinked mentions — text occurrences of a file stem in other files,
+/// NOT inside [[wikilink]] brackets. Case-insensitive, word-boundary aware.
+/// The name is matched as typed (NFC) and as stored (§390).
 pub async fn find_unlinked_mentions(
     file_path: &str,
     root_path: &str,
@@ -779,7 +779,10 @@ mod tests {
             .await
             .unwrap();
         let sources: Vec<&str> = found.iter().map(|m| m.source_path.as_str()).collect();
-        assert_eq!(sources, [format!("{root}/other.md").as_str()], "{found:?}");
+        // The walk joins with the platform's separator (a backslash on Windows), so
+        // the expected path is joined the same way, not formatted with `/`.
+        let other = dir.path().join("other.md").to_string_lossy().to_string();
+        assert_eq!(sources, [other.as_str()], "{found:?}");
     }
 
     /// issue 666 — the graph's tags are the tag index's tags: the same loose
