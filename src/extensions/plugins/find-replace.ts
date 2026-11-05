@@ -262,12 +262,34 @@ export const FindReplace = Extension.create({
 
 // ── Find 가 닫힌 동안의 상태 설치 (#792) ─────────────────────────────
 
-// Find 막대가 열려 있는가. 앱 창마다 Find 상태는 하나이고(use-find-replace-routing),
-// MarkdownSurface 가 그 값을 여기 적는다.
+// Find 막대가 열려 있는가. 앱 창마다 Find 상태는 하나이고, 그 state 를 가진
+// use-find-replace-routing 이 commit 과 함께(layout effect) 여기 적는다 — 그래서 탭 전환처럼 그
+// 뒤에 도는 코드가 읽을 때 늘 지금 값이다.
+//
+// ‼️ "닫힌 Find 는 활성 편집기에 검색을 남기지 않는다" 를 지키는 자리는 셋이고, 모두 이 값을
+// 본다. 순서를 timing 에 맡기지 않으려고 셋 다 동기다 (#792 리뷰).
+// 1. 닫는 순간 — MarkdownSurface 의 layout effect 가 열림→닫힘 전이에서만 활성 편집기를 지운다.
+// 2. 캐시된 state 를 설치할 때 — `replaceEditorStateWithVim` 이 `withoutClosedSearch` 를 거친다.
+// 3. keep-alive 편집기로 돌아올 때 — `useKeepaliveEditors` 의 전환 콜백이
+//    `clearSearchIfFindClosed` 를 부른다. 그 편집기는 state 를 설치하지 않는다.
+// 편집기가 바뀌는 것 자체를 보고 지우는 effect 는 두지 않는다. 그것은 passive 라서 탭 전환이
+// 50 ms 뒤에 넣는 검색어(Global Search 의 강조)보다 늦게 돌아 그것을 지울 수 있었다.
 let findOpen = false;
 
 export function setFindOpen(open: boolean): void {
   findOpen = open;
+}
+
+/**
+ * Find 가 닫혀 있으면 `view` 의 검색을 지운다 — 활성 편집기가 된 keep-alive 편집기에 (위 3).
+ * 지울 것이 없으면 아무것도 dispatch 하지 않는다(`dispatchClearSearch`).
+ */
+export function clearSearchIfFindClosed(view: {
+  dispatch: (tr: Transaction) => void;
+  state: EditorState;
+}): void {
+  if (findOpen) return;
+  dispatchClearSearch(view);
 }
 
 /**
@@ -300,8 +322,8 @@ export function dispatchClearSearch(view: {
   dispatch: (tr: Transaction) => void;
   state: EditorState;
 }) {
-  // 이미 비어 있으면 dispatch 하지 않는다 — MarkdownSurface 가 Find 가 닫혀 있는 동안
-  // 편집기가 바뀔 때마다 부른다.
+  // 이미 비어 있으면 dispatch 하지 않는다 — Find 가 닫혀 있는 동안 활성 편집기가 바뀔
+  // 때마다 `clearSearchIfFindClosed` 가 부른다.
   if (findReplacePluginKey.getState(view.state) === EMPTY_STATE) return;
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "clear",

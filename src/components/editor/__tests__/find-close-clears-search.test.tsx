@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useLayoutEffect } from "react";
 
 import type { FindReplaceState } from "../../../extensions/plugins/find-replace";
 import type { UseInlineAIReturn } from "../../../hooks/use-inline-ai";
@@ -22,6 +22,7 @@ import {
   FindReplace,
   findReplacePluginKey,
 } from "../../../extensions/plugins/find-replace";
+import { useFindReplaceRouting } from "../../../hooks/use-find-replace-routing";
 import { MarkdownSurface } from "../MarkdownSurface";
 
 let editor: Editor | null = null;
@@ -51,11 +52,16 @@ function recomputesOver(n: number): number {
   return changes;
 }
 
-// App 의 useFindReplaceRouting 처럼 열림 상태를 부모가 들고, 막대의 onClose 는 false 로,
-// 메뉴(edit_find_replace)는 막대를 거치지 않고 함수형 토글로 뒤집는다 — 막대 밖의
-// 버튼이 그 토글을 대신한다.
+// App 과 같이 열림 상태는 useFindReplaceRouting 이 들고(편집기 쪽 `findOpen` 도 거기서 적는다),
+// 막대의 onClose 는 false 로, 메뉴(edit_find_replace)는 막대를 거치지 않고 함수형 토글로
+// 뒤집는다 — 막대 밖의 버튼이 그 토글을 대신한다. `initiallyOpen` 은 Global Search 처럼
+// 마운트 뒤에 연다.
 function Harness({ initiallyOpen }: { initiallyOpen: boolean }) {
-  const [open, setOpen] = useState(initiallyOpen);
+  const { findReplaceOpen: open, setFindReplaceOpen: setOpen } =
+    useFindReplaceRouting(false);
+  useLayoutEffect(() => {
+    if (initiallyOpen) setOpen(true);
+  }, [initiallyOpen, setOpen]);
   return (
     <>
       <button

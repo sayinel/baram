@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useLayoutEffect } from "react";
 
 import type { FindReplaceState } from "../../../extensions/plugins/find-replace";
 import type { UseInlineAIReturn } from "../../../hooks/use-inline-ai";
@@ -25,6 +25,7 @@ import {
   withoutClosedSearch,
 } from "../../../extensions/plugins/find-replace";
 import { replaceEditorStateWithVim } from "../../../extensions/plugins/vim/replace-editor-state";
+import { useFindReplaceRouting } from "../../../hooks/use-find-replace-routing";
 import { MarkdownSurface } from "../MarkdownSurface";
 
 let editor: Editor | null = null;
@@ -42,8 +43,11 @@ function findState(): FindReplaceState {
 }
 
 /** 편집 n번 동안 plugin 상태 객체가 바뀐 횟수 = match 를 다시 구한 횟수. */
+// App 과 같이 열림 상태는 useFindReplaceRouting 이 들고 편집기 쪽 `findOpen` 도 거기서 적는다.
 function Harness() {
-  const [open, setOpen] = useState(true);
+  const { findReplaceOpen: open, setFindReplaceOpen: setOpen } =
+    useFindReplaceRouting(false);
+  useLayoutEffect(() => setOpen(true), [setOpen]);
   return (
     <>
       <button
@@ -125,7 +129,7 @@ describe("§5.6 a cached tab state does not bring back a closed search (#792)", 
   });
 
   // 이것을 실패시키는 것: replaceEditorStateWithVim 에서 `withoutClosedSearch(...)` 감싸기를
-  // 빼면 이 시험이 깨진다. 위 긍정 짝은 MarkdownSurface 의 `setFindOpen(findReplaceOpen)` 을
+  // 빼면 이 시험이 깨진다. 위 긍정 짝은 useFindReplaceRouting 의 `setFindOpen(findReplaceOpen)` 을
   // 지우거나 `withoutClosedSearch` 의 `if (findOpen) return state` 를 지우면 깨진다.
   it("clears tab A's search when Find was closed in tab B", () => {
     const { cachedA, view } = searchInTabAThenSwitchToB();

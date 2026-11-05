@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode } from "react";
 
 import type { FindReplaceState } from "../../../extensions/plugins/find-replace";
 import type { UseInlineAIReturn } from "../../../hooks/use-inline-ai";
@@ -9,10 +9,9 @@ import { act, fireEvent, render } from "@testing-library/react";
 //
 // 큰 문서(LARGE_DOC_BLOCK_THRESHOLD 이상)는 공유 편집기가 아니라 따로 둔 keep-alive 편집기에
 // 산다. 그 탭으로 돌아오는 resumeKeepaliveTab 은 상태를 설치하지 않으므로
-// `withoutClosedSearch` 를 거치지 않는다. 대신 `onActiveEditorChange` 가
-// useKeepaliveEditors 의 `activeEditor` 를 그 편집기로 바꾸고, MarkdownSurface 의 닫힘
-// effect(deps `[findReplaceOpen, activeEditor]`)가 다시 돌아 그 편집기의 검색을 지운다.
-// 이 시험은 그 길을 앱과 같은 훅으로 돌린다.
+// `withoutClosedSearch` 를 거치지 않는다. 대신 그것이 부르는 useKeepaliveEditors 의
+// `onActiveEditorChange` 가 Find 가 닫혀 있으면 그 자리에서(동기로) 그 편집기의 검색을
+// 지운다(`clearSearchIfFindClosed`). 이 시험은 그 길을 앱과 같은 훅으로 돌린다.
 import Document from "@tiptap/extension-document";
 import Text from "@tiptap/extension-text";
 import { DecorationSet } from "@tiptap/pm/view";
@@ -25,6 +24,7 @@ import {
   FindReplace,
   findReplacePluginKey,
 } from "../../../extensions/plugins/find-replace";
+import { useFindReplaceRouting } from "../../../hooks/use-find-replace-routing";
 import { useKeepaliveEditors } from "../../../hooks/use-keepalive-editors";
 import { LARGE_DOC_BLOCK_THRESHOLD } from "../../../hooks/use-large-doc-keepalive";
 import { MarkdownSurface } from "../MarkdownSurface";
@@ -61,15 +61,24 @@ function recomputesOver(editor: CoreEditor, n: number): number {
 
 // App 과 같이 useKeepaliveEditors 가 activeEditor 를 정한다. 두 버튼은 탭 전환이 부르는
 // `onActiveEditorChange` 다 — resumeKeepaliveTab 은 큰 탭의 편집기를, 공유 편집기를 쓰는
-// 탭으로 가는 분기는 null 을 넘긴다. 메뉴 버튼은 막대를 거치지 않는 함수형 토글이다.
+// 탭으로 가는 분기는 null 을 넘긴다. `search-result-in-large-tab` 은 Global Search 결과가 큰 탭으로
+// 가는 길(전환 + 검색어)이다. 메뉴 버튼은 막대를 거치지 않는 함수형 토글이다.
 function Harness() {
-  const [open, setOpen] = useState(false);
+  const { findReplaceOpen: open, setFindReplaceOpen: setOpen } =
+    useFindReplaceRouting(false);
   const ka = useKeepaliveEditors(shared);
   return (
     <>
       <button
         data-testid="to-large-tab"
         onClick={() => ka.onActiveEditorChange(large)}
+      />
+      <button
+        data-testid="search-result-in-large-tab"
+        onClick={() => {
+          ka.onActiveEditorChange(large); // resumeKeepaliveTab
+          dispatchSetSearchTerm(large!.view, "line 1"); // 50 ms 타이머
+        }}
       />
       <button
         data-testid="to-small-tab"
@@ -142,8 +151,8 @@ describe("§5.6 returning to a keep-alive tab after closing Find (#792)", () => 
     expect(recomputesOver(large!, 100)).toBe(100);
   });
 
-  // 이것을 실패시키는 것: MarkdownSurface 닫힘 effect 의 deps 에서 `activeEditor` 를 빼면
-  // 돌아올 때 effect 가 다시 돌지 않아 큰 탭의 검색이 남고 이 시험이 깨진다.
+  // 이것을 실패시키는 것: useKeepaliveEditors 의 `clearSearchIfFindClosed` 호출을 빼면
+  // 돌아온 큰 탭의 검색이 남고 이 시험이 깨진다.
   it("clears the large tab's search when Find was closed in another tab", () => {
     const { click } = searchInLargeTabThenSwitchAway();
     click("menu-toggle"); // B 에서 Find 를 닫는다
@@ -154,5 +163,23 @@ describe("§5.6 returning to a keep-alive tab after closing Find (#792)", () => 
     expect(findState(large!).searchTerm).toBe("");
     expect(findState(large!).decorations).toBe(DecorationSet.empty);
     expect(recomputesOver(large!, 100)).toBe(0);
+  });
+
+  // #792 리뷰 — Find 가 닫힌 채 Global Search 결과로 큰 탭에 간다. resumeKeepaliveTab 은 편집기를
+  // 바꾸고, 50 ms 뒤 타이머가 검색어를 넣은 다음 Find 를 연다. 앱에서는 편집기 전환이 남긴
+  // passive effect 가 그 타이머보다 늦게 flush 될 수 있다 — 아래는 그 순서를 고정한다: 버튼
+  // `search-result-in-large-tab` 이 전환과 검색어를 한 클릭(한 `act`) 안에서 불러, 렌더·effect 가
+  // 검색어 **뒤에** 돈다. 그다음 Find 를 연다.
+  // 이것을 실패시키는 것: MarkdownSurface 가 예전처럼 닫혀 있는 동안 `activeEditor` 가 바뀔
+  // 때마다 지우면(`if (!findReplaceOpen && activeEditor) dispatchClearSearch(...)`) 막 넣은
+  // 검색어가 지워져 "line 1" 이 "" 가 된다.
+  it("keeps the term Global Search sets right after switching to the large tab", () => {
+    const { click } = searchInLargeTabThenSwitchAway();
+    click("menu-toggle"); // B 에서 Find 를 닫는다
+    click("search-result-in-large-tab");
+    click("menu-toggle"); // Find 를 연다
+
+    expect(findState(large!).searchTerm).toBe("line 1");
+    expect(findState(large!).matches.length).toBeGreaterThan(0);
   });
 });
