@@ -13,6 +13,7 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   setConfig: (key: string, value: string) => setConfig(key, value),
 }));
 
+import { saveBeforeExit } from "../../../services/app-exit";
 import { CHAT_SAVE_INTERVAL_MS, flushChatPersist, useChatStore } from "../chat";
 
 const KEY = "baram:chat-sessions";
@@ -100,6 +101,18 @@ describe("§44 chat history saves (#800)", () => {
 
     expect(chatWrites()).toHaveLength(1);
     expect(lastSavedContent()).toBe("half a reply");
+  });
+
+  // 이것을 실패시키는 것: chat.ts 끝의 `registerExitSave(...)` 를 지우면 창을 떠나는 길이 채팅 기록을 저장하지 않는다.
+  // 종료 경로 시험(`app-exit` · `quit-flushes-chat` · `app-update`)은 대역 저장을 직접 등록하므로 이 연결을 보지 못한다.
+  it("saves what is pending before an exit", async () => {
+    useChatStore.getState().updateLastMessage(session, "the last words");
+    expect(chatWrites()).toHaveLength(0);
+
+    await saveBeforeExit();
+
+    expect(chatWrites()).toHaveLength(1);
+    expect(lastSavedContent()).toBe("the last words");
   });
 
   // 이것을 실패시키는 것: updateLastMessage 의 `if (!last || last.content === content) return` 관문을 지우면
