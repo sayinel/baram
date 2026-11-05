@@ -169,7 +169,9 @@ describe("§5.6 returning to a keep-alive tab after closing Find (#792)", () => 
   // 바꾸고, 50 ms 뒤 타이머가 검색어를 넣은 다음 Find 를 연다. 앱에서는 편집기 전환이 남긴
   // passive effect 가 그 타이머보다 늦게 flush 될 수 있다 — 아래는 그 순서를 고정한다: 버튼
   // `search-result-in-large-tab` 이 전환과 검색어를 한 클릭(한 `act`) 안에서 불러, 렌더·effect 가
-  // 검색어 **뒤에** 돈다. 그다음 Find 를 연다.
+  // 검색어 **뒤에** 돈다. 그다음 Find 를 연다. 이것은 순서의 모형이고, 실제
+  // `resumeKeepaliveTab`·50 ms 타이머·React scheduler 로 같은 순서를 만드는 시험은
+  // `hooks/tab-switching/__tests__/resume-keepalive-find-race.test.tsx` 다.
   // 이것을 실패시키는 것: MarkdownSurface 가 예전처럼 닫혀 있는 동안 `activeEditor` 가 바뀔
   // 때마다 지우면(`if (!findReplaceOpen && activeEditor) dispatchClearSearch(...)`) 막 넣은
   // 검색어가 지워져 "line 1" 이 "" 가 된다.
