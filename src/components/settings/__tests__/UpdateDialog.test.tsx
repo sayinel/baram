@@ -98,6 +98,44 @@ describe("UpdateDialog — installed, restart by hand", () => {
   });
 });
 
+// §206 The question about unsaved work empties `progress`, and a download of unknown length never
+// fills it, so the bar cannot be read off it while the update installs.
+// 이것을 실패시키는 것: `percent` 에서 `status === "installing"` 갈래를 지우면 막대가 0% 다.
+describe("UpdateDialog — the bar while it installs", () => {
+  it("is full even with no progress recorded", () => {
+    useAppUpdateStore.setState({
+      availableVersion: "0.4.0",
+      dialogOpen: true,
+      progress: null,
+      status: "installing",
+    });
+
+    const { container } = render(<UpdateDialog />);
+
+    const fill = container.querySelector<HTMLElement>(
+      ".update-dialog-progress-fill",
+    );
+    expect(fill?.style.width).toBe("100%");
+  });
+
+  // The pair: the bar does follow the download, so "full" above is not its only value.
+  it("follows the download before that", () => {
+    useAppUpdateStore.setState({
+      availableVersion: "0.4.0",
+      dialogOpen: true,
+      progress: { downloaded: 25, total: 100 },
+      status: "downloading",
+    });
+
+    const { container } = render(<UpdateDialog />);
+
+    const fill = container.querySelector<HTMLElement>(
+      ".update-dialog-progress-fill",
+    );
+    expect(fill?.style.width).toBe("25%");
+  });
+});
+
 describe("UpdateDialog — §206-review FIX 1: busy close-guard", () => {
   it("Escape does NOT close the dialog while downloading", () => {
     useAppUpdateStore.setState({

@@ -137,4 +137,32 @@ describe("§206 설정창과 함께 뜨는 다이얼로그의 레이어링", () 
       expect(zIndexOf(`.${overlay}`)).toBeLessThan(zIndexOf(CEILING));
     },
   );
+
+  // §206 The update install asks about unsaved work with the update dialog still open, so the
+  // question has to clear that dialog. At 1000 it would paint beneath it: out of sight and out of
+  // the pointer's reach until that dialog closes, yet holding the focus, so Enter would press a
+  // Save & Install nobody can see. The same defect as the header's, one layer up. `AppDialogs`
+  // renders them as siblings, so they share the root stacking context. About opens the update
+  // dialog too (`AboutModal.tsx`), so the question clears it as well.
+  it.each([".update-dialog-overlay", ".about-overlay"])(
+    "저장 확인 모달은 %s 위, 플러그인 설치 동의보다 아래에 그려진다",
+    (selector) => {
+      const unsaved = zIndexOf(".unsaved-modal-overlay");
+      expect(unsaved).toBeGreaterThan(zIndexOf(selector));
+      expect(unsaved).toBeLessThan(zIndexOf(CEILING));
+    },
+  );
+
+  // These two sat above the question only by coming later in `AppDialogs` at the same 1000, so
+  // raising the question alone turns them over. The conflict modal must be answered first: the
+  // question's Save writes without checking for the external change.
+  it.each([".conflict-modal-overlay", ".toast-host"])(
+    "%s는 저장 확인 모달 위, 플러그인 설치 동의보다 아래에 그려진다",
+    (selector) => {
+      expect(zIndexOf(selector)).toBeGreaterThan(
+        zIndexOf(".unsaved-modal-overlay"),
+      );
+      expect(zIndexOf(selector)).toBeLessThan(zIndexOf(CEILING));
+    },
+  );
 });

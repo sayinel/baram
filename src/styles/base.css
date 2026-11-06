@@ -42,7 +42,7 @@
 
      THE RULE, for the next body-mounted editor popup: use this variable, never
      a bare number. Its value clears every ordinary dialog overlay in this
-     stylesheet — the highest of those is `.settings-overlay` at 1000 — so a
+     stylesheet — the highest of those is `.conflict-modal-overlay` at 1030 — so a
      popup opted into it stays visible above any dialog that grows an editor
      later — nobody has to re-audit "which dialogs host an editor" first.
 

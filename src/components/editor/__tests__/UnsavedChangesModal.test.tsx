@@ -24,6 +24,10 @@ vi.mock("../../../ipc/invoke", () => ({
   confirmQuit: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../../services/app-update", () => ({
+  installDownloadedUpdate: vi.fn(async () => undefined),
+}));
+
 // Echo the i18n key (+ interpolated params) so assertions stay locale-agnostic.
 vi.mock("../../../i18n/useTranslation", () => ({
   useTranslation: () => ({
@@ -42,6 +46,7 @@ import {
   saveDirtyTabsForContexts,
 } from "../../../hooks/use-close-guard";
 import { confirmQuit } from "../../../ipc/invoke";
+import { installDownloadedUpdate } from "../../../services/app-update";
 import { closeContexts } from "../../../services/close-context";
 import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
@@ -325,6 +330,109 @@ describe("UnsavedChangesModal", () => {
 
       expect(useUIStore.getState().unsavedModal).toBeNull();
       expect(reload).not.toHaveBeenCalled();
+      expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── update install (§206) ──────────────────────────────────────────────────
+  //
+  // Installing ends the process on every platform, so like quit it answers for every dirty
+  // tab. Cancel has no action of its own: the install simply never runs.
+  describe("update install", () => {
+    it("shows the dirty count and a Save & Install action", () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a"), dirtyFileTab("b")],
+      });
+      useUIStore.setState({ unsavedModal: { intent: "installUpdate" } });
+
+      render(<UnsavedChangesModal {...deps} />);
+
+      expect(
+        screen.getByText(
+          containing("unsavedChanges.installUpdateMessage", '"count":"2"'),
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndInstallUpdate",
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it("Save & Install → saves every dirty tab, then installs", async () => {
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [dirtyFileTab("a"), dirtyFileTab("b")],
+      });
+      useUIStore.setState({ unsavedModal: { intent: "installUpdate" } });
+      const order: string[] = [];
+      vi.mocked(saveAllDirtyForQuit).mockImplementation(async () => {
+        order.push("save");
+        return true;
+      });
+      vi.mocked(installDownloadedUpdate).mockImplementation(async () => {
+        order.push("install");
+      });
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndInstallUpdate",
+        }),
+      );
+
+      await waitFor(() => expect(order).toEqual(["save", "install"]));
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+    });
+
+    // 이것을 실패시키는 것: 저장 실패에도 proceed 로 가면 저장 안 된 문서를 둔 채 프로세스가 끝난다.
+    it("Save & Install → stays open and does not install when a save does not finish", async () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "installUpdate" } });
+      vi.mocked(saveAllDirtyForQuit).mockResolvedValue(false);
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndInstallUpdate",
+        }),
+      );
+
+      await waitFor(() => expect(saveAllDirtyForQuit).toHaveBeenCalledOnce());
+      expect(installDownloadedUpdate).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toEqual({
+        intent: "installUpdate",
+      });
+    });
+
+    it("Don't Save → installs without saving", async () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "installUpdate" } });
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.dontSave" }),
+      );
+
+      await waitFor(() =>
+        expect(installDownloadedUpdate).toHaveBeenCalledOnce(),
+      );
+      expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+    });
+
+    it("Cancel → neither saves nor installs", () => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({ unsavedModal: { intent: "installUpdate" } });
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.cancel" }),
+      );
+
+      expect(useUIStore.getState().unsavedModal).toBeNull();
+      expect(installDownloadedUpdate).not.toHaveBeenCalled();
       expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
     });
   });

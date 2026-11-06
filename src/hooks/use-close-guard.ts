@@ -184,6 +184,17 @@ export async function saveDirtyTab(
 }
 
 /**
+ * §206 Whether any tab holds unsaved work, for an exit that does not leave right after it is
+ * asked for: the update install has a download first, so it asks here when the download is
+ * done and opens the shared modal itself (`services/app-update.ts`).
+ */
+export async function hasUnsavedTabs(): Promise<boolean> {
+  // issue 594: same barrier as quit and reload.
+  await awaitBlockIdRenames();
+  return unsavedTabs().length > 0;
+}
+
+/**
  * §close-guard §479: View > Reload / CmdOrCtrl+R. Reload discards the whole
  * window (no tab state survives `window.location.reload()` — `editor.ts` has
  * no persist middleware), so it checks every tab exactly like quit rather

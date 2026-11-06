@@ -159,11 +159,11 @@ describe("§323 body-mounted 편집기 팝업의 레이어링", () => {
   it("토큰 값은 일반 다이얼로그 오버레이 대역을 넘어선다", () => {
     // Why not just "above the capture dialog": the rule has to survive the
     // NEXT dialog that grows an editor, without anyone re-auditing which
-    // dialogs host one. `.settings-overlay` (1000) is the highest of the
+    // dialogs host one. `.conflict-modal-overlay` (1030) is the highest of the
     // ORDINARY dialog band, so the token clears that whole band.
-    const settings = Number(declaration(".settings-overlay", "z-index"));
-    expect(Number.isNaN(settings)).toBe(false);
-    expect(tokenValue()).toBeGreaterThan(settings);
+    const highest = Number(declaration(".conflict-modal-overlay", "z-index"));
+    expect(Number.isNaN(highest)).toBe(false);
+    expect(tokenValue()).toBeGreaterThan(highest);
   });
 
   it("토큰 값은 플러그인 설치 동의 다이얼로그보다 아래다", () => {

@@ -5,7 +5,11 @@
 .conflict-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+
+  /* Above `.unsaved-modal-overlay` (1020): Save there writes over the external change this asks
+     about, with no check of its own. Ordering pinned by
+     `styles/__tests__/settings-dialog-layering.test.ts`. */
+  z-index: 1030;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -134,7 +138,11 @@
 .unsaved-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+
+  /* §206 Above `.update-dialog-overlay` (1010): the update install asks this question with
+     that dialog open. Below the plugin consent host (1100). Ordering pinned by
+     `styles/__tests__/settings-dialog-layering.test.ts`. */
+  z-index: 1020;
   display: flex;
   align-items: center;
   justify-content: center;
