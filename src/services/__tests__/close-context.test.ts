@@ -122,6 +122,35 @@ describe("closeContext — one implementation for every close path", () => {
 });
 
 describe("requestCloseContexts — asks before discarding, scoped to those contexts", () => {
+  // §82 Closing the last context ends in `closeFolder`, which closes every tab. An untitled tab
+  // belongs to no context, so a question scoped to that context did not see it.
+  // 이것을 실패시키는 것: 판정을 `wanted.has(t.contextId)` 로 되돌리면 묻지 않고 그 탭이 사라진다.
+  it("counts an untitled tab when the last context closes, which takes it too", async () => {
+    useContextStore.setState({ activeContextId: "a", contexts: [ctx("a")] });
+    useEditorStore.setState({
+      activeTabId: "u",
+      tabs: [tab("a1", "a"), { ...tab("u", "", true), filePath: "" }],
+    });
+
+    await requestCloseContexts(["a"]);
+
+    expect(useUIStore.getState().unsavedModal).toEqual({
+      contextIds: ["a"],
+      intent: "closeContext",
+    });
+    expect(useEditorStore.getState().tabs).toHaveLength(2);
+  });
+
+  // The pair: with another context left, the untitled tab stays, so there is nothing to ask.
+  it("leaves it out while another context remains, since it stays open", async () => {
+    twoContexts([tab("a1", "a"), { ...tab("u", "", true), filePath: "" }]);
+
+    await requestCloseContexts(["a"]);
+
+    expect(useUIStore.getState().unsavedModal).toBeNull();
+    expect(useEditorStore.getState().tabs.map((t) => t.id)).toEqual(["u"]);
+  });
+
   it("closes straight away when nothing in that context is dirty", async () => {
     twoContexts([tab("a1", "a"), tab("b1", "b", true)]);
 

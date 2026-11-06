@@ -93,6 +93,16 @@ export function clearOriginalDoc(tabId: string): void {
   originalDocs.delete(tabId);
   pendingTabs.delete(tabId);
   loadingTabs.delete(tabId);
+  forgetLoadedTab(tabId);
+}
+
+/**
+ * The editor no longer holds this tab's document, so `loadedTabId` must stop saying it does. Left
+ * standing, a tab opened again under the same id reads as installed before its load has begun, and
+ * saving it would write whatever the editor holds now (`""` once the last tab has closed).
+ */
+export function forgetLoadedTab(tabId: string): void {
+  if (lastLoadedTabId === tabId) lastLoadedTabId = null;
 }
 
 /** Read the baseline doc (last saved/loaded) — used as the 3-way merge base */

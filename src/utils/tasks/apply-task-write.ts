@@ -240,7 +240,8 @@ export function isUnsavedWrite<R extends TaskDeleteResult | TaskWriteResult>(
  * 조용한 자동 리로드 경로로 간다. 문서 분기가 이미 하는 일과 같다.
  *
  * ‼️ 이것은 **소스 모드 타이핑**을 dirty로 만드는 것이 아니다. 그 판정은 지금처럼
- * use-auto-save가 Tiptap `update`에서 홀로 갖는다(tab-surface-renderers.tsx의 주석).
+ * use-auto-save가 Tiptap `update`에서, 소스 모드에서 돌아올 때는 `handBufferToDocument`가
+ * 갖는다(tab-surface-renderers.tsx의 주석).
  * 여기서 세우는 것은 아젠다가 만든 프로그램적 쓰기 하나뿐이다.
  *
  * `markDirty`는 동등성 관문이 없어 tabs 배열을 새로 만들고 모든 구독자를 깨운다 —

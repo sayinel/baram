@@ -7,7 +7,12 @@ import type { Editor } from "@tiptap/react";
 
 import { clearSearchIfFindClosed } from "../extensions/plugins/find-replace";
 import { pluginLoader } from "../plugins/plugin-loader";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
+import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
+import { logger } from "../utils/logger";
 import {
+  type EvictionCallback,
   type KeepalivePool,
   useLargeDocKeepalive,
 } from "./use-large-doc-keepalive";
@@ -32,10 +37,38 @@ export function useKeepaliveEditors(
   const [activeKeepaliveEditor, setActiveKeepaliveEditor] =
     useState<Editor | null>(null);
   // [MODERATE-9] On eviction, unmount EditorContent BEFORE editor.destroy().
-  const handleEviction = useCallback(() => {
-    setMountedKeepaliveEditor(null);
-    setActiveKeepaliveEditor(null);
-  }, []);
+  const handleEviction = useCallback<EvictionCallback>(
+    (tabId, evicted, complete) => {
+      // The pool is about to destroy this editor, and it holds the only copy of unsaved text. An
+      // entry the load never finished holds only part of it, a tab in source mode keeps its text
+      // in the buffer, and a stale one is older than what `openFiles` already has.
+      const { documentSurfaceAccess, sourceModeTabs, staleContentTabs, tabs } =
+        useEditorStore.getState();
+      const tab = tabs.find((t) => t.id === tabId);
+      if (complete) {
+        // A state cached for this tab is older than this editor, and coming back restores it first.
+        documentSurfaceAccess?.editorStateCache.delete(tabId);
+      }
+      if (
+        complete &&
+        tab?.isDirty &&
+        !sourceModeTabs.includes(tabId) &&
+        !staleContentTabs.includes(tabId)
+      ) {
+        try {
+          useFileStore
+            .getState()
+            .setFileContent(tab.filePath || tabId, serializeLiveDoc(evicted));
+        } catch (err) {
+          // The pool still has to make room for the tab being opened.
+          logger.error("keepalive: could not keep an evicted tab's text", err);
+        }
+      }
+      setMountedKeepaliveEditor(null);
+      setActiveKeepaliveEditor(null);
+    },
+    [],
+  );
   const keepalive = useLargeDocKeepalive(handleEviction);
   const activeEditor = activeKeepaliveEditor ?? editor;
   // Stable callback for useTabSwitching to notify us of editor changes.

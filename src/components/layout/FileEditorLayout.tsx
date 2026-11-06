@@ -31,6 +31,7 @@ import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { isMarkdownHref } from "../../utils/editor/local-link-nav";
+import { markContentLoaded } from "../../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { isEphemeralOnlyUpdate } from "../../utils/editor/syntax-reveal-ephemeral";
 import { logger } from "../../utils/logger";
@@ -120,6 +121,8 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
             isDirty: false,
             isPinned: false,
           });
+          // `use-auto-save` writes only a tab whose document is installed.
+          markContentLoaded(tabId);
         }
       } catch (err) {
         if (!cancelled) {

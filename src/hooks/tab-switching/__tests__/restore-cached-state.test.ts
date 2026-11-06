@@ -16,6 +16,7 @@ vi.mock("../../../extensions/plugins/vim/replace-editor-state", () => ({
 vi.mock("../after-doc-load", () => ({ afterDocLoad: vi.fn() }));
 
 import { replaceEditorStateWithVim } from "../../../extensions/plugins/vim/replace-editor-state";
+import { useEditorStore } from "../../../stores/editor/editor";
 import { restoreCachedState } from "../restore-cached-state";
 
 const schema = new Schema({
@@ -38,6 +39,7 @@ function stateWith(text: string): EditorState {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.mocked(replaceEditorStateWithVim).mockClear();
+  useEditorStore.setState({ activeTabId: "t1" });
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -66,6 +68,26 @@ describe("restoreCachedState", () => {
       renamed,
     );
     expect(ctx.installContent).toHaveBeenCalledWith("t1", "/v/a.md");
+  });
+
+  // 이것을 실패시키는 것: 그사이 다른 탭이 설치됐는데 이 타이머가 돌면, 편집기와 `loadedTabId` 가 떠난 탭을
+  // 가리켜 활성 탭의 저장이 거절된다.
+  it("does nothing if the tab was left before the timer fired", () => {
+    const scheduled = stateWith("scheduled");
+    const ctx = {
+      editor: { view: { dom: document.createElement("div") } },
+      editorStateCache: { current: new Map([["t1", scheduled]]) },
+      installContent: vi.fn(),
+      scrollOffsets: { current: new Map<string, number>() },
+    } as unknown as TabSwitchContext;
+    const tab = { filePath: "/v/a.md", id: "t1", type: "file" } as EditorTab;
+
+    restoreCachedState(ctx, "t1", tab, "", scheduled);
+    useEditorStore.setState({ activeTabId: "t2" });
+    vi.runAllTimers();
+
+    expect(replaceEditorStateWithVim).not.toHaveBeenCalled();
+    expect(ctx.installContent).not.toHaveBeenCalled();
   });
 
   it("falls back to the scheduled state when the entry was dropped meanwhile", () => {
