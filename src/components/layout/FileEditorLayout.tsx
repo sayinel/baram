@@ -25,6 +25,7 @@ import { createBaramExtensions } from "../../extensions";
 import { replaceEditorStateWithVim } from "../../extensions/plugins/vim/replace-editor-state";
 import { useAutoSave } from "../../hooks/use-auto-save";
 import { useFileWindowGuard } from "../../hooks/use-file-window-guard";
+import { useFileWindowMenu } from "../../hooks/use-file-window-menu";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, watchDir, writeFile } from "../../ipc/invoke";
@@ -42,6 +43,7 @@ import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { logger } from "../../utils/logger";
 import { dirname } from "../../utils/path-utils";
 import { MergeView } from "../editor/MergeView";
+import { ToastHost } from "../editor/Toast";
 import { UnsavedChangesModal } from "../editor/UnsavedChangesModal";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
@@ -371,6 +373,35 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     [editor, filePath, installSavedDocument, settleExternalChange],
   );
 
+  const toggleSource = useCallback(() => {
+    // Before the file has loaded there is nothing to show, and text typed into that empty
+    // buffer would replace the file on the next save.
+    if (!editor || !tabIdRef.current) return;
+    if (!isSourceMode) {
+      // WYSIWYG → Source: serialize current doc
+      setSourceContent(serializeLiveDoc(editor));
+    } else {
+      // Source → WYSIWYG. Text still unsaved arrives as an edit for `use-auto-save` to mark and
+      // save. Anything else is in the document already: a save there put it in.
+      const id = tabIdRef.current;
+      const { markSourceEdited, sourceEditedTabs } = useEditorStore.getState();
+      if (sourceEditedTabs.includes(id)) {
+        editor.commands.setContent(
+          markdownToProsemirror(sourceContent, editor.schema).toJSON(),
+        );
+        markSourceEdited(id, false);
+      }
+    }
+    setIsSourceMode(!isSourceMode);
+  }, [editor, isSourceMode, sourceContent]);
+
+  useFileWindowMenu({
+    editor,
+    handleSave,
+    holdsDocument: tabId !== null && !isSourceMode,
+    toggleSource,
+  });
+
   // Keyboard shortcuts: Cmd+S (save), Cmd+/ (source mode toggle)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -380,31 +411,12 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "/") {
         e.preventDefault();
-        // Before the file has loaded there is nothing to show, and text typed into that empty
-        // buffer would replace the file on the next save.
-        if (!editor || !tabIdRef.current) return;
-        if (!isSourceMode) {
-          // WYSIWYG → Source: serialize current doc
-          setSourceContent(serializeLiveDoc(editor));
-        } else {
-          // Source → WYSIWYG. Text still unsaved arrives as an edit for `use-auto-save` to mark and
-          // save. Anything else is in the document already: a save there put it in.
-          const id = tabIdRef.current;
-          const { markSourceEdited, sourceEditedTabs } =
-            useEditorStore.getState();
-          if (sourceEditedTabs.includes(id)) {
-            editor.commands.setContent(
-              markdownToProsemirror(sourceContent, editor.schema).toJSON(),
-            );
-            markSourceEdited(id, false);
-          }
-        }
-        setIsSourceMode(!isSourceMode);
+        toggleSource();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleSave, editor, sourceContent, isSourceMode]);
+  }, [handleSave, toggleSource]);
 
   if (error) {
     return (
@@ -487,6 +499,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
         )}
       </div>
       <UnsavedChangesModal handleSave={handleSave} />
+      <ToastHost />
     </div>
   );
 }
