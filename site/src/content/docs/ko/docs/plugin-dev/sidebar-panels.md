@@ -1,6 +1,6 @@
 ---
 title: "사이드바 패널"
-sourceHash: "4ab817967f2d"
+sourceHash: "591f0edb40eb"
 ---
 
 ## `context.ui.setPanel` (`sidebar` 필요, sandboxed)
@@ -72,6 +72,8 @@ export function activate(ctx: SandboxContext) {
   내용을 그립니다.
 - `setPanel`은 얼마든지 자주 불러도 됩니다. 가장 최근 내용이 이기고, Baram은 화면에 있는 패널을 250밀리초에 한 번까지
   그립니다. 앞 호출이 아직 가는 동안 한 호출은 보낼 차례를 기다리는 내용을 바꾸므로, 마지막 내용은 늘 도착합니다.
+  호출이 계속 이어지면 macOS에서는 갱신이 네 번이 아니라 초당 한 번쯤이라고 보십시오. 보내는 간격을 플러그인의 숨은
+  페이지에 있는 타이머가 재기 때문입니다([샌드박스 플러그인의 타이머](/ko/docs/plugin-dev/entry-point-and-types/#샌드박스-플러그인의-타이머)).
 - 첫 `setPanel` 전에는 패널에 아직 보일 것이 없다고 나옵니다.
 
 ## 돌려줄 수 있는 것
