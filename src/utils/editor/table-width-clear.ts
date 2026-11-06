@@ -28,7 +28,9 @@ import { subscribeContentLoaded } from "./programmatic-update";
 
 /** Clears the widths in every open markdown tab, each where its document is now. */
 export function clearTableWidthsInOpenTabs(): void {
-  for (const tab of useEditorStore.getState().tabs) clearTab(tab, false);
+  for (const tab of useEditorStore.getState().tabs) {
+    clearTabIsolated(tab, false);
+  }
 }
 
 /**
@@ -47,8 +49,13 @@ export function setTableColumnResizeFromUser(enabled: boolean): void {
 /**
  * Tabs whose document was out of reach when the clear ran: only their text was
  * there, or nothing yet. A document may still be parsed from the text as it was
- * before the clear, so each is re-checked once, when a document is installed. A
- * document parsed from the rewritten text has nothing left to clear then.
+ * before the clear, so each is re-checked once, when a document is installed.
+ *
+ * The rewritten text can still hold a comment: `stripTableWidthComments` leaves one
+ * on a list marker's line, which still gives the table after it widths when parsed,
+ * and one between two non-blank lines with no table right after, which gives no
+ * table widths. A re-check that reaches a document clears any widths it finds. One
+ * that lands on the text again does not wait a second time, so such widths stay.
  *
  * A wait ends with its tab, whichever way the tab closes. Some `openTab` callers
  * build the tab id from the file path, so a file opened again can come back under
@@ -112,6 +119,23 @@ function clearTab(tab: EditorTab, draining: boolean): void {
   }
 }
 
+/**
+ * One tab's failure stays that tab's. When the user turns the option off the setting
+ * has already changed and the run is not repeated, so the tabs after this one must
+ * still be cleared. In the drain, a throw would stop the remaining listeners of
+ * `markContentLoaded`.
+ */
+function clearTabIsolated(tab: EditorTab, draining: boolean): void {
+  try {
+    clearTab(tab, draining);
+  } catch (err) {
+    logger.error(
+      `[tableWidths] ${tab.filePath || tab.id}: could not clear the widths`,
+      err,
+    );
+  }
+}
+
 function clearText(tabId: string, textKey: string): void {
   const content = useFileStore.getState().openFiles.get(textKey);
   if (content === undefined) return;
@@ -126,7 +150,7 @@ function drainPendingClear(tabId: string): void {
   releaseTabWatchIfIdle();
   if (useSettingsStore.getState().tableColumnResize) return;
   const tab = useEditorStore.getState().tabs.find((t) => t.id === tabId);
-  if (tab) clearTab(tab, true);
+  if (tab) clearTabIsolated(tab, true);
 }
 
 function dropWaitsOfClosedTabs(tabs: readonly EditorTab[]): void {

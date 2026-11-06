@@ -50,6 +50,7 @@ import {
   isTabLoading,
   loadedTabId,
   markContentLoaded,
+  subscribeContentLoaded,
 } from "../programmatic-update";
 import {
   clearTableWidthsInOpenTabs,
@@ -799,6 +800,47 @@ describe("waiting for a document", () => {
     const second = install("t2");
     expect(second.dispatched).toHaveLength(0);
     expect(hasWidths(second.state)).toBe(true);
+  });
+});
+
+describe("one tab's failure", () => {
+  it("a tab that fails to serialize is logged, and the next tab is still cleared", () => {
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+    vi.mocked(prosemirrorToMarkdown).mockImplementationOnce(() => {
+      throw new Error("serialize failed");
+    });
+    cache.set("t2", markedState());
+    cache.set("t3", markedState());
+    useEditorStore.setState({
+      tabs: [fileTab("t2"), fileTab("t3")],
+    } as never);
+
+    clearTableWidthsInOpenTabs();
+
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(hasWidths(cache.get("t3")!)).toBe(false);
+    expect(openFiles.get(pathOf("t3"))).toBe(S);
+    expect(markDirty).toHaveBeenCalledWith("t3", true);
+    error.mockRestore();
+  });
+
+  it("a failing re-check is logged, and the other load listeners still run", () => {
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const later = vi.fn();
+    const stopListening = subscribeContentLoaded(later);
+    openFiles.set(pathOf("t2"), M);
+    setTableColumnResizeFromUser(false);
+    const installed = holdInSharedView("t2", markedState());
+    installed.view.dispatch = () => {
+      throw new Error("dispatch failed");
+    };
+
+    markContentLoaded("t2");
+
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(later).toHaveBeenCalledWith("t2");
+    stopListening();
+    error.mockRestore();
   });
 });
 
