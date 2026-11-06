@@ -263,8 +263,10 @@ export function createUserResizeTracker(): Plugin {
 /**
  * §5.5 Takes the resize handle away when `tableColumnResize` is off. Wraps the
  * `mousemove` and `mousedown` handlers of the columnResizing plugin in place
- * and returns the same array. The plugin itself stays installed: its TableView
- * and colgroup render the table. The setting is read when the event fires.
+ * and returns the same array. The plugin itself stays installed, so toggling
+ * changes no editor's plugin list; the table's NodeView and colgroup come from
+ * Tiptap's addNodeView, not from this plugin. The setting is read when the
+ * event fires.
  * Off, `mousemove` only takes down a handle that is already up and
  * `mousedown` returns false, so the press stays an ordinary click — returning
  * true would stop later handlers and ProseMirror's own mousedown handling.

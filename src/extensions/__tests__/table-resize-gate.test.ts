@@ -6,9 +6,10 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { createBaramExtensions } from "../index";
 
 // §5.5 The "Adjustable table column widths" setting takes away the resize
-// handle only: the columnResizing plugin stays installed (its TableView and
-// colgroup render the table), but with the setting off its mouse handlers do
-// nothing, so a press near a border is an ordinary click.
+// handle only: the columnResizing plugin stays installed, so toggling changes
+// no editor's plugin list, but with the setting off its mouse handlers do
+// nothing and a press near a border is an ordinary click. The table's NodeView
+// and colgroup come from Tiptap's addNodeView, not from this plugin.
 describe("Table column resize gate: tableColumnResize setting", () => {
   let editor: Editor | undefined;
   let host: HTMLElement | undefined;

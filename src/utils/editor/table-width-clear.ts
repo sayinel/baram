@@ -187,9 +187,13 @@ function releaseTabWatchIfIdle(): void {
  * - The active tab can be named by `loadedTabId` while the shared view holds another
  *   document: a non-markdown tab's reload installs into the shared editor without
  *   touching the name (`use-editor-effects.ts`), and returning to the tab installs
- *   nothing when its text is gone (`useTabSwitching`). The clear then dispatches into
- *   that other document, as any keystroke there would, and the auto-save writes it to
- *   this tab's file. That state is a separate defect, and this module does not fix it.
+ *   nothing when its text is gone (`useTabSwitching`). A reload that wiped the tab's
+ *   cache makes returning a cold load (`loadTabContent`): the name is dropped only when
+ *   the first parsed chunk is applied, so during the parse the tab is named over the
+ *   other document, and the auto-save can write it if the parse outlasts its delay
+ *   (measured with real hooks). The clear then dispatches into that other document, as
+ *   any keystroke there would, and the auto-save writes it to this tab's file. That
+ *   state is a separate defect, and this module does not fix it.
  */
 function viewToClearThrough(tabId: string): EditorView | undefined {
   const { activeTabId, documentSurfaceAccess: access } =
