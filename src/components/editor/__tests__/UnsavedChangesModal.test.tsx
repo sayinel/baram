@@ -24,6 +24,17 @@ vi.mock("../../../ipc/invoke", () => ({
   confirmQuit: vi.fn().mockResolvedValue(undefined),
 }));
 
+const fileWindows = vi.hoisted(() => ({
+  destroy: vi.fn(async () => undefined),
+  saveFileWindows: vi.fn(async () => true),
+}));
+vi.mock("../../../services/file-windows", () => ({
+  saveFileWindows: fileWindows.saveFileWindows,
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ destroy: fileWindows.destroy }),
+}));
+
 vi.mock("../../../services/app-update", () => ({
   installDownloadedUpdate: vi.fn(async () => undefined),
 }));
@@ -51,6 +62,7 @@ import { closeContexts } from "../../../services/close-context";
 import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { useFileWindowStore } from "../../../stores/system/file-windows";
 import { useUIStore } from "../../../stores/ui/ui";
 import { UnsavedChangesModal } from "../UnsavedChangesModal";
 
@@ -85,6 +97,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   useEditorStore.setState({ activeTabId: null, mruOrder: [], tabs: [] });
   useUIStore.setState({ unsavedModal: null });
+  useFileWindowStore.setState({ unsaved: new Set() });
+  fileWindows.saveFileWindows.mockResolvedValue(true);
 });
 
 // ── rendering ────────────────────────────────────────────────────────────────
@@ -331,6 +345,166 @@ describe("UnsavedChangesModal", () => {
       expect(useUIStore.getState().unsavedModal).toBeNull();
       expect(reload).not.toHaveBeenCalled();
       expect(saveAllDirtyForQuit).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── file windows (§89) ─────────────────────────────────────────────────────
+  //
+  // Quitting and installing end the file windows too, so the main window's question answers for
+  // them. Closing one asks in that window, about its one tab.
+  describe.each(["quit", "installUpdate"] as const)(
+    "%s with a file window holding unsaved work",
+    (intent) => {
+      const message = `unsavedChanges.${intent === "quit" ? "quitMessage" : "installUpdateMessage"}`;
+      const primary = `unsavedChanges.${intent === "quit" ? "saveAndQuit" : "saveAndInstallUpdate"}`;
+
+      beforeEach(() => {
+        useEditorStore.setState({
+          activeTabId: "a",
+          tabs: [dirtyFileTab("a")],
+        });
+        useFileWindowStore.setState({ unsaved: new Set(["file-1"]) });
+        useUIStore.setState({ unsavedModal: { intent } });
+        vi.mocked(saveAllDirtyForQuit).mockResolvedValue(true);
+      });
+
+      // 이것을 실패시키는 것: 개수에 파일 창을 더하지 않으면 main 의 탭만 있는 것처럼 묻는다.
+      it("counts it", () => {
+        render(<UnsavedChangesModal {...deps} />);
+
+        expect(
+          screen.getByText(containing(message, '"count":"2"')),
+        ).toBeInTheDocument();
+      });
+
+      // 이것을 실패시키는 것: 저장이 main 의 탭에서 멈추면 그 창의 글은 프로세스와 함께 사라진다.
+      it("Save has it save too, and only then goes on", async () => {
+        render(<UnsavedChangesModal {...deps} />);
+        fireEvent.click(screen.getByRole("button", { name: primary }));
+
+        await waitFor(() =>
+          expect(fileWindows.saveFileWindows).toHaveBeenCalledOnce(),
+        );
+        await waitFor(() =>
+          expect(useUIStore.getState().unsavedModal).toBeNull(),
+        );
+        const wentOn = () => [
+          ...vi.mocked(confirmQuit).mock.invocationCallOrder,
+          ...vi.mocked(installDownloadedUpdate).mock.invocationCallOrder,
+        ];
+        await waitFor(() => expect(wentOn()).toHaveLength(1));
+        expect(
+          fileWindows.saveFileWindows.mock.invocationCallOrder[0],
+        ).toBeLessThan(wentOn()[0]);
+      });
+
+      it("Save stays open when it could not save", async () => {
+        fileWindows.saveFileWindows.mockResolvedValue(false);
+
+        render(<UnsavedChangesModal {...deps} />);
+        fireEvent.click(screen.getByRole("button", { name: primary }));
+
+        await waitFor(() =>
+          expect(fileWindows.saveFileWindows).toHaveBeenCalledOnce(),
+        );
+        expect(useUIStore.getState().unsavedModal).toEqual({ intent });
+        expect(confirmQuit).not.toHaveBeenCalled();
+        expect(installDownloadedUpdate).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  // The pair: these take only this webview's tabs, so the file window is not their business.
+  it("a reload does not count a file window", () => {
+    useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+    useFileWindowStore.setState({ unsaved: new Set(["file-1"]) });
+    useUIStore.setState({ unsavedModal: { intent: "reload" } });
+
+    render(<UnsavedChangesModal {...deps} />);
+
+    expect(
+      screen.getByText(
+        containing("unsavedChanges.reloadMessage", '"count":"1"'),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // 이것을 실패시키는 것: 저장을 모든 intent 에서 파일 창까지 넓히면 묻지 않은 파일을 쓴다.
+  it("closing the workspace does not have a file window save", async () => {
+    useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+    useFileWindowStore.setState({ unsaved: new Set(["file-1"]) });
+    useUIStore.setState({ unsavedModal: { intent: "closeWorkspace" } });
+    vi.mocked(saveAllDirtyForQuit).mockResolvedValue(true);
+
+    render(<UnsavedChangesModal {...deps} />);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "unsavedChanges.saveAndCloseWorkspace",
+      }),
+    );
+
+    await waitFor(() => expect(useUIStore.getState().unsavedModal).toBeNull());
+    expect(fileWindows.saveFileWindows).not.toHaveBeenCalled();
+  });
+
+  describe("closing a file window", () => {
+    beforeEach(() => {
+      useEditorStore.setState({ activeTabId: "a", tabs: [dirtyFileTab("a")] });
+      useUIStore.setState({
+        unsavedModal: { intent: "closeWindow", tabId: "a" },
+      });
+    });
+
+    it("names the file", () => {
+      render(<UnsavedChangesModal {...deps} />);
+
+      expect(
+        screen.getByText(containing("unsavedChanges.closeMessage", "a.md")),
+      ).toBeInTheDocument();
+    });
+
+    it("Save saves the tab, then closes the window", async () => {
+      vi.mocked(saveDirtyTab).mockResolvedValue(true);
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.saveAndClose" }),
+      );
+
+      await waitFor(() => expect(fileWindows.destroy).toHaveBeenCalledOnce());
+      expect(saveDirtyTab).toHaveBeenCalledOnce();
+    });
+
+    it("Save that fails keeps the window", async () => {
+      vi.mocked(saveDirtyTab).mockResolvedValue(false);
+
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.saveAndClose" }),
+      );
+
+      await waitFor(() => expect(saveDirtyTab).toHaveBeenCalledOnce());
+      expect(fileWindows.destroy).not.toHaveBeenCalled();
+    });
+
+    it("Don't Save closes it without saving", async () => {
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.dontSave" }),
+      );
+
+      await waitFor(() => expect(fileWindows.destroy).toHaveBeenCalledOnce());
+      expect(saveDirtyTab).not.toHaveBeenCalled();
+    });
+
+    it("Cancel keeps it", () => {
+      render(<UnsavedChangesModal {...deps} />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "unsavedChanges.cancel" }),
+      );
+
+      expect(fileWindows.destroy).not.toHaveBeenCalled();
+      expect(useUIStore.getState().unsavedModal).toBeNull();
     });
   });
 

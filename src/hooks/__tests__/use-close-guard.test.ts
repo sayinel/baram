@@ -12,6 +12,11 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   save: vi.fn(),
 }));
 
+const setFocus = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ setFocus }),
+}));
+
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 
@@ -21,8 +26,10 @@ import type { CloseGuardDeps } from "../use-close-guard";
 import { confirmQuit, writeFile } from "../../ipc/invoke";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useFileWindowStore } from "../../stores/system/file-windows";
 import { useUIStore } from "../../stores/ui/ui";
 import {
+  hasUnsavedTabs,
   requestCloseWorkspace,
   requestReload,
   saveAllDirtyForQuit,
@@ -69,6 +76,7 @@ beforeEach(() => {
     tabs: [],
   });
   useFileStore.setState({ openFiles: new Map() });
+  useFileWindowStore.setState({ unsaved: new Set() });
   useUIStore.setState({ unsavedModal: null });
 });
 
@@ -426,5 +434,76 @@ describe("requestReload", () => {
 
     expect(useUIStore.getState().unsavedModal).toEqual({ intent: "reload" });
     expect(reload).not.toHaveBeenCalled();
+  });
+});
+
+// ── §89 file windows ─────────────────────────────────────────────────────────
+
+describe("what a file window holds", () => {
+  // 이것을 실패시키는 것: `useCloseGuard` 가 구독하지 않으면 main 창은 보고를 하나도 받지 못해 묻지 않고 끝낸다.
+  it("reaches the main window through this hook", async () => {
+    renderHook(() => useCloseGuard());
+
+    const handler = await vi.waitFor(() => {
+      const call = vi
+        .mocked(listen)
+        .mock.calls.find(([name]) => name === "file-window://unsaved");
+      expect(call).toBeDefined();
+      return call![1];
+    });
+    handler({ payload: { label: "file-1", unsaved: true } } as never);
+
+    expect(useFileWindowStore.getState().unsaved).toEqual(new Set(["file-1"]));
+  });
+
+  it("makes a quit ask, though no tab here is unsaved", async () => {
+    useFileWindowStore.setState({ unsaved: new Set(["file-1"]) });
+    renderHook(() => useCloseGuard());
+
+    closeRequestedHandler()();
+
+    await vi.waitFor(() =>
+      expect(useUIStore.getState().unsavedModal).toEqual({ intent: "quit" }),
+    );
+    expect(confirmQuit).not.toHaveBeenCalled();
+    // Cmd+Q from that file window asks here, which may be behind it.
+    expect(setFocus).toHaveBeenCalledOnce();
+  });
+
+  // The pair: with nothing unsaved anywhere the quit goes straight through.
+  it("does not hold up a quit once it has nothing unsaved", async () => {
+    renderHook(() => useCloseGuard());
+
+    closeRequestedHandler()();
+
+    await vi.waitFor(() => expect(confirmQuit).toHaveBeenCalledOnce());
+    expect(useUIStore.getState().unsavedModal).toBeNull();
+  });
+
+  // 이것을 실패시키는 것: 판정을 main 의 탭으로만 하면 설치가 그 창의 글을 묻지 않고 끝낸다.
+  it("counts for the update install, which ends that window too", async () => {
+    useFileWindowStore.setState({ unsaved: new Set(["file-1"]) });
+
+    await expect(hasUnsavedTabs()).resolves.toBe(true);
+  });
+
+  // A reload takes only this webview, and the file window stays open with its text.
+  it("does not make a reload of the main window ask", async () => {
+    useFileWindowStore.setState({ unsaved: new Set(["file-1"]) });
+    const reload = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, reload },
+    });
+
+    await requestReload();
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: original,
+    });
+    expect(useUIStore.getState().unsavedModal).toBeNull();
+    expect(reload).toHaveBeenCalledOnce();
   });
 });

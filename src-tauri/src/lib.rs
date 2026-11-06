@@ -173,17 +173,27 @@ enum CloseAction {
 ///
 /// Invisible until this phase only because `core:window:allow-close` was missing, so
 /// the close never reached the window manager and `CloseRequested` never fired for a
-/// plugin window. Host windows (`main`, `file-*`) keep the guard: closing one of
-/// those IS a user gesture that may need the unsaved-changes prompt.
+/// plugin window. The main window keeps the guard: closing it IS a user gesture that may
+/// need the unsaved-changes prompt, and it ends the app.
+///
+/// §89 A `file-*` window must not reach that broadcast either, for the same reason: closing
+/// one quit the app whenever the main window had nothing unsaved. It answers for itself in
+/// `use-file-window-guard.ts`; its `onCloseRequested` listener makes tauri hold the close,
+/// and a window whose page never got that far has nothing to ask about.
 ///
 /// A function rather than a predicate the handler combines with the quit flag (3c-3
 /// code review, M4): the previous shape let a test pass while the guard's only call
 /// site was deleted, leaving the defect above untested.
 fn close_action(label: &str, quit_confirmed: bool) -> CloseAction {
-    if plugin::plugin_id_from_label(label).is_some() || quit_confirmed {
+    if plugin::plugin_id_from_label(label).is_some() || is_file_window(label) || quit_confirmed {
         return CloseAction::Allow;
     }
     CloseAction::PreventAndAsk
+}
+
+/// §89 The label `openFileWindow` gives a torn-off tab's window (`src/utils/file-window.ts`).
+fn is_file_window(label: &str) -> bool {
+    label.starts_with("file-")
 }
 
 /// Frontend calls this after the user resolves the unsaved-changes prompt and
@@ -465,8 +475,8 @@ pub fn run() {
         ])
         // Unsaved-changes guard: intercept the window close (red X) and ask the
         // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 let guard = window.state::<QuitGuard>();
                 if close_action(window.label(), guard.0.load(Ordering::Relaxed))
                     == CloseAction::PreventAndAsk
@@ -475,6 +485,14 @@ pub fn run() {
                     let _ = window.emit("app://close-requested", ());
                 }
             }
+            // §89 The main window counts what file windows hold (`services/file-windows.ts`), and
+            // a window that fell to the `ErrorBoundary` screen closes without running any of its
+            // code. Left counted, every later quit would ask about it and wait on a save it cannot
+            // answer.
+            tauri::WindowEvent::Destroyed if is_file_window(window.label()) => {
+                let _ = window.emit_to("main", "file-window://closed", window.label());
+            }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -529,17 +547,20 @@ mod tests {
     /// closing, cancelled that close, and broadcast `app://close-requested`, which
     /// the main window answers by running its quit flow.
     #[test]
-    fn the_close_guard_skips_sandbox_windows_only() {
-        // Host windows keep the guard — closing one IS a user gesture that may need
+    fn the_close_guard_is_for_the_main_window_only() {
+        // The main window keeps the guard — closing it IS a user gesture that may need
         // the unsaved-changes prompt.
-        for host in ["main", "file-1", "file-abc123"] {
+        assert_eq!(close_action("main", false), CloseAction::PreventAndAsk);
+        // …and once the user has confirmed the quit, it goes through.
+        assert_eq!(close_action("main", true), CloseAction::Allow);
+        // §89 A file window asks for itself in the webview. Intercepting it here broadcast
+        // `app://close-requested`, which the main window answers by quitting the app.
+        for file_window in ["file-1", "file-abc123"] {
             assert_eq!(
-                close_action(host, false),
-                CloseAction::PreventAndAsk,
-                "{host} must still be intercepted"
+                close_action(file_window, false),
+                CloseAction::Allow,
+                "{file_window} must not reach the main window's quit flow"
             );
-            // …and once the user has confirmed the quit, it goes through.
-            assert_eq!(close_action(host, true), CloseAction::Allow);
         }
         // Sandbox windows are opened and closed by the loader, never by the user.
         // Intercepting one cancelled the loader's close AND broadcast

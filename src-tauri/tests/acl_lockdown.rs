@@ -890,6 +890,12 @@ fn host_tier_can_close_the_webviews_it_creates() {
              to close it leaves a running plugin that keeps its capabilities"
         );
     }
+    // §89 `onCloseRequested` finishes a file window's close with `destroy`.
+    assert!(
+        host.contains("core:window:allow_destroy"),
+        "host windows need core:window:allow_destroy: without it, closing a file window does \
+         nothing, because tauri holds the close for its `onCloseRequested` listener"
+    );
     // …and the sandbox tier must never get it — a plugin-* window holding
     // `allow-close` could close the MAIN window. `sandbox_tier_grants_exactly_its_
     // allowlist` enforces that exhaustively; this states the specific hazard.
@@ -1140,6 +1146,8 @@ const HOST_PLUGIN_COMMANDS: &[&str] = &[
     "core:window:create",
     "core:window:current_monitor",
     "core:window:cursor_position",
+    // §89 `onCloseRequested` finishes a file window's close with this.
+    "core:window:destroy",
     "core:window:get_all_windows",
     "core:window:inner_position",
     "core:window:inner_size",
@@ -1162,6 +1170,8 @@ const HOST_PLUGIN_COMMANDS: &[&str] = &[
     "core:window:primary_monitor",
     "core:window:scale_factor",
     "core:window:scene_identifier",
+    // §89 A quit started in a file window asks in the main window, which may be behind it.
+    "core:window:set_focus",
     "core:window:theme",
     "core:window:title",
     "dialog:message",
