@@ -116,9 +116,12 @@ function collectWidthCommentLines(
  */
 export function stripTableWidthComments(markdown: string): string {
   if (!markdown.includes("colwidths")) return markdown;
+  // The parser does not count a leading BOM in its columns, and deleting the first
+  // line must not take it along, so the lines are read without it.
+  const bom = markdown.startsWith("﻿") ? "﻿" : "";
   // Split on all three line endings the parser recognises, keeping them so
   // the lines that stay are byte-for-byte unchanged.
-  const parts = markdown.split(/(\r\n|\n|\r)/);
+  const parts = markdown.slice(bom.length).split(/(\r\n|\n|\r)/);
   const lines: string[] = [];
   const eols: string[] = [];
   for (let i = 0; i < parts.length; i += 2) {
@@ -132,5 +135,7 @@ export function stripTableWidthComments(markdown: string): string {
     doomed,
   );
   if (doomed.size === 0) return markdown;
-  return lines.map((line, i) => (doomed.has(i) ? "" : line + eols[i])).join("");
+  return (
+    bom + lines.map((line, i) => (doomed.has(i) ? "" : line + eols[i])).join("")
+  );
 }
