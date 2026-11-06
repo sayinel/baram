@@ -27,9 +27,10 @@ import {
 import {
   applyToDocumentSurface,
   type DocumentSurface,
+  liveViewOf,
   locateOpenTabSurface,
 } from "./open-tab-surface";
-import { loadedTabId, subscribeContentLoaded } from "./programmatic-update";
+import { subscribeContentLoaded } from "./programmatic-update";
 
 export interface CommittedBlockIdRename {
   filePath: string;
@@ -147,17 +148,7 @@ export function drainPendingBlockIdRenames(tabId: string): void {
   const ops = pending.get(tabId);
   if (!ops) return;
   pending.delete(tabId);
-  const access = useEditorStore.getState().documentSurfaceAccess;
-  for (const op of ops) {
-    const editor =
-      access?.keepaliveEditor(tabId) ??
-      (loadedTabId() === tabId ? access?.editor : null);
-    void land(
-      op,
-      editor && !editor.isDestroyed ? editor.view : undefined,
-      true,
-    );
-  }
+  for (const op of ops) void land(op, liveViewOf(tabId), true);
 }
 
 /** Position of the paragraph/heading carrying `blockId`, or null. */

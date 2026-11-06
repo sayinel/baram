@@ -91,6 +91,20 @@ export function applyToDocumentSurface(
 }
 
 /**
+ * The view of the editor that may hold the tab's document, for
+ * `locateOpenTabSurface`. Whether it is live is asked of the editor: a destroyed
+ * Tiptap editor's `view` is a stub that answers `isDestroyed: false` and throws on
+ * `dom`.
+ */
+export function liveViewOf(tabId: string): EditorView | undefined {
+  const access = useEditorStore.getState().documentSurfaceAccess;
+  const editor =
+    access?.keepaliveEditor(tabId) ??
+    (loadedTabId() === tabId ? access?.editor : null);
+  return editor && !editor.isDestroyed ? editor.view : undefined;
+}
+
+/**
  * Authority order, documented step by step below: source, untrusted → text,
  * view, pool, cache, text. `view` is an editor the caller still has, if any.
  */
@@ -173,8 +187,27 @@ function publishBackgroundChange(
  * until it is destroyed; the shared view owns a tab's document while that tab
  * is the one installed in it (`loadedTabId`, which — unlike the active tab id
  * — flips only once the content is actually in).
+ *
+ * ‼️ §5.5 So `loadedTabId` goes on answering the outgoing tab through a cold load:
+ * `load-tab-content.ts` sets the incoming tab's loading flag, then puts the first
+ * chunk in the view, and only `finishLoad` announces the install. Reading the view
+ * as the outgoing tab's in that window files the incoming document under the
+ * outgoing tab, and the next save writes it into that tab's file. While the active
+ * tab's flag is on, the outgoing tab falls to its cache or its text instead. A cached
+ * restore (`restore-cached-state.ts`) sets no flag, and until its deferred install
+ * the view does hold the outgoing document, so that window keeps the answer.
+ *
+ * Not closed here: a switch that interrupts the load clears the flag
+ * (`cancelInflightAppend`), so after leaving for a tab that installs nothing (a graph
+ * or plugin tab, a non-markdown file) the view keeps the partial document with no
+ * flag on, and this still answers the outgoing tab.
  */
 function viewHoldsTab(view: EditorView, tabId: string): boolean {
   if (view.isDestroyed) return false;
-  return isKeepaliveView(view) || loadedTabId() === tabId;
+  if (isKeepaliveView(view)) return true;
+  if (loadedTabId() !== tabId) return false;
+  const { activeTabId } = useEditorStore.getState();
+  return (
+    activeTabId === null || activeTabId === tabId || !isTabLoading(activeTabId)
+  );
 }

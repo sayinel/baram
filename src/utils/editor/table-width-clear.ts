@@ -7,7 +7,6 @@
 // edited one is: the active tab through the auto-save, a background tab through the
 // close and quit guard.
 import type { EditorTab } from "../../stores/editor/editor";
-import type { EditorView } from "@tiptap/pm/view";
 
 import { buildClearTableWidthsTransaction } from "../../extensions/nodes/plugins/table-col-resize";
 import { stripTableWidthComments } from "../../pipeline/convert-table-colwidths";
@@ -22,9 +21,10 @@ import { isMarkdownFile } from "../file-type";
 import { logger } from "../logger";
 import {
   applyToDocumentSurface,
+  liveViewOf,
   locateOpenTabSurface,
 } from "./open-tab-surface";
-import { loadedTabId, subscribeContentLoaded } from "./programmatic-update";
+import { subscribeContentLoaded } from "./programmatic-update";
 
 /** Clears the widths in every open markdown tab, each where its document is now. */
 export function clearTableWidthsInOpenTabs(): void {
@@ -135,19 +135,6 @@ function dropWaitsOfClosedTabs(tabs: readonly EditorTab[]): void {
     if (!openTabIds.has(tabId)) pendingClears.delete(tabId);
   }
   releaseTabWatchIfIdle();
-}
-
-/**
- * The view of the editor holding the tab's document, if any. Whether it is live is
- * asked of the editor: a destroyed Tiptap editor's `view` is a stub that answers
- * `isDestroyed: false` and throws on `dom`.
- */
-function liveViewOf(tabId: string): EditorView | undefined {
-  const access = useEditorStore.getState().documentSurfaceAccess;
-  const editor =
-    access?.keepaliveEditor(tabId) ??
-    (loadedTabId() === tabId ? access?.editor : null);
-  return editor && !editor.isDestroyed ? editor.view : undefined;
 }
 
 function releaseTabWatchIfIdle(): void {

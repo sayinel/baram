@@ -140,8 +140,11 @@ function makeView(state: EditorState, keepalive = false): FakeView {
   return holder;
 }
 
-function markedState(): EditorState {
-  return EditorState.create({ doc: markdownToProsemirror(M, schema), schema });
+function markedState(markdown = M): EditorState {
+  return EditorState.create({
+    doc: markdownToProsemirror(markdown, schema),
+    schema,
+  });
 }
 
 function pathOf(tabId: string): string {
@@ -188,6 +191,22 @@ function holdInSharedView(tabId: string, state: EditorState): FakeView {
   vi.mocked(loadedTabId).mockReturnValue(tabId);
   useEditorStore.setState({ activeTabId: tabId } as never);
   return shared;
+}
+
+/**
+ * A cold load between its first chunk and `finishLoad`: the incoming tab is active
+ * and flagged loading, the shared view holds its first blocks, and `loadedTabId`
+ * still answers the tab before it.
+ */
+function firstChunkInSharedView(
+  tabId: string,
+  previous: string,
+  state: EditorState,
+): FakeView {
+  const view = holdInSharedView(tabId, state);
+  vi.mocked(loadedTabId).mockReturnValue(previous);
+  vi.mocked(isTabLoading).mockImplementation((id) => id === tabId);
+  return view;
 }
 
 /** A load's last step: the document is in and the install is announced. */
@@ -357,18 +376,78 @@ describe("each place a tab's document can be", () => {
   });
 
   it("a load in progress: its partial document is left alone, then cleared once the load ends", () => {
-    const loading = holdInSharedView("t2", markedState());
-    vi.mocked(isTabLoading).mockImplementation((id) => id === "t2");
+    const loading = firstChunkInSharedView("t2", "t1", markedState());
     openFiles.set(pathOf("t2"), M);
     useSettingsStore.setState({ tableColumnResize: false });
 
     clearTableWidthsInOpenTabs();
-    expect(loading.dispatched).toHaveLength(0);
 
+    expect(loading.dispatched).toHaveLength(0);
+    expect(hasWidths(loading.state)).toBe(true);
+    expect(openFiles.get(pathOf("t2"))).toBe(S);
+
+    // `finishLoad`: the flag comes off, then the install says which tab is in.
     vi.mocked(isTabLoading).mockReturnValue(false);
+    vi.mocked(loadedTabId).mockReturnValue("t2");
     markContentLoaded("t2");
+
     expect(loading.dispatched).toHaveLength(1);
     expect(hasWidths(loading.state)).toBe(false);
+  });
+
+  describe("the tab before a cold load in progress", () => {
+    const OTHER =
+      "<!-- colwidths:7,8 -->\n\n| Other | B |\n| - | - |\n| 1 | 2 |\n";
+    const OTHER_STRIPPED = stripTableWidthComments(OTHER);
+
+    it("clean: is not given the incoming tab's document", () => {
+      const own = unmarkedState();
+      cache.set("t1", own);
+      openFiles.set(pathOf("t1"), S);
+      openFiles.set(pathOf("t2"), OTHER);
+      const chunk = firstChunkInSharedView("t2", "t1", markedState(OTHER));
+
+      clearTableWidthsInOpenTabs();
+
+      expect(cache.get("t1")).toBe(own);
+      expect(openFiles.get(pathOf("t1"))).toBe(S);
+      expect(markDirty).not.toHaveBeenCalledWith("t1", true);
+      expect(chunk.dispatched).toHaveLength(0);
+      expect(hasWidths(chunk.state)).toBe(true);
+      expect(openFiles.get(pathOf("t2"))).toBe(OTHER_STRIPPED);
+    });
+
+    it("with its own widths: has them cleared from its own document", () => {
+      cache.set("t1", markedState());
+      openFiles.set(pathOf("t1"), M);
+      openFiles.set(pathOf("t2"), OTHER);
+      const chunk = firstChunkInSharedView("t2", "t1", markedState(OTHER));
+
+      clearTableWidthsInOpenTabs();
+
+      const after = cache.get("t1")!;
+      expect(after.doc.textContent).not.toContain("Other");
+      expect(hasWidths(after)).toBe(false);
+      expect(openFiles.get(pathOf("t1"))).toBe(S);
+      expect(markDirty).toHaveBeenCalledWith("t1", true);
+      expect(chunk.dispatched).toHaveLength(0);
+      expect(hasWidths(chunk.state)).toBe(true);
+      expect(openFiles.get(pathOf("t2"))).toBe(OTHER_STRIPPED);
+    });
+
+    it("in the cached restore's window, with no load flag: the view still holds it", () => {
+      const outgoing = holdInSharedView("t2", markedState());
+      vi.mocked(loadedTabId).mockReturnValue("t1");
+      cache.set("t1", outgoing.state);
+
+      clearTableWidthsInOpenTabs();
+
+      expect(outgoing.dispatched).toHaveLength(0);
+      expect(hasWidths(outgoing.state)).toBe(false);
+      expect(cache.get("t1")).toBe(outgoing.state);
+      expect(openFiles.get(pathOf("t1"))).toBe(S);
+      expect(markDirty).toHaveBeenCalledWith("t1", true);
+    });
   });
 
   it("an incomplete keep-alive entry: left alone, then cleared once the load marks it complete", () => {
