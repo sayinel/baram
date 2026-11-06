@@ -25,6 +25,7 @@ import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { isMarkdownFile, isViewerEditableFile } from "../utils/file-type";
+import { shouldDeferSave } from "./use-auto-save";
 
 export interface UseCodeAutoSaveOptions {
   /**
@@ -167,13 +168,20 @@ export function useCodeAutoSave({
  * timer when source mode ends, so a change to it reaches all three: read the buffer, write it,
  * record the save's mtime and the file's content, then lower dirty only while the buffer
  * still holds what was written (spec 0071 D17). A failed write keeps the dirty state.
+ *
+ * @returns whether the text reached the disk
  */
 export async function saveFromBuffer(
   tabId: string,
   filePath: string,
   deps: BufferSaveDeps,
   { reindexLinks }: { reindexLinks: boolean },
-): Promise<void> {
+): Promise<boolean> {
+  // An external change is waiting for an answer, as in `use-auto-save`. Writing now would remove it
+  // from under the conflict question. The tab stays unsaved.
+  if (shouldDeferSave(useFileStore.getState().getFileMtime(filePath))) {
+    return false;
+  }
   try {
     const content = deps.getSourceBuffer(tabId);
     await writeFile(filePath, content);
@@ -193,8 +201,10 @@ export async function saveFromBuffer(
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
     }
+    return true;
   } catch {
     // Save failed — keep dirty state
+    return false;
   }
 }
 
