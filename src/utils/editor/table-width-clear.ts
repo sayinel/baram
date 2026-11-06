@@ -178,14 +178,16 @@ function releaseTabWatchIfIdle(): void {
  * tab that is not markdown), so for a tab not on screen that view may hold a different
  * document, which the clear would file under this tab. Such a tab goes to its cache,
  * where `saveOutgoingTab` put it as it left, and then to its text. A pooled editor
- * owns its document, and `locateOpenTabSurface` finds it without being given a view.
+ * owns its document, so its view is used whichever tab is active.
  *
  * The accepted limit: a toggle in the instant between the active tab flipping and
  * `saveOutgoingTab` can leave that tab's widths in place, because that save caches
  * the view's state over the cleared one. Nothing is written to another file.
  */
 function viewToClearThrough(tabId: string): EditorView | undefined {
-  return tabId === useEditorStore.getState().activeTabId
+  const { activeTabId, documentSurfaceAccess: access } =
+    useEditorStore.getState();
+  return tabId === activeTabId || access?.keepaliveEditor(tabId)
     ? liveViewOf(tabId)
     : undefined;
 }
