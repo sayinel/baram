@@ -191,6 +191,105 @@ fn close_action(label: &str, quit_confirmed: bool) -> CloseAction {
     CloseAction::PreventAndAsk
 }
 
+/// §89 The window the user last brought to the front. The menu is one for the whole app and does
+/// not say which window it was used from.
+///
+/// Remembered from focus events rather than asked when a command arrives, because the window in
+/// use does not always read as focused: a native dialog sheet on macOS takes focus while its menu
+/// shortcuts still fire. Losing focus therefore does not clear it. A window closing does.
+#[derive(Default)]
+struct LastFocusedWindow(Mutex<Option<String>>);
+
+impl LastFocusedWindow {
+    fn note(&self, label: &str) {
+        if let Ok(mut last) = self.0.lock() {
+            *last = Some(label.to_string());
+        }
+    }
+
+    fn forget(&self, label: &str) {
+        if let Ok(mut last) = self.0.lock() {
+            if last.as_deref() == Some(label) {
+                *last = None;
+            }
+        }
+    }
+
+    fn label(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|last| last.clone())
+    }
+}
+
+fn deliver_menu_command<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) {
+    let focused = app.state::<LastFocusedWindow>().label();
+    match menu_target(id, focused.as_deref()) {
+        MenuTarget::FileWindow(label) => {
+            let _ = app.emit_to(label, "menu-event", id);
+        }
+        MenuTarget::Main { raise } => {
+            let _ = app.emit_to("main", "menu-event", id);
+            if raise {
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.unminimize();
+                    let _ = main.set_focus();
+                }
+            }
+        }
+    }
+}
+
+/// §89 Where a native menu command goes.
+#[derive(Debug, PartialEq)]
+enum MenuTarget<'a> {
+    /// The file window in front, which answers it (`use-file-window-menu.ts`).
+    FileWindow(&'a str),
+    /// The main window. `raise` when a file window is in front and the command would otherwise act
+    /// where the user cannot see it: Settings opening behind the window they are in.
+    Main { raise: bool },
+}
+
+fn menu_target<'a>(id: &str, focused: Option<&'a str>) -> MenuTarget<'a> {
+    match focused {
+        Some(label) if is_file_window(label) => {
+            if concerns_the_document_in_front(id) {
+                MenuTarget::FileWindow(label)
+            } else {
+                MenuTarget::Main {
+                    raise: shows_something_in_the_main_window(id),
+                }
+            }
+        }
+        _ => MenuTarget::Main { raise: false },
+    }
+}
+
+/// The commands about the document in front, besides the `insert_` ones. Sent to the main window
+/// instead, they act on its active tab: Cmd+W closes a tab the user is not looking at, and Insert >
+/// Bold edits it. Cmd+Shift+W is one key from Cmd+W and would close the whole workspace. A file
+/// window does what it can with these and says so for the rest (`use-file-window-menu.ts`).
+const DOCUMENT_MENU_COMMANDS: [&str; 11] = [
+    "edit_find_replace",
+    "export_doc",
+    "file_close_folder",
+    "file_close_tab",
+    "file_save",
+    "file_save_as",
+    "go_back",
+    "go_forward",
+    "view_inline_ai",
+    "view_reload",
+    "view_source",
+];
+
+fn concerns_the_document_in_front(id: &str) -> bool {
+    id.starts_with("insert_") || DOCUMENT_MENU_COMMANDS.contains(&id)
+}
+
+/// A browser opens for Help, and clearing the recent list shows nothing.
+fn shows_something_in_the_main_window(id: &str) -> bool {
+    !id.starts_with("help_") && id != "recent_clear"
+}
+
 /// §89 The label `openFileWindow` gives a torn-off tab's window (`src/utils/file-window.ts`).
 fn is_file_window(label: &str) -> bool {
     label.starts_with("file-")
@@ -294,13 +393,14 @@ pub fn run() {
             app.manage(menu_state);
 
             app.on_menu_event(move |app_handle, event| {
-                let _ = app_handle.emit("menu-event", event.id().as_ref());
+                deliver_menu_command(app_handle, event.id().as_ref());
             });
 
             Ok(())
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .manage(QuitGuard(AtomicBool::new(false)))
+        .manage(LastFocusedWindow::default())
         .manage(VaultRootState(tokio::sync::RwLock::new(None)))
         .manage(WatcherState(std::sync::Mutex::new(
             std::collections::HashMap::new(),
@@ -485,12 +585,18 @@ pub fn run() {
                     let _ = window.emit("app://close-requested", ());
                 }
             }
-            // §89 The main window counts what file windows hold (`services/file-windows.ts`), and
-            // a window that fell to the `ErrorBoundary` screen closes without running any of its
-            // code. Left counted, every later quit would ask about it and wait on a save it cannot
-            // answer.
-            tauri::WindowEvent::Destroyed if is_file_window(window.label()) => {
-                let _ = window.emit_to("main", "file-window://closed", window.label());
+            tauri::WindowEvent::Focused(true) => {
+                window.state::<LastFocusedWindow>().note(window.label());
+            }
+            tauri::WindowEvent::Destroyed => {
+                window.state::<LastFocusedWindow>().forget(window.label());
+                // §89 The main window counts what file windows hold (`services/file-windows.ts`),
+                // and a window that fell to the `ErrorBoundary` screen closes without running any
+                // of its code. Left counted, every later quit would ask about it and wait on a save
+                // it cannot answer.
+                if is_file_window(window.label()) {
+                    let _ = window.emit_to("main", "file-window://closed", window.label());
+                }
             }
             _ => {}
         })
@@ -541,6 +647,148 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_menu_command_about_the_document_goes_to_the_file_window_in_front() {
+        for id in [
+            "file_save",
+            "file_close_tab",
+            "file_close_folder",
+            "view_source",
+            "view_inline_ai",
+            "go_back",
+            "insert_bold",
+        ] {
+            assert_eq!(
+                menu_target(id, Some("file-1")),
+                MenuTarget::FileWindow("file-1"),
+                "{id} would act on the main window's active tab"
+            );
+        }
+    }
+
+    #[test]
+    fn any_other_menu_command_raises_the_main_window_from_a_file_window() {
+        for id in ["file_new", "file_settings", "go_palette", "view_sidebar"] {
+            assert_eq!(
+                menu_target(id, Some("file-1")),
+                MenuTarget::Main { raise: true },
+                "{id} would open behind the window the user is in"
+            );
+        }
+    }
+
+    // Help opens a browser and clearing the recent list shows nothing, so main stays where it is.
+    #[test]
+    fn a_command_with_nothing_to_show_does_not_raise_the_main_window() {
+        for id in ["help_faq", "help_user_guide", "recent_clear"] {
+            assert_eq!(
+                menu_target(id, Some("file-1")),
+                MenuTarget::Main { raise: false },
+                "{id} has nothing to show in the main window"
+            );
+        }
+    }
+
+    /// Two windows and a listener on each, as the two webviews listen.
+    fn delivered(last_focused: Option<&str>, id: &str) -> (usize, usize) {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::Arc;
+        use tauri::Listener;
+
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(LastFocusedWindow::default());
+        let main = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+        let file = tauri::WebviewWindowBuilder::new(&app, "file-1", Default::default())
+            .build()
+            .expect("mock webview must build");
+        let at_main = Arc::new(AtomicUsize::new(0));
+        let at_file = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&at_main);
+        main.listen("menu-event", move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+        });
+        let count = Arc::clone(&at_file);
+        file.listen("menu-event", move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+        });
+        if let Some(label) = last_focused {
+            app.state::<LastFocusedWindow>().note(label);
+        }
+
+        deliver_menu_command(app.handle(), id);
+
+        (
+            at_main.load(Ordering::SeqCst),
+            at_file.load(Ordering::SeqCst),
+        )
+    }
+
+    // 이것을 실패시키는 것: 브로드캐스트로 돌아가면 파일 창의 Cmd+W 가 main 의 탭까지 닫는다.
+    #[test]
+    fn a_document_command_reaches_only_the_file_window_in_front() {
+        assert_eq!(delivered(Some("file-1"), "file_save"), (0, 1));
+    }
+
+    #[test]
+    fn any_other_command_reaches_only_the_main_window() {
+        assert_eq!(delivered(Some("file-1"), "file_new"), (1, 0));
+    }
+
+    #[test]
+    fn with_the_main_window_in_front_every_command_reaches_only_it() {
+        assert_eq!(delivered(Some("main"), "file_save"), (1, 0));
+        assert_eq!(delivered(None, "file_save"), (1, 0));
+    }
+
+    // 이것을 실패시키는 것: 초점 해제로 지우면, 네이티브 시트가 뜬 파일 창의 Cmd+S 가 main 의 탭을 저장한다.
+    #[test]
+    fn the_last_focused_window_is_kept_until_another_takes_over_or_it_closes() {
+        let last = LastFocusedWindow::default();
+        last.note("file-1");
+        assert_eq!(last.label().as_deref(), Some("file-1"));
+
+        last.forget("main");
+        assert_eq!(last.label().as_deref(), Some("file-1"));
+
+        last.note("main");
+        last.forget("file-1");
+        assert_eq!(last.label().as_deref(), Some("main"));
+
+        last.forget("main");
+        assert_eq!(last.label(), None);
+    }
+
+    // The pair: with no file window in front, every command goes where it always went.
+    #[test]
+    fn a_menu_command_goes_to_the_main_window_otherwise() {
+        for focused in [Some("main"), Some("plugin-x"), None] {
+            for id in ["file_save", "insert_bold", "file_new"] {
+                assert_eq!(
+                    menu_target(id, focused),
+                    MenuTarget::Main { raise: false },
+                    "{id} with {focused:?} in front"
+                );
+            }
+        }
+    }
+
+    // A misspelt id would quietly send that command to the main window again.
+    #[test]
+    fn the_document_menu_commands_are_items_of_the_menu() {
+        let menu = include_str!("menu.rs");
+        for id in DOCUMENT_MENU_COMMANDS {
+            assert!(
+                menu.contains(&format!("\"{id}\"")),
+                "{id} is not in menu.rs"
+            );
+        }
+        assert!(menu.contains("\"insert_"), "no insert_ command in menu.rs");
+    }
 
     /// §260 Phase 3c-3, found by the live smoke: unloading a sandboxed plugin quit
     /// the app. The close guard ran for the `plugin-*` webview the loader was

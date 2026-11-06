@@ -20,6 +20,7 @@ const writeFile = vi.hoisted(() =>
   }),
 );
 const guard = vi.hoisted(() => vi.fn());
+const menu = vi.hoisted(() => vi.fn());
 const mergeTexts = vi.hoisted(() => vi.fn(async () => ({ segments: [] })));
 const parse = vi.hoisted(() => ({ fails: false }));
 
@@ -50,6 +51,10 @@ vi.mock("../../../ipc/invoke", async (importOriginal) => ({
 
 vi.mock("../../../hooks/use-file-window-guard", () => ({
   useFileWindowGuard: guard,
+}));
+
+vi.mock("../../../hooks/use-file-window-menu", () => ({
+  useFileWindowMenu: menu,
 }));
 
 vi.mock("../../../ipc/snapshot", () => ({ mergeTexts }));
@@ -94,6 +99,7 @@ import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { useUIStore } from "../../../stores/ui/ui";
 import { serializeLiveDoc } from "../../../utils/editor/serialize-live-doc";
 import { FileEditorLayout } from "../FileEditorLayout";
 
@@ -155,6 +161,7 @@ function unsaved(): boolean {
 beforeEach(() => {
   writeFile.mockClear();
   guard.mockClear();
+  menu.mockClear();
   mergeTexts.mockClear();
   vi.mocked(listen).mockClear();
   disk.gate = Promise.resolve();
@@ -407,6 +414,72 @@ describe("a file window's document", () => {
     await settle(0);
 
     expect(unsaved()).toBe(true);
+  });
+});
+
+describe("the native menu in a file window", () => {
+  function given() {
+    return menu.mock.calls.at(-1)?.[0] as {
+      handleSave: () => Promise<void>;
+      holdsDocument: boolean;
+      toggleSource: () => void;
+    };
+  }
+
+  it("switches source mode the way Cmd+/ does", async () => {
+    await open();
+
+    act(() => {
+      given().toggleSource();
+    });
+
+    expect(await screen.findByLabelText("source")).toBeInTheDocument();
+  });
+
+  it("saves the way Cmd+S does", async () => {
+    await open();
+    act(() => {
+      liveEditor().commands.insertContent("typed ");
+    });
+
+    await act(async () => {
+      await given().handleSave();
+    });
+
+    expect(writeFile.mock.calls[0][1]).toContain("typed");
+  });
+
+  // 이것을 실패시키는 것: 이 창에 토스트 자리가 없으면 메뉴의 안내가 아무 데도 보이지 않는다.
+  it("has somewhere to say what it cannot do", async () => {
+    await open();
+
+    act(() => {
+      useUIStore.getState().showToast("not in this window");
+    });
+
+    expect(await screen.findByText("not in this window")).toBeInTheDocument();
+    act(() => {
+      useUIStore.setState({ toast: null });
+    });
+  });
+
+  // 이것을 실패시키는 것: 소스 모드에서 서식을 걸면 보이지 않는 문서가 바뀌어, 돌아올 때 버퍼와 어긋난다.
+  it("offers the document only while it is the one on screen", async () => {
+    let release = () => {};
+    disk.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    render(<FileEditorLayout filePath={PATH} />);
+    await settle(0);
+    expect(given().holdsDocument).toBe(false);
+
+    release();
+    await waitFor(() => expect(shown()).toContain("on disk"));
+    await waitFor(() => expect(given().holdsDocument).toBe(true));
+
+    toggleSource();
+    await screen.findByLabelText("source");
+    expect(given().holdsDocument).toBe(false);
   });
 });
 

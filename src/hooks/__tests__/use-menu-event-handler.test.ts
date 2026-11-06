@@ -18,10 +18,18 @@ vi.mock("../use-close-guard", () => ({
   requestReload: vi.fn(),
 }));
 
+vi.mock("../../utils/editor/insert-menu-commands", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../utils/editor/insert-menu-commands")
+  >()),
+  runInsertMenuCommand: vi.fn(async () => undefined),
+}));
+
 import { listen } from "@tauri-apps/api/event";
 
 import type { FeatureKey } from "../../stores/settings/feature-keys";
 import type { MenuEventHandlerDeps } from "../use-menu-event-handler";
+import type { Editor } from "@tiptap/react";
 
 import { t } from "../../i18n";
 import { MENU_FEATURE_MAP } from "../../ipc/menu-enabled";
@@ -31,6 +39,7 @@ import {
   registerAction,
 } from "../../keybindings/keybinding-actions";
 import { useAIStore } from "../../stores/ai/ai";
+import { useEditorStore } from "../../stores/editor/editor";
 import {
   BUILTIN_PRESETS,
   useWorkspaceStore,
@@ -41,6 +50,7 @@ import {
   SIDEBAR_PANEL_FEATURE,
 } from "../../stores/ui/panel-feature";
 import { useUIStore } from "../../stores/ui/ui";
+import { runInsertMenuCommand } from "../../utils/editor/insert-menu-commands";
 import { FEATURE_DISABLED_TOAST_KEY } from "../../utils/feature-gate";
 import { BARAM_HOMEPAGE, helpDocUrl } from "../../utils/help-urls";
 import { requestReload } from "../use-close-guard";
@@ -106,6 +116,40 @@ describe("menu event → File > Close Workspace", () => {
   });
 });
 
+describe("useMenuEventHandler — Insert commands", () => {
+  const editor = {} as Editor;
+
+  function send() {
+    renderHook(() => useMenuEventHandler({ ...makeDeps(), editor }));
+    return menuEventHandler()({ payload: "insert_bold" });
+  }
+
+  beforeEach(() => {
+    vi.mocked(runInsertMenuCommand).mockClear();
+  });
+
+  it("run on the main window's editor", async () => {
+    useEditorStore.setState({ activeTabId: "t1", sourceModeTabs: [] });
+
+    await send();
+
+    expect(runInsertMenuCommand).toHaveBeenCalledWith("insert_bold", editor);
+  });
+
+  // 이것을 실패시키는 것: 소스 모드에서는 보이지 않는 문서가 바뀌고, 돌아오면 버퍼가 그것을 지운다.
+  it("leave the document alone while the tab is in source mode", async () => {
+    useEditorStore.setState({ activeTabId: "t1", sourceModeTabs: ["t1"] });
+
+    await send();
+
+    expect(runInsertMenuCommand).not.toHaveBeenCalled();
+    expect(useUIStore.getState().toast?.message).toBe(
+      "This works on the document. Leave source mode first.",
+    );
+    useEditorStore.setState({ sourceModeTabs: [] });
+  });
+});
+
 describe("useMenuEventHandler — view_reload (§479)", () => {
   it("registers a listener for the menu-event event", () => {
     renderHook(() => useMenuEventHandler(makeDeps()));
@@ -113,6 +157,7 @@ describe("useMenuEventHandler — view_reload (§479)", () => {
     expect(vi.mocked(listen)).toHaveBeenCalledWith(
       "menu-event",
       expect.any(Function),
+      { target: "main" },
     );
   });
 
