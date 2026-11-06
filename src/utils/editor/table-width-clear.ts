@@ -1,5 +1,5 @@
 // §5.5 Turning the column resize option off takes the widths the user set out of
-// the open markdown tabs (spec 0075 D4, D6). `open-tab-surface.ts` says where each
+// the open markdown tabs (spec 0075 D4, D6, D7). `open-tab-surface.ts` says where each
 // tab's document is; this module says what happens to it there.
 //
 // Nothing here writes to disk. A dirty tab also holds edits the user has not saved,
@@ -31,15 +31,6 @@ export function clearTableWidthsInOpenTabs(): void {
   for (const tab of useEditorStore.getState().tabs) clearTab(tab, false);
 }
 
-/** Forget the waits of tabs that are no longer open. */
-export function prunePendingTableWidthClears(
-  openTabIds: ReadonlySet<string>,
-): void {
-  for (const tabId of pendingClears) {
-    if (!openTabIds.has(tabId)) pendingClears.delete(tabId);
-  }
-}
-
 /**
  * The setting's toggle: sets the value, and clears on on → off. This is not a store
  * subscription because the settings store restores asynchronously and answers with
@@ -58,10 +49,24 @@ export function setTableColumnResizeFromUser(enabled: boolean): void {
  * there, or nothing yet. A document may still be parsed from the text as it was
  * before the clear, so each is re-checked once, when a document is installed. A
  * document parsed from the rewritten text has nothing left to clear then.
+ *
+ * A wait ends with its tab, whichever way the tab closes. Some `openTab` callers
+ * build the tab id from the file path, so a file opened again can come back under
+ * the closed tab's id, and a wait left standing would clear a file that D7 says
+ * keeps its widths.
  */
 const pendingClears = new Set<string>();
+/** Set while `pendingClears` has anything in it. */
+let stopWatchingTabs: (() => void) | null = null;
 
 subscribeContentLoaded(drainPendingClear);
+
+function addPendingClear(tabId: string): void {
+  pendingClears.add(tabId);
+  stopWatchingTabs ??= useEditorStore.subscribe((state, prev) => {
+    if (state.tabs !== prev.tabs) dropWaitsOfClosedTabs(state.tabs);
+  });
+}
 
 function clearSourceBuffer(
   tabId: string,
@@ -96,7 +101,7 @@ function clearTab(tab: EditorTab, draining: boolean): void {
       return;
     case "text":
       clearText(tabId, textKey);
-      if (!draining) pendingClears.add(tabId);
+      if (!draining) addPendingClear(tabId);
       return;
     default:
       applyToDocumentSurface(
@@ -118,9 +123,18 @@ function clearText(tabId: string, textKey: string): void {
 
 function drainPendingClear(tabId: string): void {
   if (!pendingClears.delete(tabId)) return;
+  releaseTabWatchIfIdle();
   if (useSettingsStore.getState().tableColumnResize) return;
   const tab = useEditorStore.getState().tabs.find((t) => t.id === tabId);
   if (tab) clearTab(tab, true);
+}
+
+function dropWaitsOfClosedTabs(tabs: readonly EditorTab[]): void {
+  const openTabIds = new Set(tabs.map((tab) => tab.id));
+  for (const tabId of pendingClears) {
+    if (!openTabIds.has(tabId)) pendingClears.delete(tabId);
+  }
+  releaseTabWatchIfIdle();
 }
 
 /**
@@ -134,4 +148,10 @@ function liveViewOf(tabId: string): EditorView | undefined {
     access?.keepaliveEditor(tabId) ??
     (loadedTabId() === tabId ? access?.editor : null);
   return editor && !editor.isDestroyed ? editor.view : undefined;
+}
+
+function releaseTabWatchIfIdle(): void {
+  if (pendingClears.size > 0) return;
+  stopWatchingTabs?.();
+  stopWatchingTabs = null;
 }

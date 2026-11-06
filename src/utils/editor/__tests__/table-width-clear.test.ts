@@ -5,7 +5,16 @@ import type { EditorView } from "@tiptap/pm/view";
 
 import { Schema } from "@tiptap/pm/model";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  type MockInstance,
+  vi,
+} from "vitest";
 
 vi.mock("../../../ipc/invoke", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../ipc/invoke")>()),
@@ -26,7 +35,6 @@ vi.mock("../../../pipeline/pm-to-md", async (importOriginal) => {
   };
 });
 
-import { gcClosedTabs } from "../../../hooks/tab-switching/gc-closed-tabs";
 import { writeFile } from "../../../ipc/invoke";
 import { stripTableWidthComments } from "../../../pipeline/convert-table-colwidths";
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
@@ -45,7 +53,6 @@ import {
 } from "../programmatic-update";
 import {
   clearTableWidthsInOpenTabs,
-  prunePendingTableWidthClears,
   setTableColumnResizeFromUser,
 } from "../table-width-clear";
 
@@ -169,6 +176,11 @@ function pool(tabId: string, pooled: FakeView): FakeView {
   return pooled;
 }
 
+/** The store's own actions, where the harness replaced some on the live state. */
+function storeActions() {
+  return useEditorStore.getInitialState();
+}
+
 /** The shared view now holds `tabId`, whose tab is active. No notification. */
 function holdInSharedView(tabId: string, state: EditorState): FakeView {
   shared = makeView(state);
@@ -201,6 +213,8 @@ function sourceBuffers(initial: Record<string, string>) {
 }
 
 beforeEach(() => {
+  // No tabs, so no waits: a wait a test left behind ends here.
+  useEditorStore.setState({ tabs: [] } as never);
   vi.mocked(loadedTabId).mockReturnValue("t1");
   vi.mocked(isTabLoading).mockReturnValue(false);
   vi.mocked(writeFile).mockClear();
@@ -231,7 +245,6 @@ beforeEach(() => {
   } as never);
   useFileStore.setState({ openFiles, setFileContent } as never);
   useSettingsStore.setState({ tableColumnResize: true });
-  prunePendingTableWidthClears(new Set());
 });
 
 describe("each place a tab's document can be", () => {
@@ -546,30 +559,152 @@ describe("waiting for a document", () => {
   });
 
   it("a closed tab reopened under the same id: does not clear", () => {
+    openFiles.set(pathOf("t2"), M);
     setTableColumnResizeFromUser(false);
+
     useEditorStore.setState({ tabs: [fileTab("t1")] } as never);
-    gcClosedTabs({
-      editorStateCache: { current: cache },
-      keepalive: { keys: () => [], release: vi.fn() },
-      scrollOffsets: { current: new Map() },
-    } as never);
     useEditorStore.setState({
       tabs: [fileTab("t1"), fileTab("t2")],
     } as never);
-
     const reopened = install("t2");
 
     expect(reopened.dispatched).toHaveLength(0);
     expect(hasWidths(reopened.state)).toBe(true);
   });
 
-  it("the sweep for closed tabs keeps the wait of a tab still open", () => {
+  it("a tab that stays open is still cleared once installed", () => {
+    openFiles.set(pathOf("t2"), M);
     setTableColumnResizeFromUser(false);
-    prunePendingTableWidthClears(new Set(["t1", "t2"]));
 
     const installed = install("t2");
 
+    expect(installed.dispatched).toHaveLength(1);
     expect(hasWidths(installed.state)).toBe(false);
+  });
+
+  it.each<[string, () => void]>([
+    ["closeTab", () => storeActions().closeTab("t2")],
+    ["closeOtherTabs", () => storeActions().closeOtherTabs("t1")],
+    ["closeTabsToRight", () => storeActions().closeTabsToRight("t1")],
+    [
+      "closeTabsForContexts",
+      () => storeActions().closeTabsForContexts(new Set(["c2"])),
+    ],
+    ["closeAllTabs", () => storeActions().closeAllTabs()],
+  ])("a wait ends with its tab when %s closes it", (_name, close) => {
+    const t2 = { ...fileTab("t2"), contextId: "c2" };
+    useEditorStore.setState({ tabs: [fileTab("t1"), t2] } as never);
+    openFiles.set(pathOf("t2"), M);
+    setTableColumnResizeFromUser(false);
+
+    close();
+    expect(useEditorStore.getState().tabs).not.toContainEqual(t2);
+    useEditorStore.setState({ tabs: [fileTab("t1"), t2] } as never);
+    const reopened = install("t2");
+
+    expect(reopened.dispatched).toHaveLength(0);
+    expect(hasWidths(reopened.state)).toBe(true);
+  });
+
+  it.each<[string, () => void]>([
+    ["a dirty mark on another tab", () => storeActions().markDirty("t1", true)],
+    ["another tab closing", () => storeActions().closeTab("t1")],
+  ])("a tab that stays open keeps its wait across %s", (_name, change) => {
+    openFiles.set(pathOf("t2"), M);
+    setTableColumnResizeFromUser(false);
+    const before = useEditorStore.getState().tabs;
+
+    change();
+
+    expect(useEditorStore.getState().tabs).not.toBe(before);
+    const installed = install("t2");
+    expect(installed.dispatched).toHaveLength(1);
+    expect(hasWidths(installed.state)).toBe(false);
+  });
+
+  it("a wait added after an earlier one ended is dropped on close too", () => {
+    openFiles.set(pathOf("t2"), M);
+    setTableColumnResizeFromUser(false);
+    useEditorStore.setState({ tabs: [fileTab("t1")] } as never);
+    useEditorStore.setState({
+      tabs: [fileTab("t1"), fileTab("t2")],
+    } as never);
+
+    setTableColumnResizeFromUser(true);
+    setTableColumnResizeFromUser(false);
+    useEditorStore.setState({ tabs: [fileTab("t1")] } as never);
+    useEditorStore.setState({
+      tabs: [fileTab("t1"), fileTab("t2")],
+    } as never);
+    const reopened = install("t2");
+
+    expect(reopened.dispatched).toHaveLength(0);
+    expect(hasWidths(reopened.state)).toBe(true);
+  });
+
+  describe("the watch on the tab list", () => {
+    let stops: Mock<() => void>[];
+    let subscribe: MockInstance<typeof useEditorStore.subscribe>;
+
+    beforeEach(() => {
+      const original = useEditorStore.subscribe;
+      stops = [];
+      subscribe = vi
+        .spyOn(useEditorStore, "subscribe")
+        .mockImplementation((listener) => {
+          const stop = vi.fn(original(listener));
+          stops.push(stop);
+          return stop;
+        });
+    });
+
+    afterEach(() => {
+      subscribe.mockRestore();
+    });
+
+    it.each<[string, () => void]>([
+      [
+        "its tab closes",
+        () => useEditorStore.setState({ tabs: [fileTab("t1")] } as never),
+      ],
+      ["its document is installed", () => install("t2")],
+    ])("is removed when the last wait ends because %s", (_name, end) => {
+      openFiles.set(pathOf("t2"), M);
+      setTableColumnResizeFromUser(false);
+      expect(subscribe).toHaveBeenCalledTimes(1);
+      expect(stops[0]).not.toHaveBeenCalled();
+
+      end();
+
+      expect(stops[0]).toHaveBeenCalledTimes(1);
+    });
+
+    it("is one subscription for every wait, held until the last one ends", () => {
+      useEditorStore.setState({
+        tabs: [fileTab("t1"), fileTab("t2"), fileTab("t3")],
+      } as never);
+      openFiles.set(pathOf("t2"), M);
+      openFiles.set(pathOf("t3"), M);
+
+      setTableColumnResizeFromUser(false);
+      expect(subscribe).toHaveBeenCalledTimes(1);
+
+      useEditorStore.setState({
+        tabs: [fileTab("t1"), fileTab("t3")],
+      } as never);
+      expect(stops[0]).not.toHaveBeenCalled();
+
+      useEditorStore.setState({ tabs: [fileTab("t1")] } as never);
+      expect(stops[0]).toHaveBeenCalledTimes(1);
+    });
+
+    it("is not taken when nothing waits", () => {
+      useEditorStore.setState({ tabs: [fileTab("t1")] } as never);
+
+      setTableColumnResizeFromUser(false);
+
+      expect(subscribe).not.toHaveBeenCalled();
+    });
   });
 
   it("waits once: a re-check that lands on the text does not wait again", () => {
