@@ -47,19 +47,12 @@ const CODE_LANG_MAP = [
   { lang: "svg", schemaNode: "svgBlock", transformerKey: "svg" },
 ] as const;
 
-// §perf-large-file: Set for O(1) inline type check (replaces per-call array allocation)
-const INLINE_TYPES = new Set([
-  "break",
-  "delete",
-  "emphasis",
-  "html",
-  "image",
-  "inlineCode",
-  "inlineMath",
-  "link",
-  "strong",
-  "text",
-]);
+/**
+ * The mdast parents that reach `convertContainerChildren` and hold phrasing content. The
+ * others that reach it are `blockquote` and `footnoteDefinition`, which hold blocks; a
+ * callout's body is passed as a `blockquote`.
+ */
+const INLINE_PARENTS = new Set(["heading", "paragraph"]);
 
 // parseMdast + enrichWithEmptyParagraphs are imported from ./parse-mdast
 // (pure module with no ProseMirror deps — safe for Web Worker import)
@@ -406,19 +399,9 @@ function convertBlockNode(
         // the exact same object; only which map grants access changes.
         const calloutT = nodeTransformers.get("callout");
         if (calloutT) {
-          return calloutT.mdastToPm(node, schema, (parent) => {
-            const children = (parent as { children?: Content[] }).children;
-            if (!children) return [];
-            const first = children[0];
-            if (first && isInlineNode(first)) {
-              return convertInlineChildren(
-                children as PhrasingContent[],
-                schema,
-                [],
-              );
-            }
-            return convertBlockChildren(children, schema);
-          });
+          return calloutT.mdastToPm(node, schema, (parent) =>
+            convertContainerChildren(parent, schema),
+          );
         }
       }
     }
@@ -443,18 +426,9 @@ function convertBlockNode(
   // Standard node transformer lookup
   const transformer = nodeTransformers.get(workingNode.type);
   if (transformer) {
-    const result = transformer.mdastToPm(workingNode, schema, (parent) => {
-      // If parent has inline children (heading, paragraph), use inline conversion
-      const children = (parent as { children?: Content[] }).children;
-      if (!children) return [];
-
-      const firstChild = children[0];
-      if (firstChild && isInlineNode(firstChild)) {
-        return convertInlineChildren(children as PhrasingContent[], schema, []);
-      }
-      // Otherwise block-level
-      return convertBlockChildren(children, schema);
-    });
+    const result = transformer.mdastToPm(workingNode, schema, (parent) =>
+      convertContainerChildren(parent, schema),
+    );
 
     // §30a: Inject blockId attribute if extracted and schema supports it
     if (blockId && result && !Array.isArray(result)) {
@@ -474,7 +448,19 @@ function convertBlockNode(
   return null;
 }
 
-/** Check if an mdast node is inline-level */
-function isInlineNode(node: Content): boolean {
-  return INLINE_TYPES.has(node.type);
+/**
+ * Children of a node a transformer is converting. The parent decides, not the first
+ * child. `html` is both a block and an inline type in mdast, so a first child of that
+ * type cannot tell a quote opening with an HTML block from a paragraph opening with an
+ * inline tag, and reading a quote's children as inline drops every block in it. Routing
+ * on the first child would also need a list of every inline type: a paragraph opening
+ * with a type missing from it goes through the block conversion, which drops its text.
+ */
+function convertContainerChildren(parent: unknown, schema: Schema): PmNode[] {
+  const { children, type } = parent as { children?: Content[]; type?: string };
+  if (!children) return [];
+  if (INLINE_PARENTS.has(type ?? "")) {
+    return convertInlineChildren(children as PhrasingContent[], schema, []);
+  }
+  return convertBlockChildren(children, schema);
 }
