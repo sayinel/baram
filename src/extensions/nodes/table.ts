@@ -12,6 +12,7 @@ import { resolveShortcut } from "../utils/shortcut-resolver";
 import {
   createColResizePlugin,
   createUserResizeTracker,
+  gateColumnResizing,
 } from "./plugins/table-col-resize";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
@@ -63,7 +64,7 @@ export const BaramTable = Table.extend({
 
     return [
       shiftEnterPlugin, // must be first to intercept before tableEditing
-      ...(this.parent?.() || []),
+      ...gateColumnResizing(this.parent?.() || []),
       createColResizePlugin(),
       createUserResizeTracker(),
     ];

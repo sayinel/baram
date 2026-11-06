@@ -12,6 +12,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { columnResizingPluginKey } from "@tiptap/pm/tables";
 
+import { useSettingsStore } from "../../../stores/settings/store";
 import { COLWIDTH_AUTO_INIT_META } from "../../../utils/editor/programmatic-update";
 
 const pluginKey = new PluginKey("baramTableColwidthInit");
@@ -257,6 +258,42 @@ export function createUserResizeTracker(): Plugin {
       return null;
     },
   });
+}
+
+/**
+ * §5.5 Takes the resize handle away when `tableColumnResize` is off. Wraps the
+ * `mousemove` and `mousedown` handlers of the columnResizing plugin in place
+ * and returns the same array. The plugin itself stays installed: its TableView
+ * and colgroup render the table. The setting is read when the event fires.
+ * Off, `mousemove` only takes down a handle that is already up and
+ * `mousedown` returns false, so the press stays an ordinary click — returning
+ * true would stop later handlers and ProseMirror's own mousedown handling.
+ */
+export function gateColumnResizing(plugins: Plugin[]): Plugin[] {
+  for (const plugin of plugins) {
+    if (plugin.spec.key !== columnResizingPluginKey) continue;
+    const handlers = plugin.props.handleDOMEvents;
+    if (!handlers) continue;
+    const { mousedown, mousemove } = handlers;
+
+    handlers.mousemove = function (view, event) {
+      if (useSettingsStore.getState().tableColumnResize) {
+        return mousemove?.call(plugin, view, event);
+      }
+      const state = columnResizingPluginKey.getState(view.state);
+      if (state && state.activeHandle > -1) {
+        view.dispatch(
+          view.state.tr.setMeta(columnResizingPluginKey, { setHandle: -1 }),
+        );
+      }
+      return false;
+    };
+    handlers.mousedown = function (view, event) {
+      if (!useSettingsStore.getState().tableColumnResize) return false;
+      return mousedown?.call(plugin, view, event);
+    };
+  }
+  return plugins;
 }
 
 /** True when `meta` is the columnResizing plugin's "drag just ended" action. */

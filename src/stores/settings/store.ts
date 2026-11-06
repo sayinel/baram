@@ -164,6 +164,7 @@ export const useSettingsStore = create<SettingsState>()(
         codeBlockStyle: state.codeBlockStyle,
         smartPunctuation: state.smartPunctuation,
         symbolSuggest: state.symbolSuggest,
+        tableColumnResize: state.tableColumnResize,
         // §377 partialize 는 whitelist 다 — 빠뜨리면 재시작마다 최근 목록이 비워진다.
         recentSymbols: state.recentSymbols,
         extensionSettings: state.extensionSettings,
