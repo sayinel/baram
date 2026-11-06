@@ -7,6 +7,7 @@
 // edited one is: the active tab through the auto-save, a background tab through the
 // close and quit guard.
 import type { EditorTab } from "../../stores/editor/editor";
+import type { EditorView } from "@tiptap/pm/view";
 
 import { buildClearTableWidthsTransaction } from "../../extensions/nodes/plugins/table-col-resize";
 import { stripTableWidthComments } from "../../pipeline/convert-table-colwidths";
@@ -101,7 +102,7 @@ function clearTab(tab: EditorTab, draining: boolean): void {
   if (!isFileTab(tab) || !isMarkdownFile(tab.filePath)) return;
   const tabId = tab.id;
   const textKey = tab.filePath || tabId;
-  const surface = locateOpenTabSurface(tabId, liveViewOf(tabId));
+  const surface = locateOpenTabSurface(tabId, viewToClearThrough(tabId));
   switch (surface.kind) {
     case "source":
       clearSourceBuffer(tabId, textKey, surface.access);
@@ -168,4 +169,23 @@ function releaseTabWatchIfIdle(): void {
   if (pendingClears.size > 0) return;
   stopWatchingTabs?.();
   stopWatchingTabs = null;
+}
+
+/**
+ * The view to clear a tab through. The shared view only for the active tab:
+ * `loadedTabId` records the last announced install, and some installs replace the
+ * shared document without touching it (`use-editor-effects.ts`, even for an active
+ * tab that is not markdown), so for a tab not on screen that view may hold a different
+ * document, which the clear would file under this tab. Such a tab goes to its cache,
+ * where `saveOutgoingTab` put it as it left, and then to its text. A pooled editor
+ * owns its document, and `locateOpenTabSurface` finds it without being given a view.
+ *
+ * The accepted limit: a toggle in the instant between the active tab flipping and
+ * `saveOutgoingTab` can leave that tab's widths in place, because that save caches
+ * the view's state over the cleared one. Nothing is written to another file.
+ */
+function viewToClearThrough(tabId: string): EditorView | undefined {
+  return tabId === useEditorStore.getState().activeTabId
+    ? liveViewOf(tabId)
+    : undefined;
 }

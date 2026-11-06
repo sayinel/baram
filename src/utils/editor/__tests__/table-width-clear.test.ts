@@ -152,8 +152,11 @@ function pathOf(tabId: string): string {
   return `/vault/${tabId}.md`;
 }
 
-function unmarkedState(): EditorState {
-  return EditorState.create({ doc: markdownToProsemirror(S, schema), schema });
+function unmarkedState(markdown = S): EditorState {
+  return EditorState.create({
+    doc: markdownToProsemirror(markdown, schema),
+    schema,
+  });
 }
 
 const markDirty = vi.fn();
@@ -461,33 +464,91 @@ describe("each place a tab's document can be", () => {
       expect(openFiles.get(pathOf("t2"))).toBe(OTHER_STRIPPED);
     });
 
-    it("between the load's flag and its first chunk: the view still holds it", () => {
+    it.each<[string, () => void]>([
+      [
+        "between the load's flag and its first chunk",
+        () => vi.mocked(isTabLoading).mockImplementation((id) => id === "t2"),
+      ],
+      ["in the cached restore's window, with no load flag", () => {}],
+    ])("%s: is cleared in its cache, not in the view", (_name, arrange) => {
       const outgoing = holdInSharedView("t2", markedState());
       vi.mocked(loadedTabId).mockReturnValue("t1");
-      vi.mocked(isTabLoading).mockImplementation((id) => id === "t2");
-      cache.set("t1", outgoing.state);
+      arrange();
+      const own = outgoing.state;
+      cache.set("t1", own);
+      const updateState = vi.spyOn(outgoing.view, "updateState");
 
       clearTableWidthsInOpenTabs();
 
       expect(outgoing.dispatched).toHaveLength(0);
-      expect(hasWidths(outgoing.state)).toBe(false);
-      expect(cache.get("t1")).toBe(outgoing.state);
+      expect(updateState).not.toHaveBeenCalled();
+      expect(hasWidths(outgoing.state)).toBe(true);
+      expect(cache.get("t1")).not.toBe(own);
+      expect(hasWidths(cache.get("t1")!)).toBe(false);
       expect(openFiles.get(pathOf("t1"))).toBe(S);
       expect(markDirty).toHaveBeenCalledWith("t1", true);
     });
+  });
 
-    it("in the cached restore's window, with no load flag: the view still holds it", () => {
-      const outgoing = holdInSharedView("t2", markedState());
+  describe("a named tab that is not active, with another document in the shared view", () => {
+    const OTHER =
+      "<!-- colwidths:7,8 -->\n\n| Other | B |\n| - | - |\n| 1 | 2 |\n";
+
+    function otherDocumentInSharedView(state: EditorState) {
+      const other = holdInSharedView("t2", state);
       vi.mocked(loadedTabId).mockReturnValue("t1");
-      cache.set("t1", outgoing.state);
+      return {
+        before: other.state,
+        other,
+        updateState: vi.spyOn(other.view, "updateState"),
+      };
+    }
 
-      clearTableWidthsInOpenTabs();
+    it.each<[string, () => EditorState]>([
+      ["with a marked table", () => markedState(OTHER)],
+      [
+        "with no marked table",
+        () => unmarkedState(stripTableWidthComments(OTHER)),
+      ],
+    ])(
+      "that document %s: the tab is cleared in its own cache",
+      (_name, state) => {
+        cache.set("t1", markedState());
+        openFiles.set(pathOf("t1"), M);
+        const { before, other, updateState } =
+          otherDocumentInSharedView(state());
 
-      expect(outgoing.dispatched).toHaveLength(0);
-      expect(hasWidths(outgoing.state)).toBe(false);
-      expect(cache.get("t1")).toBe(outgoing.state);
+        clearTableWidthsInOpenTabs();
+
+        expect(other.dispatched).toHaveLength(0);
+        expect(updateState).not.toHaveBeenCalled();
+        expect(other.state).toBe(before);
+        const after = cache.get("t1")!;
+        expect(after.doc.textContent).toContain("A");
+        expect(after.doc.textContent).not.toContain("Other");
+        expect(hasWidths(after)).toBe(false);
+        expect(openFiles.get(pathOf("t1"))).toBe(S);
+        expect(markDirty).toHaveBeenCalledWith("t1", true);
+      },
+    );
+
+    it("no cache for the tab: its text is stripped, and it waits for a document", () => {
+      openFiles.set(pathOf("t1"), M);
+      const { before, other, updateState } = otherDocumentInSharedView(
+        markedState(OTHER),
+      );
+
+      setTableColumnResizeFromUser(false);
+
+      expect(other.dispatched).toHaveLength(0);
+      expect(updateState).not.toHaveBeenCalled();
+      expect(other.state).toBe(before);
       expect(openFiles.get(pathOf("t1"))).toBe(S);
       expect(markDirty).toHaveBeenCalledWith("t1", true);
+
+      const installed = install("t1");
+      expect(installed.dispatched).toHaveLength(1);
+      expect(hasWidths(installed.state)).toBe(false);
     });
   });
 

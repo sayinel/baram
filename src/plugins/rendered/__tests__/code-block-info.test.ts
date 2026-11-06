@@ -146,11 +146,12 @@ describe("codeBlockInfo", () => {
     });
   });
 
-  /** P29 — a cold load of a document under the keep-alive threshold puts its first chunks into the
-   *  shared editor and announces its tab (`markContentLoaded`) only once the last chunk is in
-   *  (`load-tab-content.ts`), so `loadedTabId` still names the outgoing tab meanwhile. What fails
-   *  this: answering `loadedTabId` while the active tab loads into the shared editor — the incoming
-   *  note's block would be told the outgoing note. The pairs: a tab loading into a keep-alive editor
+  /** P29 — a cold load of a document under the keep-alive threshold flags its tab a timer before
+   *  its first chunk goes in. In that gap `loadedTabId` still names the outgoing tab, whose document
+   *  the shared editor still holds, and this test is that gap: the flag alone already answers
+   *  nothing. From the first chunk until `finishLoad`, `loadedTabId` names no tab
+   *  (`load-tab-content.ts`), which is the `loaded === null` answer. What fails this: dropping the
+   *  `isTabLoading` clause from `heldFilePath`. The pairs: a tab loading into a keep-alive editor
    *  of its own (t2 while it is pooled) leaves the shared editor's answer alone, and so does the
    *  load's end. */
   it("names nothing for the shared editor while the active tab loads into it", () => {

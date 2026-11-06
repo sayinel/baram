@@ -11,13 +11,13 @@ describe("stripTableWidthComments", () => {
     ["no blank line", `<!-- colwidths:200,300 -->\n${TABLE}`, TABLE],
     [
       "a leading BOM stays",
-      "﻿<!-- colwidths:1,2 -->\n\n| A | B |\n| - | - |\n",
-      "﻿| A | B |\n| - | - |\n",
+      "\uFEFF<!-- colwidths:1,2 -->\n\n| A | B |\n| - | - |\n",
+      "\uFEFF| A | B |\n| - | - |\n",
     ],
     [
       "a leading BOM stays once, when the first line stays too",
-      "﻿intro\n\n<!-- colwidths:1,2 -->\n\n| A | B |\n| - | - |\n",
-      "﻿intro\n\n| A | B |\n| - | - |\n",
+      "\uFEFFintro\n\n<!-- colwidths:1,2 -->\n\n| A | B |\n| - | - |\n",
+      "\uFEFFintro\n\n| A | B |\n| - | - |\n",
     ],
     [
       "two tables",

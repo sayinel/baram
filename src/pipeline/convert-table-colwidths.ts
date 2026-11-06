@@ -118,7 +118,7 @@ export function stripTableWidthComments(markdown: string): string {
   if (!markdown.includes("colwidths")) return markdown;
   // The parser does not count a leading BOM in its columns, and deleting the first
   // line must not take it along, so the lines are read without it.
-  const bom = markdown.startsWith("﻿") ? "﻿" : "";
+  const bom = markdown.startsWith("\uFEFF") ? "\uFEFF" : "";
   // Split on all three line endings the parser recognises, keeping them so
   // the lines that stay are byte-for-byte unchanged.
   const parts = markdown.slice(bom.length).split(/(\r\n|\n|\r)/);
