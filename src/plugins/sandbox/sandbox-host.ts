@@ -3,6 +3,8 @@
 // WebviewWindow whose transport is the Phase-3c-2a per-webview IPC channel
 // (commands, not events — a plugin-* window holds no event permission, so there
 // is no session token to keep secret any more).
+import type { BackgroundThrottlingPolicy } from "@tauri-apps/api/window";
+
 import type { PluginContributions } from "../types";
 import type {
   CodeBlockLangClaim,
@@ -139,7 +141,21 @@ async function defaultWindowFactory(
     logger.warn(`[Sandbox] closing a stale webview holding the label ${label}`);
     await stale.close(); // awaited: the label is only free once close completes
   }
+  // The package exports this enum as a type with no runtime value, so the value needs a cast; the
+  // template type still rejects a misspelling, which a bare `as` would not.
+  const inactivePolicy: `${BackgroundThrottlingPolicy}` = "throttle";
   const win = new WebviewWindow(label, {
+    // `backgroundThrottling`, this property only. Left to its default, a hidden page stops, whole, a few
+    // seconds after the host last sent it a message, so a plugin's own timers silently stop firing
+    // (macOS 26.6 dev build: last tick before any such message 5.9–7.1 s after `activate`, seven runs).
+    // "throttle" keeps it running at the low priority the default drops it to before stopping it; "disabled"
+    // also kept it running, at the main page's priority, where a spinning plugin could compete with the
+    // editor (`ps`: 4 against 47, Baram not frontmost; typing latency was not measured). Neither lifts the engine's 1 s alignment of a hidden page's repeating
+    // timers. The cost: a runaway plugin that never talks to the host now keeps using CPU instead of
+    // stopping. One that calls `setPanel` once a second already did under the default (77% of a core).
+    // `@tauri-apps/api` lists the option for macOS 14+ and iOS 17+ only, so on older macOS
+    // (`minimumSystemVersion` is lower), Windows and Linux the page keeps its default.
+    backgroundThrottling: inactivePolicy as BackgroundThrottlingPolicy,
     decorations: false,
     focus: false,
     skipTaskbar: true,

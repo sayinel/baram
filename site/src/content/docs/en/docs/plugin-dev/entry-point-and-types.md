@@ -33,6 +33,26 @@ unloading it destroys its whole webview realm, so timers, listeners and declared
 go with it. Exporting one there is dead code that reads like a lifecycle hook — the
 `word-count` reference plugin deliberately has none.
 
+## Timers in a sandboxed plugin
+
+A sandboxed plugin runs in a hidden webview, and browser engines hold back hidden pages, so do not
+build on a timer firing on schedule. We measured the following on macOS 26 with a development build,
+in runs of about a minute and one of seven minutes with the screen locked. Other macOS versions, Windows
+and Linux have not been measured.
+
+- **A fast timer slows to about once a second.** `setInterval(fn, 50)`, the interval we timed, ran at
+  its own pace for its first few ticks and about once a second after that. Measure elapsed time with
+  `Date.now()` rather than by counting ticks. A `Worker` is not a way out: the sandbox denies
+  `worker-src`.
+- **The page can stop altogether.** Left to its default, the page stopped a few seconds after Baram
+  last sent it a message, and its timers stopped with it, with no error. Answers to your own
+  `ctx.storage.write` calls did not count as such a message. Tauri offers the setting that prevents this
+  only on macOS 14 and later, and Baram uses it there. On older macOS, Windows and Linux, expect that
+  your timers may stop firing.
+- **Start work from what Baram tells you.** A command or an event woke a stopped page, so start from
+  those rather than from a timer that polls. With the default on macOS the page stopped again a few
+  seconds later, so where the page can stop, long work may not finish in one go.
+
 ## Using the public types
 
 Author against the generated public type declarations rather than Baram's
