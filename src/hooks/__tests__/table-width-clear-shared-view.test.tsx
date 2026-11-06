@@ -191,3 +191,29 @@ it.each([
     expect(written).toHaveLength(0);
   },
 );
+
+it("the active markdown tab: the clear reaches its file through the auto-save", async () => {
+  useSettingsStore.setState({ autoSave: true, autoSaveDelay: 50 });
+  mountApp();
+  await waitFor(() => expect(loadedTabId()).toBe("t1"));
+  const isDirty = () =>
+    useEditorStore.getState().tabs.find((tab) => tab.id === "t1")?.isDirty;
+  // Without widths in the document the clear would have nothing to do.
+  expect(hasWidths(editor.state)).toBe(true);
+  expect(editor.state.doc.textContent).toContain("NOTE");
+  expect(written).toHaveLength(0);
+
+  act(() => {
+    setTableColumnResizeFromUser(false);
+  });
+
+  expect(isDirty()).toBe(true);
+  await waitFor(() => expect(written).toHaveLength(1));
+  await waitFor(() => expect(isDirty()).toBe(false));
+  const [path, text] = written[0]!;
+  expect(path).toBe(NOTE);
+  expect(text).toContain("NOTE");
+  expect(text).not.toContain("colwidths");
+  expect(hasWidths(editor.state)).toBe(false);
+  expect(written.every(([target]) => target === NOTE)).toBe(true);
+});
