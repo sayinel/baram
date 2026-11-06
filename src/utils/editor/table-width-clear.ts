@@ -123,7 +123,9 @@ function clearTab(tab: EditorTab, draining: boolean): void {
  * One tab's failure stays that tab's. When the user turns the option off the setting
  * has already changed and the run is not repeated, so the tabs after this one must
  * still be cleared. In the drain, a throw would stop the remaining listeners of
- * `markContentLoaded`.
+ * `markContentLoaded`. The tab is marked dirty as `saveOutgoingTab` does when it
+ * cannot serialize: a cache that was cleared while its text kept the comment must
+ * not look clean.
  */
 function clearTabIsolated(tab: EditorTab, draining: boolean): void {
   try {
@@ -133,6 +135,7 @@ function clearTabIsolated(tab: EditorTab, draining: boolean): void {
       `[tableWidths] ${tab.filePath || tab.id}: could not clear the widths`,
       err,
     );
+    useEditorStore.getState().markDirty(tab.id, true);
   }
 }
 

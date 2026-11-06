@@ -197,15 +197,11 @@ function holdInSharedView(tabId: string, state: EditorState): FakeView {
 /**
  * A cold load between its first chunk and `finishLoad`: the incoming tab is active
  * and flagged loading, the shared view holds its first blocks, and `loadedTabId`
- * still answers the tab before it.
+ * names no tab.
  */
-function firstChunkInSharedView(
-  tabId: string,
-  previous: string,
-  state: EditorState,
-): FakeView {
+function firstChunkInSharedView(tabId: string, state: EditorState): FakeView {
   const view = holdInSharedView(tabId, state);
-  vi.mocked(loadedTabId).mockReturnValue(previous);
+  vi.mocked(loadedTabId).mockReturnValue(null);
   vi.mocked(isTabLoading).mockImplementation((id) => id === tabId);
   return view;
 }
@@ -377,7 +373,7 @@ describe("each place a tab's document can be", () => {
   });
 
   it("a load in progress: its partial document is left alone, then cleared once the load ends", () => {
-    const loading = firstChunkInSharedView("t2", "t1", markedState());
+    const loading = firstChunkInSharedView("t2", markedState());
     openFiles.set(pathOf("t2"), M);
     useSettingsStore.setState({ tableColumnResize: false });
 
@@ -406,7 +402,7 @@ describe("each place a tab's document can be", () => {
       cache.set("t1", own);
       openFiles.set(pathOf("t1"), S);
       openFiles.set(pathOf("t2"), OTHER);
-      const chunk = firstChunkInSharedView("t2", "t1", markedState(OTHER));
+      const chunk = firstChunkInSharedView("t2", markedState(OTHER));
 
       clearTableWidthsInOpenTabs();
 
@@ -422,7 +418,7 @@ describe("each place a tab's document can be", () => {
       cache.set("t1", markedState());
       openFiles.set(pathOf("t1"), M);
       openFiles.set(pathOf("t2"), OTHER);
-      const chunk = firstChunkInSharedView("t2", "t1", markedState(OTHER));
+      const chunk = firstChunkInSharedView("t2", markedState(OTHER));
 
       clearTableWidthsInOpenTabs();
 
@@ -434,6 +430,50 @@ describe("each place a tab's document can be", () => {
       expect(chunk.dispatched).toHaveLength(0);
       expect(hasWidths(chunk.state)).toBe(true);
       expect(openFiles.get(pathOf("t2"))).toBe(OTHER_STRIPPED);
+    });
+
+    it("after the load is cancelled by a switch to a tab that installs nothing: is still safe", () => {
+      const own = markedState();
+      cache.set("t1", own);
+      openFiles.set(pathOf("t1"), M);
+      openFiles.set(pathOf("t2"), OTHER);
+      const chunk = firstChunkInSharedView("t2", markedState(OTHER));
+      // `cancelInflightAppend` took the flag off, and a graph tab installs nothing.
+      vi.mocked(isTabLoading).mockReturnValue(false);
+      useEditorStore.setState({
+        activeTabId: "t3",
+        tabs: [
+          fileTab("t1"),
+          fileTab("t2"),
+          { filePath: "", id: "t3", isDirty: false, type: "graph" },
+        ],
+      } as never);
+
+      clearTableWidthsInOpenTabs();
+
+      const after = cache.get("t1")!;
+      expect(after).not.toBe(own);
+      expect(after.doc.textContent).not.toContain("Other");
+      expect(hasWidths(after)).toBe(false);
+      expect(openFiles.get(pathOf("t1"))).toBe(S);
+      expect(chunk.dispatched).toHaveLength(0);
+      expect(hasWidths(chunk.state)).toBe(true);
+      expect(openFiles.get(pathOf("t2"))).toBe(OTHER_STRIPPED);
+    });
+
+    it("between the load's flag and its first chunk: the view still holds it", () => {
+      const outgoing = holdInSharedView("t2", markedState());
+      vi.mocked(loadedTabId).mockReturnValue("t1");
+      vi.mocked(isTabLoading).mockImplementation((id) => id === "t2");
+      cache.set("t1", outgoing.state);
+
+      clearTableWidthsInOpenTabs();
+
+      expect(outgoing.dispatched).toHaveLength(0);
+      expect(hasWidths(outgoing.state)).toBe(false);
+      expect(cache.get("t1")).toBe(outgoing.state);
+      expect(openFiles.get(pathOf("t1"))).toBe(S);
+      expect(markDirty).toHaveBeenCalledWith("t1", true);
     });
 
     it("in the cached restore's window, with no load flag: the view still holds it", () => {
@@ -818,6 +858,9 @@ describe("one tab's failure", () => {
     clearTableWidthsInOpenTabs();
 
     expect(error).toHaveBeenCalledTimes(1);
+    // Its cache is already cleared while its text kept the comment.
+    expect(hasWidths(cache.get("t2")!)).toBe(false);
+    expect(markDirty).toHaveBeenCalledWith("t2", true);
     expect(hasWidths(cache.get("t3")!)).toBe(false);
     expect(openFiles.get(pathOf("t3"))).toBe(S);
     expect(markDirty).toHaveBeenCalledWith("t3", true);
@@ -834,10 +877,13 @@ describe("one tab's failure", () => {
     installed.view.dispatch = () => {
       throw new Error("dispatch failed");
     };
+    // The run marked t2 for its text. Only the failure can mark it from here.
+    markDirty.mockClear();
 
     markContentLoaded("t2");
 
     expect(error).toHaveBeenCalledTimes(1);
+    expect(markDirty).toHaveBeenCalledWith("t2", true);
     expect(later).toHaveBeenCalledWith("t2");
     stopListening();
     error.mockRestore();
