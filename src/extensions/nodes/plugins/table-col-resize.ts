@@ -18,6 +18,49 @@ const pluginKey = new PluginKey("baramTableColwidthInit");
 
 const MIN_COL_WIDTH = 40;
 
+/**
+ * §5.5 Clears the widths of every user-resized table in the document: all
+ * cells of a table that has a `userResized` cell go back to
+ * `colwidth: null, userResized: false`. Tables without a mark are untouched.
+ * Returns null when no table is marked. The transaction stays out of the undo
+ * history — turning the option off is a setting change, not an edit.
+ */
+export function buildClearTableWidthsTransaction(
+  state: EditorState,
+): null | Transaction {
+  const { tr } = state;
+  let changed = false;
+
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== "table") return true;
+
+    let marked = false;
+    node.descendants((cell) => {
+      if (cell.attrs.userResized) marked = true;
+      return !marked;
+    });
+    if (!marked) return false;
+
+    node.descendants((cell, offset) => {
+      if (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader") {
+        return true;
+      }
+      tr.setNodeMarkup(pos + 1 + offset, undefined, {
+        ...cell.attrs,
+        colwidth: null,
+        userResized: false,
+      });
+      changed = true;
+      return false;
+    });
+    return false;
+  });
+
+  if (!changed) return null;
+  tr.setMeta("addToHistory", false);
+  return tr;
+}
+
 export function createColResizePlugin(): Plugin {
   let initScheduled = false;
 
@@ -92,6 +135,10 @@ function findTableElement(domNode: Node): HTMLTableElement | null {
 }
 
 function measureColumnWidths(tableDOM: HTMLTableElement): number[] {
+  // A table that is not laid out (display:none in a hidden tab) reads 0, which
+  // the per-column floor below would turn into MIN_COL_WIDTH for every column.
+  // An empty result is skipped by the caller; the next update measures it.
+  if (tableDOM.offsetWidth === 0) return [];
   const firstRow = tableDOM.querySelector("tr");
   if (!firstRow) return [];
   const widths: number[] = [];
