@@ -35,6 +35,26 @@ describe("stripTableWidthComments", () => {
       "a\r\r| A | B |\r| - | - |\r",
     ],
     ["no final newline", "a\n\n<!-- colwidths:1,2 -->", "a\n\n"],
+    [
+      "a quote line after a root comment",
+      "<!-- colwidths:1,2 -->\n>\nx\n",
+      ">\nx\n",
+    ],
+    [
+      "a nested quote line after a quoted comment",
+      "> <!-- colwidths:1,2 -->\n> >\n> > x\n",
+      "> >\n> > x\n",
+    ],
+    [
+      "text directly above, blank below",
+      "para\n<!-- colwidths:1,2 -->\n\nx\n",
+      "para\n\nx\n",
+    ],
+    [
+      "list item text directly above",
+      "- a\n  <!-- colwidths:1,2 -->\n  \n  b\n",
+      "- a\n  \n  b\n",
+    ],
   ])("removes the comment: %s", (_, input, expected) => {
     expect(stripTableWidthComments(input)).toBe(expected);
   });
@@ -46,6 +66,12 @@ describe("stripTableWidthComments", () => {
     ["on a list marker's line", "- <!-- colwidths:1,2 -->\n"],
     ["front matter", "---\ntitle: <!-- colwidths:1,2 -->\n---\n"],
     ["another comment", "<!-- note -->\n"],
+    ["text directly above and below", "para\n<!-- colwidths:1,2 -->\nx\n"],
+    ["trailing spaces after the comment", "<!-- colwidths:1,2 -->   \n"],
+    [
+      "inside a continuing html block",
+      "<div>\n<!-- colwidths:1,2 -->\n</div>\n",
+    ],
   ])("leaves it alone: %s", (_, input) => {
     expect(stripTableWidthComments(input)).toBe(input);
   });

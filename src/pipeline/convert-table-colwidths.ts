@@ -41,8 +41,8 @@ export function applyColwidthsToTable(
   return tableNode.type.create(tableNode.attrs, rows, tableNode.marks);
 }
 
-/** Lines that may precede or follow a comment inside its container: blank, or only quote markers. */
-const BLANK_LINE_RE = /^[>\s]*$/;
+/** What may sit before a comment on its line: quote markers and indentation. */
+const PREFIX_RE = /^[>\s]*$/;
 
 /** Block containers whose children `convertBlockChildren` also reads as block-level. */
 const BLOCK_CONTAINERS = new Set([
@@ -55,7 +55,8 @@ const BLOCK_CONTAINERS = new Set([
 
 /**
  * Collect the 0-based indexes of lines to delete: each block-level colwidths
- * comment whose line holds nothing else, plus one blank line right after it.
+ * comment whose line holds nothing else, plus the blank line after it when a
+ * blank (or no) line precedes the comment.
  */
 function collectWidthCommentLines(
   node: Content | Root,
@@ -74,16 +75,26 @@ function collectWidthCommentLines(
         continue;
       }
       const index = position.start.line - 1;
+      const prefix = lines[index].slice(0, position.start.column - 1);
       // Anything but quote markers / indentation before the comment (a list
       // marker, say) would be deleted with the line.
-      if (
-        !BLANK_LINE_RE.test(lines[index].slice(0, position.start.column - 1))
-      ) {
-        continue;
-      }
-      out.add(index);
-      if (index + 1 < lines.length && BLANK_LINE_RE.test(lines[index + 1])) {
-        out.add(index + 1);
+      if (!PREFIX_RE.test(prefix)) continue;
+      // Blank means blank inside this container: whitespace only, or just the
+      // comment's own quote markers. A bare `>` at root level is content.
+      const own = prefix.trimEnd();
+      const isBlank = (line: string) =>
+        /^\s*$/.test(line) || line.trimEnd() === own;
+      const prevBlank = index === 0 || isBlank(lines[index - 1]);
+      const hasNext = index + 1 < lines.length;
+      const nextBlank = hasNext && isBlank(lines[index + 1]);
+      // Dropping the comment must not glue the blocks around it together.
+      if (!hasNext) {
+        out.add(index);
+      } else if (nextBlank) {
+        out.add(index);
+        if (prevBlank) out.add(index + 1);
+      } else if (prevBlank) {
+        out.add(index);
       }
     } else if (BLOCK_CONTAINERS.has(child.type)) {
       collectWidthCommentLines(child, lines, out);
