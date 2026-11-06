@@ -56,7 +56,7 @@ async fn a_committed_namespace_rename_survives_a_forget_between_build_and_publis
     // Files moved and scanned; before publish the context is removed and
     // re-added.
     let old_incarnation = incarnation_of(&ctx, "ctx-namespace").await;
-    ctx.remove("ctx-namespace").await.unwrap();
+    ctx.remove_for("ctx-namespace", "main").await.unwrap();
     state.forget(&key, old_incarnation).await;
     ctx.add(info("ctx-namespace", &root, ContextType::Folder))
         .await
@@ -123,7 +123,7 @@ async fn a_committed_namespace_rename_survives_a_forget_before_its_rebuild_start
         .await
         .unwrap();
     let old_incarnation = incarnation_of(&ctx, "ctx-namespace").await;
-    ctx.remove("ctx-namespace").await.unwrap();
+    ctx.remove_for("ctx-namespace", "main").await.unwrap();
     state.forget(&key, old_incarnation).await;
     let rebuilt = rebuild_and_publish(&state, &target, &root, false).await;
     assert!(matches!(&rebuilt, Err(IndexBuildError::Invalidated)));

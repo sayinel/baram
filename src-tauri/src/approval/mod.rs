@@ -210,7 +210,7 @@ fn record(store: &mut ApprovalStore, canonical: &Path, kind: ApprovalKind) -> bo
 /// asset://이 죽는다 (§335). 현재 세션의 부여는 재시작으로 정리된다.
 ///
 /// `commands::approval_cmd::revoke_approved_root`(§335)가 이 함수를 IPC 커맨드로 배선한다.
-pub fn revoke(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
+pub fn revoke<R: tauri::Runtime>(app: &tauri::AppHandle<R>, path: &str) -> Result<(), String> {
     let _guard = APPROVAL_MUTEX
         .lock()
         .map_err(|_| "잠금 획득 실패".to_string())?;

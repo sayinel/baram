@@ -65,6 +65,7 @@ pub async fn add_context<R: tauri::Runtime>(
     info: ContextInfo,
     state: tauri::State<'_, ContextManager>,
     app: tauri::AppHandle<R>,
+    webview: tauri::Webview<R>,
 ) -> Result<ContextInfo, String> {
     // §333 경계를 넓히기 전에 인가한다. File 컨텍스트는 부모 폴더까지 asset://을
     // 여므로(§329.2) 승인 종류를 구분해 문구가 그 사실을 말하게 한다.
@@ -74,20 +75,25 @@ pub async fn add_context<R: tauri::Runtime>(
     };
     super::approval_cmd::ensure_approved(&app, &info.path, kind).await?;
 
-    let added = state.add(info).await?;
+    let added = state.add_held_by(info, webview.label()).await?;
     register_asset_scope(&app, &added);
     Ok(added)
 }
 
+/// §89 For the window asking: a file context another window still holds stays registered for that
+/// one (`ContextManager::remove_for`).
 #[tauri::command]
-pub async fn remove_context(
+pub async fn remove_context<R: tauri::Runtime>(
     context_id: String,
     state: tauri::State<'_, ContextManager>,
     vault_root: tauri::State<'_, crate::VaultRootState>,
     link_index: tauri::State<'_, crate::index::service::LinkIndexState>,
+    webview: tauri::Webview<R>,
 ) -> Result<(), String> {
     let registration = state.registration(&context_id).await;
-    state.remove(&context_id).await?;
+    if !state.remove_for(&context_id, webview.label()).await? {
+        return Ok(());
+    }
     // issue 263: the link index of a removed context must not outlive it — a
     // re-registration of the same path builds its own. The incarnation lets
     // the index ignore this call if that re-registration already happened.
@@ -95,7 +101,13 @@ pub async fn remove_context(
         link_index.forget(&path, incarnation).await;
     }
 
-    // §81 Update VaultRootState to the new active context (or clear if none)
+    sync_vault_root(&state, &vault_root).await;
+
+    Ok(())
+}
+
+/// §81 Update VaultRootState to the new active context (or clear if none)
+async fn sync_vault_root(state: &ContextManager, vault_root: &crate::VaultRootState) {
     match state.active_id().await {
         Some(active_id) => {
             let contexts = state.list().await;
@@ -109,8 +121,54 @@ pub async fn remove_context(
             *root = None;
         }
     }
+}
 
-    Ok(())
+/// §335 Close every file context whose file is no longer approved, whichever windows hold it, so a
+/// revocation shuts the FS guard for them too. Fail-closed like `approval::decide`: a path that
+/// does not resolve is not approved.
+pub async fn close_unapproved_file_contexts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use crate::approval::{self, Decision};
+    use tauri::Manager;
+    let state = app.state::<ContextManager>();
+    let vault_root = app.state::<crate::VaultRootState>();
+    let link_index = app.state::<crate::index::service::LinkIndexState>();
+    let store = approval::load(app);
+    let active = state.active_id().await;
+    for context in state.list().await {
+        if context.context_type != ContextType::File
+            || matches!(approval::decide(&store, &context.path).0, Decision::Allowed)
+        {
+            continue;
+        }
+        let registration = state.registration(&context.id).await;
+        if state.remove(&context.id).await.is_err() {
+            continue;
+        }
+        if let Some((path, incarnation)) = registration {
+            link_index.forget(&path, incarnation).await;
+        }
+        if active.as_deref() == Some(context.id.as_str()) {
+            sync_vault_root(&state, &vault_root).await;
+        }
+    }
+}
+
+/// §89 A file window is gone, and with it its hold on file contexts (`on_window_event` in `lib.rs`).
+///
+/// VaultRootState moves only if the active context was among those removed. The main window can hold
+/// a root with no active context in the manager, and a window closing must not take it away.
+pub async fn release_window_contexts<R: tauri::Runtime>(app: &tauri::AppHandle<R>, label: &str) {
+    use tauri::Manager;
+    let state = app.state::<ContextManager>();
+    let vault_root = app.state::<crate::VaultRootState>();
+    let link_index = app.state::<crate::index::service::LinkIndexState>();
+    let active = state.active_id().await;
+    for (id, path, incarnation) in state.release_holder(label).await {
+        link_index.forget(&path, incarnation).await;
+        if active.as_deref() == Some(id.as_str()) {
+            sync_vault_root(&state, &vault_root).await;
+        }
+    }
 }
 
 #[tauri::command]
@@ -395,6 +453,274 @@ mod asset_scope_tests {
             grant,
             AssetScopeGrant::Dir(std::path::PathBuf::from("/Users/x/folder"))
         );
+    }
+}
+
+#[cfg(test)]
+mod window_hold_tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use tauri::test::MockRuntime;
+    use tauri::{Manager, WebviewWindow};
+    use tempfile::TempDir;
+
+    use crate::commands::approval_cmd;
+    use crate::context::{ContextInfo, ContextManager, ContextType};
+
+    fn mock_app() -> tauri::App<MockRuntime> {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::remove_context])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(ContextManager::new());
+        app.manage(crate::VaultRootState(tokio::sync::RwLock::new(None)));
+        app.manage(crate::index::service::LinkIndexState::new());
+        app
+    }
+
+    fn window(app: &tauri::App<MockRuntime>, label: &str) -> WebviewWindow<MockRuntime> {
+        tauri::WebviewWindowBuilder::new(app, label, Default::default())
+            .build()
+            .expect("mock webview must build")
+    }
+
+    fn a_file() -> (TempDir, ContextInfo) {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("note.md");
+        std::fs::write(&path, "x").unwrap();
+        let info = ContextInfo {
+            id: "f".into(),
+            context_type: ContextType::File,
+            path: path.to_str().unwrap().into(),
+            label: "note.md".into(),
+            color: "#fff".into(),
+            alias: None,
+            vault_type: None,
+            added_at: 0,
+        };
+        (dir, info)
+    }
+
+    fn invoke(
+        window: &WebviewWindow<MockRuntime>,
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
+        tauri::test::get_ipc_response(
+            window,
+            tauri::webview::InvokeRequest {
+                cmd: cmd.into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        )
+    }
+
+    fn remove_from(window: &WebviewWindow<MockRuntime>, id: &str) {
+        invoke(
+            window,
+            "remove_context",
+            serde_json::json!({ "contextId": id }),
+        )
+        .expect("remove_context must answer");
+    }
+
+    /// A mock app whose approvals go to a data directory of its own, removed when it drops. The mock
+    /// identifier is empty, which would put them directly in the user's application data.
+    struct AppWithApprovals(tauri::App<MockRuntime>);
+
+    impl AppWithApprovals {
+        fn new() -> Self {
+            static NEXT: AtomicU32 = AtomicU32::new(0);
+            let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+            context.config_mut().identifier = format!(
+                "ing.baram.test.file-context-holds.{}.{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::SeqCst)
+            );
+            let app = tauri::test::mock_builder()
+                .invoke_handler(tauri::generate_handler![
+                    super::add_context,
+                    super::remove_context,
+                    approval_cmd::revoke_approved_root
+                ])
+                .build(context)
+                .expect("mock app must build");
+            app.manage(ContextManager::new());
+            app.manage(crate::VaultRootState(tokio::sync::RwLock::new(None)));
+            app.manage(crate::index::service::LinkIndexState::new());
+            Self(app)
+        }
+
+        fn approve(&self, path: &str) {
+            let canonical = std::fs::canonicalize(path).unwrap();
+            crate::approval::approve(
+                self.0.handle(),
+                &canonical,
+                crate::approval::ApprovalKind::File,
+            )
+            .unwrap();
+        }
+    }
+
+    impl Drop for AppWithApprovals {
+        fn drop(&mut self) {
+            if let Ok(dir) = self.0.path().app_data_dir() {
+                assert!(
+                    dir.ends_with(&self.0.config().identifier),
+                    "must not remove {dir:?}"
+                );
+                let _ = std::fs::remove_dir_all(dir);
+            }
+        }
+    }
+
+    fn add_from(window: &WebviewWindow<MockRuntime>, info: &ContextInfo) {
+        invoke(window, "add_context", serde_json::json!({ "info": info }))
+            .expect("add_context must answer");
+    }
+
+    // 이것을 실패시키는 것: `add_context` 가 부른 창을 기록하지 않으면 다른 창이 지울 때 등록이 사라져 쓰기가 거부된다.
+    #[test]
+    fn add_context_holds_for_the_window_that_called_it() {
+        let app = AppWithApprovals::new();
+        let main = window(&app.0, "main");
+        let file_window = window(&app.0, "file-1");
+        let (_dir, info) = a_file();
+        app.approve(&info.path);
+        let state = app.0.state::<ContextManager>();
+
+        add_from(&main, &info);
+        add_from(&file_window, &info);
+
+        remove_from(&main, "f");
+        assert_eq!(tauri::async_runtime::block_on(state.list()).len(), 1);
+        remove_from(&file_window, "f");
+        assert!(tauri::async_runtime::block_on(state.list()).is_empty());
+    }
+
+    // §335 이것을 실패시키는 것: 회수가 소유자를 따르면 파일 창이 닫힐 때까지 회수한 파일을 읽고 쓴다.
+    #[test]
+    fn revoking_an_approval_closes_the_file_for_every_window() {
+        let app = AppWithApprovals::new();
+        let main = window(&app.0, "main");
+        let file_window = window(&app.0, "file-1");
+        let (_dir, info) = a_file();
+        app.approve(&info.path);
+        let state = app.0.state::<ContextManager>();
+        add_from(&main, &info);
+        add_from(&file_window, &info);
+
+        let canonical = std::fs::canonicalize(&info.path).unwrap();
+        invoke(
+            &main,
+            "revoke_approved_root",
+            serde_json::json!({ "path": canonical }),
+        )
+        .expect("revoke_approved_root must answer");
+
+        assert!(tauri::async_runtime::block_on(state.list()).is_empty());
+    }
+
+    // The pair: revoking one file leaves another that is still approved.
+    #[test]
+    fn revoking_one_approval_leaves_the_others_files_open() {
+        let app = AppWithApprovals::new();
+        let main = window(&app.0, "main");
+        let (_dir, info) = a_file();
+        let (_other_dir, mut other) = a_file();
+        other.id = "other".into();
+        app.approve(&info.path);
+        app.approve(&other.path);
+        let state = app.0.state::<ContextManager>();
+        add_from(&main, &info);
+        add_from(&main, &other);
+
+        let canonical = std::fs::canonicalize(&info.path).unwrap();
+        invoke(
+            &main,
+            "revoke_approved_root",
+            serde_json::json!({ "path": canonical }),
+        )
+        .expect("revoke_approved_root must answer");
+
+        let left = tauri::async_runtime::block_on(state.list());
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].id, "other");
+    }
+
+    // 이것을 실패시키는 것: 명령이 부른 창의 라벨을 쓰지 않으면 다른 창의 소유가 지켜지지 않는다.
+    #[test]
+    fn remove_context_answers_for_the_window_that_called_it() {
+        let app = mock_app();
+        let main = window(&app, "main");
+        let file_window = window(&app, "file-1");
+        let (_dir, info) = a_file();
+        let state = app.state::<ContextManager>();
+        tauri::async_runtime::block_on(async {
+            state.add_held_by(info.clone(), "main").await.unwrap();
+            state.add_held_by(info, "file-1").await.unwrap();
+        });
+
+        remove_from(&main, "f");
+        assert_eq!(tauri::async_runtime::block_on(state.list()).len(), 1);
+
+        remove_from(&file_window, "f");
+        assert!(tauri::async_runtime::block_on(state.list()).is_empty());
+    }
+
+    #[test]
+    fn a_window_going_away_releases_what_it_held() {
+        let app = mock_app();
+        let (_dir, info) = a_file();
+        let state = app.state::<ContextManager>();
+        tauri::async_runtime::block_on(async {
+            state.add_held_by(info, "file-1").await.unwrap();
+            super::release_window_contexts(app.handle(), "file-1").await;
+        });
+
+        assert!(tauri::async_runtime::block_on(state.list()).is_empty());
+    }
+
+    // 이것을 실패시키는 것: 활성이 아닌 등록을 놓을 때도 루트를 맞추면, manager 에 활성이 없는 main 의 루트가 비워진다.
+    #[test]
+    fn a_window_going_away_leaves_the_vault_root_alone() {
+        let app = mock_app();
+        let (_dir, info) = a_file();
+        let state = app.state::<ContextManager>();
+        let root = app.state::<crate::VaultRootState>();
+        tauri::async_runtime::block_on(async {
+            *root.0.write().await = Some("/kept".into());
+            state.add_held_by(info, "file-1").await.unwrap();
+            super::release_window_contexts(app.handle(), "file-1").await;
+            assert_eq!(*root.0.read().await, Some("/kept".into()));
+        });
+    }
+
+    // The pair: a root that was this file's own goes with it.
+    #[test]
+    fn a_window_going_away_clears_the_root_if_its_file_was_the_active_context() {
+        let app = mock_app();
+        let (_dir, info) = a_file();
+        let state = app.state::<ContextManager>();
+        let root = app.state::<crate::VaultRootState>();
+        tauri::async_runtime::block_on(async {
+            *root.0.write().await = Some("/kept".into());
+            state.add_held_by(info, "file-1").await.unwrap();
+            state.set_active("f").await.unwrap();
+            super::release_window_contexts(app.handle(), "file-1").await;
+            assert_eq!(*root.0.read().await, None);
+        });
     }
 }
 

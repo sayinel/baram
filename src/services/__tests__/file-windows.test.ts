@@ -33,12 +33,20 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getCurrentWebviewWindow: () => ({ label: "file-1" }),
 }));
 
+vi.mock("../../ipc/context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../ipc/context")>()),
+  addContext: vi.fn(async () => undefined),
+}));
+
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { addContext } from "../../ipc/context";
+import { useContextStore } from "../../stores/context/context";
 import { useFileWindowStore } from "../../stores/system/file-windows";
 import {
   followFileWindows,
+  registerFileWindowFile,
   reportUnsaved,
   SAVE_REQUEST,
   SAVE_TIMEOUT_MS,
@@ -53,11 +61,52 @@ beforeEach(() => {
   bus.handlers.clear();
   bus.emit.mockClear();
   bus.emitTo.mockClear();
+  vi.mocked(addContext).mockClear();
   useFileWindowStore.setState({ unsaved: new Set() });
 });
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("registering a file window's file", () => {
+  // 이것을 실패시키는 것: vault 에 맡기면 main 이 vault 를 닫을 때 이 창의 쓰기가 거부된다.
+  it("holds a file inside a vault by itself too", async () => {
+    useContextStore.setState({
+      ensureFileContext: vi.fn(async () => ({ contextType: "vault" })),
+    } as never);
+
+    await registerFileWindowFile("/v/note.md");
+
+    expect(addContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contextType: "file",
+        label: "note.md",
+        path: "/v/note.md",
+      }),
+    );
+  });
+
+  // The pair: `ensureFileContext` has already held a file context.
+  it("asks for nothing more for a file of its own", async () => {
+    useContextStore.setState({
+      ensureFileContext: vi.fn(async () => ({ contextType: "file" })),
+    } as never);
+
+    await registerFileWindowFile("/elsewhere/note.md");
+
+    expect(addContext).not.toHaveBeenCalled();
+  });
+
+  // 이것을 실패시키는 것: 여기서 던지면 vault 가 덮어 쓸 수 있는 파일이 오류 화면으로 떨어진다.
+  it("still opens if that hold fails", async () => {
+    useContextStore.setState({
+      ensureFileContext: vi.fn(async () => ({ contextType: "vault" })),
+    } as never);
+    vi.mocked(addContext).mockRejectedValueOnce(new Error("refused"));
+
+    await expect(registerFileWindowFile("/v/note.md")).resolves.toBeUndefined();
+  });
 });
 
 describe("what the main window knows", () => {
