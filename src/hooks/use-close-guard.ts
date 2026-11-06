@@ -5,16 +5,19 @@
 import { useEffect } from "react";
 
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { EditorTab } from "../stores/editor/editor";
 
 import { updateFileIndex, writeFile } from "../ipc/invoke";
 import { quitApp, reloadWindow } from "../services/app-exit";
 import { closeContexts } from "../services/close-context";
+import { followFileWindows } from "../services/file-windows";
 import { useContextStore } from "../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
+import { useFileWindowStore } from "../stores/system/file-windows";
 import { useUIStore } from "../stores/ui/ui";
 import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
 import {
@@ -243,7 +246,17 @@ export async function saveDirtyTab(
 export async function hasUnsavedTabs(): Promise<boolean> {
   // issue 594: same barrier as quit and reload.
   await awaitBlockIdRenames();
-  return unsavedTabs().length > 0;
+  return holdsUnsavedWorkInAnyWindow();
+}
+
+/**
+ * §89 For the exits that end the process: a file window goes with the main window, and its stores
+ * are its own, so it counts by what it last reported.
+ */
+function holdsUnsavedWorkInAnyWindow(): boolean {
+  return (
+    unsavedTabs().length > 0 || useFileWindowStore.getState().unsaved.size > 0
+  );
 }
 
 /**
@@ -327,16 +340,22 @@ export function useCloseGuard(): void {
         // tab dirty — a moment from now; quitting before it would leave the
         // other files renamed and this document not.
         await awaitBlockIdRenames();
-        if (unsavedTabs().length === 0) {
+        if (!holdsUnsavedWorkInAnyWindow()) {
           await quitApp();
           return;
         }
         useUIStore.getState().openUnsavedModal({ intent: "quit" });
+        // §89 Cmd+Q from a file window asks here, which may be behind it.
+        getCurrentWindow()
+          .setFocus()
+          .catch(() => {});
       })();
     });
+    const following = followFileWindows();
 
     return () => {
       unlisten.then((f) => f()).catch(() => {});
+      following.then((f) => f()).catch(() => {});
     };
   }, []);
 }

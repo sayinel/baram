@@ -2,10 +2,13 @@
 // closing a single tab (X button / Cmd+W on an Untitled tab), quitting the
 // app, reloading (§479, View > Reload / CmdOrCtrl+R), closing the whole workspace
 // (§81, File > Close Workspace), closing one context (§82, the context tab's x and
-// Settings > Vault's remove) and installing an update (§206). Identical look and buttons
+// Settings > Vault's remove), installing an update (§206) and closing a file window (§89).
+// Identical look and buttons
 // in every case:
 // Cancel / Don't Save / Save.
 import { useState } from "react";
+
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { CloseGuardDeps } from "../../hooks/use-close-guard";
 import type { UnsavedModalRequest } from "../../stores/ui/ui";
@@ -22,9 +25,11 @@ import { useTranslation } from "../../i18n/useTranslation";
 import { quitApp, reloadWindow } from "../../services/app-exit";
 import { installDownloadedUpdate } from "../../services/app-update";
 import { closeContexts } from "../../services/close-context";
+import { saveFileWindows } from "../../services/file-windows";
 import { useContextStore } from "../../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { useFileWindowStore } from "../../stores/system/file-windows";
 import { useUIStore } from "../../stores/ui/ui";
 
 /**
@@ -38,6 +43,7 @@ import { useUIStore } from "../../stores/ui/ui";
 const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.closeContextMessage",
   closeTab: "unsavedChanges.closeMessage",
+  closeWindow: "unsavedChanges.closeMessage",
   closeWorkspace: "unsavedChanges.closeWorkspaceMessage",
   installUpdate: "unsavedChanges.installUpdateMessage",
   quit: "unsavedChanges.quitMessage",
@@ -47,6 +53,7 @@ const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
 const PRIMARY_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.saveAndCloseContext",
   closeTab: "unsavedChanges.saveAndClose",
+  closeWindow: "unsavedChanges.saveAndClose",
   closeWorkspace: "unsavedChanges.saveAndCloseWorkspace",
   installUpdate: "unsavedChanges.saveAndInstallUpdate",
   quit: "unsavedChanges.saveAndQuit",
@@ -78,12 +85,20 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
             scopedContextIds.includes(tab.contextId)),
       ).length,
   );
+  const fileWindowCount = useFileWindowStore((s) => s.unsaved.size);
   const [saving, setSaving] = useState(false);
 
   if (!unsavedModal) return null;
 
+  // §89 Quitting and installing end the file windows too, and those count by what they reported.
+  const endsFileWindows =
+    unsavedModal.intent === "quit" || unsavedModal.intent === "installUpdate";
+  const count = dirtyCount + (endsFileWindows ? fileWindowCount : 0);
+
+  const asksAboutOneTab =
+    unsavedModal.intent === "closeTab" || unsavedModal.intent === "closeWindow";
   const tab =
-    unsavedModal.intent === "closeTab"
+    unsavedModal.intent === "closeTab" || unsavedModal.intent === "closeWindow"
       ? useEditorStore
           .getState()
           .tabs.find((tb) => tb.id === unsavedModal.tabId)
@@ -101,19 +116,18 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
 
   // The three message shapes: one tab by name, the closing folders by name and
   // count, a whole surface by count.
-  const message =
-    unsavedModal.intent === "closeTab"
-      ? t(MESSAGE_KEY.closeTab, { name: tab?.title ?? "" })
-      : unsavedModal.intent === "closeContext"
-        ? t(MESSAGE_KEY.closeContext, {
-            count: String(dirtyCount),
-            name: contextNames,
-          })
-        : t(MESSAGE_KEY[unsavedModal.intent], { count: String(dirtyCount) });
+  const message = asksAboutOneTab
+    ? t(MESSAGE_KEY[unsavedModal.intent], { name: tab?.title ?? "" })
+    : unsavedModal.intent === "closeContext"
+      ? t(MESSAGE_KEY.closeContext, {
+          count: String(count),
+          name: contextNames,
+        })
+      : t(MESSAGE_KEY[unsavedModal.intent], { count: String(count) });
   const primaryLabel = t(PRIMARY_KEY[unsavedModal.intent]);
 
   // The terminal action once the decision is resolved: quit, reload, close the
-  // workspace, install the update, close one context, or close the tab.
+  // workspace, install the update, close one context, close a file window, or close the tab.
   const proceed = async () => {
     if (unsavedModal.intent === "quit") {
       await quitApp();
@@ -125,6 +139,8 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
       await installDownloadedUpdate();
     } else if (unsavedModal.intent === "closeContext") {
       await closeContexts(unsavedModal.contextIds);
+    } else if (unsavedModal.intent === "closeWindow") {
+      await getCurrentWindow().destroy();
     } else {
       useEditorStore.getState().closeTab(unsavedModal.tabId);
     }
@@ -134,7 +150,7 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
   // dirty tab for a one-context close would write files in folders the user never
   // touched; saving only the active tab for a whole-surface close loses the rest.
   const runSave = async (): Promise<boolean> => {
-    if (unsavedModal.intent === "closeTab") {
+    if (asksAboutOneTab) {
       if (!tab) return true;
       return saveDirtyTab(
         tab,
@@ -148,7 +164,8 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
     ) {
       return saveDirtyTabsForContexts(unsavedModal.contextIds, deps);
     }
-    return saveAllDirtyForQuit(deps);
+    if (!(await saveAllDirtyForQuit(deps))) return false;
+    return endsFileWindows ? saveFileWindows() : true;
   };
 
   const handleSaveAndProceed = async () => {

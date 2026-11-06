@@ -1446,6 +1446,7 @@
   "tabBar.pin": "탭 고정",
   "tabBar.scrollLeft": "탭 왼쪽으로 스크롤",
   "tabBar.scrollRight": "탭 오른쪽으로 스크롤",
+  "tabBar.tearOffUnsaved": "저장한 뒤에 별도 창으로 옮길 수 있습니다.",
   "tabBar.unpin": "탭 고정 해제",
   "tabSwitcher.title": "열린 탭",
   "tableHandles.insertColumn": "열 삽입",

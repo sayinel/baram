@@ -1446,6 +1446,7 @@
   "tabBar.pin": "Pin Tab",
   "tabBar.scrollLeft": "Scroll tabs left",
   "tabBar.scrollRight": "Scroll tabs right",
+  "tabBar.tearOffUnsaved": "Save this tab before moving it to its own window.",
   "tabBar.unpin": "Unpin Tab",
   "tabSwitcher.title": "Open Tabs",
   "tableHandles.insertColumn": "Insert column",

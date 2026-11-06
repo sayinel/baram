@@ -40,7 +40,7 @@ file type Baram does not handle itself — see the
 
 ## Tab Tear-Off (Separate Window)
 
-Drag any editor tab outside the tab bar to detach it into a separate window. The window operates independently with its own editor state. Drag the tab back into the tab bar to re-dock it.
+Drag any editor tab outside the tab bar to detach it into a separate window. A tab with unsaved changes has to be saved first. The window operates independently with its own editor state, and closing it leaves the rest of Baram open.
 
 ## Perspectives
 

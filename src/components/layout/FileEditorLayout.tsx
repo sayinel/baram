@@ -16,27 +16,33 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
 import type { MergeSegment } from "../../ipc/types";
-import type { Transaction } from "@tiptap/pm/state";
 
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { CircleSmall } from "lucide-react";
 
 import { createBaramExtensions } from "../../extensions";
+import { replaceEditorStateWithVim } from "../../extensions/plugins/vim/replace-editor-state";
 import { useAutoSave } from "../../hooks/use-auto-save";
+import { useFileWindowGuard } from "../../hooks/use-file-window-guard";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, watchDir, writeFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useContextStore } from "../../stores/context/context";
-import { useEditorStore } from "../../stores/editor/editor";
+import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import { isMarkdownHref } from "../../utils/editor/local-link-nav";
-import { markContentLoaded } from "../../utils/editor/programmatic-update";
+import {
+  markContentLoaded,
+  updateOriginalDoc,
+} from "../../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
-import { isEphemeralOnlyUpdate } from "../../utils/editor/syntax-reveal-ephemeral";
 import { logger } from "../../utils/logger";
 import { dirname } from "../../utils/path-utils";
 import { MergeView } from "../editor/MergeView";
+import { UnsavedChangesModal } from "../editor/UnsavedChangesModal";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
 
@@ -54,11 +60,18 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<null | string>(null);
-  const [isDirty, setIsDirty] = useState(false);
+  // This window's one tab. `use-auto-save` keeps its marks, as for a tab in the main window.
+  const [tabId, setTabId] = useState<null | string>(null);
+  const tabIdRef = useRef<null | string>(null);
+  const isDirty = useEditorStore((s) =>
+    isTabUnsaved(
+      s.tabs.find((t) => t.id === tabId),
+      s.sourceEditedTabs,
+    ),
+  );
   const isDirtyRef = useRef(false);
   const [externalChange, setExternalChange] = useState<null | string>(null);
   const [mergeState, setMergeState] = useState<MergeSegment[] | null>(null);
-  const contentRef = useRef<string>("");
   const fileName = filePath.split("/").pop() ?? "Untitled";
 
   // §298 vim §12-⑪: referentially stable extensions — see App.tsx. A fresh
@@ -90,42 +103,115 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     immediatelyRender: false,
   });
 
+  // §89 Source mode toggle (Cmd+/)
+  const [isSourceMode, setIsSourceMode] = useState(false);
+  const isSourceModeRef = useRef(isSourceMode);
+  isSourceModeRef.current = isSourceMode;
+  const [sourceContent, setSourceContent] = useState("");
+  // §312 SourceCodeEditor의 동기화 effect는 **effect 시점의** 진실원을 다시 읽는다.
+  // 렌더 스냅샷(`sourceContent`)을 그대로 접근자로 넘기면, 렌더와 effect 사이에 사용자가
+  // 친 글자를 낡은 값으로 지운다 — 그 prop이 optional이 아닌 이유다.
+  const sourceContentRef = useRef(sourceContent);
+  sourceContentRef.current = sourceContent;
+
+  const markClean = useCallback(() => {
+    const id = tabIdRef.current;
+    if (!id) return;
+    const store = useEditorStore.getState();
+    store.markDirty(id, false);
+    store.markSourceEdited(id, false);
+  }, []);
+
+  // What this window would write now. In source mode the text is in the buffer, and the document
+  // is still what it was when source mode began.
+  const currentText = useCallback(
+    (live: NonNullable<typeof editor>) =>
+      isSourceModeRef.current
+        ? sourceContentRef.current
+        : serializeLiveDoc(live),
+    [],
+  );
+
+  // Text that is the file, in place of what this window shows, as a whole new state like a tab
+  // switch installs. No `update`, so `use-auto-save` does not read it as an edit and write it back,
+  // and no undo history, because undoing would write the older text back over the file, or nothing
+  // at all on a window just opened. `addToHistory: false` is not enough: an earlier step that
+  // replaced the whole document maps through it and comes back.
+  const installSavedDocument = useCallback(
+    (markdown: string) => {
+      if (!editor) return;
+      useFileStore.getState().setFileContent(filePath, markdown);
+      const doc = markdownToProsemirror(markdown, editor.schema);
+      const caret = Math.min(editor.state.selection.anchor, doc.content.size);
+      replaceEditorStateWithVim(
+        editor.view,
+        EditorState.create({
+          doc,
+          plugins: editor.state.plugins,
+          selection: TextSelection.near(doc.resolve(caret), -1),
+        }),
+        "fresh-document",
+      );
+      setSourceContent(markdown);
+      if (tabIdRef.current) markContentLoaded(tabIdRef.current);
+      markClean();
+    },
+    [editor, filePath, markClean],
+  );
+
+  // Nothing is in dispute with the file any more, so `use-auto-save` may write again.
+  const settleExternalChange = useCallback(() => {
+    const { getFileMtime, updateLastSaveMtime } = useFileStore.getState();
+    const mtime = getFileMtime(filePath);
+    if (mtime && mtime.canReloadMtime > mtime.lastSaveMtime) {
+      updateLastSaveMtime(filePath, mtime.canReloadMtime);
+    }
+    setExternalChange(null);
+  }, [filePath]);
+
   // Load file content on mount
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        // §89 Register FileContext before reading
+        // §89 Register FileContext before reading. Nothing releases it when this window closes:
+        // the backend keeps one per path, so a tab in the main window can be using the same one,
+        // and removing it would refuse that tab's writes. Left behind, it covers one file the user
+        // has already approved, until the app exits.
         await useContextStore.getState().ensureFileContext(filePath);
         const content = await readFile(filePath);
         if (cancelled) return;
-        contentRef.current = content;
 
         if (editor && !editor.isDestroyed) {
-          const doc = markdownToProsemirror(content, editor.schema);
-          editor.commands.setContent(doc.toJSON());
-
           // §89 Register a virtual tab so resolveImageSrc can find the file path
           const ctx = useContextStore
             .getState()
             .contexts.find(
               (c) => c.contextType === "file" && c.path === filePath,
             );
-          const tabId = `file-editor-${Date.now()}`;
           useEditorStore.getState().openTab({
-            id: tabId,
+            id: `file-editor-${Date.now()}`,
             filePath,
             title: fileName,
             contextId: ctx?.id ?? "",
             isDirty: false,
             isPinned: false,
           });
-          // `use-auto-save` writes only a tab whose document is installed.
-          markContentLoaded(tabId);
+          // Not the id above: `openTab` keeps the tab already open for this path, which there is
+          // when Retry on the `ErrorBoundary` screen has remounted this component.
+          const { activeTabId } = useEditorStore.getState();
+          tabIdRef.current = activeTabId;
+          setTabId(activeTabId);
+          installSavedDocument(content);
+          // A Retry can come back with the hold of a banner that went with the old component.
+          settleExternalChange();
         }
       } catch (err) {
         if (!cancelled) {
+          // The tab may already be open with nothing installed, and a save would write that.
+          tabIdRef.current = null;
+          setTabId(null);
           setError(err instanceof Error ? err.message : String(err));
           logger.error("[FileEditor] Failed to load file:", err);
         }
@@ -137,44 +223,11 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [filePath, editor, fileName]);
+  }, [filePath, editor, fileName, installSavedDocument, settleExternalChange]);
 
   // §89 Auto-save, theme, and settings effects
   useAutoSave(editor);
   useSettingsEffects(editor);
-
-  // §89 Source mode toggle (Cmd+/)
-  const [isSourceMode, setIsSourceMode] = useState(false);
-  const [sourceContent, setSourceContent] = useState("");
-  // §312 SourceCodeEditor의 동기화 effect는 **effect 시점의** 진실원을 다시 읽는다.
-  // 렌더 스냅샷(`sourceContent`)을 그대로 접근자로 넘기면, 렌더와 effect 사이에 사용자가
-  // 친 글자를 낡은 값으로 지운다 — 그 prop이 optional이 아닌 이유다.
-  const sourceContentRef = useRef(sourceContent);
-  sourceContentRef.current = sourceContent;
-
-  // Track dirty state
-  useEffect(() => {
-    if (!editor) return;
-    const handler = ({
-      transaction,
-      appendedTransactions,
-    }: {
-      appendedTransactions: Transaction[];
-      transaction: Transaction;
-    }) => {
-      // §384 (C): a syntax-reveal expand/collapse (the caret walking into or
-      // out of a link/mark/media/wikilink) changes the doc's representation
-      // without changing what it serializes to — see use-auto-save.ts, which
-      // applies the identical gate for the tabbed editor. Without it, this
-      // standalone window's unsaved dot lit up on caret movement alone.
-      if (isEphemeralOnlyUpdate({ transaction, appendedTransactions })) return;
-      setIsDirty(true);
-    };
-    editor.on("update", handler);
-    return () => {
-      editor.off("update", handler);
-    };
-  }, [editor]);
 
   // Keep isDirty in a ref for the file:changed listener closure.
   useEffect(() => {
@@ -202,16 +255,31 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
           } catch {
             return;
           }
-          // Ignore if the disk already matches the editor (self-write / no-op).
-          if (diskContent === serializeLiveDoc(editor)) return;
+          // This window's own write coming back, or a write of what it already holds.
+          if (
+            diskContent === useFileStore.getState().openFiles.get(filePath) ||
+            diskContent === currentText(editor)
+          ) {
+            settleExternalChange();
+            return;
+          }
           if (isDirtyRef.current) {
+            // Holds `use-auto-save` off (`shouldDeferSave`) until the banner is answered, or a
+            // timer already running writes over what the banner is asking about. The main window
+            // does this in `useFileWatcher`, which this window does not run. Past the last save
+            // whatever the file says: a copy that keeps its time (`cp -p`, `rsync -t`) can be older.
+            const { getFileMtime, updateCanReloadMtime } =
+              useFileStore.getState();
+            updateCanReloadMtime(
+              filePath,
+              Math.max(
+                event.payload.mtime,
+                (getFileMtime(filePath)?.lastSaveMtime ?? 0) + 1,
+              ),
+            );
             setExternalChange(diskContent);
           } else {
-            contentRef.current = diskContent;
-            editor.commands.setContent(
-              markdownToProsemirror(diskContent, editor.schema).toJSON(),
-            );
-            setIsDirty(false);
+            installSavedDocument(diskContent);
           }
         },
       );
@@ -222,66 +290,85 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       cancelled = true;
       unlisten?.();
     };
-  }, [editor, filePath]);
+  }, [
+    currentText,
+    editor,
+    filePath,
+    installSavedDocument,
+    settleExternalChange,
+  ]);
 
   // Save handler
   const handleSave = useCallback(async () => {
-    if (!editor) return;
+    // Before the file has loaded the editor is empty, and writing that would empty the file.
+    const id = tabIdRef.current;
+    if (!editor || !id) return;
     try {
-      const md = serializeLiveDoc(editor);
+      const doc = editor.state.doc;
+      const md = currentText(editor);
       await writeFile(filePath, md);
-      contentRef.current = md;
-      setIsDirty(false);
+      const { setFileContent, updateLastSaveMtime } = useFileStore.getState();
+      setFileContent(filePath, md);
+      updateLastSaveMtime(filePath, Date.now());
+      // Whatever the banner was asking about, the file now says this.
+      setExternalChange(null);
+      // Text typed during the write is not on disk, so it stays marked.
+      if (currentText(editor) !== md) return;
+      if (isSourceModeRef.current) {
+        // The document behind the buffer has to become this text too. An auto-save timer from before
+        // source mode would write the older document over this save, and what was typed then undone
+        // would compare with a baseline the file has moved on from.
+        installSavedDocument(md);
+        return;
+      }
+      // The next edit is compared with what is on disk now. Compared with what the window opened
+      // on, text put back to that would read as saved.
+      updateOriginalDoc(id, doc);
+      markClean();
     } catch (err) {
       logger.error("[FileEditor] Failed to save:", err);
     }
-  }, [editor, filePath]);
+  }, [currentText, editor, filePath, installSavedDocument, markClean]);
+
+  useFileWindowGuard(tabId, isDirty, handleSave);
 
   // Conflict banner actions (standalone window)
+
   const handleReloadExternal = useCallback(() => {
     if (!editor || externalChange === null) return;
-    contentRef.current = externalChange;
-    editor.commands.setContent(
-      markdownToProsemirror(externalChange, editor.schema).toJSON(),
-    );
-    setIsDirty(false);
-    setExternalChange(null);
-  }, [editor, externalChange]);
+    installSavedDocument(externalChange);
+    settleExternalChange();
+  }, [editor, externalChange, installSavedDocument, settleExternalChange]);
 
   const handleKeepLocal = useCallback(() => {
     // Ignore the external change; the next save overwrites it on disk.
-    setExternalChange(null);
-  }, []);
+    settleExternalChange();
+  }, [settleExternalChange]);
 
   const handleMerge = useCallback(async () => {
     if (!editor || externalChange === null) return;
     try {
-      const local = serializeLiveDoc(editor);
       const result = await mergeTexts(
-        contentRef.current,
-        local,
+        useFileStore.getState().openFiles.get(filePath) ?? "",
+        currentText(editor),
         externalChange,
       );
       setMergeState(result.segments);
     } catch (err) {
       logger.warn("[FileEditor] merge failed", err);
     }
-  }, [editor, externalChange]);
+  }, [currentText, editor, externalChange, filePath]);
 
   const handleApplyMerge = useCallback(
     (merged: string) => {
       if (!editor) return;
       void writeFile(filePath, merged).then(() => {
-        contentRef.current = merged;
-        editor.commands.setContent(
-          markdownToProsemirror(merged, editor.schema).toJSON(),
-        );
-        setIsDirty(false);
-        setExternalChange(null);
+        installSavedDocument(merged);
+        settleExternalChange();
         setMergeState(null);
       });
     },
-    [editor, filePath],
+    [editor, filePath, installSavedDocument, settleExternalChange],
   );
 
   // Keyboard shortcuts: Cmd+S (save), Cmd+/ (source mode toggle)
@@ -293,40 +380,31 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       }
       if ((e.metaKey || e.ctrlKey) && e.key === "/") {
         e.preventDefault();
-        if (!editor) return;
-        setIsSourceMode((prev) => {
-          if (!prev) {
-            // WYSIWYG → Source: serialize current doc
-            setSourceContent(serializeLiveDoc(editor));
-          } else {
-            // Source → WYSIWYG: parse source back into editor
-            const doc = markdownToProsemirror(sourceContent, editor.schema);
-            editor.commands.setContent(doc.toJSON());
+        // Before the file has loaded there is nothing to show, and text typed into that empty
+        // buffer would replace the file on the next save.
+        if (!editor || !tabIdRef.current) return;
+        if (!isSourceMode) {
+          // WYSIWYG → Source: serialize current doc
+          setSourceContent(serializeLiveDoc(editor));
+        } else {
+          // Source → WYSIWYG. Text still unsaved arrives as an edit for `use-auto-save` to mark and
+          // save. Anything else is in the document already: a save there put it in.
+          const id = tabIdRef.current;
+          const { markSourceEdited, sourceEditedTabs } =
+            useEditorStore.getState();
+          if (sourceEditedTabs.includes(id)) {
+            editor.commands.setContent(
+              markdownToProsemirror(sourceContent, editor.schema).toJSON(),
+            );
+            markSourceEdited(id, false);
           }
-          return !prev;
-        });
+        }
+        setIsSourceMode(!isSourceMode);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleSave, editor, sourceContent]);
-
-  // Cleanup FileContext on window close
-  useEffect(() => {
-    const cleanup = async () => {
-      const ctx = useContextStore
-        .getState()
-        .contexts.find((c) => c.contextType === "file" && c.path === filePath);
-      if (ctx) {
-        await useContextStore
-          .getState()
-          .removeContext(ctx.id)
-          .catch(() => {});
-      }
-    };
-    window.addEventListener("beforeunload", cleanup);
-    return () => window.removeEventListener("beforeunload", cleanup);
-  }, [filePath]);
+  }, [handleSave, editor, sourceContent, isSourceMode]);
 
   if (error) {
     return (
@@ -396,13 +474,19 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
             <SourceCodeEditor
               content={sourceContent}
               getLatestContent={() => sourceContentRef.current}
-              onChange={setSourceContent}
+              onChange={(next) => {
+                setSourceContent(next);
+                if (tabId) {
+                  useEditorStore.getState().markSourceEdited(tabId, true);
+                }
+              }}
             />
           </Suspense>
         ) : (
           <EditorContent editor={editor} />
         )}
       </div>
+      <UnsavedChangesModal handleSave={handleSave} />
     </div>
   );
 }
