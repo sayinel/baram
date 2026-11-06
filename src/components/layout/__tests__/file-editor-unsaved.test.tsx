@@ -177,7 +177,7 @@ beforeEach(() => {
   useSettingsStore.setState({ autoSave: false, autoSaveDelay: 500 });
   useContextStore.setState({
     contexts: [],
-    ensureFileContext: vi.fn(async () => undefined),
+    ensureFileContext: vi.fn(async () => ({ contextType: "file" })),
   } as never);
 });
 

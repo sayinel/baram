@@ -290,6 +290,23 @@ fn shows_something_in_the_main_window(id: &str) -> bool {
     !id.starts_with("help_") && id != "recent_clear"
 }
 
+/// §89 A file window is gone, whatever closed it. A window that fell to the `ErrorBoundary` screen
+/// closes without running any of its code, so this cannot be left to the window.
+///
+/// The main window counts what file windows hold (`services/file-windows.ts`): left counted, every
+/// later quit would ask about it and wait on a save it cannot answer. And the window's hold on the
+/// file it had open goes with it.
+fn when_file_window_destroyed<R: tauri::Runtime>(
+    window: &tauri::Window<R>,
+) -> tauri::async_runtime::JoinHandle<()> {
+    let _ = window.emit_to("main", "file-window://closed", window.label());
+    let app = window.app_handle().clone();
+    let label = window.label().to_string();
+    tauri::async_runtime::spawn(async move {
+        context_cmd::release_window_contexts(&app, &label).await;
+    })
+}
+
 /// §89 The label `openFileWindow` gives a torn-off tab's window (`src/utils/file-window.ts`).
 fn is_file_window(label: &str) -> bool {
     label.starts_with("file-")
@@ -590,12 +607,8 @@ pub fn run() {
             }
             tauri::WindowEvent::Destroyed => {
                 window.state::<LastFocusedWindow>().forget(window.label());
-                // §89 The main window counts what file windows hold (`services/file-windows.ts`),
-                // and a window that fell to the `ErrorBoundary` screen closes without running any
-                // of its code. Left counted, every later quit would ask about it and wait on a save
-                // it cannot answer.
                 if is_file_window(window.label()) {
-                    let _ = window.emit_to("main", "file-window://closed", window.label());
+                    when_file_window_destroyed(window);
                 }
             }
             _ => {}
@@ -794,6 +807,51 @@ mod tests {
     /// the app. The close guard ran for the `plugin-*` webview the loader was
     /// closing, cancelled that close, and broadcast `app://close-requested`, which
     /// the main window answers by running its quit flow.
+    // 이것을 실패시키는 것: 이 호출이 빠지면 파일 창이 닫혀도 등록이 앱을 끌 때까지 남고, main 이 그 창을 계속 센다.
+    #[test]
+    fn a_destroyed_file_window_lets_go_of_its_file_and_is_no_longer_counted() {
+        use tauri::Listener;
+
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(context::ContextManager::new());
+        app.manage(VaultRootState(tokio::sync::RwLock::new(None)));
+        app.manage(index::service::LinkIndexState::new());
+        let closed = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let heard = std::sync::Arc::clone(&closed);
+        app.listen_any("file-window://closed", move |event| {
+            heard.lock().unwrap().push(event.payload().to_string());
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        std::fs::write(&path, "x").unwrap();
+        let manager = app.state::<context::ContextManager>();
+        tauri::async_runtime::block_on(manager.add_held_by(
+            context::ContextInfo {
+                id: "f".into(),
+                context_type: context::ContextType::File,
+                path: path.to_str().unwrap().into(),
+                label: "note.md".into(),
+                color: "#fff".into(),
+                alias: None,
+                vault_type: None,
+                added_at: 0,
+            },
+            "file-1",
+        ))
+        .unwrap();
+        let file_window = tauri::WebviewWindowBuilder::new(&app, "file-1", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        tauri::async_runtime::block_on(when_file_window_destroyed(&file_window.as_ref().window()))
+            .unwrap();
+
+        assert!(tauri::async_runtime::block_on(manager.list()).is_empty());
+        assert_eq!(*closed.lock().unwrap(), vec!["\"file-1\"".to_string()]);
+    }
+
     #[test]
     fn the_close_guard_is_for_the_main_window_only() {
         // The main window keeps the guard — closing it IS a user gesture that may need

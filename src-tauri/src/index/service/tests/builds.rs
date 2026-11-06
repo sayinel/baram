@@ -126,7 +126,7 @@ async fn an_in_flight_build_cannot_resurrect_a_forgotten_registration() {
     let old_stats = old_snapshot.build(&root).await.unwrap();
 
     // The context is removed (context_cmd forgets its slot) and re-added.
-    ctx.remove("ctx-old").await.unwrap();
+    ctx.remove_for("ctx-old", "main").await.unwrap();
     state.forget(&key, old_incarnation).await;
     ctx.add(info("ctx-new", &root, ContextType::Folder))
         .await
@@ -213,7 +213,7 @@ async fn forgetting_a_context_makes_the_next_registration_build_its_own_index() 
     // the old index is gone, and the first rename under the new
     // registration builds a fresh one instead of trusting the old.
     let old = incarnation_of(&ctx, "ctx-abc").await;
-    ctx.remove("ctx-abc").await.unwrap();
+    ctx.remove_for("ctx-abc", "main").await.unwrap();
     state.forget(&root, old).await;
     assert!(state.with_index(&root, |idx| idx.is_none()).await);
     // Meanwhile the vault changed on disk — the old index would have said
@@ -279,7 +279,7 @@ async fn forget_before_version_cannot_be_adopted_by_an_old_refresh() {
     }
     drop(map);
 
-    ctx.remove("ctx-reused").await.unwrap();
+    ctx.remove_for("ctx-reused", "main").await.unwrap();
     removal.await;
     // The same id is reused: an id comparison would not be a lifetime check.
     ctx.add(info("ctx-reused", &root, ContextType::Folder))
@@ -310,7 +310,7 @@ async fn an_unrelated_removal_after_preparation_does_not_cancel_a_build() {
     let state = LinkIndexState::new();
     let target = prepare_index_build(&state, &ctx, &root_a).await.unwrap();
     let incarnation_b = incarnation_of(&ctx, "ctx-b").await;
-    ctx.remove("ctx-b").await.unwrap();
+    ctx.remove_for("ctx-b", "main").await.unwrap();
     state.forget(&root_b, incarnation_b).await;
     rebuild_and_publish(&state, &target, &root_a, true)
         .await
@@ -342,7 +342,7 @@ async fn an_unrelated_removal_during_the_lookup_does_not_refuse_the_refresh() {
         assert!(refresh.as_mut().poll(&mut task).is_pending());
     }
     drop(map);
-    ctx.remove("ctx-b").await.unwrap();
+    ctx.remove_for("ctx-b", "main").await.unwrap();
     removal.await;
     refresh.await.unwrap();
     assert_eq!(state.epoch(&root_a).await, 1);
@@ -383,7 +383,7 @@ async fn a_stale_forget_does_not_wipe_the_index_of_a_newer_registration() {
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root).await.unwrap();
     let old_incarnation = incarnation_of(&ctx, "ctx-old").await;
-    ctx.remove("ctx-old").await.unwrap();
+    ctx.remove_for("ctx-old", "main").await.unwrap();
     // …the forget has not run yet; the path is registered and built again.
     ctx.add(info("ctx-new", &root, ContextType::Folder))
         .await
@@ -412,7 +412,7 @@ async fn an_index_built_for_an_older_registration_does_not_satisfy_the_gate() {
     // The context is removed and the same path registered again; the old
     // registration's `forget` has not run yet, so its index is still live —
     // and the directory changed meanwhile: a new file links to b.md.
-    ctx.remove("ctx-old").await.unwrap();
+    ctx.remove_for("ctx-old", "main").await.unwrap();
     std::fs::write(dir.path().join("z.md"), "also [[b]]").unwrap();
     ctx.add(info("ctx-new", &root, ContextType::Folder))
         .await
@@ -476,7 +476,7 @@ async fn a_query_does_not_read_an_index_left_by_an_earlier_registration() {
         .is_empty());
     // Removed and registered again, the old forget still pending: the old
     // index is live under the key but was published for another registration.
-    ctx.remove("ctx-old").await.unwrap();
+    ctx.remove_for("ctx-old", "main").await.unwrap();
     ctx.add(info("ctx-new", &root, ContextType::Folder))
         .await
         .unwrap();

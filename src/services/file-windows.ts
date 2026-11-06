@@ -9,8 +9,11 @@
 import { emit, emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+import { addContext } from "../ipc/context";
+import { useContextStore } from "../stores/context/context";
 import { useFileWindowStore } from "../stores/system/file-windows";
 import { logger } from "../utils/logger";
+import { basename } from "../utils/path-utils";
 
 /** File window → main: `{ label, unsaved }`. */
 const UNSAVED_REPORT = "file-window://unsaved";
@@ -55,6 +58,27 @@ export async function followFileWindows(): Promise<UnlistenFn> {
   return () => {
     for (const unlisten of unlisteners) unlisten();
   };
+}
+
+/**
+ * File window: register the file for this window. A file inside a vault the store lists is the
+ * vault's, which the main window can close while this window is open, so it is also held here by
+ * itself. Only in the backend: in the store it would change what `getContextForPath` answers.
+ */
+export async function registerFileWindowFile(filePath: string): Promise<void> {
+  const context = await useContextStore.getState().ensureFileContext(filePath);
+  if (context.contextType === "file") return;
+  await addContext({
+    addedAt: Date.now(),
+    color: "#9ca3af",
+    contextType: "file",
+    id: `ctx-${getCurrentWebviewWindow().label}`,
+    label: basename(filePath),
+    path: filePath,
+  }).catch((err: unknown) => {
+    // The vault still covers it for now.
+    logger.error("[file-window] could not hold the file:", err);
+  });
 }
 
 /** File window: run `report` whenever a reloaded main window asks again. */

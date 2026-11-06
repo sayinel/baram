@@ -31,6 +31,7 @@ import { useTranslation } from "../../i18n/useTranslation";
 import { readFile, watchDir, writeFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { registerFileWindowFile } from "../../services/file-windows";
 import { useContextStore } from "../../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -177,11 +178,10 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
 
     (async () => {
       try {
-        // §89 Register FileContext before reading. Nothing releases it when this window closes:
-        // the backend keeps one per path, so a tab in the main window can be using the same one,
-        // and removing it would refuse that tab's writes. Left behind, it covers one file the user
-        // has already approved, until the app exits.
-        await useContextStore.getState().ensureFileContext(filePath);
+        // §89 Register FileContext before reading. The backend holds it for this window and lets go
+        // when the window is destroyed (`release_window_contexts`), so a tab in the main window on
+        // the same file keeps its writes.
+        await registerFileWindowFile(filePath);
         const content = await readFile(filePath);
         if (cancelled) return;
 
