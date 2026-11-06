@@ -30,6 +30,7 @@ import {
 import { useSettingsStore } from "../../stores/settings/store";
 import { ZETTEL_STARTUP_BEHAVIORS } from "../../stores/settings/zettelkasten-settings";
 import { useUIStore } from "../../stores/ui/ui";
+import { setTableColumnResizeFromUser } from "../../utils/editor/table-width-clear";
 import { TASK_SCAN_SCOPES } from "../../utils/tasks/task-scan-scope";
 import { dialOptionLabelKey } from "./dial-option-label";
 
@@ -147,6 +148,7 @@ const selectRegistrySettings = (s: SettingsState) => ({
   strikethrough: s.strikethrough,
   symbolSuggest: s.symbolSuggest,
   tabSize: s.tabSize,
+  tableColumnResize: s.tableColumnResize,
   tasksArchiveAfterDays: s.tasksArchiveAfterDays,
   tasksEnabled: s.tasksEnabled,
   tasksRecordDoneDate: s.tasksRecordDoneDate,
@@ -1130,6 +1132,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
       control: makeToggleControl(
         () => settings.symbolSuggest,
         settings.setSymbolSuggest,
+      ),
+    },
+    {
+      id: "tableColumnResize",
+      label: "settings.markdown.tableColumnResize",
+      description: "settings.markdown.tableColumnResize.desc",
+      category: "markdown",
+      section: "settings.markdown.tables",
+      control: makeToggleControl(
+        () => settings.tableColumnResize,
+        setTableColumnResizeFromUser,
       ),
     },
     // ── AI ───────────────────────────────────────────────────────────────────
