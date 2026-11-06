@@ -139,7 +139,7 @@ describe("createKeepalivePool", () => {
     const ed = makeEditor(300);
     pool.acquire("tab1", ed);
     pool.destroyAll();
-    expect(onEvict).toHaveBeenCalledWith("tab1", ed);
+    expect(onEvict).toHaveBeenCalledWith("tab1", ed, false);
     expect(order).toEqual(["alive"]); // callback ran before destroy
     expect(ed.isDestroyed).toBe(true);
     expect(pool.keys()).toEqual([]);
@@ -163,9 +163,28 @@ describe("createKeepalivePool", () => {
     const ed1 = makeEditor(300);
     pool.acquire("tab1", ed1);
     pool.acquire("tab2", makeEditor(250)); // evicts tab1
-    expect(onEvict).toHaveBeenCalledWith("tab1", ed1);
+    expect(onEvict).toHaveBeenCalledWith("tab1", ed1, false);
     expect(order).toEqual(["alive"]); // callback ran before destroy
     expect(ed1.isDestroyed).toBe(true); // destroyed after callback
+  });
+
+  // The callback moves unsaved text out of an entry, which is only safe if the load finished.
+  it("tells onEvict whether the entry's load finished", () => {
+    const onEvict = vi.fn();
+    const pool = createKeepalivePool({ onEvict });
+
+    pool.acquire("done", makeEditor(1));
+    pool.markComplete("done");
+    pool.release("done");
+    pool.acquire("partial", makeEditor(1));
+    pool.release("partial");
+
+    expect(
+      onEvict.mock.calls.map(([tab, , complete]) => [tab, complete]),
+    ).toEqual([
+      ["done", true],
+      ["partial", false],
+    ]);
   });
 
   it("release calls onEvict before destroy", () => {
@@ -177,7 +196,7 @@ describe("createKeepalivePool", () => {
     const ed = makeEditor(300);
     pool.acquire("tab1", ed);
     pool.release("tab1");
-    expect(onEvict).toHaveBeenCalledWith("tab1", ed);
+    expect(onEvict).toHaveBeenCalledWith("tab1", ed, false);
     expect(order).toEqual(["alive"]);
     expect(ed.isDestroyed).toBe(true);
   });

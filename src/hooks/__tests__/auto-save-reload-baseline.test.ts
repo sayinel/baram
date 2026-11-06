@@ -32,6 +32,7 @@ import { Editor } from "@tiptap/core";
 import { createBaramExtensions } from "../../extensions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { markContentLoaded } from "../../utils/editor/programmatic-update";
 import { useAutoSave } from "../use-auto-save";
 import { triggerAutoReload, useFileOperations } from "../use-file-operations";
 
@@ -85,6 +86,7 @@ describe("auto-save keeps the auto-reload baseline honest", () => {
       content: "<p>hello</p>",
       extensions: createBaramExtensions(),
     });
+    markContentLoaded(TAB);
     const autoSave = renderHook(() => useAutoSave(editor));
 
     // ① 사용자가 WYSIWYG에서 타이핑한다 → 자동 저장이 예약되고, 여기서는 그 디바운스를

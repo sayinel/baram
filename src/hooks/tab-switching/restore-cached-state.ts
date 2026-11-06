@@ -4,6 +4,7 @@ import type { TabSwitchContext } from "./types";
 import type { EditorState } from "@tiptap/pm/state";
 
 import { replaceEditorStateWithVim } from "../../extensions/plugins/vim/replace-editor-state";
+import { useEditorStore } from "../../stores/editor/editor";
 import { logCacheEvent, timePhase } from "../../utils/editor/perf-trace";
 import { afterDocLoad } from "./after-doc-load";
 
@@ -26,6 +27,9 @@ export function restoreCachedState(
 
   // Defer updateState outside React commit phase
   setTimeout(() => {
+    // Left already: the next tab's install is the one that counts, and may have run. This one would
+    // put the tab left behind into the editor and say it is the one installed.
+    if (useEditorStore.getState().activeTabId !== activeTabId) return;
     // issue 594: read the cache again HERE. A block ID rename the backend
     // committed between scheduling and firing lands in the cache entry, and the
     // `cachedState` captured above would put the old ID back on screen — then

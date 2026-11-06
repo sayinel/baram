@@ -25,7 +25,11 @@ export interface CreateKeepalivePoolOpts {
 
 /** Called before an evicted/released/destroyed editor is destroyed,
  *  allowing React to unmount EditorContent first. */
-export type EvictionCallback = (tabId: string, editor: Editor) => void;
+export type EvictionCallback = (
+  tabId: string,
+  editor: Editor,
+  complete: boolean,
+) => void;
 
 export interface KeepaliveEntry {
   /** True once the progressive load has completed (finishLoad called). */
@@ -109,7 +113,7 @@ export function createKeepalivePool(opts: CreateKeepalivePoolOpts = {}) {
       logger.info(
         `[Baram Perf] keepalive: evict editor tabId=${evicted.tabId}`,
       );
-      opts.onEvict?.(evicted.tabId, evicted.editor);
+      opts.onEvict?.(evicted.tabId, evicted.editor, evicted.complete);
       if (!evicted.editor.isDestroyed) evicted.editor.destroy();
     }
 
@@ -124,7 +128,7 @@ export function createKeepalivePool(opts: CreateKeepalivePoolOpts = {}) {
     if (idx === -1) return;
     const [removed] = entries.splice(idx, 1);
     logger.info(`[Baram Perf] keepalive: -1 editor tabId=${tabId}`);
-    opts.onEvict?.(removed.tabId, removed.editor);
+    opts.onEvict?.(removed.tabId, removed.editor, removed.complete);
     if (!removed.editor.isDestroyed) removed.editor.destroy();
   };
 
@@ -141,7 +145,7 @@ export function createKeepalivePool(opts: CreateKeepalivePoolOpts = {}) {
     // [NEW-CRITICAL-A fix] Invoke onEvict per entry before destroying,
     // so React can unmount EditorContent before editor.destroy().
     for (const entry of entries) {
-      opts.onEvict?.(entry.tabId, entry.editor);
+      opts.onEvict?.(entry.tabId, entry.editor, entry.complete);
       if (!entry.editor.isDestroyed) {
         logger.info(`[Baram Perf] keepalive: destroyAll tabId=${entry.tabId}`);
         entry.editor.destroy();
@@ -194,7 +198,8 @@ export function useLargeDocKeepalive(
   if (!poolRef.current) {
     poolRef.current = createKeepalivePool({
       // Trampoline through the ref so the pool always calls the latest callback
-      onEvict: (tabId, editor) => onEvictRef.current?.(tabId, editor),
+      onEvict: (tabId, editor, complete) =>
+        onEvictRef.current?.(tabId, editor, complete),
     });
   }
 

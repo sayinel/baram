@@ -7,7 +7,7 @@ import type { Transaction } from "@tiptap/pm/state";
 import { useShallow } from "zustand/shallow";
 
 import { updateFileIndex, writeFile } from "../ipc/invoke";
-import { useEditorStore } from "../stores/editor/editor";
+import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
@@ -15,7 +15,9 @@ import { useSettingsStore } from "../stores/settings/store";
 import {
   COLWIDTH_AUTO_INIT_META,
   CONTENT_SYNC_META,
+  isTabLoading,
   JOURNAL_CURSOR_INIT_META,
+  loadedTabId,
   noteColwidthInit,
   noteContentSync,
   shouldSkipDirty,
@@ -53,6 +55,15 @@ export function shouldDeferSave(
 }
 
 /**
+ * Whether the document would serialize to nothing. `editor.isEmpty` alone is not that: it reads a
+ * callout with only a title as empty, and the title is text someone wrote. It comes first because
+ * this runs on every edit of an untitled tab, and it answers no for any tab with text in it.
+ */
+function holdsNothing(editor: Editor): boolean {
+  return editor.isEmpty && serializeLiveDoc(editor).trim() === "";
+}
+
+/**
  * Auto-save hook: 마지막 편집 후 설정된 딜레이(기본 2초) 뒤 자동 저장
  * §3.6: Debounced Write — 타이핑 중에는 저장하지 않음
  * Note: Non-MD files are auto-saved by App.tsx directly; this hook only handles markdown.
@@ -82,6 +93,11 @@ export function useAutoSave(editor: Editor | null) {
 
     // Non-MD files don't use ProseMirror — skip (handled by App.tsx code auto-save)
     if (!isMarkdownFile(pending.filePath)) return;
+
+    // The editor may not hold this tab's whole document when a timer armed earlier fires: a
+    // progressive load holds only its first blocks, which would cut the file short, and until a
+    // tab is installed the editor still shows the one before it. The tab stays dirty instead.
+    if (isTabLoading(pending.id) || loadedTabId() !== pending.id) return;
 
     // Phase 4: mtime race-condition guard — if an external file:changed event has
     // arrived but not yet been resolved, skip this save so we don't overwrite the
@@ -151,7 +167,13 @@ export function useAutoSave(editor: Editor | null) {
       // Read current tab at event time — avoids stale closure
       const { activeTabId, tabs, markDirty } = useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
-      if (!tab?.filePath) return;
+      // ‼️ Asked as "is this a file?", not "does it have a path?". An untitled tab has none, and
+      // its text is what the unsaved-changes prompts exist for. Only the write below needs a path.
+      if (!isFileTab(tab)) return;
+      // The active tab flips before the next document is installed, so in that gap an update
+      // belongs to the tab being left. A tab with a path has its save to lower a wrong mark; an
+      // untitled one has nothing, so it would ask about text it never held.
+      if (!tab.filePath && loadedTabId() !== tab.id) return;
 
       // ‼️ The active tab is read at EVENT TIME, so a transaction that belongs to the
       // markdown document can land on whatever tab is active by the time it fires. Open
@@ -217,14 +239,21 @@ export function useAutoSave(editor: Editor | null) {
       // so a genuine first edit (e.g. a media-block resize done as the first
       // action) is detected instead of being absorbed as the baseline. The
       // comparator only runs on that one update, never per-keystroke.
-      if (
-        shouldSkipDirty(tab.id, editor.state.doc, {
-          beforeDoc: transaction.before,
-          markdownEqual: (before, after) =>
-            serializeDetachedDoc(before) === serializeDetachedDoc(after),
-        })
-      )
+      const unchanged = shouldSkipDirty(tab.id, editor.state.doc, {
+        beforeDoc: transaction.before,
+        markdownEqual: (before, after) =>
+          serializeDetachedDoc(before) === serializeDetachedDoc(after),
+      });
+
+      // An untitled tab has no file to differ from and no save to lower its mark, so the mark is
+      // simply whether it holds anything. Asked of the document, not of the baseline: restoring
+      // the tab makes its text the baseline, so "same as the baseline" would read a draft brought
+      // back by an undo as clean.
+      if (!tab.filePath) {
+        if (!isTabLoading(tab.id)) markDirty(tab.id, !holdsNothing(editor));
         return;
+      }
+      if (unchanged) return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch

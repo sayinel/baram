@@ -105,8 +105,9 @@ export function createTabSurfaceRenderers(
               deps.setSourceBuffer(tabId, next);
               // ‼️ 마크다운은 여기서 dirty로 표시하지 않는다 — 예전 두 갈래의 비대칭을 그대로
               // 보존한 것이다. 마크다운의 dirty는 use-auto-save가 Tiptap `update` 트랜잭션에서
-              // 판정하고(내용이 실제로 달라졌는지 비교까지 한다), 소스 모드에서 돌아올 때 그
-              // 경로가 돈다. 여기서 같이 표시하면 두 곳이 같은 상태를 쓰게 된다.
+              // 판정하고(내용이 실제로 달라졌는지 비교까지 한다), 소스 모드에서 돌아올 때는 그
+              // 경로가 돌지 않아 `handBufferToDocument`가 아래 표시를 dirty로 넘긴다. 여기서 같이
+              // 표시하면 두 곳이 같은 상태를 쓰게 된다.
               //
               // ‼️ 대신 §82의 `sourceEditedTabs`에 적는다. 그 규약을 지키면서도 닫기 관문이
               // "이 탭은 저장 안 된 글을 들고 있다"를 알 수 있어야 하기 때문이다 — 예전에는

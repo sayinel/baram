@@ -490,6 +490,51 @@ describe("UnsavedChangesModal", () => {
       ).toBeInTheDocument();
     });
 
+    // §82 Closing the last context takes every tab with it, including an untitled one, which
+    // belongs to no context. Saving only that context would leave the untitled text to die.
+    // 이것을 실패시키는 것: `closesEveryTab` 검사를 지우면 그 탭을 세지도 저장하지도 않는다.
+    it("the last context answers for every tab, not only its own", async () => {
+      useContextStore.setState({
+        contexts: [
+          {
+            addedAt: 0,
+            color: "#fff",
+            contextType: "vault",
+            id: "ctx",
+            label: "Notes",
+            path: "/v",
+          },
+        ],
+      } as never);
+      useEditorStore.setState({
+        activeTabId: "a",
+        tabs: [
+          dirtyFileTab("a"),
+          { ...dirtyFileTab("u", "Untitled", ""), filePath: "" },
+        ],
+      });
+      useUIStore.setState({
+        unsavedModal: { contextIds: ["ctx"], intent: "closeContext" },
+      });
+      vi.mocked(saveAllDirtyForQuit).mockResolvedValue(true);
+
+      render(<UnsavedChangesModal {...deps} />);
+
+      expect(
+        screen.getByText(
+          containing("unsavedChanges.closeContextMessage", '"count":"2"'),
+        ),
+      ).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "unsavedChanges.saveAndCloseContext",
+        }),
+      );
+
+      await waitFor(() => expect(saveAllDirtyForQuit).toHaveBeenCalledOnce());
+      expect(saveDirtyTabsForContexts).not.toHaveBeenCalled();
+    });
+
     it("Save & Close Folder → saves ONLY those contexts, then closes them", async () => {
       useEditorStore.setState({
         activeTabId: "a",

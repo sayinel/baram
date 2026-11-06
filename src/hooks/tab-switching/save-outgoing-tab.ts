@@ -9,7 +9,10 @@ import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { useFoldStore } from "../../stores/editor/fold";
 import { useFileStore } from "../../stores/file/file";
 import { logCacheEvent, timePhase } from "../../utils/editor/perf-trace";
-import { isTabLoading } from "../../utils/editor/programmatic-update";
+import {
+  isTabLoading,
+  loadedTabId,
+} from "../../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../../utils/file-type";
 import { logger } from "../../utils/logger";
@@ -35,8 +38,9 @@ export function saveOutgoingTab(
   const prevEditor = prevKeepaliveEditor ?? ctx.editor;
 
   // §perf-large-file C3.5: keep-alive tabs — hide their DOM, skip cache write
-  // and skip outgoing serialize. The live editor IS the state; auto-save hooks
-  // already run against it continuously.
+  // and skip outgoing serialize. The live editor IS the state, and `saveDirtyTab` reads it there
+  // (`backgroundText`). The auto-save hook follows the active editor, so it does not run on this
+  // one while it is hidden.
   if (prevKeepaliveEditor) {
     // Visibility is controlled by React state (activeKeepaliveEditor) —
     // no manual DOM style toggle needed. onActiveEditorChange(null) in the
@@ -51,9 +55,19 @@ export function saveOutgoingTab(
   // §perf-large-file C2: Skip caching/saving a tab that is mid-load —
   // the doc is partial. Returning to it will re-run the uncached open path.
   const prevMidLoad = isTabLoading(prevTabId);
+  // ‼️ The shared editor holds this tab's document only once it is installed. `isTabLoading` turns
+  // on after the parse and a restore is deferred to a timer, and until then the editor still shows
+  // the tab before it. Caching or serializing that files one document under another's name, and
+  // the next save writes it there.
+  const holdsDocument = loadedTabId() === prevTabId;
   // Cache EditorState before switching (keeps undo/redo stack intact)
   // Non-MD files don't use ProseMirror — skip caching
-  if (!ctx.sourceModeTabs.has(prevTabId) && !prevIsCode && !prevMidLoad) {
+  if (
+    !ctx.sourceModeTabs.has(prevTabId) &&
+    !prevIsCode &&
+    !prevMidLoad &&
+    holdsDocument
+  ) {
     ctx.editorStateCache.current.set(prevTabId, prevEditor.state);
     // §313 방금 쓴 상태가 이 탭의 사실이다 — 이전에 붙어 있던 낡음 표시를 지운다.
     useEditorStore.getState().clearContentStale(prevTabId);
@@ -75,19 +89,22 @@ export function saveOutgoingTab(
   // PDF tabs are read-only viewers with no editor — caching the source
   // buffer here would overwrite the "" sentinel with another tab's text
   // under the PDF's path.
+  const fromBuffer = prevIsCode || ctx.sourceModeTabs.has(prevTabId);
   if (
-    prevTab?.filePath &&
     !prevMidLoad &&
-    !isBinaryViewerFile(prevTab.filePath)
+    !isBinaryViewerFile(prevTab.filePath) &&
+    (fromBuffer || holdsDocument)
   ) {
     try {
-      const md =
-        prevIsCode || ctx.sourceModeTabs.has(prevTabId)
-          ? ctx.getSourceBuffer(prevTabId)
-          : timePhase("tabSwitch:serializeOutgoing", () =>
-              serializeLiveDoc(prevEditor),
-            );
-      useFileStore.getState().setFileContent(prevTab.filePath, md);
+      const md = fromBuffer
+        ? ctx.getSourceBuffer(prevTabId)
+        : timePhase("tabSwitch:serializeOutgoing", () =>
+            serializeLiveDoc(prevEditor),
+          );
+      // An untitled tab's text lives under its id: `handleNewFile` starts it there, a load reads
+      // it from there, and so does the Save As in `saveDirtyTab`, which would otherwise write an
+      // empty file and report success.
+      useFileStore.getState().setFileContent(prevTab.filePath || prevTabId, md);
     } catch (err) {
       // Serialization failed — mark tab dirty so unsaved edits are visible
       useEditorStore.getState().markDirty(prevTabId, true);

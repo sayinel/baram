@@ -163,11 +163,12 @@ export function useCodeAutoSave({
 
 /**
  * The one save sequence both timers here run — the effect's, and the one `rearmForViewerEdit`
- * arms through `saveViewerTab` — so a change to it reaches both: read the buffer, write it,
+ * arms through `saveViewerTab` — and the save `use-source-mode.ts` does in place of the effect's
+ * timer when source mode ends, so a change to it reaches all three: read the buffer, write it,
  * record the save's mtime and the file's content, then lower dirty only while the buffer
  * still holds what was written (spec 0071 D17). A failed write keeps the dirty state.
  */
-async function saveFromBuffer(
+export async function saveFromBuffer(
   tabId: string,
   filePath: string,
   deps: BufferSaveDeps,

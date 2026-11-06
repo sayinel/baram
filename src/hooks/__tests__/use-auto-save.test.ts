@@ -234,6 +234,8 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     const { markdownToProsemirror } = await import("../../pipeline/md-to-pm");
     const { useEditorStore } = await import("../../stores/editor/editor");
     const { useSettingsStore } = await import("../../stores/settings/store");
+    const { markContentLoaded } =
+      await import("../../utils/editor/programmatic-update");
     const { useAutoSave } = await import("../use-auto-save");
 
     const writeFileSpy = vi
@@ -267,6 +269,7 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
       title: "backspace-tab.md",
     };
     useEditorStore.setState({ activeTabId: tab.id, tabs: [tab] } as never);
+    markContentLoaded(tab.id);
 
     // Expand the link, then place the caret right after the opening "[" —
     // the exact position handleKeyDown's Backspace branch checks for.
@@ -313,6 +316,8 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
     const { markdownToProsemirror } = await import("../../pipeline/md-to-pm");
     const { useEditorStore } = await import("../../stores/editor/editor");
     const { useSettingsStore } = await import("../../stores/settings/store");
+    const { markContentLoaded } =
+      await import("../../utils/editor/programmatic-update");
     const { useAutoSave } = await import("../use-auto-save");
 
     const writeFileSpy = vi
@@ -343,6 +348,7 @@ describe("§384 (C) syntax-reveal expand/collapse vs. dirty/auto-save", () => {
       title: "real-plus-appended.md",
     };
     useEditorStore.setState({ activeTabId: tab.id, tabs: [tab] } as never);
+    markContentLoaded(tab.id);
 
     // "Hello " = 1-7, "world" bold = 7-12, " end" = 12-16.
     editor.commands.setTextSelection(9);

@@ -12,6 +12,7 @@ import type { UnsavedModalRequest } from "../../stores/ui/ui";
 import { useShallow } from "zustand/shallow";
 
 import {
+  closesEveryTab,
   saveAllDirtyForQuit,
   saveDirtyTab,
   saveDirtyTabsForContexts,
@@ -56,11 +57,14 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
       unsavedModal: s.unsavedModal,
     })),
   );
-  // §82 `closeContext` answers only for its own context; every other intent counts
-  // every dirty tab. Derived before the early return below so the hook order never
-  // varies with which intent is showing.
+  // §82 `closeContext` answers only for its own context, unless closing it takes every tab with
+  // it; every other intent counts every dirty tab. Derived before the early return below so the
+  // hook order never varies with which intent is showing.
   const scopedContextIds =
-    unsavedModal?.intent === "closeContext" ? unsavedModal.contextIds : null;
+    unsavedModal?.intent === "closeContext" &&
+    !closesEveryTab(unsavedModal.contextIds)
+      ? unsavedModal.contextIds
+      : null;
   const dirtyCount = useEditorStore(
     (s) =>
       s.tabs.filter(
@@ -132,7 +136,10 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
         deps.handleSave,
       );
     }
-    if (unsavedModal.intent === "closeContext") {
+    if (
+      unsavedModal.intent === "closeContext" &&
+      !closesEveryTab(unsavedModal.contextIds)
+    ) {
       return saveDirtyTabsForContexts(unsavedModal.contextIds, deps);
     }
     return saveAllDirtyForQuit(deps);

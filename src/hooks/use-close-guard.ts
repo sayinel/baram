@@ -11,11 +11,16 @@ import type { EditorTab } from "../stores/editor/editor";
 import { updateFileIndex, writeFile } from "../ipc/invoke";
 import { quitApp, reloadWindow } from "../services/app-exit";
 import { closeContexts } from "../services/close-context";
+import { useContextStore } from "../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
 import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
+import {
+  serializeEditorState,
+  serializeLiveDoc,
+} from "../utils/editor/serialize-live-doc";
 import { isMarkdownFile } from "../utils/file-type";
 import { basename } from "../utils/path-utils";
 
@@ -28,6 +33,55 @@ import { basename } from "../utils/path-utils";
  */
 export interface CloseGuardDeps {
   handleSave: () => Promise<void>;
+}
+
+/**
+ * §82 Whether closing these contexts takes every tab with it, not only their own: closing the last
+ * one ends in `closeFolder` (`services/close-context.ts`), and a tab opened with no context active
+ * belongs to none, which is how an untitled tab can escape the question.
+ */
+export function closesEveryTab(contextIds: readonly string[]): boolean {
+  return useContextStore
+    .getState()
+    .contexts.every((c) => contextIds.includes(c.id));
+}
+
+/**
+ * The text a background tab holds, or `null` if nothing here holds it any more.
+ * - In source mode, or edited there: the source buffer, which `sourceBufferAccess` answers for any
+ *   tab. A task write raises `isDirty` on a source-mode tab, so the edited mark alone misses it.
+ * - In the keep-alive pool: the pool's own editor, unless the pool never finished filling it, or
+ *   the file changed underneath it and its document is not to be trusted (`staleContentTabs`).
+ * - Otherwise `openFiles`, where the tab's text is kept while it is away (`save-outgoing-tab.ts`).
+ * - A file deleted on disk loses that entry, while the state kept for coming back to the tab still
+ *   has its text. With neither, writing `""` would report an empty file as saved.
+ */
+function backgroundText(tab: EditorTab): null | string {
+  const {
+    documentSurfaceAccess,
+    sourceBufferAccess,
+    sourceEditedTabs,
+    sourceModeTabs,
+    staleContentTabs,
+  } = useEditorStore.getState();
+  if (
+    sourceBufferAccess !== null &&
+    (sourceEditedTabs.includes(tab.id) || sourceModeTabs.includes(tab.id))
+  ) {
+    return sourceBufferAccess.getSourceBuffer(tab.id);
+  }
+  const pooled = documentSurfaceAccess?.keepaliveEditor(tab.id);
+  if (
+    pooled &&
+    documentSurfaceAccess?.isKeepaliveComplete(tab.id) &&
+    !staleContentTabs.includes(tab.id)
+  ) {
+    return serializeLiveDoc(pooled);
+  }
+  const kept = useFileStore.getState().openFiles.get(tab.filePath || tab.id);
+  if (kept !== undefined) return kept;
+  const state = documentSurfaceAccess?.editorStateCache.get(tab.id);
+  return state ? serializeEditorState(state) : null;
 }
 
 /** The open tabs holding unsaved work, optionally narrowed by `match`. */
@@ -87,14 +141,11 @@ async function saveDirtyTabsWhere(
 /**
  * §close-guard: Persist a single dirty tab.
  * - Active tab → `handleSave` (covers source mode, code files, Untitled Save As).
- * - Other file tab → write its cached `openFiles` content directly.
+ * - Other file tab → write the text it holds (`backgroundText`) directly.
  * - Other Untitled tab → prompt for a destination path (Save As).
- * @returns `false` when the active tab is still dirty after `handleSave`, or a non-active
- *   Untitled tab's Save As was cancelled (the caller must not close or quit); `true` otherwise.
- *
- * Known limitation (v1): a non-active tab backed by the large-doc keep-alive
- * editor pool has its latest edits in that pool, not in `openFiles`, so this
- * writes the last-synced content for such tabs.
+ * @returns `false` when the active tab is still unsaved after `handleSave`, a non-active tab's text
+ *   could not be found, or a non-active Untitled tab's Save As was cancelled (the caller must not
+ *   close or quit); `true` otherwise.
  */
 export async function saveDirtyTab(
   tab: EditorTab,
@@ -104,17 +155,20 @@ export async function saveDirtyTab(
   // Active tab — flush the live editor via the shared save path.
   if (tab.id === activeTabId) {
     await handleSave();
-    // A still-dirty active tab was not saved, or not all of it — `handleSave` resolves either
+    // A still-unsaved active tab was not saved, or not all of it — `handleSave` resolves either
     // way. An Untitled Save As was cancelled, the save gave up or failed, or (§392 D15 · D17)
     // the text changed during the write — an editable viewer's change, or typing in a code
     // tab — and the save left the tab dirty. Each must stop the quit or the close: the tab
     // holds text that is not on disk.
-    const after = useEditorStore.getState().tabs.find((t) => t.id === tab.id);
-    const saved = !after?.isDirty;
-    // `handleSave` reads the source buffer for a source-mode tab, so a clean result
-    // means that buffer reached disk.
-    if (saved) useEditorStore.getState().markSourceEdited(tab.id, false);
-    return saved;
+    //
+    // ‼️ `isTabUnsaved`, not `isDirty`: an edit made in source mode never raises `isDirty`, so
+    // that alone reads every failure above as saved for such a tab. `handleSave` lowers the
+    // source-edited mark once its write has succeeded.
+    const { sourceEditedTabs, tabs } = useEditorStore.getState();
+    return !isTabUnsaved(
+      tabs.find((t) => t.id === tab.id),
+      sourceEditedTabs,
+    );
   }
 
   // Non-active file tab — write the cached content.
@@ -125,20 +179,14 @@ export async function saveDirtyTab(
     // ‼️ §82 A tab edited in source mode holds its text in the source buffer, NOT in
     // `openFiles`. Writing the cache here would save the pre-edit content and then
     // report success — the silent loss this guard exists to stop, dressed up as a
-    // save. `sourceBufferAccess` is registered for the app's lifetime and keyed by
-    // tab id, so it answers for background tabs too.
-    const { sourceBufferAccess, sourceEditedTabs } = useEditorStore.getState();
-    const fromBuffer =
-      sourceBufferAccess !== null && sourceEditedTabs.includes(tab.id);
-    const content = fromBuffer
-      ? sourceBufferAccess.getSourceBuffer(tab.id)
-      : (useFileStore.getState().openFiles.get(tab.filePath) ?? "");
+    // save.
+    const content = backgroundText(tab);
+    if (content === null) return false;
     await writeFile(tab.filePath, content);
     useFileStore.getState().updateLastSaveMtime(tab.filePath, Date.now());
     // Keep the cache in step with what just went to disk, so a later read of
     // `openFiles` does not hand back the pre-edit text.
-    if (fromBuffer)
-      useFileStore.getState().setFileContent(tab.filePath, content);
+    useFileStore.getState().setFileContent(tab.filePath, content);
     useEditorStore.getState().markDirty(tab.id, false);
     useEditorStore.getState().markSourceEdited(tab.id, false);
     if (isMarkdownFile(tab.filePath)) {
@@ -159,7 +207,9 @@ export async function saveDirtyTab(
   });
   if (!savePath) return false;
 
-  const content = useFileStore.getState().openFiles.get(tab.id) ?? "";
+  // Read after the dialog, which can stay open for as long as the user likes.
+  const content = backgroundText(tab);
+  if (content === null) return false;
   await writeFile(savePath, content);
   useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
   useEditorStore.setState((state) => ({
@@ -174,6 +224,8 @@ export async function saveDirtyTab(
         : t,
     ),
   }));
+  useEditorStore.getState().markSourceEdited(tab.id, false);
+  useFileStore.getState().removeFileContent(tab.id);
   useFileStore.getState().setFileContent(savePath, content);
   if (isMarkdownFile(savePath)) {
     updateFileIndex(savePath)
@@ -206,13 +258,6 @@ export async function requestReload(): Promise<void> {
  * like reload — it answers for ALL dirty tabs, not just the active one. Nothing
  * dirty → close straight away; otherwise open the shared modal so the user can
  * save first. Before this, `closeAllTabs()` discarded unsaved tabs silently.
- *
- * ‼️ Shares one blind spot with quit and reload: a markdown tab in source mode
- * deliberately does not raise `isDirty` (see `components/tasks/use-archive-done.ts`),
- * so unsaved source-buffer text does not trip this prompt. Widening the predicate
- * HERE alone would make the "Save & Close" button lie — `saveDirtyTab` writes the
- * cached `openFiles` content for a non-active tab, which is not what that buffer
- * holds. One gap, shared by three paths; it closes in the save path, not here.
  */
 export async function requestCloseWorkspace(): Promise<void> {
   // issue 594: same barrier as quit and reload.
@@ -226,7 +271,8 @@ export async function requestCloseWorkspace(): Promise<void> {
 
 /**
  * §82 Closing contexts. Nothing dirty in them → close; otherwise open the shared
- * modal, once, scoped to exactly those contexts.
+ * modal, once, scoped to exactly those contexts, or to every tab if they are the last
+ * (`closesEveryTab`).
  *
  * ‼️ Four user-reachable "close this folder" actions had three implementations
  * between them: the tab's x, its context menu's Close and Close Others, and
@@ -248,7 +294,8 @@ export async function requestCloseContexts(
   // issue 594: a block ID rename still in flight marks its tab dirty when it
   // lands; decide "nothing unsaved" only after it has.
   await awaitBlockIdRenames();
-  if (unsavedTabs((t) => wanted.has(t.contextId)).length === 0) {
+  const everyTab = closesEveryTab(contextIds);
+  if (unsavedTabs((t) => everyTab || wanted.has(t.contextId)).length === 0) {
     await closeContexts(contextIds);
     return;
   }
