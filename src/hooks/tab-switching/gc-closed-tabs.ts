@@ -4,6 +4,7 @@ import type { TabSwitchContext } from "./types";
 import { useEditorStore } from "../../stores/editor/editor";
 import { prunePendingBlockIdRenames } from "../../utils/editor/block-id-rename-landing";
 import { logCacheEvent } from "../../utils/editor/perf-trace";
+import { prunePendingTableWidthClears } from "../../utils/editor/table-width-clear";
 
 /**
  * Clean up cache for closed tabs.
@@ -22,6 +23,8 @@ export function gcClosedTabs(ctx: TabSwitchContext): void {
   // has nothing to wait for (a closed tab's file is reached through the disk
   // route at landing time, not from here).
   prunePendingBlockIdRenames(openTabIds);
+  // §5.5: nor has a table width clear waiting for one.
+  prunePendingTableWidthClears(openTabIds);
   for (const cachedId of ctx.editorStateCache.current.keys()) {
     if (!openTabIds.has(cachedId)) {
       logCacheEvent("delete", cachedId);

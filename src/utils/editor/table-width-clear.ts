@@ -1,0 +1,137 @@
+// §5.5 Turning the column resize option off takes the widths the user set out of
+// the open markdown tabs (spec 0075 D4, D6). `open-tab-surface.ts` says where each
+// tab's document is; this module says what happens to it there.
+//
+// Nothing here writes to disk. A dirty tab also holds edits the user has not saved,
+// and a write would send those along unasked. A cleared tab is saved the way an
+// edited one is: the active tab through the auto-save, a background tab through the
+// close and quit guard.
+import type { EditorTab } from "../../stores/editor/editor";
+import type { EditorView } from "@tiptap/pm/view";
+
+import { buildClearTableWidthsTransaction } from "../../extensions/nodes/plugins/table-col-resize";
+import { stripTableWidthComments } from "../../pipeline/convert-table-colwidths";
+import {
+  isFileTab,
+  type SourceBufferAccess,
+  useEditorStore,
+} from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { isMarkdownFile } from "../file-type";
+import { logger } from "../logger";
+import {
+  applyToDocumentSurface,
+  locateOpenTabSurface,
+} from "./open-tab-surface";
+import { loadedTabId, subscribeContentLoaded } from "./programmatic-update";
+
+/** Clears the widths in every open markdown tab, each where its document is now. */
+export function clearTableWidthsInOpenTabs(): void {
+  for (const tab of useEditorStore.getState().tabs) clearTab(tab, false);
+}
+
+/** Forget the waits of tabs that are no longer open. */
+export function prunePendingTableWidthClears(
+  openTabIds: ReadonlySet<string>,
+): void {
+  for (const tabId of pendingClears) {
+    if (!openTabIds.has(tabId)) pendingClears.delete(tabId);
+  }
+}
+
+/**
+ * The setting's toggle: sets the value, and clears on on → off. This is not a store
+ * subscription because the settings store restores asynchronously and answers with
+ * its default until then, so a saved `false` reads as an on → off change at every
+ * start, and the widths would go without the user having touched anything.
+ */
+export function setTableColumnResizeFromUser(enabled: boolean): void {
+  const settings = useSettingsStore.getState();
+  const wasOn = settings.tableColumnResize;
+  settings.setTableColumnResize(enabled);
+  if (wasOn && !enabled) clearTableWidthsInOpenTabs();
+}
+
+/**
+ * Tabs whose document was out of reach when the clear ran: only their text was
+ * there, or nothing yet. A document may still be parsed from the text as it was
+ * before the clear, so each is re-checked once, when a document is installed. A
+ * document parsed from the rewritten text has nothing left to clear then.
+ */
+const pendingClears = new Set<string>();
+
+subscribeContentLoaded(drainPendingClear);
+
+function clearSourceBuffer(
+  tabId: string,
+  textKey: string,
+  access: null | SourceBufferAccess,
+): void {
+  if (!access) {
+    logger.warn(
+      `[tableWidths] ${textKey}: the source buffer is not reachable, so its width comments stay`,
+    );
+    return;
+  }
+  const buffer = access.getSourceBuffer(tabId);
+  const next = stripTableWidthComments(buffer);
+  if (next === buffer) return;
+  access.setSourceBuffer(tabId, next);
+  useEditorStore.getState().markSourceEdited(tabId, true);
+}
+
+/**
+ * Locates and applies in one synchronous run: the `cache` surface holds the state
+ * captured when it was located.
+ */
+function clearTab(tab: EditorTab, draining: boolean): void {
+  if (!isFileTab(tab) || !isMarkdownFile(tab.filePath)) return;
+  const tabId = tab.id;
+  const textKey = tab.filePath || tabId;
+  const surface = locateOpenTabSurface(tabId, liveViewOf(tabId));
+  switch (surface.kind) {
+    case "source":
+      clearSourceBuffer(tabId, textKey, surface.access);
+      return;
+    case "text":
+      clearText(tabId, textKey);
+      if (!draining) pendingClears.add(tabId);
+      return;
+    default:
+      applyToDocumentSurface(
+        surface,
+        { tabId, textKey },
+        buildClearTableWidthsTransaction,
+      );
+  }
+}
+
+function clearText(tabId: string, textKey: string): void {
+  const content = useFileStore.getState().openFiles.get(textKey);
+  if (content === undefined) return;
+  const next = stripTableWidthComments(content);
+  if (next === content) return;
+  useFileStore.getState().setFileContent(textKey, next);
+  useEditorStore.getState().markDirty(tabId, true);
+}
+
+function drainPendingClear(tabId: string): void {
+  if (!pendingClears.delete(tabId)) return;
+  if (useSettingsStore.getState().tableColumnResize) return;
+  const tab = useEditorStore.getState().tabs.find((t) => t.id === tabId);
+  if (tab) clearTab(tab, true);
+}
+
+/**
+ * The view of the editor holding the tab's document, if any. Whether it is live is
+ * asked of the editor: a destroyed Tiptap editor's `view` is a stub that answers
+ * `isDestroyed: false` and throws on `dom`.
+ */
+function liveViewOf(tabId: string): EditorView | undefined {
+  const access = useEditorStore.getState().documentSurfaceAccess;
+  const editor =
+    access?.keepaliveEditor(tabId) ??
+    (loadedTabId() === tabId ? access?.editor : null);
+  return editor && !editor.isDestroyed ? editor.view : undefined;
+}
