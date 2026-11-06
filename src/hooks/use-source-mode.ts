@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject, RefObject } from "react";
 
 import type { SourceCodeEditorRef } from "../components/editor/SourceCodeEditor";
+import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState as PmEditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 
@@ -37,6 +38,7 @@ import {
   loadedTabId,
   markContentLoaded,
   setTabLoading,
+  updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
 import {
   appendChunksProgressively,
@@ -253,8 +255,7 @@ export function useSourceMode({
         // buffer, so it also goes where a Save As in the background reads it, and where the load
         // reads it if the tab is left before the fill ends. A cached state from before source
         // mode would otherwise come back first, without it.
-        const edited = handBufferToDocument(currentTab, getSourceBuffer);
-        if (edited || currentTab.isDirty) {
+        if (handBufferToDocument(currentTab, getSourceBuffer)) {
           useFileStore
             .getState()
             .setFileContent(
@@ -445,7 +446,11 @@ export function useSourceMode({
         editorStateCache.current.set(currentTabId, cachedState);
       }
 
-      handBufferToDocument(currentTab, getSourceBuffer);
+      // With nothing unsaved this text is the file, and the next edit is compared with it. Left on
+      // the older baseline, text put back to that by hand would read as saved.
+      if (!handBufferToDocument(currentTab, getSourceBuffer, newDoc)) {
+        updateOriginalDoc(currentTab.id, newDoc);
+      }
       setSourceModeForTab(currentTab.id, false);
 
       // Apply cursor AFTER EditorContent mounts (DOM attached).
@@ -542,11 +547,14 @@ export function useSourceMode({
 function handBufferToDocument(
   tab: EditorTab,
   getSourceBuffer: (tabId: string) => string,
+  installed?: PmNode,
 ): boolean {
   const store = useEditorStore.getState();
   const edited = store.sourceEditedTabs.includes(tab.id);
   store.markSourceEdited(tab.id, false);
-  if (!edited) return false;
+  // `isDirty` too: what was typed before source mode has lost its timer to the source mode, whose
+  // own is cancelled by coming back. Its text is in this buffer.
+  if (!edited && !tab.isDirty) return false;
   // 경로 없는 탭은 담긴 것이 없으면 잃을 것도 없다(`use-auto-save.ts`의 같은 판정).
   if (!tab.filePath && getSourceBuffer(tab.id).trim() === "") {
     store.markDirty(tab.id, false);
@@ -563,7 +571,9 @@ function handBufferToDocument(
         setFileContent: useFileStore.getState().setFileContent,
       },
       { reindexLinks: true },
-    );
+    ).then((written) => {
+      if (written && installed) updateOriginalDoc(tab.id, installed);
+    });
   }
   return true;
 }

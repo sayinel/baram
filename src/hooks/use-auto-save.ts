@@ -88,8 +88,16 @@ export function useAutoSave(editor: Editor | null) {
 
     // Guard: if the active tab changed since the save was scheduled, editor.state.doc
     // now belongs to the new tab — writing it to pending.filePath would corrupt data.
-    const { activeTabId, markDirty } = useEditorStore.getState();
+    const { activeTabId, markDirty, sourceModeTabs } =
+      useEditorStore.getState();
     if (activeTabId !== pending.id) return;
+
+    // A timer armed before source mode began. The buffer is this tab's text now. It is written by
+    // `use-code-auto-save`, which armed its own save for an unsaved tab on the way in, or on the way
+    // back by `handBufferToDocument` if the tab returns before that. The document is still what it
+    // was: written here, it would put older text on disk and lower the mark, so a close before
+    // those saves would lose what was typed there.
+    if (sourceModeTabs.includes(pending.id)) return;
 
     // Non-MD files don't use ProseMirror — skip (handled by App.tsx code auto-save)
     if (!isMarkdownFile(pending.filePath)) return;
@@ -165,8 +173,12 @@ export function useAutoSave(editor: Editor | null) {
       transaction: Transaction;
     }) => {
       // Read current tab at event time — avoids stale closure
-      const { activeTabId, tabs, markDirty } = useEditorStore.getState();
+      const { activeTabId, sourceModeTabs, tabs, markDirty } =
+        useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
+      // The document of a tab in source mode is out of sight and not what gets saved, so a change
+      // to it (an AI chat Apply) is not unsaved work, and nothing would ever lower this mark.
+      if (activeTabId && sourceModeTabs.includes(activeTabId)) return;
       // ‼️ Asked as "is this a file?", not "does it have a path?". An untitled tab has none, and
       // its text is what the unsaved-changes prompts exist for. Only the write below needs a path.
       if (!isFileTab(tab)) return;

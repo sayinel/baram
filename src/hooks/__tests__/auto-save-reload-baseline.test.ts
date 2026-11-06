@@ -66,7 +66,7 @@ beforeEach(() => {
         buffers.set(id, content);
       },
     },
-    sourceModeTabs: [TAB],
+    sourceModeTabs: [],
     tabs: [
       {
         contextId: "c",
@@ -103,6 +103,7 @@ describe("auto-save keeps the auto-reload baseline honest", () => {
 
     // ② Cmd+/ — 버퍼는 **라이브 문서**에서 채워진다(캐시가 아니다).
     buffers.set(TAB, autoSaved as string);
+    useEditorStore.setState({ sourceModeTabs: [TAB] });
 
     // ③ 외부 변경이 도착한다. 탭은 자동 저장 직후라 clean이므로 워처는 자동 리로드로 간다.
     await act(async () => {
