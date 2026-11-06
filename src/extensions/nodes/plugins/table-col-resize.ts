@@ -161,6 +161,18 @@ export function createUserResizeTracker(): Plugin {
       const handlePos = prevResizeState.activeHandle;
       if (handlePos == null || handlePos < 0) return null;
 
+      // prosemirror-tables sends `{setDragging: null}` at mouseup even when
+      // the width did not change, so compare the dragged column's width with
+      // the one the drag started from and mark nothing when they match.
+      const draggedCw = newState.doc.nodeAt(handlePos)?.attrs.colwidth as
+        null | number[] | undefined;
+      if (
+        draggedCw?.[draggedCw.length - 1] ===
+        prevResizeState.dragging.startWidth
+      ) {
+        return null;
+      }
+
       // Resolve the cell that was actually dragged and find its enclosing
       // table — mark ONLY that table's cells, not every table in the doc.
       let $handle;
