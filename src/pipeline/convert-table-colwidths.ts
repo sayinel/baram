@@ -64,7 +64,8 @@ function collectWidthCommentLines(
   out: Set<number>,
 ): void {
   if (!("children" in node)) return;
-  for (const child of node.children as Content[]) {
+  const siblings = node.children as Content[];
+  for (const [at, child] of siblings.entries()) {
     if (child.type === "html") {
       const { position } = child;
       if (
@@ -87,13 +88,19 @@ function collectWidthCommentLines(
       const prevBlank = index === 0 || isBlank(lines[index - 1]);
       const hasNext = index + 1 < lines.length;
       const nextBlank = hasNext && isBlank(lines[index + 1]);
+      // A table on the very next line stays its own block without the comment
+      // (the serializer writes a table in a list item this way).
+      const next = siblings[at + 1];
+      const tableFollows =
+        next?.type === "table" &&
+        next.position?.start.line === position.end.line + 1;
       // Dropping the comment must not glue the blocks around it together.
       if (!hasNext) {
         out.add(index);
       } else if (nextBlank) {
         out.add(index);
         if (prevBlank) out.add(index + 1);
-      } else if (prevBlank) {
+      } else if (prevBlank || tableFollows) {
         out.add(index);
       }
     } else if (BLOCK_CONTAINERS.has(child.type)) {

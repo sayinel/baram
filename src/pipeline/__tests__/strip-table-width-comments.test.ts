@@ -55,6 +55,16 @@ describe("stripTableWidthComments", () => {
       "- a\n  <!-- colwidths:1,2 -->\n  \n  b\n",
       "- a\n  \n  b\n",
     ],
+    [
+      "tight in a list item, as the serializer writes it",
+      "- a\n  <!-- colwidths:100,100 -->\n  | A | B |\n  | - | - |\n  | 1 | 2 |\n",
+      "- a\n  | A | B |\n  | - | - |\n  | 1 | 2 |\n",
+    ],
+    [
+      "text directly above, table directly below",
+      "para\n<!-- colwidths:1,2 -->\n| A | B |\n| - | - |\n",
+      "para\n| A | B |\n| - | - |\n",
+    ],
   ])("removes the comment: %s", (_, input, expected) => {
     expect(stripTableWidthComments(input)).toBe(expected);
   });
