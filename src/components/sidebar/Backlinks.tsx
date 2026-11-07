@@ -29,6 +29,13 @@ import {
 } from "./backlink-utils";
 import { linkifyMention } from "./linkify-mention";
 
+interface MentionSearch {
+  /** A signal arrived since this walk began, so run it once more when it ends. */
+  again: boolean;
+  path: string;
+  root: string;
+}
+
 const NO_MENTIONS: UnlinkedMention[] = [];
 
 export function Backlinks() {
@@ -79,27 +86,48 @@ export function Backlinks() {
     [setBacklinks, setLoading, setError],
   );
 
-  // §34 Fetch unlinked mentions. Only the latest search may answer (issue 791): moving from A to B
-  // quickly can bring B's answer back first and A's last, and A's must not land as B's — the panel
-  // would show A's mentions under B, and "Link" would write them as links to B. The answer is kept
-  // with the note it was searched for (`unlinkedMentionsFor`); a failed search answers nothing
-  // rather than an empty list for this note, so the next change searches again.
-  const mentionRequestRef = useRef(0);
+  // §34 Fetch unlinked mentions (issue 791). A walk cannot be cancelled, so signals are not allowed
+  // to pile walks up: a request for the note already being searched only marks it to run once more,
+  // and that walk's answer is still delivered — a steady stream of writes must not discard every
+  // answer. A request for another note, or another root, takes over at once. From then on the old
+  // walk's answer is dropped, and so is one that lands after this panel closed: moving from A to B
+  // quickly can bring B's answer back first and A's last, and A's must not land as B's. The answer
+  // is kept with the note it was searched for (`unlinkedMentionsFor`); a failed search answers
+  // nothing rather than an empty list for this note, so the listener below searches on the next
+  // change of any kind.
+  const mentionSearchRef = useRef<MentionSearch | null>(null);
   const fetchUnlinkedMentions = useCallback(
     async (path: string, root: string) => {
-      const request = ++mentionRequestRef.current;
-      try {
-        const entries = await getUnlinkedMentions(path, root);
-        if (request === mentionRequestRef.current) {
-          setUnlinkedMentions(path, entries);
-        }
-      } catch {
-        // Non-fatal — silently ignore
-        if (request === mentionRequestRef.current)
-          setUnlinkedMentions(null, []);
+      const running = mentionSearchRef.current;
+      if (running?.path === path && running.root === root) {
+        running.again = true;
+        return;
       }
+      const search: MentionSearch = { again: true, path, root };
+      mentionSearchRef.current = search;
+      while (search.again && mentionSearchRef.current === search) {
+        search.again = false;
+        try {
+          const entries = await getUnlinkedMentions(path, root);
+          if (mentionSearchRef.current === search) {
+            setUnlinkedMentions(path, entries);
+          }
+        } catch {
+          // Non-fatal — silently ignore
+          if (mentionSearchRef.current === search) {
+            setUnlinkedMentions(null, []);
+          }
+        }
+      }
+      if (mentionSearchRef.current === search) mentionSearchRef.current = null;
     },
     [setUnlinkedMentions],
+  );
+  useEffect(
+    () => () => {
+      mentionSearchRef.current = null;
+    },
+    [],
   );
 
   // Keep latest fetch callbacks and filePath in refs so the rootPath-only effect
@@ -146,24 +174,29 @@ export function Backlinks() {
   // §34 Unlinked mentions follow their own inputs, not `indexVersion` (issue 791). The search
   // (`find_unlinked_mentions`) walks the vault and reads the OTHER notes' bodies from disk for this
   // note's name; it never reads the link index. So it runs again when the name or the vault
-  // changes (here) and when another note changed on disk (below) — not when the link index
-  // changes, and not when only this note changed: its own saves change neither input.
+  // changes (here) and when notes other than this one changed on disk (below) — not on
+  // `indexVersion`, and not when only this note changed: its own saves change neither input.
   useEffect(() => {
     if (filePath && rootPath) fetchUnlinkedMentions(filePath, rootPath);
   }, [filePath, rootPath, fetchUnlinkedMentions]);
 
-  // §34 Another note changed on disk (`note-changes.ts`: the webview's writes at once, every change
-  // from the watcher). A change that names only this note is its own save or that save's watcher
-  // echo. Compared as written: a path spelled differently from the tab's (another case, NFD, a
-  // symlinked folder) reads as another note and searches once more — an extra search, never a
-  // missed one.
+  // §34 Notes changed on disk (`note-changes.ts`). Once this note has an answer, a change naming only
+  // this note does not search again: the search does not read this note, whoever wrote it. Compared
+  // as written, so where the watcher spells the path differently from the tab (a symlinked root, an
+  // NFD folder) each echo reads as another note and searches. A change that names nothing (`null`)
+  // always searches, and so does any change while this note has no answer — its search failed, or
+  // has not come back.
   useEffect(
     () =>
       onNoteChanges((paths) => {
         const path = filePathRef.current;
         const root = rootPathRef.current;
         if (!path || !root) return;
-        if (paths.some((p) => p !== path)) {
+        if (
+          paths === null ||
+          useLinkStore.getState().unlinkedMentionsFor !== path ||
+          paths.some((p) => p !== path)
+        ) {
           fetchUnlinkedMentionsRef.current(path, root);
         }
       }),
@@ -275,7 +308,7 @@ export function Backlinks() {
   const nsGroups = rootPath
     ? groupBacklinksByNamespace(backlinks, rootPath)
     : [{ namespace: "", fileGroups: groupBacklinksByFile(backlinks) }];
-  // §34 Only the viewed note's answer is shown — a search still running for it shows nothing yet.
+  // §34 Only the viewed note's answer is shown — until it has one, the section reads empty.
   const shownMentions =
     unlinkedMentionsFor === filePath ? unlinkedMentions : NO_MENTIONS;
   const unlinkedGroups = groupUnlinkedByFile(shownMentions);

@@ -7,9 +7,7 @@
 // a steady stream of writes still syncs. Batches are SERIAL: events that arrive while one is
 // syncing form the next, and a timer that fires meanwhile sends it once the current one settles.
 // `onSynced` runs only after `sync` resolved — what lets a listener read the index on hearing — and
-// only for an answer that names a context; the batcher reads nothing else of the answer. `onBatch`
-// hears the batch's paths as it goes out, whatever the sync then does — for a listener that reads
-// the disk, not the index (§34 `note-changes.ts`), and must not lose a batch whose sync failed.
+// only for an answer that names a context; the batcher reads nothing else of the answer.
 import type { IndexSyncAnswer, IndexSyncPath } from "../ipc/types";
 
 import { logger } from "../utils/logger";
@@ -24,11 +22,9 @@ export interface VaultChangeBatcher {
 
 export interface VaultChangeBatcherOptions {
   maxWaitMs?: number;
-  /** The paths of each batch, as it goes out — before `sync`, and whether or not it succeeds. */
-  onBatch?: (paths: readonly string[]) => void;
   /**
-   * The batch's answer — called only when it names a context. That loses no `linksChanged`: an
-   * answer with it set names one (Rust `SyncAnswer`).
+   * The batch's answer — called only when it names a context. That loses no `linksChanged`,
+   * `notes` or `treeChanged`: an answer with any of them set names one (Rust `SyncAnswer`).
    */
   onSynced: (answer: IndexSyncAnswer) => void;
   quietMs?: number;
@@ -64,14 +60,6 @@ export function createVaultChangeBatcher(
       path,
     }));
     pending = new Map();
-    if (options.onBatch) {
-      try {
-        options.onBatch(batch.map((p) => p.path));
-      } catch (err) {
-        // A throwing listener must not stop the batch from syncing.
-        logger.error("[vault-sync] onBatch failed", err);
-      }
-    }
     syncing = true;
     let answer: IndexSyncAnswer | null = null;
     try {

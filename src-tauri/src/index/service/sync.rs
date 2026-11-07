@@ -1,7 +1,8 @@
 //! §393 Bring the link index up to date with paths the file watcher reported (spec 0072
 //! §5.4, D16). The frontend batches the watcher's events (`use-vault-change-sync`) and calls
 //! `sync_index_paths`; the answer (`SyncAnswer`) names the contexts whose reads may have
-//! changed — what it announces as `vault:changed` — and whether the link index did.
+//! changed — what it announces as `vault:changed` — whether the link index did, and which
+//! notes' text may have (§34).
 //!
 //! The watcher pairs nothing and filters little (`fs::start_watching`), so each path is
 //! judged by what it is on disk NOW under the walkers' rules (`fs::walk_rules`), not by the
@@ -41,6 +42,17 @@ pub struct SyncAnswer {
     /// worse than an extra one). Implies `contexts` is not empty — both
     /// `Announce` rules announce a context whose `apply` answered so.
     pub links_changed: bool,
+    /// The batch's paths that some context holds and that are readable notes on disk now, spelled
+    /// as the watcher reported them, whatever their links — for a reader of the notes' text, which
+    /// `links_changed` says nothing about (§34, the unlinked-mention search). A note found only
+    /// by walking a folder is not listed; `tree_changed` stands for it. A note here implies
+    /// `contexts` is not empty: `Planned::present` always announces.
+    pub notes: Vec<String>,
+    /// True when a folder's `refill` or a removal changed a live index or found no live index
+    /// for a holding context: notes may have come or gone without being named — a folder renamed
+    /// or moved reports the folder alone (measured with `notify` on macOS). Also true for a
+    /// removal that took only an attachment. Implies `contexts` is not empty, as above.
+    pub tree_changed: bool,
 }
 
 /// See `SyncAnswer` and the module doc.
@@ -51,6 +63,8 @@ pub(crate) async fn sync_index_paths_inner(
 ) -> Result<SyncAnswer, String> {
     let mut announced: BTreeSet<String> = BTreeSet::new();
     let mut links_changed = false;
+    let mut notes = Vec::new();
+    let mut tree_changed = false;
     // Phase 1: everything that is on disk now. A spelling that names no entry (`Planned::gone`)
     // is only collected, per holding context (keyed by its registered path), for phase 2.
     let mut removed: BTreeMap<String, (String, Vec<Mutation>)> = BTreeMap::new();
@@ -59,13 +73,17 @@ pub(crate) async fn sync_index_paths_inner(
         if contexts.is_empty() {
             continue;
         }
-        let Some(Planned { now, gone }) = plan(entry).await else {
+        let Some(Planned { now, gone, role }) = plan(entry).await else {
             continue;
         };
+        if role == PathRole::Note {
+            notes.push(entry.path.clone());
+        }
         if let Some((mutations, rule)) = now {
             for ctx in &contexts {
                 let changed = state.apply(&ctx.info.path, mutations.clone()).await;
                 links_changed |= changed != Some(false);
+                tree_changed |= role == PathRole::Folder && changed != Some(false);
                 if rule.announces(changed) {
                     announced.insert(ctx.info.id.clone());
                 }
@@ -95,6 +113,7 @@ pub(crate) async fn sync_index_paths_inner(
             .apply(&key, vec![Mutation::merge_removals(trees)])
             .await;
         links_changed |= changed != Some(false);
+        tree_changed |= changed != Some(false);
         if Announce::UnlessUnchanged.announces(changed) {
             announced.insert(id);
         }
@@ -102,6 +121,8 @@ pub(crate) async fn sync_index_paths_inner(
     Ok(SyncAnswer {
         contexts: announced.into_iter().collect(),
         links_changed,
+        notes,
+        tree_changed,
     })
 }
 
@@ -112,17 +133,28 @@ struct Planned {
     /// A `RemoveTree` merged with the batch's others in phase 2: the path when it is gone, or
     /// its written spelling when that is stale (`Mutation::stale_spelling`).
     gone: Option<Mutation>,
+    role: PathRole,
 }
 
 impl Planned {
     /// `mutation` for a note or a file that is on disk now — always news — and, when the path
     /// was written in a spelling the volume does not store, the removal of that spelling.
-    fn present(path: &str, mutation: Mutation) -> Result<Self, String> {
+    fn present(path: &str, mutation: Mutation, role: PathRole) -> Result<Self, String> {
         Ok(Self {
             now: Some((vec![mutation], Announce::Always)),
             gone: Mutation::stale_spelling(path)?,
+            role,
         })
     }
+}
+
+/// What a path was on disk, as far as `SyncAnswer::notes` and `tree_changed` care.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PathRole {
+    Note,
+    Folder,
+    /// A file that is not a note, or a path that is gone (its removal counts in phase 2).
+    Other,
 }
 
 /// When a context's id goes into the answer, given what its live index reported (`apply`).
@@ -229,13 +261,16 @@ async fn plan(entry: &SyncPath) -> Option<Planned> {
         OnDisk::LeaveAlone => return None,
         OnDisk::Directory if entry.changed_only => return None,
         OnDisk::Note(content) => {
-            Mutation::update(path, content).and_then(|m| Planned::present(path, m))
+            Mutation::update(path, content).and_then(|m| Planned::present(path, m, PathRole::Note))
         }
-        OnDisk::OtherFile => Mutation::target(path).and_then(|m| Planned::present(path, m)),
+        OnDisk::OtherFile => {
+            Mutation::target(path).and_then(|m| Planned::present(path, m, PathRole::Other))
+        }
         OnDisk::Directory => refill(path).await,
         OnDisk::Missing => Mutation::remove_tree(path).map(|tree| Planned {
             now: None,
             gone: Some(tree),
+            role: PathRole::Other,
         }),
     };
     match built {
@@ -296,5 +331,6 @@ async fn refill(dir: &str) -> Result<Planned, String> {
     Ok(Planned {
         now: Some((mutations, announce)),
         gone: None,
+        role: PathRole::Folder,
     })
 }

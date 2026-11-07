@@ -1,20 +1,23 @@
 // §34 issue 791 — the webview's text writes announce the note they wrote, at once
-// (`services/note-changes.ts`: the fast publisher; the watcher is the complete one).
+// (`services/note-changes.ts`: the publisher that does not wait for the watcher's batch).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { onNoteChanges } from "../../services/note-changes";
+import {
+  announceUnnamedNoteChanges,
+  onNoteChanges,
+} from "../../services/note-changes";
 import { createFile, writeFile } from "../fs";
 
-let heard: string[][] = [];
+let heard: Array<null | string[]> = [];
 let stop: () => void = () => undefined;
 
 beforeEach(() => {
   invokeMock.mockReset();
   heard = [];
-  stop = onNoteChanges((paths) => heard.push([...paths]));
+  stop = onNoteChanges((paths) => heard.push(paths && [...paths]));
 });
 afterEach(() => stop());
 
@@ -48,5 +51,11 @@ describe("§34 note-change announcements from the webview's writes", () => {
     await writeFile("/v/data.json", "{}");
 
     expect(heard).toEqual([]);
+  });
+
+  it("tells a listener when notes changed without being named", () => {
+    announceUnnamedNoteChanges();
+
+    expect(heard).toEqual([null]);
   });
 });

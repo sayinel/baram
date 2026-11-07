@@ -11,7 +11,10 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexSyncAnswer } from "../ipc/types";
 
 import { syncIndexPaths } from "../ipc/invoke";
-import { announceNoteChanges } from "../services/note-changes";
+import {
+  announceNoteChanges,
+  announceUnnamedNoteChanges,
+} from "../services/note-changes";
 import {
   createVaultChangeBatcher,
   type VaultEventKind,
@@ -23,8 +26,6 @@ import { logger } from "../utils/logger";
 export function useVaultChangeSync(): void {
   useEffect(() => {
     const batcher = createVaultChangeBatcher({
-      // §34 issue 791 — every note change on disk, whoever wrote it (`note-changes.ts`).
-      onBatch: announceNoteChanges,
       onSynced: announce,
       sync: syncIndexPaths,
     });
@@ -67,9 +68,17 @@ export function useVaultChangeSync(): void {
  * Plugins hear `vault:changed` for each context the answer names — tags, tasks and search read the
  * disk whatever the links. The backlinks panel and the graph re-read on `indexVersion` only when the
  * link index changed: the watcher's echo of an auto-save finds the index as the save left it, and
- * `useAutoSave` already invalidated after `updateFileIndex`.
+ * `useAutoSave` already invalidated after `updateFileIndex`. §34 A reader of the notes' text hears
+ * at most one announcement per batch (`note-changes.ts`): unnamed takes in whatever the batch named.
  */
-function announce({ contexts, linksChanged }: IndexSyncAnswer): void {
+function announce({
+  contexts,
+  linksChanged,
+  notes,
+  treeChanged,
+}: IndexSyncAnswer): void {
   if (linksChanged) useLinkStore.getState().invalidate();
+  if (treeChanged) announceUnnamedNoteChanges();
+  else announceNoteChanges(notes);
   contexts.forEach(publishVaultChange);
 }

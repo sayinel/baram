@@ -1,15 +1,18 @@
-// §34 "These notes' text on disk changed" — the input the unlinked-mention search reads (issue 791).
+// §34 "Notes on disk changed" — the input the unlinked-mention search reads (issue 791).
 //
 // The unlinked-mention search (`find_unlinked_mentions`) walks the vault and reads the OTHER notes'
 // bodies from disk; it never reads the link index. So `indexVersion` — "the link index changed",
 // which a body edit that keeps its links does not raise — is the wrong signal for it. This is its
-// signal, and it has two publishers, one per job:
+// signal, and it has two publishers:
 //
-// - CORRECTNESS: `useVaultChangeSync`, once per watcher batch. Every write to disk reaches the
-//   watcher whoever made it — the webview's `writeFile`, the backend's own writers (tasks, tag and
-//   link renames, plugins), another program — so no note change in a watched folder is missed.
-//   It is late by the batch's wait (`VAULT_SYNC_QUIET_MS`, at most `VAULT_SYNC_MAX_WAIT_MS`).
-// - SPEED: the webview's text writes (`writeFile` · `createFile` in `ipc/fs.ts`), at once. They are
+// - `useVaultChangeSync`, once per watcher batch that the sync answered, from what Rust judged each
+//   path to be on disk (`SyncAnswer::notes` · `tree_changed` in `index/service/sync.rs`). So a path
+//   under a hidden or tool folder, or one no context holds, is not heard, and a folder renamed or
+//   moved is heard though it names no note. It hears what the watcher reports — it filters some
+//   folders itself and can fail to start (`fs::start_watching`, `useFileWatcher`) — and a batch whose
+//   sync fails is dropped, as the batcher says. It is late by the batch's wait (`VAULT_SYNC_QUIET_MS`,
+//   at most `VAULT_SYNC_MAX_WAIT_MS`) and by the sync itself, since batches run one at a time.
+// - The webview's text writes (`writeFile` · `createFile` in `ipc/fs.ts`), at once. They are
 //   the only webview callers of the `write_file` · `create_file` commands (`grep -rn
 //   '"write_file"\|"create_file"' src`, tests excluded), so a note the app writes from here is heard
 //   without the batch's wait. Everything else that changes notes — the webview's rename, delete,
@@ -20,36 +23,45 @@
 // one extra search when ANOTHER note was written; a listener that ignores the note it shows ignores
 // both for its own saves. A module-level set rather than a store: nothing renders from it, and two
 // announcements that land before one render must both be heard (a store field would keep only the
-// later — the reason the first version of issue 791 went wrong).
+// later).
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 
-type Listener = (paths: readonly string[]) => void;
+/** The notes that changed, or `null` when notes may have come or gone unnamed. */
+type Listener = (paths: null | readonly string[]) => void;
 
 const listeners = new Set<Listener>();
 
 /**
- * Tell every listener that the text of `paths` may have changed on disk. Paths that cannot name a
- * note are dropped; an extensionless path is kept (`isMarkdownFile`), since a folder's change can
- * add or remove notes. Nothing is told when no path is left. A throwing listener is logged and the
- * rest still hear.
+ * Tell every listener that the text of `paths` may have changed on disk. Paths that `isMarkdownFile`
+ * rejects are dropped (`writeFile` also writes JSON and the like). Nothing is told when no path is
+ * left.
  */
 export function announceNoteChanges(paths: readonly string[]): void {
   const notes = paths.filter((p) => isMarkdownFile(p));
-  if (notes.length === 0) return;
-  for (const listener of [...listeners]) {
-    try {
-      listener(notes);
-    } catch (err) {
-      logger.error("[note-changes] listener failed", err);
-    }
-  }
+  if (notes.length > 0) tell(notes);
 }
 
-/** Hear `announceNoteChanges`. Returns the unsubscribe. */
+/** Tell every listener that notes may have come or gone, which ones unknown (see the header). */
+export function announceUnnamedNoteChanges(): void {
+  tell(null);
+}
+
+/** Hear both announcements. Returns the unsubscribe. */
 export function onNoteChanges(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
+}
+
+/** A throwing listener is logged and the rest still hear. */
+function tell(paths: null | readonly string[]): void {
+  for (const listener of [...listeners]) {
+    try {
+      listener(paths);
+    } catch (err) {
+      logger.error("[note-changes] listener failed", err);
+    }
+  }
 }

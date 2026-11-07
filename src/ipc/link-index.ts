@@ -71,8 +71,8 @@ export async function updateFileIndex(filePath: string): Promise<void> {
 
 /**
  * §393 Bring the link index up to date with watcher-reported paths (spec 0072 §5.4). Resolves with
- * the ids of the contexts whose reads may have changed — what `useVaultChangeSync` announces — and
- * whether the link index changed.
+ * the ids of the contexts whose reads may have changed — what `useVaultChangeSync` announces —
+ * whether the link index changed, and which notes' text may have.
  */
 export async function syncIndexPaths(
   paths: IndexSyncPath[],
