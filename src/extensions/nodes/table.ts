@@ -14,6 +14,7 @@ import {
   createUserResizeTracker,
   gateColumnResizing,
 } from "./plugins/table-col-resize";
+import { BaramTableView } from "./table-view";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
 export const BaramTable = Table.extend({
@@ -169,6 +170,7 @@ export const BaramTable = Table.extend({
   },
 }).configure({
   resizable: true, // §5.5 Tier 3: columnResizing + TableView (colgroup)
+  View: BaramTableView, // §5.5 clears a column's old width when its colwidth goes away
   handleWidth: 10, // wider detection zone (default 5 is too narrow with border-collapse)
   lastColumnResizable: true,
   allowTableNodeSelection: true,
