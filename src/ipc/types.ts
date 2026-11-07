@@ -181,11 +181,15 @@ export interface IndexStats {
  * graph re-read). `linksChanged` is true when some change in the batch altered a live index (a
  * note whose links or tags differ, a link target newly registered, a removal that took
  * something) or found no live index for a holding context; it implies `contexts` is not empty —
- * Rust `SyncAnswer`.
+ * Rust `SyncAnswer`. §34 `notes` · `treeChanged` are for a reader of the notes' text: the batch's
+ * notes as the watcher spelled them, and whether notes may have come or gone unnamed (a folder
+ * renamed or moved, a removal). Rust's doc states exactly when.
  */
 export interface IndexSyncAnswer {
   contexts: string[];
   linksChanged: boolean;
+  notes: string[];
+  treeChanged: boolean;
 }
 
 /** §393 One path the file watcher reported, and whether every event for it in the batch was `file:changed`. */
