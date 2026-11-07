@@ -4,7 +4,9 @@
 // 없으므로, 그 뒤에 "저장됨" 을 기록하면 닫기가 확인 없이 그 글자를 버린다. 저장을 하는 자리마다 쓰기를
 // 손으로 끝내는 promise 로 바꿔 "쓰기 시작 → 편집 → 쓰기 끝" 을 만든다. 저장 자리는
 // `grep -rn "markDirty([^,]*, false)\|updateOriginalDoc(\|markSourceEdited([^,]*, false)\|isDirty: false" src`
-// 로 찾은 것 가운데 사용자의 내용을 쓰고 깨끗하다고 기록하는 여덟 곳이다.
+// 로 찾은 것 가운데 사용자의 내용을 쓰고 깨끗하다고 기록하는 여덟 곳이다. 같은 grep 이 찾는 아홉째 자리, 소스
+// 모드에서 돌아올 때의 저장(`use-source-mode.ts` 의 `handBufferToDocument`)은 `auto-save-crossing-source-mode.test.ts`
+// 가 같은 규칙으로 시험한다.
 import type { EditorState } from "@tiptap/pm/state";
 
 import { act, renderHook } from "@testing-library/react";
@@ -495,6 +497,111 @@ describe("Cmd+S and Save As", () => {
     expect(useEditorStore.getState().tabs[0].filePath).toBe("/v/chosen.md");
   });
 
+  async function startThen(
+    ed: Editor,
+    run: (h: ReturnType<typeof ops>) => Promise<void>,
+    during: () => void,
+  ) {
+    const h = ops(ed);
+    let done: Promise<void> = Promise.resolve();
+    act(() => {
+      done = run(h);
+    });
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    expect(writes).toHaveLength(1);
+    act(during);
+    await finishWrite(0);
+    await act(async () => {
+      await done;
+    });
+  }
+
+  function leaveFor(other: string, ed: Editor, key: string) {
+    const cache = new Map<string, EditorState>();
+    useEditorStore.getState().registerDocumentSurfaceAccess({
+      editor: ed,
+      editorStateCache: cache,
+      isKeepaliveComplete: () => true,
+      keepaliveEditor: () => null,
+    });
+    return () => {
+      const { activeTabId } = useEditorStore.getState();
+      ed.commands.insertContentAt(1, "late ");
+      cache.set(activeTabId!, ed.state);
+      useFileStore.getState().setFileContent(key, "text on the way out");
+      useEditorStore.setState({ activeTabId: other });
+      markContentLoaded(other);
+    };
+  }
+
+  // 이것을 실패시키는 것: handleSave 의 제목 없는 갈래에서 `tabStillShows(saveTab.id, "")` 관문을 빼면 닫힌
+  // 탭을 위해 새 파일의 수정 시각과 원문이 생긴다.
+  it("Cmd+S on an untitled tab closed during the write records nothing for the new file", async () => {
+    const ed = makeEditor();
+    setTabs(tab("u", ""), tab("a", "/v/a.md", false));
+    await startThen(
+      ed,
+      (h) => h.result.current.handleSave(),
+      () => useEditorStore.getState().closeTab("u"),
+    );
+
+    expect(useFileStore.getState().fileMtimes.has("/v/chosen.md")).toBe(false);
+    expect(useFileStore.getState().openFiles.has("/v/chosen.md")).toBe(false);
+  });
+
+  // 이것을 실패시키는 것: handleSaveAs 의 `tabStillShows(saveAsTab.id, …)` 관문을 빼면 닫힌 탭을 위해 사본의
+  // 수정 시각과 원문이 생긴다.
+  it("Save As of a tab closed during the write records nothing for the copy", async () => {
+    const ed = makeEditor();
+    setTabs(tab("m", "/v/note.md"), tab("a", "/v/a.md", false));
+    await startThen(
+      ed,
+      (h) => h.result.current.handleSaveAs(),
+      () => useEditorStore.getState().closeTab("m"),
+    );
+
+    expect(useFileStore.getState().fileMtimes.has("/v/chosen.md")).toBe(false);
+    expect(useFileStore.getState().openFiles.has("/v/chosen.md")).toBe(false);
+  });
+
+  // §3.5 A tab left while the write ran had its newer text copied into its entry on the way out; the
+  // entry moves to the new path as it is (`SaveOutcome.cacheIsDisk`).
+  // 이것을 실패시키는 것: handleSave 의 제목 없는 갈래에서 `setFileContent(savePath, md)` 로 옮기면 그 글을
+  // 옛 글로 바꾼다.
+  it("Cmd+S on an untitled tab left during the write moves its newer text to the new path", async () => {
+    const ed = makeEditor();
+    setTabs(tab("u", ""), tab("other", "/v/other.md", false));
+    await startThen(
+      ed,
+      (h) => h.result.current.handleSave(),
+      leaveFor("other", ed, "u"),
+    );
+
+    expect(useFileStore.getState().openFiles.get("/v/chosen.md")).toBe(
+      "text on the way out",
+    );
+    expect(dirty("u")).toBe(true);
+  });
+
+  // 이것을 실패시키는 것: handleSaveAs 에서 `setFileContent(savePath, md)` 로 옮기면 그 글을 옛 글로 바꾼다.
+  it("Save As of a tab left during the write moves its newer text to the new path", async () => {
+    const ed = makeEditor();
+    setTabs(tab("m", "/v/note.md"), tab("other", "/v/other.md", false));
+    await startThen(
+      ed,
+      (h) => h.result.current.handleSaveAs(),
+      leaveFor("other", ed, "/v/note.md"),
+    );
+
+    expect(useFileStore.getState().openFiles.get("/v/chosen.md")).toBe(
+      "text on the way out",
+    );
+    expect(useFileStore.getState().openFiles.has("/v/note.md")).toBe(false);
+    expect(dirty("m")).toBe(true);
+  });
+
   it("Save As leaves the tab dirty when the document changed during the write", async () => {
     const ed = makeEditor();
     setTabs(tab("m", "/v/note.md"));
@@ -556,10 +663,63 @@ describe("saving a background tab before a close", () => {
     expect(useFileStore.getState().openFiles.get("/v/chosen.md")).toBe("newer");
     expect(useFileStore.getState().openFiles.has("u")).toBe(false);
   });
+
+  // 이것을 실패시키는 것: use-close-guard.ts 의 파일 갈래에서 `tabStillShows` 관문을 빼면 옛 경로에 수정 시각이
+  // 생기고, 저장이 성공으로 보고되어 닫기가 진행된다.
+  it("reports failure for a background tab renamed during the write and records nothing under its old path", async () => {
+    setTabs(tab("a", "/v/a.md", false), tab("b", "/v/b.md"));
+    useFileStore.getState().setFileContent("/v/b.md", "text");
+    let ok: boolean | null = null;
+    const saving = saveDirtyTab(
+      useEditorStore.getState().tabs[1],
+      "a",
+      vi.fn(),
+    ).then((r) => {
+      ok = r;
+    });
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+    act(() => {
+      useEditorStore.getState().renameTab("/v/b.md", "/v/b2.md", "b2.md");
+    });
+    await finishWrite(0);
+    await saving;
+
+    expect(ok).toBe(false);
+    expect(useFileStore.getState().fileMtimes.has("/v/b.md")).toBe(false);
+  });
+
+  // 이것을 실패시키는 것: use-close-guard.ts 의 제목 없는 갈래에서 `tabStillShows(tab.id, "")` 관문을 빼면 닫힌
+  // 탭을 위해 새 파일의 수정 시각과 원문이 생긴다.
+  it("records nothing for an untitled background tab closed during the write", async () => {
+    setTabs(tab("a", "/v/a.md", false), tab("u", ""));
+    useFileStore.getState().setFileContent("u", "text");
+    let ok: boolean | null = null;
+    const saving = saveDirtyTab(
+      useEditorStore.getState().tabs[1],
+      "a",
+      vi.fn(),
+    ).then((r) => {
+      ok = r;
+    });
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    act(() => {
+      useEditorStore.getState().closeTab("u");
+    });
+    await finishWrite(0);
+    await saving;
+
+    expect(ok).toBe(false);
+    expect(useFileStore.getState().fileMtimes.has("/v/chosen.md")).toBe(false);
+    expect(useFileStore.getState().openFiles.has("/v/chosen.md")).toBe(false);
+  });
 });
 
-// 이것을 실패시키는 것: use-preview-source-view.ts 의 `getSourceBuffer(tab.id) !== content` 조기 반환을
-// 지우면 깨진다.
+// 이것을 실패시키는 것: use-preview-source-view.ts 의 `if (unchanged)` 를 빼면 dirty 단정이, `cacheIsDisk` 일 때
+// 캐시를 쓰지 않으면 캐시 단정이 깨진다.
 describe("leaving an HTML tab's source view", () => {
   it("keeps the tab dirty when the buffer changed during the flush", async () => {
     setTabs(tab("h", "/v/page.html"));
@@ -580,5 +740,33 @@ describe("leaving an HTML tab's source view", () => {
     await finishWrite(0);
 
     expect(dirty("h")).toBe(true);
+    // Still the active tab, so the cache is the file on disk.
+    expect(useFileStore.getState().openFiles.get("/v/page.html")).toBe(
+      "<p>first</p>",
+    );
+  });
+
+  // 이것을 실패시키는 것: use-preview-source-view.ts 의 `tabStillShows` 관문을 빼면 닫힌 탭의 경로에 수정
+  // 시각과 원문이 다시 생긴다.
+  it("records nothing for a tab closed during the flush", async () => {
+    setTabs(tab("h", "/v/page.html"), tab("a", "/v/a.md", false));
+    useEditorStore.setState({ previewSourceTabs: ["h"] });
+    const { result } = renderHook(() =>
+      usePreviewSourceView({
+        getSourceBuffer: () => "<p>first</p>",
+        markDirty: (id, d) => useEditorStore.getState().markDirty(id, d),
+        toggleSourceMode: () => undefined,
+      }),
+    );
+    act(() => {
+      result.current.toggleHtmlView();
+    });
+    act(() => {
+      useEditorStore.getState().closeTab("h");
+    });
+    await finishWrite(0);
+
+    expect(useFileStore.getState().fileMtimes.has("/v/page.html")).toBe(false);
+    expect(useFileStore.getState().openFiles.has("/v/page.html")).toBe(false);
   });
 });
