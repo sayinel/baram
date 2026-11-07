@@ -30,8 +30,9 @@ const loadingTabs = new Set<string>();
 const contentLoadedListeners = new Set<(tabId: string) => void>();
 
 /**
- * The tab whose document has finished installing in an editor, the shared one or a keep-alive one,
- * and which has not been left since.
+ * The tab whose document has finished installing in an editor, the shared one or a keep-alive one.
+ * The name goes when the tab is left or closed, and when a large source-mode return starts filling
+ * the document again (`use-source-mode.ts`).
  *
  * §260 Phase 4b security review (LOW) — a VALIDITY predicate, not a change counter. At the
  * start of a tab switch the store's `activeTabId` has already flipped to the incoming tab
@@ -43,9 +44,11 @@ const contentLoadedListeners = new Set<(tabId: string) => void>();
  *
  * §39 What keeps it true. The switch clears it right after saving the tab it leaves
  * (`useTabSwitching`), so a tab that is not active is named only until that effect runs, and
- * the editor does hold that tab's document until then. Every whole-document write into an editor
- * either announces itself (`markContentLoaded`) or first asks `editorHoldsWholeDocument`
- * (`use-editor-effects.ts`, `sync-open-surfaces.ts`), and those replace the named tab's own document.
+ * the editor does hold that tab's document until then. A write of a whole document into an editor
+ * does one of three things: it announces itself (`markContentLoaded`), it asks first whether the
+ * editor holds the tab, and then replaces that tab's own document (`use-editor-effects.ts`,
+ * `sync-open-surfaces.ts`), or it runs with no tab named (a load's first blocks, and the empty
+ * document `useTabSwitching` installs when no tab is left).
  *
  * ‼️ Deliberately not used as a "did the document change?" signal: those reloads change the document
  * without coming through here, which is why the plugin write guard compares document identity

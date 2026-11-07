@@ -176,10 +176,10 @@ export function useTabSwitching({
 
     if (prevTabId && prevTabId !== activeTabId) {
       saveOutgoingTab(ctx, prevTabId);
-      // §39 The tab's document now lives in its cache and text, and the next tab's install may be a
-      // parse away, or may never come (a non-markdown tab installs nothing). Reading the shared
-      // editor as this tab's from here on would miss what those places take in the meantime, and
-      // would read a doomed document as the tab coming back. After the save, which reads the name.
+      // §39 The tab's document now lives elsewhere (its cache and text, its source buffer, its pool
+      // editor), and the next tab's install may be a parse away, or may never come (a non-markdown
+      // tab installs nothing). Reading the shared editor as this tab's from here on would miss what
+      // those places take in the meantime. After the save, which reads the name.
       forgetLoadedTab(prevTabId);
       // §287 소스 모드는 이제 탭을 따라 남는다 — 여기서 끄지 않는다.
       //

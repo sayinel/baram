@@ -53,6 +53,7 @@ import {
   loadedTabId,
 } from "../../utils/editor/programmatic-update";
 import { setTableColumnResizeFromUser } from "../../utils/editor/table-width-clear";
+import { resolveTaskWriteTarget } from "../../utils/tasks/apply-task-write";
 import {
   syncCleanSurfacesAfterReferrerRewrite,
   syncOpenSurfacesAfterDiskWrite,
@@ -318,6 +319,57 @@ describe("a reload reaches only the editor holding that tab's document", () => {
     expect(stale()).toEqual([]);
   });
 
+  // What fails these two: the re-read writing into the shared view. The pooled tab's text would land
+  // in the document of the tab before it.
+  it("a keep-alive tab reloaded in the background takes the text when it comes back", async () => {
+    setText(OTHER, paragraphs(520).join("\n\n") + "\n");
+    mountApp();
+    await installed("t1");
+    show("t3");
+    await installed("t3");
+    show("t1");
+    await installed("t1");
+    const before = editor.state;
+
+    disk.set(OTHER, paragraphs(520).join("\n\n") + "\n\nadded on disk\n");
+    await act(async () => {
+      await triggerAutoReload(OTHER, 999);
+    });
+    expect(stale()).toEqual(["t3"]);
+    show("t3");
+    await installed("t3");
+    await settle(20);
+
+    expect(pool.get("t3")!.state.doc.textContent).toContain("added on disk");
+    expect(editor.state).toBe(before);
+    expect(stale()).toEqual([]);
+  });
+
+  it("a reload during a keep-alive fill ends in that editor, whole", async () => {
+    setText(OTHER, paragraphs(520).join("\n\n") + "\n");
+    mountApp();
+    await installed("t1");
+    const before = editor.state;
+    show("t3");
+    await waitFor(() => expect(isTabLoading("t3")).toBe(true), {
+      timeout: 5000,
+    });
+
+    disk.set(OTHER, paragraphs(520).join("\n\n") + "\n\nadded on disk\n");
+    await act(async () => {
+      await triggerAutoReload(OTHER, 999);
+    });
+    await installed("t3");
+    await settle(20);
+
+    const pooled = pool.get("t3")!.state;
+    expect(pooled.doc.childCount).toBe(521);
+    expect(duplicatedBlocks(pooled)).toBe(0);
+    expect(pooled.doc.textContent).toContain("added on disk");
+    expect(editor.state).toBe(before);
+    expect(stale()).toEqual([]);
+  });
+
   it("a tab in source mode takes it in its buffer and the document behind it", async () => {
     const source = mountApp();
     await installed("t1");
@@ -382,6 +434,26 @@ describe("a panel's write to the active tab while its document is on the way", (
     await installed("t3");
     expect(editor.state.doc.textContent).toContain("two done");
     expect(stale()).toEqual([]);
+  });
+
+  // What fails this: routing on "active and dirty" alone. The task write would read the tab before
+  // it from the editor as this tab's text, and the re-read would then put that in the document.
+  it("a task write on a dirty active tab goes to disk until the tab is installed", async () => {
+    mountApp();
+    await installed("t1");
+    const open = holdParse();
+    show("t3");
+    await settle(10);
+    act(() => useEditorStore.getState().markDirty("t3", true));
+
+    expect(resolveTaskWriteTarget(OTHER, editor)).toEqual({ kind: "disk" });
+
+    open();
+    await installed("t3");
+    expect(resolveTaskWriteTarget(OTHER, editor)).toEqual({
+      kind: "document",
+      tabId: "t3",
+    });
   });
 
   it("a tab with unsaved work is not flagged, because a flag would drop that work", async () => {

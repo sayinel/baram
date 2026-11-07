@@ -6,10 +6,11 @@ import { liveViewOf } from "../../utils/editor/open-tab-surface";
 import { patchEditorContent } from "../../utils/editor/patch-editor-content";
 
 /**
- * Called when a tab's content has been installed in an editor. The stale flag on the active tab
- * means a reload came during the install (`reloadReachesDocument`, `sync-open-surfaces.ts`): a flag
- * set before it was consumed when the switch began. So the document takes the text now, as one
- * transaction, which leaves the undo history alone.
+ * Called when a tab's content has been installed in an editor. A stale flag on the active tab says
+ * its document is older than its text. A reload may have come during the install
+ * (`reloadReachesDocument`, `sync-open-surfaces.ts`), or a keep-alive tab's file may have changed
+ * behind it, since the switch consumes the flag only on the way to a cache or a load. The document
+ * takes the text now, as one transaction, which leaves the undo history alone.
  */
 export function rereadMissedReload(tabId: string): void {
   const { activeTabId, clearContentStale, staleContentTabs, tabs } =
