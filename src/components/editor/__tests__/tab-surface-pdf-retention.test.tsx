@@ -89,8 +89,14 @@ beforeEach(() => {
   });
   useFileStore.setState({
     fileMtimes: new Map([
-      ["/v/1.pdf", { canReloadMtime: 0, lastSaveMtime: 111 }],
-      ["/v/note.md", { canReloadMtime: 0, lastSaveMtime: 999 }],
+      [
+        "/v/1.pdf",
+        { canReloadMtime: 0, lastSaveMtime: 110, viewerVersion: 111 },
+      ],
+      [
+        "/v/note.md",
+        { canReloadMtime: 0, lastSaveMtime: 998, viewerVersion: 999 },
+      ],
     ]),
   });
 });

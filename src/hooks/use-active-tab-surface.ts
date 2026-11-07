@@ -109,12 +109,13 @@ export function useActiveTabSurface(): ActiveSurfaceSnapshot {
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
 
-  // Viewers reload whenever the file's saved/reloaded mtime bumps
-  // (manual save, auto-save, toggle-flush, or external auto-reload)
+  // Viewers reload whenever the file's viewer version moves on — a save or reload is recorded
+  // (manual save, auto-save, toggle-flush, or external auto-reload), or a tab starts to show the
+  // file (`viewer-version.ts`, #798).
   const previewFileMtime = useFileStore((s) =>
     (isHtmlTab || isPdfTab || isImageTab || isPluginPreviewTab) &&
     activeTabFilePath
-      ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
+      ? (s.fileMtimes.get(activeTabFilePath)?.viewerVersion ?? 0)
       : 0,
   );
 

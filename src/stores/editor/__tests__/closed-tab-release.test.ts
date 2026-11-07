@@ -3,11 +3,17 @@
 // 항목 수를 센다. 열린 탭이 쓰는 것은 그대로 남아야 하므로 단정마다 남아 있어야 할 것을 짝으로 둔다.
 import type { TabSwitchContext } from "../../../hooks/tab-switching/types";
 import type { EditorTab } from "../editor";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 
 import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  __resetPdfDocumentCacheForTest,
+  __setPdfDocumentLoaderForTest,
+  acquirePdfDocument,
+} from "../../../components/editor/pdf/pdf-doc-cache";
 import { saveOutgoingTab } from "../../../hooks/tab-switching/save-outgoing-tab";
 import {
   getOriginalDoc,
@@ -28,6 +34,11 @@ function hasOriginalDoc(tabId: string): boolean {
   return getOriginalDoc(tabId) !== undefined;
 }
 
+function held() {
+  const { fileMtimes, openFiles } = useFileStore.getState();
+  return { mtimes: fileMtimes.size, files: openFiles.size };
+}
+
 function tab(id: string, filePath: string, over: Partial<EditorTab> = {}) {
   return {
     contextId: "",
@@ -42,11 +53,6 @@ function tab(id: string, filePath: string, over: Partial<EditorTab> = {}) {
 }
 
 /** 앱의 열기와 같은 순서로 원문을 넣고 탭을 연다. */
-function held() {
-  const { fileMtimes, openFiles } = useFileStore.getState();
-  return { mtimes: fileMtimes.size, files: openFiles.size };
-}
-
 function open(id: string, filePath: string, content = `body of ${id}`) {
   const files = useFileStore.getState();
   files.setFileContent(filePath || id, content);
@@ -203,5 +209,62 @@ describe("§3.5 the tab switch after closing the active tab", () => {
     markContentLoaded("b");
     saveOutgoingTab(ctx, "b");
     expect(useFileStore.getState().openFiles.get("/v/b.md")).not.toBe("stale");
+  });
+});
+
+// §3.5 (#798) 내려놓은 기록에는 뷰어 버전도 있었다. 다시 연 파일이 처음부터 다시 세면, PDF 문서 캐시가 앞
+// 탭이 같은 key 로 남긴 문서를 돌려준다 — 닫힌 동안 파일이 바뀌었어도(watcher 는 닫힌 파일을 더 읽지 않는다).
+// 이것을 실패시키는 것: closed-tab-release.ts 의 `noteShownFiles` 호출을 지우면 첫째가(다시 연 PDF 가 앞
+// 문서를 받는다), `!prevIds.has(t.id)` 를 빼면 rename 시험이, `!shownBefore.has(t.filePath)` 를 빼면 둘째
+// 탭 시험이 깨진다.
+describe("§3.5 a reopened file's viewer version", () => {
+  function version(path: string): number | undefined {
+    return useFileStore.getState().fileMtimes.get(path)?.viewerVersion;
+  }
+
+  it("gives a reopened PDF a version its earlier tab did not have, so the document cache loads it again", () => {
+    const loads: number[] = [];
+    __setPdfDocumentLoaderForTest(async (_path, v) => {
+      loads.push(v);
+      return { destroy: vi.fn() } as unknown as PDFDocumentProxy;
+    });
+    try {
+      open("a", "/v/paper.pdf", "");
+      const first = version("/v/paper.pdf") ?? 0;
+      acquirePdfDocument("/v/paper.pdf", first).release();
+      useEditorStore.getState().closeTab("a");
+      expect(version("/v/paper.pdf")).toBeUndefined();
+
+      open("b", "/v/paper.pdf", "");
+      const second = version("/v/paper.pdf") ?? 0;
+      acquirePdfDocument("/v/paper.pdf", second).release();
+
+      expect(second).toBeGreaterThan(first);
+      expect(loads).toEqual([first, second]);
+    } finally {
+      __setPdfDocumentLoaderForTest(null);
+      __resetPdfDocumentCacheForTest();
+    }
+  });
+
+  it("keeps the version across a rename, which is the same file", () => {
+    open("a", "/v/old.pdf", "");
+    const before = version("/v/old.pdf");
+    expect(before).toBeGreaterThan(0);
+    useFileStore
+      .getState()
+      .renameFileEntry("/v/old.pdf", "/v/new.pdf", "new.pdf");
+    useEditorStore.getState().renameTab("/v/old.pdf", "/v/new.pdf", "new.pdf");
+    expect(version("/v/new.pdf")).toBe(before);
+  });
+
+  it("keeps the version when a second tab shows a file one already shows", () => {
+    open("a", "/v/same.pdf", "");
+    const before = version("/v/same.pdf");
+    // openTab 은 같은 경로의 탭을 다시 만들지 않는다 — Save As 가 그렇게 만드는 모양으로 넣는다.
+    useEditorStore.setState((s) => ({
+      tabs: [...s.tabs, tab("b", "/v/same.pdf")],
+    }));
+    expect(version("/v/same.pdf")).toBe(before);
   });
 });

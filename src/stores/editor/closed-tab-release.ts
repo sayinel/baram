@@ -1,4 +1,3 @@
-import { clearOriginalDoc } from "../../utils/editor/programmatic-update";
 // §3.5 닫힌 탭이 쓰던 원문을 내려놓는다 (#798).
 //
 // 파일을 열면 원문이 `openFiles` 에, 수정 시각이 `fileMtimes` 에, dirty 판정의 기준 문서가
@@ -12,12 +11,36 @@ import { clearOriginalDoc } from "../../utils/editor/programmatic-update";
 //
 // 기준은 경로가 아니라 **사라진 탭 id** 다. rename 은 탭의 경로를 바꾸지만 원문은
 // `renameFileEntry` 가 새 경로로 옮기므로, 경로의 차이로 판정하면 옮기기 전의 원문을 지울 수 있다.
+//
+// 같은 구독이 **새로 생긴 탭 id** 도 본다. 내려놓은 수정 시각 기록에는 뷰어 버전도 있었으므로, 그
+// 파일을 다시 연 탭은 새 버전을 받아야 앞 탭이 캐시에 남긴 문서를 받지 않는다(`viewer-version.ts`).
+import { clearOriginalDoc } from "../../utils/editor/programmatic-update";
 import { useFileStore } from "../file/file";
 import { type EditorTab, useEditorStore } from "./editor";
 
 /** `openFiles` 의 key — 제목 없는 탭은 경로가 없어 탭 id 로 들어 있다. */
 function contentKey(tab: EditorTab): string {
   return tab.filePath || tab.id;
+}
+
+/**
+ * `next` 에 새로 생긴 탭이 보이는 경로 가운데 `prev` 의 어느 탭도 보이지 않던 것에 새 뷰어 버전을
+ * 준다. rename · move 는 탭 id 를 남기고 기록을 새 경로로 옮기므로 여기 들지 않는다 — 같은 파일이다.
+ */
+function noteShownFiles(
+  prev: readonly EditorTab[],
+  next: readonly EditorTab[],
+): void {
+  const prevIds = new Set(prev.map((t) => t.id));
+  const shownBefore = new Set(prev.map((t) => t.filePath));
+  const paths = new Set(
+    next
+      .filter(
+        (t) => !prevIds.has(t.id) && t.filePath && !shownBefore.has(t.filePath),
+      )
+      .map((t) => t.filePath),
+  );
+  useFileStore.getState().noteFilesShown([...paths]);
 }
 
 /**
@@ -44,6 +67,7 @@ export function startClosedTabRelease(): () => void {
   return useEditorStore.subscribe((state, prevState) => {
     if (state.tabs !== prevState.tabs) {
       releaseClosedTabs(prevState.tabs, state.tabs);
+      noteShownFiles(prevState.tabs, state.tabs);
     }
   });
 }

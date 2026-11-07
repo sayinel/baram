@@ -141,6 +141,24 @@ describe("§38 bulk tab close asks about unsaved tabs first (#798)", () => {
     expect([...useFileStore.getState().openFiles.keys()]).toEqual(["/v/a.md"]);
   });
 
+  // 묻는 동안 기준 탭이 닫힐 수 있다 — modal 이 떠 있어도 Cmd+W 는 돈다. 닫을 탭의 목록은 그대로 닫고, 활성
+  // 탭은 없는 탭이 아니라 남은 탭으로 간다.
+  // 이것을 실패시키는 것: editor.ts 의 `closeTabsById` 가 기준 탭이 남았는지 보지 않고 `anchorId` 를 활성 탭으로
+  // 두면, 활성 탭 id 가 사라진 a 를 가리킨다.
+  it("lands on a tab that is still open when the anchor closed while it asked", async () => {
+    useEditorStore.setState((s) => ({
+      tabs: [{ ...tab("p"), isPinned: true }, ...s.tabs],
+    }));
+    await choose("Close Other Tabs");
+    act(() => {
+      useEditorStore.getState().closeTab("a");
+    });
+    await press("Don't Save");
+
+    expect(ids()).toEqual(["p"]);
+    expect(useEditorStore.getState().activeTabId).toBe("p");
+  });
+
   // 이것을 실패시키는 것: UnsavedChangesModal 의 `scopedTabIds` 거르기를 빼면 남는 a 까지 세어 2 가 된다.
   it("counts only the unsaved tabs it is about to close", async () => {
     useEditorStore.setState({

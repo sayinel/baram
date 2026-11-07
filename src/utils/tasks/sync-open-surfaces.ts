@@ -91,7 +91,12 @@ export function syncOpenSurfacesAfterFileRewrite(
   const { activeTabId, markContentStale, sourceModeTabs, tabs } =
     useEditorStore.getState();
 
-  useFileStore.getState().setFileContent(path, content);
+  // §3.5 The cache is for files a tab shows (#798). An entry for a file with none would outlive
+  // every close — the closed-tab release only sees tabs go — and the watcher would read it as an
+  // open file and reload it on the next outside change.
+  if (tabs.some((t) => t.filePath === path)) {
+    useFileStore.getState().setFileContent(path, content);
+  }
 
   for (const tab of tabs) {
     if (tab.filePath !== path) continue;

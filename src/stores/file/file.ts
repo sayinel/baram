@@ -17,6 +17,7 @@ import {
   type SortOrder,
   sortTreeNodes,
 } from "./file-tree-sort";
+import { nextViewerVersion } from "./viewer-version";
 
 export interface FileEntry {
   children?: FileEntry[];
@@ -31,6 +32,12 @@ export interface FileMtimeEntry {
   canReloadMtime: number;
   /** mtime at the time of the last save (ms since epoch, 0 = unknown) */
   lastSaveMtime: number;
+  /**
+   * §3.5 What the file's viewers key their reload and caches on (`viewer-version.ts`, #798). A new
+   * one comes with each save or reload recorded here (`updateLastSaveMtime`) and when a tab starts
+   * to show the file (`noteFilesShown`). Absent until one of those.
+   */
+  viewerVersion?: number;
 }
 
 /** §4.3 Why the file tree failed to load (drives the FolderAccessError panel). */
@@ -63,6 +70,11 @@ interface FileState {
   loadError: FileTreeLoadError | null;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
+  /**
+   * §3.5 Tabs began to show these paths, which no tab showed before (#798): each gets a new viewer
+   * version, so a reopened file's viewer does not take what an earlier tab left in its caches.
+   */
+  noteFilesShown: (paths: readonly string[]) => void;
   openFiles: Map<string, string>; // path → content
   /**
    * §3.5 닫힌 탭이 쓰던 원문과 수정 시각 기록을 한 번에 내려놓는다(#798). 지울 것이 없으면
@@ -89,9 +101,9 @@ interface FileState {
   // Tag filter for FileTree
   tagFilter: null | string;
   toggleExpandedDir: (path: string) => void;
-  /** Record the mtime at the time of a successful save */
-  updateCanReloadMtime: (path: string, mtime: number) => void;
   /** Record the mtime reported by the most recent file:changed watcher event */
+  updateCanReloadMtime: (path: string, mtime: number) => void;
+  /** Record the mtime at the time of a successful save or reload, with a new viewer version */
   updateLastSaveMtime: (path: string, mtime: number) => void;
 }
 
@@ -199,6 +211,23 @@ export const useFileStore = create<FileState>((set, get) => ({
 
   getFileMtime: (path) => get().fileMtimes.get(path),
 
+  noteFilesShown: (paths) =>
+    set((state) => {
+      if (paths.length === 0) return state;
+      const fileMtimes = new Map(state.fileMtimes);
+      for (const path of paths) {
+        const existing = fileMtimes.get(path) ?? {
+          lastSaveMtime: 0,
+          canReloadMtime: 0,
+        };
+        fileMtimes.set(path, {
+          ...existing,
+          viewerVersion: nextViewerVersion(),
+        });
+      }
+      return { fileMtimes };
+    }),
+
   initFileMtime: (path) =>
     set((state) => {
       const fileMtimes = new Map(state.fileMtimes);
@@ -213,7 +242,11 @@ export const useFileStore = create<FileState>((set, get) => ({
         lastSaveMtime: 0,
         canReloadMtime: 0,
       };
-      fileMtimes.set(path, { ...existing, lastSaveMtime: mtime });
+      fileMtimes.set(path, {
+        ...existing,
+        lastSaveMtime: mtime,
+        viewerVersion: nextViewerVersion(),
+      });
       return { fileMtimes };
     }),
 

@@ -706,8 +706,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       );
       if (closedIds.size === 0) return state;
       const tabs = state.tabs.filter((t) => !closedIds.has(t.id));
-      const activeTabId = closedIds.has(state.activeTabId ?? "")
+      // The anchor can be gone by the time an asked close runs — Cmd+W still works while the
+      // unsaved-changes modal is up (#798). The active tab then falls back as `closeTab`'s does.
+      const anchor = tabs.some((t) => t.id === anchorId)
         ? anchorId
+        : (tabs[tabs.length - 1]?.id ?? null);
+      const activeTabId = closedIds.has(state.activeTabId ?? "")
+        ? anchor
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
       const closed = (id: string) => closedIds.has(id);

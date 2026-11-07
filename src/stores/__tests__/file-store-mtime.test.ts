@@ -38,13 +38,22 @@ describe("updateLastSaveMtime", () => {
     useFileStore.getState().updateCanReloadMtime("/a/b.md", 2000);
     useFileStore.getState().updateLastSaveMtime("/a/b.md", 1500);
     const entry = useFileStore.getState().getFileMtime("/a/b.md");
-    expect(entry).toEqual({ lastSaveMtime: 1500, canReloadMtime: 2000 });
+    // §3.5 A recorded save comes with a new viewer version (#798, `viewer-version.ts`).
+    expect(entry).toEqual({
+      lastSaveMtime: 1500,
+      canReloadMtime: 2000,
+      viewerVersion: expect.any(Number),
+    });
   });
 
   it("creates the entry if not yet tracked", () => {
     useFileStore.getState().updateLastSaveMtime("/new.md", 999);
     const entry = useFileStore.getState().getFileMtime("/new.md");
-    expect(entry).toEqual({ lastSaveMtime: 999, canReloadMtime: 0 });
+    expect(entry).toEqual({
+      lastSaveMtime: 999,
+      canReloadMtime: 0,
+      viewerVersion: expect.any(Number),
+    });
   });
 });
 
@@ -54,7 +63,11 @@ describe("updateCanReloadMtime", () => {
     useFileStore.getState().updateLastSaveMtime("/a/b.md", 1500);
     useFileStore.getState().updateCanReloadMtime("/a/b.md", 3000);
     const entry = useFileStore.getState().getFileMtime("/a/b.md");
-    expect(entry).toEqual({ lastSaveMtime: 1500, canReloadMtime: 3000 });
+    expect(entry).toEqual({
+      lastSaveMtime: 1500,
+      canReloadMtime: 3000,
+      viewerVersion: expect.any(Number),
+    });
   });
 
   it("creates the entry if not yet tracked", () => {
@@ -83,6 +96,7 @@ describe("independent paths do not interfere", () => {
     expect(useFileStore.getState().getFileMtime("/a.md")).toEqual({
       lastSaveMtime: 100,
       canReloadMtime: 0,
+      viewerVersion: expect.any(Number),
     });
     expect(useFileStore.getState().getFileMtime("/b.md")).toEqual({
       lastSaveMtime: 0,
