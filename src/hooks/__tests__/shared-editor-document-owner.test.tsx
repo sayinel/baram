@@ -272,7 +272,7 @@ describe("a reload reaches only the editor holding that tab's document", () => {
 
   // What fails these: writing into a document still being filled. The rest of the load is then
   // appended behind a document that already has it, 70 blocks twice in a 301-block document.
-  // What fails the last two assertions: dropping the re-read after the install.
+  // Dropping the re-read after the install fails them too, with the document one block short.
   it.each(["fresh", "patch"] as const)(
     "%s, during a progressive load: the document ends whole, with the reload in it",
     async (mode) => {
@@ -725,8 +725,9 @@ describe("turning the column resize option off around a switch", () => {
     expect(written).toEqual([]);
   });
 
-  // What fails this: the name standing on the tab behind a non-markdown tab. The rewrite goes into
-  // the view, and the clear reads the older cache back over the text.
+  // What fails this: the name standing on the tab behind a non-markdown tab together with a clear
+  // limited to the active tab, the two things this branch removed. The rewrite goes into the view,
+  // and the clear reads the older cache back over the text. Either one alone passes.
   it("after a referrer rewrite behind a non-markdown tab: the text keeps the rewrite", async () => {
     setText(NOTE, WIDTHS);
     mountApp();
