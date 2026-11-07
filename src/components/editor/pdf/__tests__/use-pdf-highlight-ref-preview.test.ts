@@ -133,6 +133,38 @@ describe("usePdfHighlightRefPreview", () => {
     expect(page.render).not.toHaveBeenCalled();
   });
 
+  // §3.5 (#798) PdfPreview 는 그 파일의 뷰어 버전으로 문서를 빌린다. 미리보기가 다른 버전(0)으로 빌리면 같은 PDF 를
+  // 두 번 파싱하고 cache 의 네 자리 가운데 둘을 쓴다.
+  // 이것을 실패시키는 것: use-pdf-highlight-ref-preview.ts 가 `version` 을 넘기지 않으면 깨진다.
+  it("borrows the document at the file's viewer version, as the PDF tab does", async () => {
+    const { useFileStore } = await import("../../../../stores/file/file");
+    useFileStore.setState({
+      fileMtimes: new Map([
+        [
+          "/vault/papers/Attention.pdf",
+          { canReloadMtime: 0, lastSaveMtime: 0, viewerVersion: 42 },
+        ],
+      ]),
+    });
+    resolveHighlightRef.mockResolvedValue({
+      absPdfPath: "/vault/papers/Attention.pdf",
+      kind: "area",
+      page: 3,
+      rect: { h: 40, w: 120, x: 10, y: 20 },
+    });
+    withPdfDocument.mockResolvedValue(null);
+
+    renderHook(() => usePdfHighlightRefPreview(HIGHLIGHT_TARGET, BLOCK_ID));
+    await flush();
+
+    expect(withPdfDocument).toHaveBeenCalledTimes(1);
+    expect(withPdfDocument.mock.calls[0][0]).toBe(
+      "/vault/papers/Attention.pdf",
+    );
+    expect(withPdfDocument.mock.calls[0][2]).toBe(42);
+    useFileStore.setState({ fileMtimes: new Map() });
+  });
+
   describe("text highlights (§276.5)", () => {
     beforeEach(() => {
       resolveHighlightRef.mockResolvedValue({

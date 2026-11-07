@@ -589,6 +589,7 @@ function handBufferToDocument(
   }
   store.markDirty(tab.id, true);
   if (tab.filePath && useSettingsStore.getState().autoSave) {
+    let judged: null | SaveOutcome = null;
     void saveFromBuffer(
       tab.id,
       tab.filePath,
@@ -599,15 +600,17 @@ function handBufferToDocument(
       },
       {
         outcome: (written) =>
-          returnedOutcome(tab.id, written, {
+          (judged = returnedOutcome(tab.id, written, {
             editor,
             getSourceBuffer,
             installed,
-          }),
+          })),
         reindexLinks: true,
       },
     ).then((saved) => {
-      if (saved && installed) updateOriginalDoc(tab.id, installed);
+      // The document the tab holds now is what the file says (`SaveOutcome.baseline`).
+      const baseline = judged?.baseline;
+      if (saved && baseline) updateOriginalDoc(tab.id, baseline);
     });
   }
   return true;
@@ -619,10 +622,10 @@ function handBufferToDocument(
  * Source mode has ended, so the document holds the tab's text and the buffer no longer changes when
  * the user types — asking the buffer, as a save from source mode does, would record text typed
  * during the write as saved. A small document was installed whole, so the question is whether the
- * editor still holds that document. A large one is filled in pieces: while the fill runs, the buffer
- * is still the text (and the entry `toggleSourceMode` set holds it); once it has ended, an edit may
- * be in the document, which only serializing all of it would show, so the tab stays unsaved and its
- * next save writes the document.
+ * editor still holds that document. A large one is filled in pieces, so there is no installed
+ * document to compare with: while the fill runs, the buffer is still the text (and the entry
+ * `toggleSourceMode` set holds it); once it has ended, the filled document is serialized and
+ * compared — once per return, after the write.
  */
 function returnedOutcome(
   tabId: string,
@@ -637,9 +640,9 @@ function returnedOutcome(
     installed?: PmNode;
   },
 ): SaveOutcome {
-  if (installed) return documentSaveOutcome(editor, tabId, installed);
+  if (installed) return documentSaveOutcome(editor, tabId, installed, written);
   if (isTabLoading(tabId)) {
     return bufferSaveOutcome(tabId, getSourceBuffer(tabId), written);
   }
-  return { cacheIsDisk: false, unchanged: false };
+  return documentSaveOutcome(editor, tabId, null, written);
 }

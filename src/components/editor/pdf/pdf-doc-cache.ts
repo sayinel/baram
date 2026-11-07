@@ -100,8 +100,9 @@ export function acquirePdfDocument(
 export async function withPdfDocument<T>(
   absPdfPath: string,
   fn: (doc: PDFDocumentProxy) => Promise<T>,
+  version = 0,
 ): Promise<T> {
-  const lease = acquirePdfDocument(absPdfPath);
+  const lease = acquirePdfDocument(absPdfPath, version);
   try {
     return await fn(await lease.promise);
   } finally {
@@ -117,10 +118,10 @@ let clock = 0;
 let loadDocument: PdfDocumentLoader = defaultLoadDocument;
 
 /**
- * 캐시 키. 버전이 0이면 경로 그대로다 — 그래야 버전을 모르는 호출부
- * (`withPdfDocument`, 영역 프리뷰)와 PdfPreview가 **같은 엔트리를 공유한다.**
- * 저장으로 버전이 올라가면 키가 달라져 새로 파싱하고, 낡은 엔트리는 아무도 붙잡지
- * 않으므로 LRU가 곧 가져간다.
+ * 캐시 키. PdfPreview 와 노트의 하이라이트 · 영역 미리보기(`withPdfDocument`)는 둘 다 그 파일의
+ * 뷰어 버전(`viewer-version.ts`)으로 빌리므로 **같은 엔트리를 공유한다.** 버전이 0 — 탭이 그 파일을
+ * 보인 적이 없거나 기록이 내려간 뒤 — 이면 경로 그대로다. 저장이나 다시 열기로 버전이 바뀌면 키가
+ * 달라져 새로 파싱하고, 낡은 엔트리는 아무도 붙잡지 않으므로 LRU가 곧 가져간다.
  *
  * NUL로 잇는다 — 경로에 나타날 수 없는 유일한 바이트라 `a?v=1`이라는 이름의 파일이
  * 다른 파일의 버전 1과 같은 키가 되는 일이 없다.

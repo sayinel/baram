@@ -10,9 +10,17 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { loadedTabId } from "./programmatic-update";
+import { serializeEditorState, serializeLiveDoc } from "./serialize-live-doc";
 
 /** What a save finds once its write has ended. */
 export interface SaveOutcome {
+  /**
+   * For a document save found unchanged: the document the tab holds now, which becomes the dirty
+   * baseline. It is the written document itself, or one that serializes to the same text — a change
+   * the dirty tracking folds into the baseline (a table's measured column widths, a syntax reveal)
+   * landed during the write, and the baseline keeps it as that folding would have.
+   */
+  baseline?: PMNode;
   /**
    * Whether the tab's `openFiles` entry stands for the file on disk, so the save sets it to what it
    * wrote. True while the tab's text is somewhere else that is live — its editor, or the source
@@ -46,7 +54,9 @@ export function bufferSaveOutcome(
 }
 
 /**
- * For a save that serialized `editor`'s document, `docAtWrite`, for `tabId`.
+ * For a save that serialized `editor`'s document for `tabId` and wrote it as `written`. `docAtWrite`
+ * is the document it serialized, or `null` when there is none to compare with (a document still
+ * being filled in pieces when the write began).
  *
  * "Still holds" is asked of where the tab's document is now, not of whether the tab is active. A
  * keep-alive editor keeps its tab's document while that tab is in the background, and the shared
@@ -55,22 +65,31 @@ export function bufferSaveOutcome(
  * tab-switch cache — the reading `viewHoldsTab` in `open-tab-surface.ts` also uses. With no surface
  * access registered (a file window, a test), only the shared-editor reading applies.
  *
- * `eq` rather than identity, so an edit typed and undone while the write ran counts as unchanged;
- * and `eq` rather than serializing again, which would run the serializer a second time on the
- * typing thread after every write a keystroke landed in. Unchanged subtrees are shared between the
- * two documents, and `eq` returns at a shared node without walking it. `eq` can say "changed" where
- * the markdown is the same (an attribute the serializer drops); the tab then stays unsaved until
- * its next save, which is the safe side.
+ * The same document, or one `eq` to it, is unchanged without serializing — `eq` returns at a node
+ * the two documents share, so it stops early when the document was not touched. A document that
+ * moved on is serialized again and compared with what was written: transactions the dirty tracking
+ * does not count as edits (`use-auto-save.ts` — a table's column widths measured on install, a
+ * syntax reveal on a caret move, a content sync, the journal caret) change the document without
+ * changing its text and schedule no save, so counting them as edits would leave the tab unsaved
+ * until the user next typed. That costs one more serialization after a write a keystroke landed in.
  */
 export function documentSaveOutcome(
   editor: Editor,
   tabId: string,
-  docAtWrite: PMNode,
+  docAtWrite: null | PMNode,
+  written: string,
 ): SaveOutcome {
   const held = heldDocument(editor, tabId);
+  if (held === null) return { cacheIsDisk: false, unchanged: false };
   const unchanged =
-    held !== null && (held.doc === docAtWrite || held.doc.eq(docAtWrite));
-  return { cacheIsDisk: unchanged || held?.live === true, unchanged };
+    held.doc === docAtWrite ||
+    (docAtWrite !== null && held.doc.eq(docAtWrite)) ||
+    held.serialize() === written;
+  return {
+    baseline: unchanged ? held.doc : undefined,
+    cacheIsDisk: unchanged || held.live,
+    unchanged,
+  };
 }
 
 /**
@@ -89,14 +108,23 @@ export function tabStillShows(tabId: string, filePath: string): boolean {
 function heldDocument(
   editor: Editor,
   tabId: string,
-): null | { doc: PMNode; live: boolean } {
+): null | { doc: PMNode; live: boolean; serialize: () => string } {
   const access = useEditorStore.getState().documentSurfaceAccess;
+  const live = {
+    doc: editor.state.doc,
+    live: true,
+    serialize: () => serializeLiveDoc(editor),
+  };
   const pooled = access?.keepaliveEditor(tabId) ?? null;
-  if (pooled !== null) {
-    return pooled === editor ? { doc: editor.state.doc, live: true } : null;
-  }
+  if (pooled !== null) return pooled === editor ? live : null;
   if ((access === null || access.editor === editor) && loadedTabId() === tabId)
-    return { doc: editor.state.doc, live: true };
+    return live;
   const cached = access?.editorStateCache.get(tabId);
-  return cached ? { doc: cached.doc, live: false } : null;
+  return cached
+    ? {
+        doc: cached.doc,
+        live: false,
+        serialize: () => serializeEditorState(cached),
+      }
+    : null;
 }

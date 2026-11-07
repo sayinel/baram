@@ -334,7 +334,7 @@ export function useFileOperations({
     const outcome = () =>
       fromBuffer
         ? bufferSaveOutcome(saveTab.id, getSourceBuffer(saveTab.id), md)
-        : documentSaveOutcome(editor, saveTab.id, docAtWrite!);
+        : documentSaveOutcome(editor, saveTab.id, docAtWrite!, md);
 
     if (saveTab.filePath) {
       // Existing file — save directly
@@ -354,8 +354,11 @@ export function useFileOperations({
             // ‼️ §82 "저장 안 됨"의 답은 두 곳에 산다. `isDirty`만 내리면 소스 모드로 고친
             // 탭은 저장한 뒤에도 계속 점이 켜져 있고, 닫을 때마다 확인창이 뜬다 — 방금
             // 디스크에 쓴 바로 그 내용을 두고. `md` 자체가 그 버퍼에서 나왔다(위 `fromBuffer`
-            // 갈래).
-            useEditorStore.getState().markSourceEdited(saveTab.id, false);
+            // 갈래). 문서를 쓴 저장은 내리지 않는다 — 쓰는 사이 소스 모드로 들어가 친 글은 버퍼에만
+            // 있고, 문서가 그대로라는 답은 그 글에 대해 아무것도 말하지 않는다(§3.5, #798).
+            if (fromBuffer) {
+              useEditorStore.getState().markSourceEdited(saveTab.id, false);
+            }
           }
         }
         notifyFileSave(saveTab.filePath);
@@ -423,7 +426,7 @@ export function useFileOperations({
           ),
         }));
         // Same second half as the existing-file branch above.
-        if (clean)
+        if (clean && fromBuffer)
           useEditorStore.getState().markSourceEdited(saveTab.id, false);
       } catch (err) {
         logger.error("[App] Failed to save as:", err);
@@ -484,7 +487,7 @@ export function useFileOperations({
       // §3.5 Same rule as `handleSave`: only an unchanged document is clean (#798).
       const { cacheIsDisk, unchanged: clean } = fromBuffer
         ? bufferSaveOutcome(saveAsTab.id, getSourceBuffer(saveAsTab.id), md)
-        : documentSaveOutcome(editor, saveAsTab.id, docAtWrite!);
+        : documentSaveOutcome(editor, saveAsTab.id, docAtWrite!, md);
       // The tab's entry moves to the new path as in `handleSave`'s untitled branch. The old key —
       // the tab's id for an untitled tab, the old path for a file — is then released unless another
       // tab still shows it: the old file stays on disk, but no tab holds it, and the closed-tab

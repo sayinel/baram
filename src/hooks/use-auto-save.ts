@@ -144,10 +144,11 @@ export function useAutoSave(editor: Editor | null) {
         // write is ours whatever happened to the document since.
         useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
       }
-      const { cacheIsDisk, unchanged } = documentSaveOutcome(
+      const { baseline, cacheIsDisk, unchanged } = documentSaveOutcome(
         editor,
         pending.id,
         docAtWrite,
+        markdown,
       );
       // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
       // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
@@ -163,8 +164,9 @@ export function useAutoSave(editor: Editor | null) {
       // §3.5 쓰는 사이 사용자가 더 고쳤으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다.
       if (stillShown && unchanged) {
         markDirty(pending.id, false);
-        // The written doc becomes the new baseline for dirty detection.
-        updateOriginalDoc(pending.id, docAtWrite);
+        // The written doc becomes the new baseline for dirty detection — or the doc the tab holds
+        // now, when a change the dirty tracking folds landed during the write.
+        updateOriginalDoc(pending.id, baseline ?? docAtWrite);
       }
       // §56 If a journal entry's content changed, refresh the journal sidebars
       // (Memories One Line/Full) in real time instead of only on remount.

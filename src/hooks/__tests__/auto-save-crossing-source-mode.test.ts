@@ -25,6 +25,7 @@ import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
+  COLWIDTH_AUTO_INIT_META,
   getOriginalDoc,
   markContentLoaded,
 } from "../../utils/editor/programmatic-update";
@@ -86,6 +87,47 @@ function typeInSource(hook: Mounted, text: string) {
     hook.result.current.setSourceBuffer(TAB, text);
     useEditorStore.getState().markSourceEdited(TAB, true);
   });
+}
+
+/**
+ * What `createColResizePlugin` dispatches once it has measured a table — not an edit, and the
+ * widths it writes (`userResized: false`) are not serialized, so the text stays the same.
+ */
+function measureColumns() {
+  act(() => {
+    const { state } = editor;
+    const { tr } = state;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+        tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          colwidth: [120],
+          userResized: false,
+        });
+      }
+    });
+    expect(tr.docChanged).toBe(true);
+    tr.setMeta("addToHistory", false);
+    tr.setMeta(COLWIDTH_AUTO_INIT_META, true);
+    editor.view.dispatch(tr);
+  });
+}
+
+/** Holds the next write open until the returned function is called. */
+function holdNextWrite(): () => Promise<void> {
+  let finish: () => void = () => undefined;
+  writeFile.mockImplementationOnce(
+    () =>
+      new Promise<undefined>((resolve) => {
+        finish = () => resolve(undefined);
+      }),
+  );
+  return () =>
+    act(async () => {
+      finish();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 }
 
 function unsaved(): boolean {
@@ -345,6 +387,47 @@ describe("a tab that has been through source mode", () => {
 
     expect(written()).toEqual(["typed in source\n"]);
     expect(unsaved()).toBe(false);
+  });
+
+  // §3.5 (#798) 편집으로 세지 않는 트랜잭션(표 열 폭 측정 · 구문 펼침 · 내용 동기화)은 문서를 바꾸지만 글은
+  // 그대로이고 저장을 다시 걸지 않는다. 쓰기가 끝났을 때 그것을 "더 고쳤다" 로 읽으면 탭이 다음 입력까지 "저장 안
+  // 됨" 에 남는다. 돌아오는 길의 표는 설치 한 프레임 뒤 측정되므로, 한 프레임보다 긴 쓰기 안에 그것이 든다.
+  // 이것을 실패시키는 것: save-still-current.ts 의 `held.serialize() === written` 을 빼면(`eq` 만 보면) 깨진다.
+  it("has the tab saved when the table is measured while the save on the way back writes", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "| a |\n| - |\n| b |\n");
+    const finish = holdNextWrite();
+    toggle(hook);
+    await advance(0);
+    expect(written()).toEqual(["| a |\n| - |\n| b |\n"]);
+
+    measureColumns();
+    await finish();
+
+    expect(unsaved()).toBe(false);
+    // The baseline is the document the tab holds now, measured widths and all.
+    // 이것을 실패시키는 것: use-source-mode.ts 가 `judged.baseline` 대신 끼운 문서를 기준으로 두면 깨진다.
+    expect(getOriginalDoc(TAB)?.eq(editor.state.doc)).toBe(true);
+  });
+
+  // 이것을 실패시키는 것: 이 자리도 같은 `held.serialize() === written` 이다. 기준 문서 단정은 use-auto-save.ts 가
+  // `baseline` 대신 쓸 때의 문서를 기준으로 두면 깨진다 — 다음 편집을 되돌려도 측정한 열 폭 때문에 "저장 안 됨" 이 남는다.
+  it("has a WYSIWYG auto-save recorded when the table is measured while it writes", async () => {
+    editor.commands.setContent(
+      "<table><tbody><tr><th><p>a</p></th></tr><tr><td><p>b</p></td></tr></tbody></table><p>end</p>",
+    );
+    mount();
+    typeInDocument();
+    const finish = holdNextWrite();
+    await advance(DELAY);
+    expect(written()).toHaveLength(1);
+
+    measureColumns();
+    await finish();
+
+    expect(unsaved()).toBe(false);
+    expect(getOriginalDoc(TAB)?.eq(editor.state.doc)).toBe(true);
   });
 
   // 이것을 실패시키는 것: 숨은 문서의 변경을 세면 AI 채팅 Apply 뒤 표시가 남고 그것을 내릴 저장이 없다.

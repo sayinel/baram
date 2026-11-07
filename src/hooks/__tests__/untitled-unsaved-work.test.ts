@@ -1082,6 +1082,54 @@ describe("coming back from source mode", () => {
       );
     });
 
+    // §3.5 (#798) 채우는 동안에는 버퍼가 글이므로, 그 사이 끝난 저장은 저장됨을 기록한다.
+    // 이것을 실패시키는 것: use-source-mode.ts 의 `returnedOutcome` 에서 `isTabLoading` 갈래를 빼면 채우기 중의
+    // 부분 문서를 직렬화해 비교하게 되어 깨진다.
+    it("has the tab saved when its save ends while the document arrives", async () => {
+      useSettingsStore.setState({ autoSave: true });
+      const hook = inSourceMode(fileTab(), LARGE, true);
+
+      act(() => {
+        hook.result.current.toggleSourceMode();
+      });
+
+      await vi.waitFor(() =>
+        expect(writeFile).toHaveBeenCalledWith(PATH, LARGE),
+      );
+      expect(isTabLoading(ID)).toBe(true);
+      await vi.waitFor(() => expect(unsaved()).toBe(false));
+    });
+
+    // §3.5 (#798) 쓰기보다 채우기가 먼저 끝나면, 다 채운 문서를 직렬화해 쓴 글과 비교한다. 채운 뒤에는 아무것도
+    // 저장을 다시 걸지 않으므로, 비교하지 않고 "저장 안 됨" 으로 두면 다음 입력까지 그대로 남는다.
+    // 이것을 실패시키는 것: `returnedOutcome` 이 채운 뒤 `documentSaveOutcome(editor, tabId, null, written)` 대신
+    // "저장 안 됨" 을 돌려주면 깨진다.
+    it("has the tab saved when the document arrives before its save ends", async () => {
+      parse.held = false;
+      useSettingsStore.setState({ autoSave: true });
+      let finish: () => void = () => undefined;
+      writeFile.mockImplementationOnce(
+        () =>
+          new Promise<undefined>((resolve) => {
+            finish = () => resolve(undefined);
+          }),
+      );
+      const hook = inSourceMode(fileTab(), LARGE, true);
+
+      act(() => {
+        hook.result.current.toggleSourceMode();
+      });
+      await vi.waitFor(() => expect(loadedTabId()).toBe(ID));
+      expect(isTabLoading(ID)).toBe(false);
+      await act(async () => {
+        finish();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await vi.waitFor(() => expect(unsaved()).toBe(false));
+    });
+
     // 이것을 실패시키는 것: 표시를 지우지 않으면, 채우다가 떠났다 돌아온 파싱 틈의 Cmd+S 가 그대로 쓴다.
     it("does not read as installed until the document has arrived", () => {
       markContentLoaded(ID);

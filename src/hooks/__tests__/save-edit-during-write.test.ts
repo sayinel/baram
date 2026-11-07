@@ -536,6 +536,41 @@ describe("Cmd+S and Save As", () => {
     };
   }
 
+  // §3.5 (#798) 문서를 쓴 저장은 소스 모드의 표시를 내리지 않는다. 쓰는 사이 소스 모드로 들어가 친 글은 버퍼에만
+  // 있고, 문서가 그대로라는 답은 그 글에 대해 아무것도 말하지 않는다.
+  // 이것을 실패시키는 것: handleSave 의 파일 갈래에서 `if (fromBuffer)` 를 빼고 표시를 늘 내리면 깨진다.
+  it("Cmd+S of the document keeps the source mark of text typed in source mode during the write", async () => {
+    const ed = makeEditor();
+    setTabs(tab("m", "/v/note.md", false));
+    await startThen(
+      ed,
+      (h) => h.result.current.handleSave(),
+      () => {
+        useEditorStore.setState({ sourceModeTabs: ["m"] });
+        useEditorStore.getState().markSourceEdited("m", true);
+      },
+    );
+
+    expect(useEditorStore.getState().sourceEditedTabs).toEqual(["m"]);
+  });
+
+  // 이것을 실패시키는 것: handleSave 의 제목 없는 갈래에서 `clean && fromBuffer` 를 `clean` 으로 되돌리면 깨진다.
+  it("Cmd+S of an untitled tab's document keeps the source mark of text typed in source mode during the write", async () => {
+    const ed = makeEditor();
+    setTabs(tab("u", "", false), tab("a", "/v/a.md", false));
+    await startThen(
+      ed,
+      (h) => h.result.current.handleSave(),
+      () => {
+        useEditorStore.setState({ sourceModeTabs: ["u"] });
+        useEditorStore.getState().markSourceEdited("u", true);
+      },
+    );
+
+    expect(useEditorStore.getState().tabs[0].filePath).toBe("/v/chosen.md");
+    expect(useEditorStore.getState().sourceEditedTabs).toEqual(["u"]);
+  });
+
   // 이것을 실패시키는 것: handleSave 의 제목 없는 갈래에서 `tabStillShows(saveTab.id, "")` 관문을 빼면 닫힌
   // 탭을 위해 새 파일의 수정 시각과 원문이 생긴다.
   it("Cmd+S on an untitled tab closed during the write records nothing for the new file", async () => {

@@ -180,6 +180,8 @@ describe("appendCaptureToNotes — disk branch", () => {
   // ‼️ 모든 저장 경로가 하는 일이다(`use-auto-save.ts:115` 등). 빠뜨리면 워처가 우리
   // 쓰기를 **외부 변경**으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다.
   it("seeds the self-write baseline so the watcher does not call it external", async () => {
+    openTab({ id: "bg", isDirty: false });
+
     await appendCaptureToNotes({
       body: "x",
       editor: null,
@@ -190,6 +192,21 @@ describe("appendCaptureToNotes — disk branch", () => {
     expect(
       useFileStore.getState().getFileMtime(PATH)?.lastSaveMtime,
     ).toBeGreaterThan(0);
+  });
+
+  // §3.5 (#798) 워처는 탭이 보이는 파일만 보므로, 탭 없는 파일에는 기준선이 필요 없고 남기면 어떤 닫기로도
+  // 내려가지 않는다.
+  // 이것을 실패시키는 것: capture-append.ts 의 `tabs.some(...)` 관문을 빼면 기록이 생긴다.
+  it("leaves no mtime record for a file no tab shows", async () => {
+    await appendCaptureToNotes({
+      body: "x",
+      editor: null,
+      now: NOW,
+      targets: [TARGET],
+    });
+
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(useFileStore.getState().fileMtimes.has(PATH)).toBe(false);
   });
 });
 

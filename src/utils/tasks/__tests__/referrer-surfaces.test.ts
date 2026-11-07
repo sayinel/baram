@@ -131,9 +131,18 @@ describe("syncCleanSurfacesAfterReferrerRewrite", () => {
   });
 
   it("ignores tabs of other files", () => {
-    tabs({ id: "t1", path: "/vault/other.md", dirty: true });
+    tabs({ id: "t1" }, { id: "t2", path: "/vault/other.md", dirty: true });
     expect(syncCleanSurfacesAfterReferrerRewrite(PATH, "new")).toBe(true);
     expect(setFileContent).toHaveBeenCalledWith(PATH, "new");
-    expect(patchEditorContent).not.toHaveBeenCalled();
+    expect(patchEditorContent).toHaveBeenCalledTimes(1);
+  });
+
+  // §3.5 (#798) 호출부는 `openFiles` 를 본 뒤 파일을 읽는다. 그 읽기 사이 탭이 닫혔으면 원문을 되살리지 않는다 —
+  // 어떤 닫기로도 내려가지 않고, watcher 가 그 파일을 열린 것으로 본다.
+  // 이것을 실패시키는 것: sync-open-surfaces.ts 의 `tabs.length > 0` 관문을 빼면 원문이 다시 들어간다.
+  it("does not record the text of a file no tab shows", () => {
+    tabs({ id: "t2", path: "/vault/other.md" });
+    expect(syncCleanSurfacesAfterReferrerRewrite(PATH, "new")).toBe(true);
+    expect(setFileContent).not.toHaveBeenCalled();
   });
 });

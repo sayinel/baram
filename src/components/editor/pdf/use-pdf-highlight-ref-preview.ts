@@ -126,6 +126,11 @@ export function usePdfHighlightRefPreview(
         return;
       }
 
+      // §3.5 The file's viewer version, as PdfPreview borrows it, so an open PDF tab and this
+      // preview share one parsed document (#798).
+      const version =
+        useFileStore.getState().fileMtimes.get(resolved.absPdfPath)
+          ?.viewerVersion ?? 0;
       const rendered = await withPdfDocument(
         resolved.absPdfPath,
         async (doc) => {
@@ -192,6 +197,7 @@ export function usePdfHighlightRefPreview(
           writeAreaPreview(key, src);
           return { height: layout.cssHeight, src, width: layout.cssWidth };
         },
+        version,
       );
 
       if (cancelled) return;

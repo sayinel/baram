@@ -177,7 +177,9 @@ export function syncCleanSurfacesAfterReferrerRewrite(
     );
     return false;
   }
-  useFileStore.getState().setFileContent(path, content);
+  // §3.5 Only for a file a tab shows (#798), as in `syncOpenSurfacesAfterFileRewrite`. The callers
+  // checked `openFiles` before reading the file, and a tab closed during that read is gone now.
+  if (tabs.length > 0) useFileStore.getState().setFileContent(path, content);
   const access = store.documentSurfaceAccess;
   for (const tab of tabs) {
     // A source-mode tab's authoritative text is its CodeMirror buffer; clean,
