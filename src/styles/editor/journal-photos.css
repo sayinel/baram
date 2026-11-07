@@ -1,0 +1,60 @@
+/* §56f journal-photos block — document rendering, so exports carry it
+   (export-editor-css.ts). The classes are the block's own, so no rule carries `.tiptap`. */
+
+.journal-photos-grid {
+  display: grid;
+  gap: var(--space-1);
+  overflow-x: auto;
+}
+
+/* One row of 80px cells, however many photos it holds. */
+.journal-photos-strip {
+  grid-auto-columns: 80px;
+  grid-auto-flow: column;
+}
+
+/* The cell holds its square before the thumbnail exists (issue 793): no image is
+   mounted until then. One step off the block's own `--color-bg-subtle`, which would hide
+   the square against it. */
+.journal-photos-cell {
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: var(--color-bg-hover);
+  border-radius: var(--radius-default);
+}
+
+/* An exported cell whose photo could not be read: its name, not a broken image. */
+.journal-photos-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-1);
+  overflow: hidden;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: center;
+  word-break: break-all;
+}
+
+.journal-photos-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A PDF cannot scroll: a strip wider than the page loses the photos past its edge (in
+   Chrome's print, 8 of 40 cells stayed whole), so it wraps into rows. A row of cells that
+   hold only names has no image to keep it whole, and Chrome split such a row across two
+   pages, so a cell is told not to break. */
+@media print {
+  .journal-photos-strip {
+    grid-template-columns: repeat(auto-fill, 80px);
+    grid-auto-flow: row;
+  }
+
+  .journal-photos-cell {
+    break-inside: avoid;
+  }
+}

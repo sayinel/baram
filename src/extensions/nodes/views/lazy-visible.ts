@@ -53,6 +53,9 @@ function getSharedObserver(): IntersectionObserver {
 const mountQueue: Array<[Element, () => void]> = [];
 let drainScheduled = false;
 
+/** Registered `onScreenOnly`: `flushPendingVisibility` leaves these to the viewport. */
+const leftToViewport = new WeakSet<Element>();
+
 /** Expose the mount queue length for test assertions. */
 export function _mountQueueLength(): number {
   return mountQueue.length;
@@ -94,11 +97,14 @@ export function _resetForTest(): void {
  * caller has to wait for the result separately.
  *
  * `root` restricts the flush to elements INSIDE it. ‼️ Not optional in spirit:
- * this queue is app-wide, and Journal's photo tiles register on it too
- * (components/journal/use-photo-thumb.ts). Without the filter, an export would
- * spend its wake budget on thumbnails belonging to a retained Journal tab —
- * firing the very IPC stampede the queue exists to spread out, while the
+ * this queue is app-wide, so a retained tab's blocks and Journal's video tiles
+ * (`useVisibleOnce` in components/journal/use-photo-thumb.ts) wait on it too.
+ * Without the filter, an export would spend its wake budget on them while the
  * document's own blocks stay unmounted.
+ *
+ * ‼️ "Everything" stops at what was registered `onScreenOnly` (see
+ * `onFirstVisible`), inside `root` as well. Those stay on the observer or the
+ * queue for the viewport to fire, and do not count towards `limit` or the result.
  *
  * `limit` caps how many callbacks run in this call, and exists because the work
  * is synchronous: a document with hundreds of code blocks would build hundreds
@@ -111,7 +117,8 @@ export function flushPendingVisibility(
   limit = Number.POSITIVE_INFINITY,
   root?: ParentNode,
 ): number {
-  const wanted = (el: Element) => !root || root.contains(el);
+  const wanted = (el: Element) =>
+    !leftToViewport.has(el) && (!root || root.contains(el));
 
   // Already-intersected work first — it was queued because it is nearest the
   // viewport, and the queue's own order is meaningful.
@@ -164,13 +171,25 @@ export function flushPendingVisibility(
  * Pre-fires 200px early (rootMargin on the shared observer).
  * Degrades to immediate invocation when IntersectionObserver is unavailable.
  * Returns a disposer that removes the element from the queue/observer.
+ *
+ * `onScreenOnly` is for work an export must not start: it reaches the same
+ * result some other way, so firing it would only add cost. A journal-photos cell
+ * is the case — the settle loop (`settleHeavyBlocks`) would otherwise wake it,
+ * and queue one thumbnail request per cell at a backend that decodes two at a
+ * time, while `embedJournalPhotos` fills the clone's cells from their source.
  */
-export function onFirstVisible(el: HTMLElement, cb: () => void): () => void {
+export function onFirstVisible(
+  el: HTMLElement,
+  cb: () => void,
+  options: { onScreenOnly?: boolean } = {},
+): () => void {
   if (typeof IntersectionObserver === "undefined") {
     cb();
     return () => {};
   }
 
+  if (options.onScreenOnly) leftToViewport.add(el);
+  else leftToViewport.delete(el);
   elementMap.set(el, cb);
   getSharedObserver().observe(el);
 

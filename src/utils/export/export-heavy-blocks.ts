@@ -1,8 +1,9 @@
 // §5.12 export — wake every lazily-mounted heavy block and wait for it to land.
 //
 // Code blocks, math (inline and block), Mermaid diagrams and plugin-rendered
-// blocks (§394) all defer their real content until they near the viewport
-// (extensions/nodes/views/lazy-visible.ts).
+// blocks (§394) all defer their real content until they near the viewport; a
+// journal-photos block lists its photos asynchronously and is waited on until
+// that list is known (extensions/nodes/views/lazy-visible.ts).
 // An export reads the WHOLE document from a viewport that never moves, so
 // without this the capture cloned whatever placeholder each unvisited block
 // happened to be showing.
@@ -14,6 +15,7 @@
 import { flushPendingVisibility } from "../../extensions/nodes/views/lazy-visible";
 import { drawDuePluginBlocks } from "../../plugins/rendered/due-redraws";
 import { flushInvalidationNotices } from "../../plugins/rendered/render-queue";
+import { listingBlocksIn } from "../journal/journal-photo-cells";
 import { isAuthoredMarkup } from "./export-authored-markup";
 
 /**
@@ -95,6 +97,14 @@ export function pendingHeavyBlocks(root: ParentNode): PendingBlock[] {
   check(".math-block", "math-block", mathBlockSettled);
   check(".math-inline", "math-inline", mathInlineSettled);
   check(".mermaid-block", "mermaid", mermaidSettled);
+  // A journal-photos block (issue 793) is pending until its photo list is known — empty or
+  // not. Its cells are NOT waited on: they load lazily, and waking hundreds of them would
+  // put hundreds of thumbnail requests in front of a backend that decodes two at a time.
+  // The export embeds them from their source instead (`embedJournalPhotos`). Read from the
+  // block's registry, not an attribute a note could also write (journal-photo-cells.ts).
+  for (const el of listingBlocksIn(root)) {
+    pending.push({ el, kind: "journal-photos" });
+  }
   check("[data-plugin-block]", "plugin", pluginBlockSettled);
   return pending;
 }

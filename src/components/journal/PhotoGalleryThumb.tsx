@@ -19,6 +19,7 @@ import type { PhotoGalleryEntry } from "../../utils/journal/journal-photo";
 
 import {
   formatClipDuration,
+  GALLERY_THUMB_PX,
   PREVIEW_MAX_PX,
   resolveThumbUrl,
 } from "../../utils/journal/photo-thumbnail";
@@ -46,7 +47,12 @@ export const PhotoGalleryThumb = memo(function PhotoGalleryThumb({
       onMouseEnter={
         isVideo
           ? undefined
-          : () => void resolveThumbUrl(photo.absolutePath, PREVIEW_MAX_PX)
+          : () =>
+              void resolveThumbUrl(
+                photo.absolutePath,
+                PREVIEW_MAX_PX,
+                photo.revision,
+              )
       }
       ref={holderRef}
       title={photo.caption || photo.filename}
@@ -120,7 +126,12 @@ function PhotoThumb({
   holderRef: React.RefObject<HTMLElement | null>;
   photo: PhotoGalleryEntry;
 }) {
-  const thumb = useVisibleThumb(holderRef, photo.absolutePath);
+  const thumb = useVisibleThumb(
+    holderRef,
+    photo.absolutePath,
+    GALLERY_THUMB_PX,
+    photo.revision,
+  );
   if (!thumb) return null;
 
   return (

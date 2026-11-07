@@ -31,6 +31,7 @@
 
 import blocksCSS from "../../styles/editor/blocks.css?raw";
 import htmlBlockCSS from "../../styles/editor/html-block.css?raw";
+import journalPhotosCSS from "../../styles/editor/journal-photos.css?raw";
 import listsCSS from "../../styles/editor/lists.css?raw";
 import mathCSS from "../../styles/editor/math.css?raw";
 import mediaBlockCSS from "../../styles/editor/media-block.css?raw";
@@ -159,6 +160,8 @@ const EDITOR_STYLESHEETS = [
   videoCSS,
   svgBlockCSS,
   htmlBlockCSS,
+  // Unscoped too: the classes are the block's own, and the export keeps them.
+  journalPhotosCSS,
   linksCSS,
 ];
 

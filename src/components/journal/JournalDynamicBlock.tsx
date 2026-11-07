@@ -1,15 +1,20 @@
 // §56f Journal Dynamic Code Block — renders journal-list / journal-photos
 import { useCallback, useEffect, useState } from "react";
 
-import { convertFileSrc } from "@tauri-apps/api/core";
-
 import { INTL_LOCALES } from "../../i18n";
 import { useTranslation } from "../../i18n/useTranslation";
 import { listDir, readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { trackListingBlock } from "../../utils/journal/journal-photo-cells";
+import {
+  GALLERY_THUMB_PX,
+  journalGridThumbPx,
+  sourceRevision,
+} from "../../utils/journal/photo-thumbnail";
 import { basename } from "../../utils/path-utils";
+import { JournalPhotoCell } from "./JournalPhotoCell";
 
 export type JournalBlockLanguage = "journal-list" | "journal-photos";
 
@@ -33,6 +38,7 @@ interface PhotoEntry {
   absolutePath: string;
   date: string;
   filename: string;
+  revision: string;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -246,6 +252,7 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
               filename: file.name,
               absolutePath: `${dirPath}/${file.name}`,
               date: fileDate,
+              revision: sourceRevision(file),
             });
           }
         }
@@ -259,9 +266,16 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
     })();
   }, [rootPath, journalDirectory, params.range]);
 
+  // An export waits while the list is unknown (`pendingHeavyBlocks` reads
+  // `trackListingBlock`): before the listing lands there are no cells, and the block would
+  // export as its loading line.
   if (loading)
     return (
-      <div aria-live="polite" className="journal-block-loading">
+      <div
+        aria-live="polite"
+        className="journal-block-loading"
+        ref={trackListingBlock}
+      >
         {t("journal.loading")}
       </div>
     );
@@ -270,23 +284,25 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
       <div className="journal-block-empty">{t("journal.block.empty")}</div>
     );
 
-  const gridStyle =
-    layout === "strip"
-      ? {
-          gridTemplateColumns: `repeat(${photos.length}, 80px)`,
-          overflowX: "auto" as const,
-        }
-      : { gridTemplateColumns: `repeat(${columns}, 1fr)` };
-
+  const strip = layout === "strip";
   return (
-    <div className="journal-photos-grid" style={gridStyle}>
+    <div
+      className={
+        strip
+          ? "journal-photos-grid journal-photos-strip"
+          : "journal-photos-grid"
+      }
+      style={
+        strip ? undefined : { gridTemplateColumns: `repeat(${columns}, 1fr)` }
+      }
+    >
       {photos.map((photo) => (
-        <img
+        <JournalPhotoCell
+          absolutePath={photo.absolutePath}
           alt={photo.filename}
-          className="journal-photos-thumb"
           key={photo.absolutePath}
-          loading="lazy"
-          src={convertFileSrc(photo.absolutePath)}
+          maxPx={strip ? GALLERY_THUMB_PX : journalGridThumbPx(columns)}
+          revision={photo.revision}
           title={`${photo.date} — ${photo.filename}`}
         />
       ))}
