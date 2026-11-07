@@ -52,6 +52,7 @@ import {
   isTabLoading,
   loadedTabId,
 } from "../../utils/editor/programmatic-update";
+import { setTableColumnResizeFromUser } from "../../utils/editor/table-width-clear";
 import {
   syncCleanSurfacesAfterReferrerRewrite,
   syncOpenSurfacesAfterDiskWrite,
@@ -182,7 +183,11 @@ beforeEach(() => {
   parse.gate = null;
   editor = makeTestEditor("<p></p>");
   pool = createKeepalivePool();
-  useSettingsStore.setState({ autoSave: true, autoSaveDelay: 50 });
+  useSettingsStore.setState({
+    autoSave: true,
+    autoSaveDelay: 50,
+    tableColumnResize: true,
+  });
   disk.set(NOTE, NOTE_TEXT);
   disk.set(COPY, COPY_TEXT);
   disk.set(OTHER, OTHER_TEXT);
@@ -593,5 +598,55 @@ describe("leaving a tab takes its name away", () => {
     expect(editor.state.doc.textContent).toContain("NOTE");
     expect(editor.state.doc.textContent).not.toContain("rewritten");
     expect(stale()).toEqual([]);
+  });
+});
+
+describe("turning the column resize option off around a switch", () => {
+  const WIDTHS =
+    "<!-- colwidths:200,300 -->\n\n| NOTE | B |\n| - | - |\n| 1 | 2 |\n";
+
+  // What fails this: limiting the clear to the active tab's view. The tab's cache is older than the
+  // view, so the switch caches the view's widths over the cleared text.
+  it("in the gap before the switch runs: the outgoing tab ends with no widths", async () => {
+    setText(NOTE, WIDTHS);
+    const source = mountApp();
+    await installed("t1");
+
+    useEditorStore.setState({ activeTabId: "t3" });
+    setTableColumnResizeFromUser(false);
+    await installed("t3");
+
+    const cached = source.result.current.editorStateCache.current.get("t1")!;
+    let marked = false;
+    cached.doc.descendants((node) => {
+      if (node.attrs.userResized) marked = true;
+      return true;
+    });
+    expect(marked).toBe(false);
+    const text = useFileStore.getState().openFiles.get(NOTE)!;
+    expect(text).toContain("NOTE");
+    expect(text).not.toContain("colwidths");
+    expect(written).toEqual([]);
+  });
+
+  // What fails this: the name standing on the tab behind a non-markdown tab. The rewrite goes into
+  // the view, and the clear reads the older cache back over the text.
+  it("after a referrer rewrite behind a non-markdown tab: the text keeps the rewrite", async () => {
+    setText(NOTE, WIDTHS);
+    mountApp();
+    await installed("t1");
+    show("t2");
+    await settle(10);
+    const rewritten = WIDTHS + "\n[[new-name]]\n";
+    disk.set(NOTE, rewritten);
+    act(() => {
+      syncCleanSurfacesAfterReferrerRewrite(NOTE, rewritten);
+    });
+
+    act(() => setTableColumnResizeFromUser(false));
+
+    const text = useFileStore.getState().openFiles.get(NOTE)!;
+    expect(text).toContain("[[new-name]]");
+    expect(text).not.toContain("colwidths");
   });
 });

@@ -472,7 +472,7 @@ describe("each place a tab's document can be", () => {
       ["in the cached restore's window, with no load flag", () => {}],
     ])("%s: is cleared in its cache, not in the view", (_name, arrange) => {
       const outgoing = holdInSharedView("t2", markedState());
-      vi.mocked(loadedTabId).mockReturnValue("t1");
+      vi.mocked(loadedTabId).mockReturnValue(null);
       arrange();
       const own = outgoing.state;
       cache.set("t1", own);
@@ -488,15 +488,32 @@ describe("each place a tab's document can be", () => {
       expect(openFiles.get(pathOf("t1"))).toBe(S);
       expect(markDirty).toHaveBeenCalledWith("t1", true);
     });
+
+    // §39 Before the switch effect runs the name still stands, and the view does hold the tab. What
+    // fails this: limiting the clear to the active tab's view, since `saveOutgoingTab` then caches
+    // the view's widths over the cleared cache.
+    it("in the gap before the switch effect: is cleared in the view, without an event", () => {
+      const outgoing = holdInSharedView("t2", markedState());
+      vi.mocked(loadedTabId).mockReturnValue("t1");
+      cache.set("t1", outgoing.state);
+
+      clearTableWidthsInOpenTabs();
+
+      expect(outgoing.dispatched).toHaveLength(0);
+      expect(hasWidths(outgoing.state)).toBe(false);
+      expect(cache.get("t1")).toBe(outgoing.state);
+      expect(openFiles.get(pathOf("t1"))).toBe(S);
+      expect(markDirty).toHaveBeenCalledWith("t1", true);
+    });
   });
 
-  describe("a named tab that is not active, with another document in the shared view", () => {
+  describe("a tab that has been left, with another document in the shared view", () => {
     const OTHER =
       "<!-- colwidths:7,8 -->\n\n| Other | B |\n| - | - |\n| 1 | 2 |\n";
 
     function otherDocumentInSharedView(state: EditorState) {
       const other = holdInSharedView("t2", state);
-      vi.mocked(loadedTabId).mockReturnValue("t1");
+      vi.mocked(loadedTabId).mockReturnValue(null);
       return {
         before: other.state,
         other,

@@ -15,10 +15,7 @@ import type { CodeBlockInfo, PluginTrust } from "../types";
 import type { Editor } from "@tiptap/core";
 
 import { useEditorStore } from "../../stores/editor/editor";
-import {
-  isTabLoading,
-  loadedTabId,
-} from "../../utils/editor/programmatic-update";
+import { loadedTabId } from "../../utils/editor/programmatic-update";
 import { locateInContext } from "../locate-in-context";
 
 /**
@@ -44,16 +41,12 @@ export function codeBlockInfo(
 /**
  * The `filePath` of the tab whose document `editor` holds — `""` for an unsaved note, and for an
  * editor that is no tab's surface (the quick-capture dialog's, a test's — or any editor before
- * `useTabSwitching` publishes the map); `undefined` for the shared editor before any tab is
- * installed in it (`loadedTabId` is `null`), while the installed tab lives in a keep-alive editor,
- * while the active tab is loading into it, or once the installed tab is closed.
+ * `useTabSwitching` publishes the map); `undefined` for the shared editor while no tab is named
+ * (`loadedTabId` is `null`: before the first install, once a tab is left or closed, and so while
+ * the next tab loads) and while the named tab lives in a keep-alive editor.
  */
 function heldFilePath(editor: Editor): string | undefined {
-  const {
-    activeTabId,
-    documentSurfaceAccess: access,
-    tabs,
-  } = useEditorStore.getState();
+  const { documentSurfaceAccess: access, tabs } = useEditorStore.getState();
   if (access === null) return "";
   const pooled = tabs.find((tab) => access.keepaliveEditor(tab.id) === editor);
   if (pooled !== undefined) return pooled.filePath;
@@ -61,15 +54,5 @@ function heldFilePath(editor: Editor): string | undefined {
   const loaded = loadedTabId();
   if (loaded === null || access.keepaliveEditor(loaded) !== null)
     return undefined;
-  // A document at or over the keep-alive threshold loads into an editor of its own, acquired before
-  // the load is flagged (`load-tab-content.ts`), so the shared editor is the target only without one.
-  if (
-    activeTabId !== null &&
-    activeTabId !== loaded &&
-    isTabLoading(activeTabId) &&
-    access.keepaliveEditor(activeTabId) === null
-  ) {
-    return undefined;
-  }
   return tabs.find((tab) => tab.id === loaded)?.filePath;
 }

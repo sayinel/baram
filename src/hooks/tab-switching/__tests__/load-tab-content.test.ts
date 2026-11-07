@@ -1,5 +1,5 @@
-// §5.5 `loadedTabId` names the tab whose document the shared editor holds. A cold
-// load replaces that document with its first chunk well before `finishLoad` names
+// §39 The switch has taken the name off the tab it left, so a cold load starts with no tab
+// named. It replaces the shared document with its first chunk well before `finishLoad` names
 // the new tab, and a switch can cancel the load so that `finishLoad` never runs.
 import type { EditorTab } from "../../../stores/editor/editor";
 import type { TabSwitchContext } from "../types";
@@ -31,9 +31,9 @@ import { replaceEditorStateWithVim } from "../../../extensions/plugins/vim/repla
 import { mdastBlocksToPmNodes } from "../../../pipeline/md-to-pm";
 import { useEditorStore } from "../../../stores/editor/editor";
 import {
+  forgetLoadedTab,
   isTabLoading,
   loadedTabId,
-  markContentLoaded,
   setTabLoading,
 } from "../../../utils/editor/programmatic-update";
 import {
@@ -106,7 +106,8 @@ beforeEach(() => {
   );
   useEditorStore.setState({ activeTabId: "t2" });
   setTabLoading("t2", false);
-  markContentLoaded("t1");
+  const named = loadedTabId();
+  if (named !== null) forgetLoadedTab(named);
 });
 
 afterEach(() => {
@@ -114,14 +115,13 @@ afterEach(() => {
 });
 
 describe("loadedTabId through a cold load", () => {
-  it("into the shared editor: names no tab from the first chunk until finishLoad names the new one", async () => {
+  it("into the shared editor: names no tab until finishLoad names the new one", async () => {
     const shared = makeEditor();
     documentOf(FIRST_CHUNK_BLOCKS + 1);
 
     loadTabContent(context(shared), "t2", TAB, "");
     await parsed();
-    // Flagged, but the document has not been replaced: the view does hold t1.
-    expect(loadedTabId()).toBe("t1");
+    expect(loadedTabId()).toBeNull();
 
     vi.runOnlyPendingTimers();
 
@@ -137,7 +137,7 @@ describe("loadedTabId through a cold load", () => {
     expect(loadedTabId()).toBe("t2");
   });
 
-  it("into a keep-alive editor: goes on naming the outgoing tab, whose document the shared editor still holds", async () => {
+  it("into a keep-alive editor: names no tab until finishLoad names the new one", async () => {
     const shared = makeEditor();
     const pooled = makeEditor();
     documentOf(LARGE_DOC_BLOCK_THRESHOLD);
@@ -149,14 +149,14 @@ describe("loadedTabId through a cold load", () => {
     expect(vi.mocked(replaceEditorStateWithVim).mock.calls[0]![0]).toBe(
       pooled.view,
     );
-    expect(loadedTabId()).toBe("t1");
+    expect(loadedTabId()).toBeNull();
 
     finishLoad();
 
     expect(loadedTabId()).toBe("t2");
   });
 
-  it("cancelled before its first chunk: goes on naming the outgoing tab, because the document was never replaced", async () => {
+  it("cancelled before its first chunk: names no tab", async () => {
     const ctx = context(makeEditor());
     documentOf(FIRST_CHUNK_BLOCKS + 1);
 
@@ -167,6 +167,6 @@ describe("loadedTabId through a cold load", () => {
 
     expect(replaceEditorStateWithVim).not.toHaveBeenCalled();
     expect(isTabLoading("t2")).toBe(false);
-    expect(loadedTabId()).toBe("t1");
+    expect(loadedTabId()).toBeNull();
   });
 });

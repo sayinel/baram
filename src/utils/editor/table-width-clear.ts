@@ -7,7 +7,6 @@
 // edited one is: the active tab through the auto-save, a background tab through the
 // close and quit guard.
 import type { EditorTab } from "../../stores/editor/editor";
-import type { EditorView } from "@tiptap/pm/view";
 
 import { buildClearTableWidthsTransaction } from "../../extensions/nodes/plugins/table-col-resize";
 import { stripTableWidthComments } from "../../pipeline/convert-table-colwidths";
@@ -102,7 +101,7 @@ function clearTab(tab: EditorTab, draining: boolean): void {
   if (!isFileTab(tab) || !isMarkdownFile(tab.filePath)) return;
   const tabId = tab.id;
   const textKey = tab.filePath || tabId;
-  const surface = locateOpenTabSurface(tabId, viewToClearThrough(tabId));
+  const surface = locateOpenTabSurface(tabId, liveViewOf(tabId));
   switch (surface.kind) {
     case "source":
       clearSourceBuffer(tabId, textKey, surface.access);
@@ -169,36 +168,4 @@ function releaseTabWatchIfIdle(): void {
   if (pendingClears.size > 0) return;
   stopWatchingTabs?.();
   stopWatchingTabs = null;
-}
-
-/**
- * The view to clear a tab through. The shared view only for the active tab:
- * `loadedTabId` records the last announced install, and some installs replace the
- * shared document without touching it, so for a tab not on screen that view may hold
- * a different document, which the clear would file under this tab. Such a tab goes to
- * its cache, where `saveOutgoingTab` put it as it left, and then to its text. A pooled
- * editor owns its document, so its view is used whichever tab is active.
- *
- * What this does not protect:
- * - A toggle in the instant between the active tab flipping and `saveOutgoingTab` can
- *   leave that tab's widths in place, because that save caches the view's state over
- *   the cleared one, and a dirty mark with nothing to save. Nothing is written to
- *   another file.
- * - The active tab can be named by `loadedTabId` while the shared view holds another
- *   document: a non-markdown tab's reload installs into the shared editor without
- *   touching the name (`use-editor-effects.ts`), and returning to the tab installs
- *   nothing when its text is gone (`useTabSwitching`). A reload that wiped the tab's
- *   cache makes returning a cold load (`loadTabContent`): the name is dropped only when
- *   the first parsed chunk is applied, so during the parse the tab is named over the
- *   other document, and the auto-save can write it if the parse outlasts its delay
- *   (measured with real hooks). The clear then dispatches into that other document, as
- *   any keystroke there would, and the auto-save writes it to this tab's file. That
- *   state is a separate defect, and this module does not fix it.
- */
-function viewToClearThrough(tabId: string): EditorView | undefined {
-  const { activeTabId, documentSurfaceAccess: access } =
-    useEditorStore.getState();
-  return tabId === activeTabId || access?.keepaliveEditor(tabId)
-    ? liveViewOf(tabId)
-    : undefined;
 }

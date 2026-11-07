@@ -12,11 +12,7 @@ import { parseMdastAsync } from "../../pipeline/parse-async";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFoldStore } from "../../stores/editor/fold";
 import { logCacheEvent, timePhase } from "../../utils/editor/perf-trace";
-import {
-  forgetLoadedTab,
-  loadedTabId,
-  setTabLoading,
-} from "../../utils/editor/programmatic-update";
+import { setTabLoading } from "../../utils/editor/programmatic-update";
 import {
   appendChunksProgressively,
   chunkBlocks,
@@ -153,15 +149,6 @@ export function loadTabContent(
           setTabLoading(activeTabId, false);
           ctx.setIsParsing(false);
           return;
-        }
-        // §5.5 The shared editor is about to stop holding the document `loadedTabId` names.
-        // `finishLoad` names this tab only after the last chunk, and not at all if a switch
-        // cancels the append first. Left standing, the old name would read this document as the
-        // outgoing tab's, and the next write would file it there. A keep-alive target leaves the
-        // shared editor's document where it is, so the name stays true.
-        if (targetEditor === ctx.editor) {
-          const outgoing = loadedTabId();
-          if (outgoing !== null) forgetLoadedTab(outgoing);
         }
         timePhase("updateState(first chunk)", () =>
           // §perf-large-file C4: apply with the editor's CURRENT plugins
