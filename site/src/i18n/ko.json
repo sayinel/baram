@@ -17,6 +17,8 @@
   "faq.title": "자주 묻는 질문",
   "features.ai.d": "인라인 AI 편집(Cmd+J), Ghost Text 자동완성, AI 챗 — Claude, OpenAI, Gemini, 로컬 Ollama를 지원합니다.",
   "features.ai.t": "AI 네이티브 편집",
+  "features.cli.d": "macOS와 Linux에서는 터미널에서 볼트에 묻습니다 — 노트를 나열하고 읽고 검색하며, 링크를 따라가고, 태그와 태스크를 나열합니다. Claude Code 같은 AI 클라이언트가 MCP로 같은 일을 하게 할 수도 있습니다. 모든 명령은 읽기만 합니다.",
+  "features.cli.t": "명령줄과 MCP",
   "features.journal.d": "캘린더·사진·스트릭을 갖춘 일기 중심의 데일리 노트 공간과, 캡처의 태그가 곧 주소가 되는 원자적 노트 공간 — 노트 이름으로 태그하면 그 노트 안에 바로 쌓입니다.",
   "features.journal.t": "저널 & 제텔카스텐",
   "features.light.d": "~10MB 바이너리, 즉시 시작, 낮은 메모리. 바람처럼 가벼운 데스크톱 앱.",
