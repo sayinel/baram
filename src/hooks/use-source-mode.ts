@@ -33,8 +33,8 @@ import {
 } from "../utils/editor/cursor-mapper";
 import { focusEditorView } from "../utils/editor/focus-editor-view";
 import {
+  editorHoldsWholeDocument,
   forgetLoadedTab,
-  isTabLoading,
   loadedTabId,
   markContentLoaded,
   setTabLoading,
@@ -218,8 +218,7 @@ export function useSourceMode({
       // The buffer is about to become the truth, and it is read from this editor. While the
       // document is still being filled, or the tab's document is not installed yet, that would
       // be part of the document, or another tab's.
-      if (isTabLoading(currentTab.id) || loadedTabId() !== currentTab.id)
-        return;
+      if (!editorHoldsWholeDocument(currentTab.id)) return;
       // WYSIWYG → Source: collapse any active syntax reveal expansion first
       // (SyntaxReveal replaces marks with literal delimiter text, which would
       // cause remark-stringify to escape angle brackets like \<u>)

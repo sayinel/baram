@@ -97,6 +97,15 @@ export function clearOriginalDoc(tabId: string): void {
 }
 
 /**
+ * Whether an editor holds this tab's whole document now: installed, and not partway through a
+ * progressive load, which holds only its first blocks. Ask this before reading the document as the
+ * tab's or writing into it.
+ */
+export function editorHoldsWholeDocument(tabId: string): boolean {
+  return !loadingTabs.has(tabId) && lastLoadedTabId === tabId;
+}
+
+/**
  * The editor no longer holds this tab's document, so `loadedTabId` must stop saying it does. Left
  * standing, a tab opened again under the same id reads as installed before its load has begun, and
  * saving it would write whatever the editor holds now (`""` once the last tab has closed).
