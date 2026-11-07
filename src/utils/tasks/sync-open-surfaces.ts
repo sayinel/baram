@@ -20,10 +20,7 @@ import type { Editor } from "@tiptap/react";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { patchEditorContent } from "../editor/patch-editor-content";
-import {
-  editorHoldsWholeDocument,
-  loadedTabId,
-} from "../editor/programmatic-update";
+import { editorHoldsWholeDocument } from "../editor/programmatic-update";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { logger } from "../logger";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
@@ -186,7 +183,7 @@ export function syncCleanSurfacesAfterReferrerRewrite(
     }
     const holder =
       access?.keepaliveEditor(tab.id) ??
-      (loadedTabId() === tab.id ? access?.editor : null);
+      (editorHoldsWholeDocument(tab.id) ? access?.editor : null);
     if (holder && !holder.isDestroyed) {
       patchEditorContent(holder.view, content);
     } else {
