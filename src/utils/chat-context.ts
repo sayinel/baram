@@ -194,8 +194,9 @@ function collectAllFiles(entries: FileEntry[], result: string[]): void {
 
 /**
  * §3.5 An `@file:` whose text the app does not hold is read from disk (#798). A closed file's text is
- * released with its tab, and the reference picker offers every file in the tree, so a file closed
- * earlier, or never opened, would otherwise go in as its path alone. A failed read leaves that
+ * released with its tab, and the reference picker offers any file in the tree that matches what is
+ * typed (`ReferenceAutocomplete.tsx`), so a file closed earlier, or never opened, would otherwise go in
+ * as its path alone. A failed read leaves that
  * placeholder. `@folder:` is left as it is: it puts in the text of
  * the files tabs show and lists the rest by path, rather than reading a whole folder into the prompt.
  */

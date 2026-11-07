@@ -1,7 +1,7 @@
 // §3.5 AI 채팅의 `@file:` 은 앱이 들고 있지 않은 파일을 디스크에서 읽는다 (#798).
 //
-// `openFiles` 는 탭이 보이는 파일만 든다 — 닫은 파일의 원문은 탭과 함께 내려간다. 참조 선택기는 트리의 모든
-// 파일을 내놓으므로, 앞서 닫았거나 연 적 없는 파일이 경로만으로 들어가지 않으려면 디스크에서 읽어야 한다.
+// 닫은 파일의 원문은 탭과 함께 `openFiles` 에서 내려간다. 참조 선택기는 트리의 어느 파일이든 후보로 내놓으므로, 앞서
+// 닫았거나 연 적 없는 파일이 경로만으로 들어가지 않으려면 디스크에서 읽어야 한다.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readFile = vi.hoisted(() => vi.fn(async (_path: string) => "from disk"));

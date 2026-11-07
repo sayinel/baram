@@ -194,8 +194,8 @@ describe("appendCaptureToNotes — disk branch", () => {
     ).toBeGreaterThan(0);
   });
 
-  // §3.5 (#798) 워처는 탭이 보이는 파일만 보므로, 탭 없는 파일에는 기준선이 필요 없고 남기면 어떤 닫기로도
-  // 내려가지 않는다.
+  // §3.5 (#798) 워처가 보는 것은 `openFiles` 에 든 파일이고, 파일은 탭이 그것을 보일 때 거기 든다. 탭 없는 파일에는
+  // 기준선이 필요 없고, 남기면 어떤 닫기로도 내려가지 않는다.
   // 이것을 실패시키는 것: capture-append.ts 의 `tabs.some(...)` 관문을 빼면 기록이 생긴다.
   it("leaves no mtime record for a file no tab shows", async () => {
     await appendCaptureToNotes({
