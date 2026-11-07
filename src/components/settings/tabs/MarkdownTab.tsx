@@ -5,6 +5,7 @@ import { useShallow } from "zustand/shallow";
 import registry from "../../../extensions/registry.json";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { setTableColumnResizeFromUser } from "../../../utils/editor/table-width-clear";
 import {
   SettingsRow,
   SettingsSectionHeader,
@@ -49,6 +50,7 @@ export function MarkdownTab() {
     setSmartPunctuation,
     symbolSuggest,
     setSymbolSuggest,
+    tableColumnResize,
   } = useSettingsStore(
     useShallow((s) => ({
       inlineMath: s.inlineMath,
@@ -61,6 +63,7 @@ export function MarkdownTab() {
       setSmartPunctuation: s.setSmartPunctuation,
       symbolSuggest: s.symbolSuggest,
       setSymbolSuggest: s.setSymbolSuggest,
+      tableColumnResize: s.tableColumnResize,
     })),
   );
 
@@ -106,6 +109,18 @@ export function MarkdownTab() {
         label={t("settings.markdown.symbolSuggest")}
       >
         <ToggleSwitch checked={symbolSuggest} onChange={setSymbolSuggest} />
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.markdown.tables")} />
+
+      <SettingsRow
+        description={t("settings.markdown.tableColumnResize.desc")}
+        label={t("settings.markdown.tableColumnResize")}
+      >
+        <ToggleSwitch
+          checked={tableColumnResize}
+          onChange={setTableColumnResizeFromUser}
+        />
       </SettingsRow>
 
       {/* Extension Settings (merged from ExtensionsTab) */}

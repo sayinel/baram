@@ -335,6 +335,30 @@
   background: var(--color-border-default);
 }
 
+/* §395 spec 0074 D16 — a plugin's item: its label, then the plugin's name muted, the way the editor menu
+   draws one (dialogs/context-menu.css, §391 D5). */
+.file-tree-context-menu-plugin-item {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  max-width: 360px;
+}
+
+.file-tree-context-menu-plugin-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-context-menu-plugin-name {
+  flex-shrink: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 /* §4.5 File tree header — sort dropdown */
 .file-tree-sort {
   position: relative;

@@ -296,6 +296,20 @@ export interface FileDecorationUpdate {
   path: string;
 }
 
+/**
+ * §395 One item the file tree's right-click menu hands a trusted plugin's command (spec 0074 D16): the
+ * absolute path as the tree has it, and whether it is a folder. The handler's first argument is an array of
+ * these — every selected item, in the selection's order (click order for Cmd/Ctrl+click, tree order for a
+ * Shift range), when the user right-clicked inside a selection of two or more, else the row clicked. Not
+ * folded: a folder and a file inside it can both be there. Over 1,000 targets the menu disables the
+ * plugin's items. The argument is absent when the command starts any other way (palette, shortcut, status
+ * bar), and another plugin's `commands.execute` can pass anything — check it before use.
+ */
+export interface FileMenuTarget {
+  isDir: boolean;
+  path: string;
+}
+
 export interface FilesAPI {
   listDir(path: string): Promise<string[]>;
   readFile(path: string): Promise<string>;
@@ -559,6 +573,21 @@ export interface PluginContributions {
   codeBlocks?: Array<{ lang: string }>;
   /** At most 50 (spec 0070 D11). */
   commands?: Array<{ id: string; palette?: boolean; title: string }>;
+  /**
+   * §395 Items at the foot of the file tree's right-click menu on a file or folder row, at most 5 (spec
+   * 0074 D16). Needs the `filetree` capability; either tier may declare them (a trusted plugin also needs
+   * `commands`, as for `menu`). `command` names one of `commands`, and the item shows that command's
+   * `title` unless it has a `title` of its own (1 to 64 characters). `when: "file"` shows the item only
+   * when every target is a file, `"folder"` only when every target is a folder. The command's handler gets
+   * the targets as its first argument — `FileMenuTarget[]` in the trusted tier, `SandboxFileMenuTarget[]`
+   * in the sandboxed one.
+   */
+  fileMenu?: Array<{
+    command: string;
+    id: string;
+    title?: string;
+    when?: "file" | "folder";
+  }>;
   /**
    * Items under the editor's right-click menu, at most 5. `when: "selection"` shows one only
    * while text is selected.
@@ -1144,6 +1173,19 @@ export type SandboxEditorAPI = EditorAPI;
 export interface SandboxFileDecorationUpdate {
   context?: string;
   decoration: FileDecoration | null;
+  path: string;
+}
+
+/**
+ * §395 One item the file tree's right-click menu hands a sandboxed plugin's command (spec 0074 D16): its
+ * path relative to the registered context `context`, as a `PluginFileEvent` carries one, and whether it is
+ * a folder. Chosen as `FileMenuTarget`s are; the menu disables the plugin's items when an item is in no
+ * registered context. Absent when the command starts any other way; a trusted plugin's
+ * `commands.execute` can pass anything that JSON carries — check it before use.
+ */
+export interface SandboxFileMenuTarget {
+  context: string;
+  isDir: boolean;
   path: string;
 }
 

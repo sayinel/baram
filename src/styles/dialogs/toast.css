@@ -3,7 +3,10 @@
   position: fixed;
   bottom: 24px;
   left: 50%;
-  z-index: 1000;
+
+  /* Above `.unsaved-modal-overlay` (1020), or that scrim dims it and covers a toast's action.
+     Ordering pinned by `styles/__tests__/settings-dialog-layering.test.ts`. */
+  z-index: 1030;
   pointer-events: none;
   transform: translateX(-50%);
 }

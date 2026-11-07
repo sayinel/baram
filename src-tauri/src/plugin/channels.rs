@@ -53,9 +53,11 @@ impl SandboxChannels {
         // sandbox sees either: `channel_on` numbers every frame as `channel.send` takes it, and the
         // sandbox's `Channel` (@tauri-apps/api 2.12.4, `core.js`) hands frames to `onmessage` in that
         // order, holding a later frame until an earlier fetched one has arrived. The host sends a
-        // sandbox's frames one at a time for that reason (`send-chain.ts`, spec 0074 D12). The
-        // warning below still calls the queue shared and guessable; its wording is plan (B)'s
-        // (spec 0074 D16).
+        // sandbox's frames one at a time for that reason (`send-chain.ts`, spec 0074 D12). So a
+        // frame over the threshold costs one more round trip and nothing else, and frames that
+        // size are ordinary: a file tree menu command with many targets (spec 0074 D16), or a
+        // streamed token piece of Hangul text (`splitForFrame` cuts at 4,096 UTF-16 units, about
+        // 12 KB of UTF-8). The line below says so at debug level (plan 0128 R11).
         #[cfg(debug_assertions)]
         {
             // tauri's direct-eval path is `len < MAX_JSON_DIRECT_EXECUTE_THRESHOLD`,
@@ -63,10 +65,10 @@ impl SandboxChannels {
             // None once the length passes its cap, hence `threshold - 1`.
             const CHANNEL_QUEUE_THRESHOLD: usize = 8192;
             if super::serialized_len_capped(&msg, CHANNEL_QUEUE_THRESHOLD - 1).is_none() {
-                log::warn!(
-                    "§260: h2s frame for {label} is ≥{CHANNEL_QUEUE_THRESHOLD} bytes — it takes \
-                     tauri's shared channel-data queue, which is ACL-exempt and guessable; chunk \
-                     it before this ships"
+                log::debug!(
+                    "§260 · §395: h2s frame for {label} is ≥{CHANNEL_QUEUE_THRESHOLD} bytes — tauri \
+                     hands it to this webview through its own channel-data queue, one more fetch \
+                     round trip; order and isolation are unchanged"
                 );
             }
         }

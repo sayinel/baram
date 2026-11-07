@@ -23,6 +23,7 @@ import {
 } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { markContentLoaded } from "../../editor/programmatic-update";
 import { serializeLiveDoc } from "../../editor/serialize-live-doc";
 import {
   applyTaskWrite,
@@ -74,6 +75,7 @@ const OPEN_TAB: EditorTab = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  markContentLoaded("t1");
   useEditorStore.setState({
     activeTabId: null,
     sourceBufferAccess: null,

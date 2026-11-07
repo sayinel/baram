@@ -14,6 +14,8 @@ import {
 const answer = (contexts: string[]): IndexSyncAnswer => ({
   contexts,
   linksChanged: false,
+  notes: [],
+  treeChanged: false,
 });
 
 /** A `sync` whose answer the test releases by hand. */

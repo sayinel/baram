@@ -308,6 +308,34 @@ describe("showPluginPrompt", () => {
     await answer;
   });
 
+  // Settling hands focus back INSIDE the keydown that settles (`show-plugin-prompt.tsx`'s
+  // `settle`), so an uncancelled keydown's follow-up `keypress` reaches the origin instead of the
+  // prompt. The macOS WebView sends one for Escape (charCode 27), and ProseMirror's keypress
+  // fallback inserts it as text whenever the selection is not a text selection inside one parent
+  // (measured 2026-11-04: right-click a line end, pick a plugin command, Esc → 0x1b in the file).
+  // `fireEvent` returns `false` once something called `preventDefault()`. Every row except the
+  // quick pick's Escape already passed before the fix, so those rows pin the check itself.
+  it.each([
+    ["quick pick", "Escape", undefined],
+    ["quick pick", "Enter", "id-0"],
+    ["input box", "Escape", undefined],
+    ["input box", "Enter", ""],
+  ] as const)(
+    "cancels the %s's settling %s, so no keypress follows it to the origin",
+    async (kind, key, expected) => {
+      const answer =
+        kind === "quick pick"
+          ? pick(1)
+          : showPluginPrompt("p", "P", { kind: "inputBox" });
+      let notPrevented = true;
+      act(() => {
+        notPrevented = fireEvent.keyDown(input(), { key });
+      });
+      expect(notPrevented).toBe(false);
+      await expect(answer).resolves.toBe(expected);
+    },
+  );
+
   it("submits an input box with Enter, and refuses to submit past 1,000 characters", async () => {
     const answer = showPluginPrompt("p", "P", {
       kind: "inputBox",

@@ -9,17 +9,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../editor/patch-editor-content", () => ({
   patchEditorContent: vi.fn(() => true),
 }));
-vi.mock("../../editor/programmatic-update", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("../../editor/programmatic-update")
-  >()),
-  loadedTabId: vi.fn(() => "t1"),
-}));
 
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { patchEditorContent } from "../../editor/patch-editor-content";
-import { loadedTabId } from "../../editor/programmatic-update";
+import {
+  markContentLoaded,
+  setTabLoading,
+} from "../../editor/programmatic-update";
 import { logger } from "../../logger";
 import { syncCleanSurfacesAfterReferrerRewrite } from "../sync-open-surfaces";
 
@@ -43,7 +40,7 @@ function tabs(...list: { dirty?: boolean; id: string; path?: string }[]): void {
 
 beforeEach(() => {
   vi.mocked(patchEditorContent).mockClear();
-  vi.mocked(loadedTabId).mockReturnValue("t1");
+  markContentLoaded("t1");
   setFileContent.mockReset();
   markContentStale.mockReset();
   useEditorStore.setState({
@@ -73,18 +70,32 @@ describe("syncCleanSurfacesAfterReferrerRewrite", () => {
 
   it("patches a keep-alive editor's own view, not the shared one", () => {
     tabs({ id: "t9" });
-    vi.mocked(loadedTabId).mockReturnValue("t9");
+    markContentLoaded("t9");
     syncCleanSurfacesAfterReferrerRewrite(PATH, "new");
     expect(patchEditorContent).toHaveBeenCalledWith(pooledView, "new");
   });
 
   it("flags a clean background tab to reload instead of touching the shared view", () => {
     tabs({ id: "t2" });
-    vi.mocked(loadedTabId).mockReturnValue("t1");
     syncCleanSurfacesAfterReferrerRewrite(PATH, "new");
     expect(patchEditorContent).not.toHaveBeenCalled();
     expect(markContentStale).toHaveBeenCalledWith("t2");
     expect(setFileContent).toHaveBeenCalledWith(PATH, "new");
+  });
+
+  // §39 What fails this: asking only the name. A source-mode return during a parse names the tab
+  // before the load's first blocks replace the document, and a patch under that load has the rest
+  // of the load appended behind it.
+  it("flags a named tab whose document is still being filled", () => {
+    tabs({ id: "t1" });
+    setTabLoading("t1", true);
+    try {
+      syncCleanSurfacesAfterReferrerRewrite(PATH, "new");
+    } finally {
+      setTabLoading("t1", false);
+    }
+    expect(patchEditorContent).not.toHaveBeenCalled();
+    expect(markContentStale).toHaveBeenCalledWith("t1");
   });
 
   it("leaves EVERYTHING alone when a tab of the file holds unsaved work", () => {

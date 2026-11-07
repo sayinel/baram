@@ -23,7 +23,10 @@ import {
   awaitBlockIdRenames,
   hasBlockIdRenamesInFlight,
 } from "../utils/editor/block-id-rename-landing";
-import { loadedTabId } from "../utils/editor/programmatic-update";
+import {
+  editorHoldsWholeDocument,
+  loadedTabId,
+} from "../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
@@ -269,6 +272,11 @@ export function useFileOperations({
     // §392 spec 0071 D17 — whether `md` is the buffer's text decides how the write below lowers
     // dirty.
     const fromBuffer = isCode || sourceModeTabs.has(saveTab.id);
+    // ‼️ The editor may not hold this tab's whole document. A document still being filled holds
+    // only its first blocks, which would cut the file short, and until a tab is installed the
+    // editor still shows the one before it, which would write that text to this file. The tab
+    // stays unsaved, so a close or a quit waiting on this save stops too.
+    if (!fromBuffer && !editorHoldsWholeDocument(saveTab.id)) return;
     const md = fromBuffer
       ? getSourceBuffer(saveTab.id)
       : serializeLiveDoc(editor);
@@ -370,6 +378,8 @@ export function useFileOperations({
     const isCode = saveAsTab.filePath && !isMarkdownFile(saveAsTab.filePath);
     // §392 spec 0071 D17 — as in `handleSave`.
     const fromBuffer = isCode || sourceModeTabs.has(saveAsTab.id);
+    // As in `handleSave`: the copy would be missing most of the document, or be another tab's.
+    if (!fromBuffer && !editorHoldsWholeDocument(saveAsTab.id)) return;
     const md = fromBuffer
       ? getSourceBuffer(saveAsTab.id)
       : serializeLiveDoc(editor);

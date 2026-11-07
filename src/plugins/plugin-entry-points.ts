@@ -96,16 +96,22 @@ export function registerEntryContributions(manifest: PluginManifest): void {
   ) {
     logger.warn(
       `[PluginLoader] ${manifest.id} declares commands without the "commands" capability — ` +
-        `its menu, slash and shortcut entries are not shown`,
+        `its menu, slash, file tree menu and shortcut entries are not shown`,
     );
     return;
   }
   usePluginUIStore.getState().registerContributions({
     commands: commands.map(({ id, title }) => ({ id, title })),
+    // §395 spec 0074 D16 — none without `filetree`. `manifest` is the consent-narrowed one, so a consent
+    // that withheld the capability shows no item (the rule `declaredPanels` applies to `sidebar`).
+    fileMenu: manifest.capabilities.includes("filetree")
+      ? (contributions?.fileMenu ?? [])
+      : [],
     menu: contributions?.menu ?? [],
     name: manifest.name,
     pluginId: manifest.id,
     slash: contributions?.slash ?? [],
+    trust: manifest.trust,
   });
 }
 

@@ -156,3 +156,40 @@ ctx.events.on("file:delete", ({ context, path, isDir }) => {});
   not removed: it still counts toward your 20,000 paths, and a file that later appears at that path shows
   it — unless Baram's own rename or move put the file there, which clears it first.
   Use `vault:changed` and `listDir` to tidy up.
+
+## The file tree's right-click menu (requires `filetree`)
+
+`contributions.fileMenu` adds up to five items to the menu a file or folder row opens in the file
+tree: after a separator at the foot, plugins in name order, each item with its plugin's name beside
+it. An item names one of your `commands` and shows that command's `title` unless it has a `title` of
+its own (1–64 characters). Both tiers may declare it; a trusted plugin also needs `commands`. The
+`tree-badges` example plugin in the Baram repository pins notes this way.
+
+```json
+{
+  "contributions": {
+    "commands": [{ "id": "pin", "title": "Pin", "palette": false }],
+    "fileMenu": [{ "id": "pin", "command": "pin", "when": "file" }]
+  }
+}
+```
+
+The command's handler gets the targets as its first argument:
+
+```typescript
+ctx.commands.register("pin", (targets) => {}); // trusted: FileMenuTarget[], { path, isDir } with absolute paths
+ctx.commands.register("pin", (targets) => {}); // sandboxed: SandboxFileMenuTarget[], { context, path, isDir }
+```
+
+- **Targets** — right-click inside a selection of two or more and every selected item goes, in the
+  selection's order (click order for Cmd/Ctrl+click, tree order for a Shift range); anywhere else,
+  the row clicked. Nothing is folded: a folder and a file inside it both go.
+- **`when`** — left out, the item always shows; `"file"` shows it only when every target is a file,
+  and `"folder"` only when every target is a folder.
+- With more than 1,000 targets your items are shown disabled. A sandboxed plugin's items are disabled
+  too when a target is in no registered context. A disabled item says why on hover.
+- The menu of the tree's empty area has no plugin items.
+- **Check the argument.** Started any other way — the palette, the editor's right-click menu, the slash menu, a
+  shortcut or the status bar — the command gets no targets, and another plugin's `commands.execute` can pass it anything. A sandboxed plugin is not
+  sent a function, a BigInt or a value that refers to itself — that call is refused.
+- A command started from this menu may open a [prompt](/en/docs/plugin-dev/context-prompts/).

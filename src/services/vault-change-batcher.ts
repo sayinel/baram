@@ -23,8 +23,8 @@ export interface VaultChangeBatcher {
 export interface VaultChangeBatcherOptions {
   maxWaitMs?: number;
   /**
-   * The batch's answer — called only when it names a context. That loses no `linksChanged`: an
-   * answer with it set names one (Rust `SyncAnswer`).
+   * The batch's answer — called only when it names a context. That loses no `linksChanged`,
+   * `notes` or `treeChanged`: an answer with any of them set names one (Rust `SyncAnswer`).
    */
   onSynced: (answer: IndexSyncAnswer) => void;
   quietMs?: number;

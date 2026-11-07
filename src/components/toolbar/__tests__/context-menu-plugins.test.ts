@@ -39,10 +39,12 @@ function cite(
       { id: "insert", title: "Insert citation" },
       { id: "pick", title: "Pick a source" },
     ],
+    fileMenu: [],
     menu,
     name: "Cite",
     pluginId: "cite",
     slash: [],
+    trust: "trusted",
     ...extra,
   };
 }

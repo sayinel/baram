@@ -46,8 +46,14 @@ export default defineConfig(async () => ({
               test: /[\\/]node_modules[\\/](@codemirror[\\/](autocomplete|commands|language|search|state|view)|@lezer[\\/]highlight)[\\/]/,
             },
             {
+              // §5.12 Not `katex/dist/fonts/`: the export inlines those woff2
+              // files as data URIs (utils/export/export-katex-fonts.ts), and a
+              // group claims a module whoever imports it — so the 20 copies
+              // rode in this chunk, which math-inline-edit.ts loads right after
+              // startup. Left ungrouped, they stay in the export chunk that
+              // App.tsx loads lazily (issue 799).
               name: "vendor-katex",
-              test: /[\\/]node_modules[\\/]katex[\\/]/,
+              test: /[\\/]node_modules[\\/]katex[\\/](?!dist[\\/]fonts[\\/])/,
             },
             {
               name: "vendor-markdown",

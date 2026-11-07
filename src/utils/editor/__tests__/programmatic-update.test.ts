@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   clearOriginalDoc,
+  editorHoldsWholeDocument,
   isTabLoading,
   markContentLoaded,
   noteColwidthInit,
@@ -18,6 +19,27 @@ const schema = new Schema({
   },
 });
 const doc = schema.nodes.doc.create(null, schema.nodes.paragraph.create());
+
+describe("editorHoldsWholeDocument", () => {
+  it("answers yes only for the tab named by the last install, once it is not loading", () => {
+    clearOriginalDoc("tab-held");
+    clearOriginalDoc("tab-other");
+    expect(editorHoldsWholeDocument("tab-held")).toBe(false);
+
+    markContentLoaded("tab-held");
+    expect(editorHoldsWholeDocument("tab-held")).toBe(true);
+    expect(editorHoldsWholeDocument("tab-other")).toBe(false);
+
+    setTabLoading("tab-held", true);
+    expect(editorHoldsWholeDocument("tab-held")).toBe(false);
+
+    setTabLoading("tab-held", false);
+    expect(editorHoldsWholeDocument("tab-held")).toBe(true);
+
+    clearOriginalDoc("tab-held");
+    expect(editorHoldsWholeDocument("tab-held")).toBe(false);
+  });
+});
 
 const docWith = (text: string) =>
   schema.nodes.doc.create(

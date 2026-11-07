@@ -34,6 +34,7 @@ import { useLinkStore } from "../../../stores/editor/link";
 import { useSettingsStore } from "../../../stores/settings/store";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
+import { markContentLoaded } from "../../../utils/editor/programmatic-update";
 import { TaskAgendaPanel } from "../TaskAgendaPanel";
 
 // serializeLiveDoc이 모킹돼 있으므로 실제 ProseMirror doc은 필요 없다.
@@ -466,6 +467,7 @@ describe("TaskAgendaPanel", () => {
           },
         ],
       });
+      markContentLoaded("t1");
     });
 
     afterEach(() => {

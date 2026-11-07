@@ -18,7 +18,10 @@ Baram supports GFM (GitHub Flavored Markdown) pipe tables.
 - Column alignment (`:---`, `:---:`, `---:`) is preserved
 - **Column resize** — Drag column borders to adjust width. The widths are written into the
   file as a `<!-- colwidths:... -->` comment just above the table, so they survive a reopen;
-  other markdown viewers ignore the comment. A table you only hovered over is left alone.
+  other markdown viewers ignore the comment. A table you only hovered over or clicked is left alone.
+  To turn this off, go to **Settings > Markdown**, the **Tables** heading, and switch off
+  **Adjustable table column widths**. That also removes the widths from open tabs, and those
+  tabs save like any other edit. Files you open afterwards keep their comments.
 - Hover over the table to see ⊕ buttons for adding rows and columns
 - **Right-click** for context menu: alignment, header toggle, copy as Markdown/HTML, delete
 

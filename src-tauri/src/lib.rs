@@ -173,17 +173,143 @@ enum CloseAction {
 ///
 /// Invisible until this phase only because `core:window:allow-close` was missing, so
 /// the close never reached the window manager and `CloseRequested` never fired for a
-/// plugin window. Host windows (`main`, `file-*`) keep the guard: closing one of
-/// those IS a user gesture that may need the unsaved-changes prompt.
+/// plugin window. The main window keeps the guard: closing it IS a user gesture that may
+/// need the unsaved-changes prompt, and it ends the app.
+///
+/// §89 A `file-*` window must not reach that broadcast either, for the same reason: closing
+/// one quit the app whenever the main window had nothing unsaved. It answers for itself in
+/// `use-file-window-guard.ts`; its `onCloseRequested` listener makes tauri hold the close,
+/// and a window whose page never got that far has nothing to ask about.
 ///
 /// A function rather than a predicate the handler combines with the quit flag (3c-3
 /// code review, M4): the previous shape let a test pass while the guard's only call
 /// site was deleted, leaving the defect above untested.
 fn close_action(label: &str, quit_confirmed: bool) -> CloseAction {
-    if plugin::plugin_id_from_label(label).is_some() || quit_confirmed {
+    if plugin::plugin_id_from_label(label).is_some() || is_file_window(label) || quit_confirmed {
         return CloseAction::Allow;
     }
     CloseAction::PreventAndAsk
+}
+
+/// §89 The window the user last brought to the front. The menu is one for the whole app and does
+/// not say which window it was used from.
+///
+/// Remembered from focus events rather than asked when a command arrives, because the window in
+/// use does not always read as focused: a native dialog sheet on macOS takes focus while its menu
+/// shortcuts still fire. Losing focus therefore does not clear it. A window closing does.
+#[derive(Default)]
+struct LastFocusedWindow(Mutex<Option<String>>);
+
+impl LastFocusedWindow {
+    fn note(&self, label: &str) {
+        if let Ok(mut last) = self.0.lock() {
+            *last = Some(label.to_string());
+        }
+    }
+
+    fn forget(&self, label: &str) {
+        if let Ok(mut last) = self.0.lock() {
+            if last.as_deref() == Some(label) {
+                *last = None;
+            }
+        }
+    }
+
+    fn label(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|last| last.clone())
+    }
+}
+
+fn deliver_menu_command<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: &str) {
+    let focused = app.state::<LastFocusedWindow>().label();
+    match menu_target(id, focused.as_deref()) {
+        MenuTarget::FileWindow(label) => {
+            let _ = app.emit_to(label, "menu-event", id);
+        }
+        MenuTarget::Main { raise } => {
+            let _ = app.emit_to("main", "menu-event", id);
+            if raise {
+                if let Some(main) = app.get_webview_window("main") {
+                    let _ = main.unminimize();
+                    let _ = main.set_focus();
+                }
+            }
+        }
+    }
+}
+
+/// §89 Where a native menu command goes.
+#[derive(Debug, PartialEq)]
+enum MenuTarget<'a> {
+    /// The file window in front, which answers it (`use-file-window-menu.ts`).
+    FileWindow(&'a str),
+    /// The main window. `raise` when a file window is in front and the command would otherwise act
+    /// where the user cannot see it: Settings opening behind the window they are in.
+    Main { raise: bool },
+}
+
+fn menu_target<'a>(id: &str, focused: Option<&'a str>) -> MenuTarget<'a> {
+    match focused {
+        Some(label) if is_file_window(label) => {
+            if concerns_the_document_in_front(id) {
+                MenuTarget::FileWindow(label)
+            } else {
+                MenuTarget::Main {
+                    raise: shows_something_in_the_main_window(id),
+                }
+            }
+        }
+        _ => MenuTarget::Main { raise: false },
+    }
+}
+
+/// The commands about the document in front, besides the `insert_` ones. Sent to the main window
+/// instead, they act on its active tab: Cmd+W closes a tab the user is not looking at, and Insert >
+/// Bold edits it. Cmd+Shift+W is one key from Cmd+W and would close the whole workspace. A file
+/// window does what it can with these and says so for the rest (`use-file-window-menu.ts`).
+const DOCUMENT_MENU_COMMANDS: [&str; 11] = [
+    "edit_find_replace",
+    "export_doc",
+    "file_close_folder",
+    "file_close_tab",
+    "file_save",
+    "file_save_as",
+    "go_back",
+    "go_forward",
+    "view_inline_ai",
+    "view_reload",
+    "view_source",
+];
+
+fn concerns_the_document_in_front(id: &str) -> bool {
+    id.starts_with("insert_") || DOCUMENT_MENU_COMMANDS.contains(&id)
+}
+
+/// A browser opens for Help, and clearing the recent list shows nothing.
+fn shows_something_in_the_main_window(id: &str) -> bool {
+    !id.starts_with("help_") && id != "recent_clear"
+}
+
+/// §89 A file window is gone, whatever closed it. A window that fell to the `ErrorBoundary` screen
+/// closes without running any of its code, so this cannot be left to the window.
+///
+/// The main window counts what file windows hold (`services/file-windows.ts`): left counted, every
+/// later quit would ask about it and wait on a save it cannot answer. And the window's hold on the
+/// file it had open goes with it.
+fn when_file_window_destroyed<R: tauri::Runtime>(
+    window: &tauri::Window<R>,
+) -> tauri::async_runtime::JoinHandle<()> {
+    let _ = window.emit_to("main", "file-window://closed", window.label());
+    let app = window.app_handle().clone();
+    let label = window.label().to_string();
+    tauri::async_runtime::spawn(async move {
+        context_cmd::release_window_contexts(&app, &label).await;
+    })
+}
+
+/// §89 The label `openFileWindow` gives a torn-off tab's window (`src/utils/file-window.ts`).
+fn is_file_window(label: &str) -> bool {
+    label.starts_with("file-")
 }
 
 /// Frontend calls this after the user resolves the unsaved-changes prompt and
@@ -284,13 +410,14 @@ pub fn run() {
             app.manage(menu_state);
 
             app.on_menu_event(move |app_handle, event| {
-                let _ = app_handle.emit("menu-event", event.id().as_ref());
+                deliver_menu_command(app_handle, event.id().as_ref());
             });
 
             Ok(())
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .manage(QuitGuard(AtomicBool::new(false)))
+        .manage(LastFocusedWindow::default())
         .manage(VaultRootState(tokio::sync::RwLock::new(None)))
         .manage(WatcherState(std::sync::Mutex::new(
             std::collections::HashMap::new(),
@@ -465,8 +592,8 @@ pub fn run() {
         ])
         // Unsaved-changes guard: intercept the window close (red X) and ask the
         // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 let guard = window.state::<QuitGuard>();
                 if close_action(window.label(), guard.0.load(Ordering::Relaxed))
                     == CloseAction::PreventAndAsk
@@ -475,6 +602,16 @@ pub fn run() {
                     let _ = window.emit("app://close-requested", ());
                 }
             }
+            tauri::WindowEvent::Focused(true) => {
+                window.state::<LastFocusedWindow>().note(window.label());
+            }
+            tauri::WindowEvent::Destroyed => {
+                window.state::<LastFocusedWindow>().forget(window.label());
+                if is_file_window(window.label()) {
+                    when_file_window_destroyed(window);
+                }
+            }
+            _ => {}
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -524,22 +661,212 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_menu_command_about_the_document_goes_to_the_file_window_in_front() {
+        for id in [
+            "file_save",
+            "file_close_tab",
+            "file_close_folder",
+            "view_source",
+            "view_inline_ai",
+            "go_back",
+            "insert_bold",
+        ] {
+            assert_eq!(
+                menu_target(id, Some("file-1")),
+                MenuTarget::FileWindow("file-1"),
+                "{id} would act on the main window's active tab"
+            );
+        }
+    }
+
+    #[test]
+    fn any_other_menu_command_raises_the_main_window_from_a_file_window() {
+        for id in ["file_new", "file_settings", "go_palette", "view_sidebar"] {
+            assert_eq!(
+                menu_target(id, Some("file-1")),
+                MenuTarget::Main { raise: true },
+                "{id} would open behind the window the user is in"
+            );
+        }
+    }
+
+    // Help opens a browser and clearing the recent list shows nothing, so main stays where it is.
+    #[test]
+    fn a_command_with_nothing_to_show_does_not_raise_the_main_window() {
+        for id in ["help_faq", "help_user_guide", "recent_clear"] {
+            assert_eq!(
+                menu_target(id, Some("file-1")),
+                MenuTarget::Main { raise: false },
+                "{id} has nothing to show in the main window"
+            );
+        }
+    }
+
+    /// Two windows and a listener on each, as the two webviews listen.
+    fn delivered(last_focused: Option<&str>, id: &str) -> (usize, usize) {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::Arc;
+        use tauri::Listener;
+
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(LastFocusedWindow::default());
+        let main = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+        let file = tauri::WebviewWindowBuilder::new(&app, "file-1", Default::default())
+            .build()
+            .expect("mock webview must build");
+        let at_main = Arc::new(AtomicUsize::new(0));
+        let at_file = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&at_main);
+        main.listen("menu-event", move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+        });
+        let count = Arc::clone(&at_file);
+        file.listen("menu-event", move |_| {
+            count.fetch_add(1, Ordering::SeqCst);
+        });
+        if let Some(label) = last_focused {
+            app.state::<LastFocusedWindow>().note(label);
+        }
+
+        deliver_menu_command(app.handle(), id);
+
+        (
+            at_main.load(Ordering::SeqCst),
+            at_file.load(Ordering::SeqCst),
+        )
+    }
+
+    // 이것을 실패시키는 것: 브로드캐스트로 돌아가면 파일 창의 Cmd+W 가 main 의 탭까지 닫는다.
+    #[test]
+    fn a_document_command_reaches_only_the_file_window_in_front() {
+        assert_eq!(delivered(Some("file-1"), "file_save"), (0, 1));
+    }
+
+    #[test]
+    fn any_other_command_reaches_only_the_main_window() {
+        assert_eq!(delivered(Some("file-1"), "file_new"), (1, 0));
+    }
+
+    #[test]
+    fn with_the_main_window_in_front_every_command_reaches_only_it() {
+        assert_eq!(delivered(Some("main"), "file_save"), (1, 0));
+        assert_eq!(delivered(None, "file_save"), (1, 0));
+    }
+
+    // 이것을 실패시키는 것: 초점 해제로 지우면, 네이티브 시트가 뜬 파일 창의 Cmd+S 가 main 의 탭을 저장한다.
+    #[test]
+    fn the_last_focused_window_is_kept_until_another_takes_over_or_it_closes() {
+        let last = LastFocusedWindow::default();
+        last.note("file-1");
+        assert_eq!(last.label().as_deref(), Some("file-1"));
+
+        last.forget("main");
+        assert_eq!(last.label().as_deref(), Some("file-1"));
+
+        last.note("main");
+        last.forget("file-1");
+        assert_eq!(last.label().as_deref(), Some("main"));
+
+        last.forget("main");
+        assert_eq!(last.label(), None);
+    }
+
+    // The pair: with no file window in front, every command goes where it always went.
+    #[test]
+    fn a_menu_command_goes_to_the_main_window_otherwise() {
+        for focused in [Some("main"), Some("plugin-x"), None] {
+            for id in ["file_save", "insert_bold", "file_new"] {
+                assert_eq!(
+                    menu_target(id, focused),
+                    MenuTarget::Main { raise: false },
+                    "{id} with {focused:?} in front"
+                );
+            }
+        }
+    }
+
+    // A misspelt id would quietly send that command to the main window again.
+    #[test]
+    fn the_document_menu_commands_are_items_of_the_menu() {
+        let menu = include_str!("menu.rs");
+        for id in DOCUMENT_MENU_COMMANDS {
+            assert!(
+                menu.contains(&format!("\"{id}\"")),
+                "{id} is not in menu.rs"
+            );
+        }
+        assert!(menu.contains("\"insert_"), "no insert_ command in menu.rs");
+    }
+
     /// §260 Phase 3c-3, found by the live smoke: unloading a sandboxed plugin quit
     /// the app. The close guard ran for the `plugin-*` webview the loader was
     /// closing, cancelled that close, and broadcast `app://close-requested`, which
     /// the main window answers by running its quit flow.
+    // 이것을 실패시키는 것: 이 호출이 빠지면 파일 창이 닫혀도 등록이 앱을 끌 때까지 남고, main 이 그 창을 계속 센다.
     #[test]
-    fn the_close_guard_skips_sandbox_windows_only() {
-        // Host windows keep the guard — closing one IS a user gesture that may need
+    fn a_destroyed_file_window_lets_go_of_its_file_and_is_no_longer_counted() {
+        use tauri::Listener;
+
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(context::ContextManager::new());
+        app.manage(VaultRootState(tokio::sync::RwLock::new(None)));
+        app.manage(index::service::LinkIndexState::new());
+        let closed = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let heard = std::sync::Arc::clone(&closed);
+        app.listen_any("file-window://closed", move |event| {
+            heard.lock().unwrap().push(event.payload().to_string());
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        std::fs::write(&path, "x").unwrap();
+        let manager = app.state::<context::ContextManager>();
+        tauri::async_runtime::block_on(manager.add_held_by(
+            context::ContextInfo {
+                id: "f".into(),
+                context_type: context::ContextType::File,
+                path: path.to_str().unwrap().into(),
+                label: "note.md".into(),
+                color: "#fff".into(),
+                alias: None,
+                vault_type: None,
+                added_at: 0,
+            },
+            "file-1",
+        ))
+        .unwrap();
+        let file_window = tauri::WebviewWindowBuilder::new(&app, "file-1", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        tauri::async_runtime::block_on(when_file_window_destroyed(&file_window.as_ref().window()))
+            .unwrap();
+
+        assert!(tauri::async_runtime::block_on(manager.list()).is_empty());
+        assert_eq!(*closed.lock().unwrap(), vec!["\"file-1\"".to_string()]);
+    }
+
+    #[test]
+    fn the_close_guard_is_for_the_main_window_only() {
+        // The main window keeps the guard — closing it IS a user gesture that may need
         // the unsaved-changes prompt.
-        for host in ["main", "file-1", "file-abc123"] {
+        assert_eq!(close_action("main", false), CloseAction::PreventAndAsk);
+        // …and once the user has confirmed the quit, it goes through.
+        assert_eq!(close_action("main", true), CloseAction::Allow);
+        // §89 A file window asks for itself in the webview. Intercepting it here broadcast
+        // `app://close-requested`, which the main window answers by quitting the app.
+        for file_window in ["file-1", "file-abc123"] {
             assert_eq!(
-                close_action(host, false),
-                CloseAction::PreventAndAsk,
-                "{host} must still be intercepted"
+                close_action(file_window, false),
+                CloseAction::Allow,
+                "{file_window} must not reach the main window's quit flow"
             );
-            // …and once the user has confirmed the quit, it goes through.
-            assert_eq!(close_action(host, true), CloseAction::Allow);
         }
         // Sandbox windows are opened and closed by the loader, never by the user.
         // Intercepting one cancelled the loader's close AND broadcast

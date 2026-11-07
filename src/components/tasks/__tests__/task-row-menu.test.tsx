@@ -52,6 +52,7 @@ import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
+import { markContentLoaded } from "../../../utils/editor/programmatic-update";
 import { runTaskTriageAction } from "../../../utils/tasks/task-triage";
 import { TaskAgendaPanel } from "../TaskAgendaPanel";
 import { TaskBucketList } from "../TaskBucketList";
@@ -913,6 +914,7 @@ describe("§312 triage menu on an agenda row", () => {
 
     beforeEach(() => {
       doc = "- [ ] 하나\n";
+      markContentLoaded("t1");
       previewTaskFieldLine.mockResolvedValue(`- [ ] 하나 📅${TODAY}`);
       serializeLiveDoc.mockImplementation(() => doc);
       useEditorStore.setState({

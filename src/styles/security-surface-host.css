@@ -106,6 +106,7 @@
      not the eight. Those eight were above the consent dialog before this change and
      still are; this change does not touch them.
 
-     Added since that measurement: .symbol-picker-overlay (§377) takes var(--z-editor-popup), 1050 — under 1100 as well. */
+     Added since that measurement: .symbol-picker-overlay (§377) takes var(--z-editor-popup), 1050 — under 1100 as well;
+     .unsaved-modal-overlay (§206) moved to 1020 and .conflict-modal-overlay to 1030 — under 1100 too. */
   z-index: 1100 !important;
 }

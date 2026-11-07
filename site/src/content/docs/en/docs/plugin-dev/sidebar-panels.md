@@ -78,7 +78,9 @@ export function activate(ctx: SandboxContext) {
   user opens it, Baram draws the last content it received.
 - Call `setPanel` as often as you like: the latest content wins, and Baram draws a panel that is on
   screen at most once every 250 milliseconds. A call made while the previous one is still on its way
-  replaces the content waiting to go, so the last content always arrives.
+  replaces the content waiting to go, so the last content always arrives. Under a steady stream of
+  calls, expect about one update a second on macOS rather than four: the sending is paced by a timer in
+  your plugin's hidden page ([Timers in a sandboxed plugin](/en/docs/plugin-dev/entry-point-and-types/#timers-in-a-sandboxed-plugin)).
 - Until your first `setPanel`, the panel says it has nothing to show yet.
 
 ## What may come back

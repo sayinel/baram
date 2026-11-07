@@ -16,6 +16,7 @@ import {
   updateFileIndex,
   writeFile,
 } from "../../ipc/invoke";
+import { onNoteChanges } from "../../services/note-changes";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
@@ -28,6 +29,15 @@ import {
 } from "./backlink-utils";
 import { linkifyMention } from "./linkify-mention";
 
+interface MentionSearch {
+  /** A signal arrived since this walk began, so run it once more when it ends. */
+  again: boolean;
+  path: string;
+  root: string;
+}
+
+const NO_MENTIONS: UnlinkedMention[] = [];
+
 export function Backlinks() {
   const { t } = useTranslation();
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -36,6 +46,7 @@ export function Backlinks() {
   const {
     backlinks,
     unlinkedMentions,
+    unlinkedMentionsFor,
     loading,
     error,
     indexVersion,
@@ -47,6 +58,7 @@ export function Backlinks() {
     useShallow((s) => ({
       backlinks: s.backlinks,
       unlinkedMentions: s.unlinkedMentions,
+      unlinkedMentionsFor: s.unlinkedMentionsFor,
       loading: s.loading,
       error: s.error,
       indexVersion: s.indexVersion,
@@ -74,18 +86,48 @@ export function Backlinks() {
     [setBacklinks, setLoading, setError],
   );
 
-  // §34 Fetch unlinked mentions
+  // §34 Fetch unlinked mentions (issue 791). A walk cannot be cancelled, so signals are not allowed
+  // to pile walks up: a request for the note already being searched only marks it to run once more,
+  // and that walk's answer is still delivered — a steady stream of writes must not discard every
+  // answer. A request for another note, or another root, takes over at once. From then on the old
+  // walk's answer is dropped, and so is one that lands after this panel closed: moving from A to B
+  // quickly can bring B's answer back first and A's last, and A's must not land as B's. The answer
+  // is kept with the note it was searched for (`unlinkedMentionsFor`); a failed search answers
+  // nothing rather than an empty list for this note, so the listener below searches on the next
+  // change of any kind.
+  const mentionSearchRef = useRef<MentionSearch | null>(null);
   const fetchUnlinkedMentions = useCallback(
     async (path: string, root: string) => {
-      try {
-        const entries = await getUnlinkedMentions(path, root);
-        setUnlinkedMentions(entries);
-      } catch {
-        // Non-fatal — silently ignore
-        setUnlinkedMentions([]);
+      const running = mentionSearchRef.current;
+      if (running?.path === path && running.root === root) {
+        running.again = true;
+        return;
       }
+      const search: MentionSearch = { again: true, path, root };
+      mentionSearchRef.current = search;
+      while (search.again && mentionSearchRef.current === search) {
+        search.again = false;
+        try {
+          const entries = await getUnlinkedMentions(path, root);
+          if (mentionSearchRef.current === search) {
+            setUnlinkedMentions(path, entries);
+          }
+        } catch {
+          // Non-fatal — silently ignore
+          if (mentionSearchRef.current === search) {
+            setUnlinkedMentions(null, []);
+          }
+        }
+      }
+      if (mentionSearchRef.current === search) mentionSearchRef.current = null;
     },
     [setUnlinkedMentions],
+  );
+  useEffect(
+    () => () => {
+      mentionSearchRef.current = null;
+    },
+    [],
   );
 
   // Keep latest fetch callbacks and filePath in refs so the rootPath-only effect
@@ -97,6 +139,8 @@ export function Backlinks() {
   fetchUnlinkedMentionsRef.current = fetchUnlinkedMentions;
   const filePathRef = useRef(filePath);
   filePathRef.current = filePath;
+  const rootPathRef = useRef(rootPath);
+  rootPathRef.current = rootPath;
 
   // Build index on vault open, then fetch backlinks
   useEffect(() => {
@@ -122,15 +166,42 @@ export function Backlinks() {
     // filePath/fetch callbacks are read via refs to avoid running on every file change.
   }, [rootPath]);
 
-  // Fetch backlinks + unlinked mentions when active file changes or index is updated
+  // Fetch backlinks when the active file changes or the link index is updated
   useEffect(() => {
-    if (filePath) {
-      fetchBacklinks(filePath);
-      if (rootPath) {
-        fetchUnlinkedMentions(filePath, rootPath);
-      }
-    }
-  }, [filePath, rootPath, indexVersion, fetchBacklinks, fetchUnlinkedMentions]);
+    if (filePath) fetchBacklinks(filePath);
+  }, [filePath, indexVersion, fetchBacklinks]);
+
+  // §34 Unlinked mentions follow their own inputs, not `indexVersion` (issue 791). The search
+  // (`find_unlinked_mentions`) walks the vault and reads the OTHER notes' bodies from disk for this
+  // note's name; it never reads the link index. So it runs again when the name or the vault
+  // changes (here) and when notes other than this one changed on disk (below) — not on
+  // `indexVersion`, and not when only this note changed: its own saves change neither input.
+  useEffect(() => {
+    if (filePath && rootPath) fetchUnlinkedMentions(filePath, rootPath);
+  }, [filePath, rootPath, fetchUnlinkedMentions]);
+
+  // §34 Notes changed on disk (`note-changes.ts`). Once this note has an answer, a change naming only
+  // this note does not search again: the search does not read this note, whoever wrote it. Compared
+  // as written, so where the watcher spells the path differently from the tab (a symlinked root, an
+  // NFD folder) each echo reads as another note and searches. A change that names nothing (`null`)
+  // always searches, and so does any change while this note has no answer — its search failed, or
+  // has not come back.
+  useEffect(
+    () =>
+      onNoteChanges((paths) => {
+        const path = filePathRef.current;
+        const root = rootPathRef.current;
+        if (!path || !root) return;
+        if (
+          paths === null ||
+          useLinkStore.getState().unlinkedMentionsFor !== path ||
+          paths.some((p) => p !== path)
+        ) {
+          fetchUnlinkedMentionsRef.current(path, root);
+        }
+      }),
+    [],
+  );
 
   // Handle clicking a backlink entry → open that file and scroll to line
   const handleClick = useCallback(
@@ -181,12 +252,13 @@ export function Backlinks() {
   // §34 Convert unlinked mention to wikilink
   const handleLinkify = useCallback(
     async (mention: UnlinkedMention) => {
-      if (!filePath || !rootPath) return;
+      // §34 Link to the note these mentions were searched FOR (issue 791) — the panel shows them
+      // only while that is the viewed note, and naming the note from the answer rather than the
+      // tab keeps a click from ever writing another note's mentions as links to this one.
+      const target = unlinkedMentionsFor;
+      if (!target || !rootPath) return;
 
-      const currentStem = extractFileNameFromPath(filePath).replace(
-        /\.md$/,
-        "",
-      );
+      const currentStem = extractFileNameFromPath(target).replace(/\.md$/, "");
 
       try {
         const content = await readFile(mention.sourcePath);
@@ -215,7 +287,7 @@ export function Backlinks() {
         logger.error("[Backlinks] Failed to linkify:", err);
       }
     },
-    [filePath, rootPath],
+    [unlinkedMentionsFor, rootPath],
   );
 
   const [wrapBacklinks, setWrapBacklinks] = useState(false);
@@ -236,7 +308,10 @@ export function Backlinks() {
   const nsGroups = rootPath
     ? groupBacklinksByNamespace(backlinks, rootPath)
     : [{ namespace: "", fileGroups: groupBacklinksByFile(backlinks) }];
-  const unlinkedGroups = groupUnlinkedByFile(unlinkedMentions);
+  // §34 Only the viewed note's answer is shown — until it has one, the section reads empty.
+  const shownMentions =
+    unlinkedMentionsFor === filePath ? unlinkedMentions : NO_MENTIONS;
+  const unlinkedGroups = groupUnlinkedByFile(shownMentions);
 
   return (
     <div className="backlinks">
@@ -308,7 +383,7 @@ export function Backlinks() {
 
       {/* §34 Unlinked mentions */}
       <div className="backlinks-header backlinks-header-unlinked">
-        {t("backlinks.unlinked")} ({unlinkedMentions.length})
+        {t("backlinks.unlinked")} ({shownMentions.length})
         <button
           aria-label={t("backlinks.wrap")}
           aria-pressed={wrapUnlinked}

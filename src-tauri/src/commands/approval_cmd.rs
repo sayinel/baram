@@ -268,8 +268,15 @@ pub fn list_approved_roots(app: tauri::AppHandle) -> Result<Vec<approval::Approv
 }
 
 #[tauri::command]
-pub fn revoke_approved_root(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    approval::revoke(&app, &path)
+pub async fn revoke_approved_root<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    path: String,
+) -> Result<(), String> {
+    approval::revoke(&app, &path)?;
+    // §335 회수는 FS 가드를 즉시 닫아야 한다. 프런트가 지우는 컨텍스트는 자기 목록에 있는 것이고 그 창의
+    // 몫만 놓으므로, 파일 창이 잡은 등록은 여기서 닫는다.
+    super::context_cmd::close_unapproved_file_contexts(&app).await;
+    Ok(())
 }
 
 #[cfg(test)]

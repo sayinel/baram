@@ -10,13 +10,14 @@
 // 사슬 밖으로 꺼내 숨기기만 하면 그 사슬 전체가 성립하지 않는다: 언마운트가 없으니 파기할
 // NodeView도, 복원할 것도 없다. 편집기 인스턴스는 원래 하나뿐이라 메모리 대가도 없다.
 import type { MutableRefObject } from "react";
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import type { UseInlineAIReturn } from "../../hooks/use-inline-ai";
 import type { Editor } from "@tiptap/react";
 
 import { EditorContent } from "@tiptap/react";
 
+import { dispatchClearSearch } from "../../extensions/plugins/find-replace";
 import { useTabScrollMemory } from "../../hooks/use-tab-scroll-memory";
 import { InlineAIPrompt } from "../ai/InlineAIPrompt";
 import { BlockHandle } from "../toolbar/BlockHandle";
@@ -94,6 +95,25 @@ export function MarkdownSurface({
     },
     scrollOffsets,
   );
+
+  // §5.6 Find 를 닫으면 검색어를 지운다(#792). 검색어가 plugin 상태에 남아 있으면 막대가
+  // 없어도 편집마다 match 를 다시 구한다. 닫는 길은 막대의 닫기 버튼·Esc(onClose)와 막대를
+  // 거치지 않는 네이티브 메뉴 토글(use-menu-event-handler)이다 — 닫는 호출은
+  // `grep -rn "FindReplaceOpen(false\|FindReplaceOpen((" src` 로 찾았다. 그래서 막대가 아니라 열림
+  // 상태를 보고 한 곳에서 지운다. 막대의 언마운트 cleanup 에 두지 않는 것은 StrictMode 가
+  // 마운트 직후 cleanup 을 한 번 돌려, Global Search 가 막대를 열기 직전에 넣은 검색어를
+  // 지우기 때문이다.
+  // ‼️ **열림→닫힘 전이에서만** 지운다. 닫혀 있는 동안 편집기가 바뀌는 경우는 이 effect 의 몫이
+  // 아니다 — 그것은 `useKeepaliveEditors` 의 전환 콜백이 동기로 지운다(find-replace.ts 의
+  // `findOpen` 주석이 세 자리를 적는다). 예전처럼 여기서 `activeEditor` 변화를 보고 지우면,
+  // 이 passive effect 가 Global Search 의 50 ms 타이머가 넣은 검색어보다 늦게 flush 되어 그
+  // 강조를 지울 수 있었다(#792 리뷰). layout effect 라 닫는 commit 안에서 끝난다.
+  const wasFindOpen = useRef(findReplaceOpen);
+  useLayoutEffect(() => {
+    const closed = wasFindOpen.current && !findReplaceOpen;
+    wasFindOpen.current = findReplaceOpen;
+    if (closed && activeEditor) dispatchClearSearch(activeEditor.view);
+  }, [findReplaceOpen, activeEditor]);
 
   return (
     <>

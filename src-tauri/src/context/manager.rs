@@ -1,6 +1,6 @@
 // §88 ContextManager — multi-vault/folder/file context registry with path confinement
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -25,6 +25,10 @@ pub struct ContextState {
     /// The link index (commands/index_cmd.rs) records the incarnation it was
     /// built for and ignores a stale `forget` from an earlier one.
     pub incarnation: u64,
+    /// §89 The windows using a `File` context, by webview label. One registration serves every
+    /// window with that file open, so taking it away for one refuses the others' writes. Empty for
+    /// a directory context, which only the main window adds and closes.
+    pub holders: HashSet<String>,
 }
 
 /// What the link index needs to know about a registration (issue 263): the
@@ -38,6 +42,12 @@ pub struct Registered {
 }
 
 impl ContextState {
+    fn add_holder(&mut self, holder: Option<&str>) {
+        if let (ContextType::File, Some(holder)) = (&self.info.context_type, holder) {
+            self.holders.insert(holder.to_string());
+        }
+    }
+
     fn registered(&self) -> Registered {
         Registered {
             info: self.info.clone(),
@@ -45,6 +55,17 @@ impl ContextState {
             canonical_path: self.canonical_path.clone(),
         }
     }
+}
+
+/// The entry registered for this exact path, now also held by `holder`.
+fn held(
+    map: &mut HashMap<String, ContextState>,
+    canonical: &Path,
+    holder: Option<&str>,
+) -> Option<ContextInfo> {
+    let existing = map.values_mut().find(|s| s.canonical_path == canonical)?;
+    existing.add_holder(holder);
+    Some(existing.info.clone())
 }
 
 // ── ContextManager ─────────────────────────────────────────────────────────────
@@ -135,6 +156,24 @@ impl ContextManager {
     /// `setVaultRoot` (legacy-xxx) and `addContext` (ctx-xxx) from creating two
     /// entries for the same directory.
     pub async fn add(&self, info: ContextInfo) -> Result<ContextInfo, String> {
+        self.register(info, None).await
+    }
+
+    /// `add`, on behalf of the window `holder`. Recorded under the lock that finds or inserts the
+    /// entry: tearing a tab off has the new window registering while the main window removes.
+    pub async fn add_held_by(
+        &self,
+        info: ContextInfo,
+        holder: &str,
+    ) -> Result<ContextInfo, String> {
+        self.register(info, Some(holder)).await
+    }
+
+    async fn register(
+        &self,
+        info: ContextInfo,
+        holder: Option<&str>,
+    ) -> Result<ContextInfo, String> {
         let canonical = resolve_canonical(&info.path)?;
         if !canonical.exists() {
             return Err(format!("Path does not exist: {}", info.path));
@@ -154,7 +193,7 @@ impl ContextManager {
 
         // §88 Dedup: return existing context if one already covers this path
         // (fast path, before the config read below).
-        if let Some(existing) = self.registered_for(&canonical).await {
+        if let Some(existing) = held(&mut *self.contexts.write().await, &canonical, holder) {
             return Ok(existing);
         }
 
@@ -170,8 +209,8 @@ impl ContextManager {
             // index keys by registered path and needs at most one context per
             // canonical directory (issue 263).
             let mut map = self.contexts.write().await;
-            if let Some(existing) = map.values().find(|s| s.canonical_path == canonical) {
-                return Ok(existing.info.clone());
+            if let Some(existing) = held(&mut map, &canonical, holder) {
+                return Ok(existing);
             }
             if self
                 .reserved
@@ -185,15 +224,15 @@ impl ContextManager {
                     info.path
                 ));
             }
-            map.insert(
-                info.id.clone(),
-                ContextState {
-                    info: info.clone(),
-                    canonical_path: canonical,
-                    config: vault_config,
-                    incarnation: self.next_incarnation.fetch_add(1, Ordering::SeqCst) + 1,
-                },
-            );
+            let mut state = ContextState {
+                info: info.clone(),
+                canonical_path: canonical,
+                config: vault_config,
+                incarnation: self.next_incarnation.fetch_add(1, Ordering::SeqCst) + 1,
+                holders: HashSet::new(),
+            };
+            state.add_holder(holder);
+            map.insert(info.id.clone(), state);
         }
 
         if let Some(alias) = &info.alias {
@@ -225,23 +264,70 @@ impl ContextManager {
         }
     }
 
-    /// Remove a context entry by id.
-    ///
-    /// Removes its alias mapping and clears `active_id` if the removed entry was active.
+    /// Remove a context entry by id, whoever holds it: §335 a revoked approval closes the entry for
+    /// every window. Removal takes its alias mapping and clears `active_id` if it was active.
     pub async fn remove(&self, id: &str) -> Result<(), String> {
+        let removed = self.contexts.write().await.remove(id);
+        let Some(removed) = removed else {
+            return Err(format!("Context not found: {id}"));
+        };
+        self.after_removal(id, &removed).await;
+        Ok(())
+    }
+
+    /// Remove a context entry by id, for the window `holder`.
+    ///
+    /// §89 An entry another window still holds stays, with this window off its list.
+    ///
+    /// @returns whether the entry is gone
+    pub async fn remove_for(&self, id: &str, holder: &str) -> Result<bool, String> {
         let removed = {
             let mut map = self.contexts.write().await;
+            let Some(state) = map.get_mut(id) else {
+                return Err(format!("Context not found: {id}"));
+            };
+            state.holders.remove(holder);
+            if !state.holders.is_empty() {
+                return Ok(false);
+            }
             map.remove(id)
         };
-
-        if removed.is_none() {
-            return Err(format!("Context not found: {id}"));
+        if let Some(removed) = removed {
+            self.after_removal(id, &removed).await;
         }
+        Ok(true)
+    }
 
+    /// §89 A window is gone: take it off every entry it held, and remove those left with no holder.
+    ///
+    /// @returns the id, path and incarnation of each entry removed, for the link index
+    pub async fn release_holder(&self, holder: &str) -> Vec<(String, String, u64)> {
+        let removed: Vec<(String, ContextState)> = {
+            let mut map = self.contexts.write().await;
+            let emptied: Vec<String> = map
+                .iter_mut()
+                .filter_map(|(id, state)| {
+                    (state.holders.remove(holder) && state.holders.is_empty()).then(|| id.clone())
+                })
+                .collect();
+            emptied
+                .into_iter()
+                .filter_map(|id| map.remove(&id).map(|state| (id, state)))
+                .collect()
+        };
+        let mut released = Vec::with_capacity(removed.len());
+        for (id, state) in removed {
+            self.after_removal(&id, &state).await;
+            released.push((id, state.info.path, state.incarnation));
+        }
+        released
+    }
+
+    async fn after_removal(&self, id: &str, removed: &ContextState) {
         // The alias goes only if this entry still owns it (`release_alias_if_owned`):
         // dropping an alias the replacement context now holds would break
         // `resolve_cross_vault_link` for it until restart.
-        if let Some(alias) = removed.as_ref().and_then(|s| s.info.alias.as_ref()) {
+        if let Some(alias) = removed.info.alias.as_ref() {
             self.release_alias_if_owned(alias, id).await;
         }
 
@@ -250,8 +336,6 @@ impl ContextManager {
         if active.as_deref() == Some(id) {
             *active = None;
         }
-
-        Ok(())
     }
 
     // ── Active context ─────────────────────────────────────────────────────────
@@ -319,13 +403,6 @@ impl ContextManager {
                 ) && s.canonical_path == canonical
             })
             .map(ContextState::registered)
-    }
-
-    async fn registered_for(&self, canonical: &Path) -> Option<ContextInfo> {
-        let map = self.contexts.read().await;
-        map.values()
-            .find(|s| s.canonical_path == canonical)
-            .map(|s| s.info.clone())
     }
 
     /// Every directory context whose root contains `path` — a file inside a
@@ -613,6 +690,162 @@ mod tests {
         }
     }
 
+    /// A file for `File` contexts to register, and the directory that keeps it alive.
+    fn a_file() -> (TempDir, String) {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("note.md");
+        std::fs::write(&path, "x").unwrap();
+        (dir, path.to_str().unwrap().to_string())
+    }
+
+    // §89 이것을 실패시키는 것: 소유자를 세지 않으면 파일 창을 닫을 때 같은 파일을 연 main 탭의 쓰기가 거부되고,
+    // main 이 탭을 닫을 때 파일 창의 쓰기가 거부된다.
+    #[tokio::test]
+    async fn a_file_context_stays_until_its_last_window_lets_go() {
+        let (_dir, path) = a_file();
+        let mgr = ContextManager::new();
+        let first = mgr
+            .add_held_by(make_info("f1", &path, ContextType::File), "main")
+            .await
+            .unwrap();
+        let second = mgr
+            .add_held_by(make_info("f2", &path, ContextType::File), "file-1")
+            .await
+            .unwrap();
+        assert_eq!(first.id, second.id, "one registration per path");
+
+        assert!(!mgr.remove_for("f1", "main").await.unwrap());
+        assert_eq!(mgr.list().await.len(), 1);
+
+        assert!(mgr.remove_for("f1", "file-1").await.unwrap());
+        assert!(mgr.list().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn removing_for_a_window_that_never_held_it_leaves_the_holders_alone() {
+        let (_dir, path) = a_file();
+        let mgr = ContextManager::new();
+        mgr.add_held_by(make_info("f1", &path, ContextType::File), "file-1")
+            .await
+            .unwrap();
+
+        assert!(!mgr.remove_for("f1", "main").await.unwrap());
+
+        assert_eq!(mgr.list().await.len(), 1);
+    }
+
+    // The pair: nothing else is held, so a directory context goes when it is closed. A window on a
+    // file inside it does not keep the whole vault open under the main window.
+    #[tokio::test]
+    async fn a_directory_context_goes_when_it_is_closed() {
+        let dir = TempDir::new().unwrap();
+        let mgr = ContextManager::new();
+        mgr.add_held_by(
+            make_info("v1", dir.path().to_str().unwrap(), ContextType::Vault),
+            "main",
+        )
+        .await
+        .unwrap();
+        mgr.add_held_by(
+            make_info("v2", dir.path().to_str().unwrap(), ContextType::Vault),
+            "file-1",
+        )
+        .await
+        .unwrap();
+
+        assert!(mgr.remove_for("v1", "main").await.unwrap());
+        assert!(mgr.list().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn removing_an_unknown_context_for_a_window_is_an_error() {
+        let mgr = ContextManager::new();
+        assert!(mgr.remove_for("nope", "main").await.is_err());
+    }
+
+    // 이것을 실패시키는 것: 창이 사라져도 소유가 남으면 그 파일의 등록이 앱을 끌 때까지 남고, 다른 창의 것까지
+    // 지우면 그 창의 쓰기가 거부된다.
+    #[tokio::test]
+    async fn a_window_going_away_removes_only_what_it_alone_held() {
+        let (_shared_dir, shared) = a_file();
+        let (_own_dir, own) = a_file();
+        let mgr = ContextManager::new();
+        mgr.add_held_by(make_info("shared", &shared, ContextType::File), "main")
+            .await
+            .unwrap();
+        mgr.add_held_by(make_info("shared", &shared, ContextType::File), "file-1")
+            .await
+            .unwrap();
+        mgr.add_held_by(make_info("own", &own, ContextType::File), "file-1")
+            .await
+            .unwrap();
+
+        let released = mgr.release_holder("file-1").await;
+
+        assert_eq!(released.len(), 1);
+        assert_eq!(released[0].0, "own");
+        assert_eq!(released[0].1, own);
+        let left = mgr.list().await;
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].id, "shared");
+        assert!(mgr.remove_for("shared", "main").await.unwrap());
+    }
+
+    // §89 파일 창이 vault 안의 파일을 잡으면 vault 를 닫아도 그 파일은 쓸 수 있고, 나머지는 닫힌다.
+    #[tokio::test]
+    async fn a_file_held_inside_a_vault_outlives_the_vault_and_only_it() {
+        let dir = TempDir::new().unwrap();
+        let held = dir.path().join("held.md");
+        let other = dir.path().join("other.md");
+        std::fs::write(&held, "x").unwrap();
+        std::fs::write(&other, "x").unwrap();
+        let mgr = ContextManager::new();
+        mgr.add_held_by(
+            make_info("v1", dir.path().to_str().unwrap(), ContextType::Vault),
+            "main",
+        )
+        .await
+        .unwrap();
+        mgr.add_held_by(
+            make_info("f1", held.to_str().unwrap(), ContextType::File),
+            "file-1",
+        )
+        .await
+        .unwrap();
+
+        assert!(mgr.remove_for("v1", "main").await.unwrap());
+
+        assert!(mgr.validate_path_any(held.to_str().unwrap()).await.is_ok());
+        assert!(mgr
+            .validate_path_any(other.to_str().unwrap())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn removing_outright_ignores_who_holds_it() {
+        let (_dir, path) = a_file();
+        let mgr = ContextManager::new();
+        mgr.add_held_by(make_info("f1", &path, ContextType::File), "file-1")
+            .await
+            .unwrap();
+
+        mgr.remove("f1").await.unwrap();
+
+        assert!(mgr.list().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_file_context_added_without_a_holder_goes_on_the_first_removal() {
+        let (_dir, path) = a_file();
+        let mgr = ContextManager::new();
+        mgr.add(make_info("f1", &path, ContextType::File))
+            .await
+            .unwrap();
+
+        assert!(mgr.remove_for("f1", "main").await.unwrap());
+    }
+
     #[tokio::test]
     async fn add_and_list() {
         let dir = TempDir::new().unwrap();
@@ -652,10 +885,10 @@ mod tests {
         ))
         .await
         .unwrap();
-        mgr.remove("old").await.unwrap();
+        mgr.remove_for("old", "main").await.unwrap();
         assert_eq!(mgr.resolve_alias("journal").await.as_deref(), Some("new"));
         // Retiring the owner does drop it.
-        mgr.remove("new").await.unwrap();
+        mgr.remove_for("new", "main").await.unwrap();
         assert_eq!(mgr.resolve_alias("journal").await, None);
     }
 
@@ -788,7 +1021,7 @@ mod tests {
         let mgr = ContextManager::new();
         let info = make_info("v1", dir.path().to_str().unwrap(), ContextType::Vault);
         mgr.add(info).await.unwrap();
-        mgr.remove("v1").await.unwrap();
+        mgr.remove_for("v1", "main").await.unwrap();
         assert!(mgr.list().await.is_empty());
     }
 
@@ -815,7 +1048,7 @@ mod tests {
         let info = make_info("v1", dir.path().to_str().unwrap(), ContextType::Vault);
         mgr.add(info).await.unwrap();
         mgr.set_active("v1").await.unwrap();
-        mgr.remove("v1").await.unwrap();
+        mgr.remove_for("v1", "main").await.unwrap();
         assert!(mgr.active_id().await.is_none());
     }
 
@@ -872,7 +1105,7 @@ mod tests {
         let mgr = ContextManager::new();
         let info = make_info_with_alias("v1", dir.path().to_str().unwrap(), "work");
         mgr.add(info).await.unwrap();
-        mgr.remove("v1").await.unwrap();
+        mgr.remove_for("v1", "main").await.unwrap();
         assert!(mgr.resolve_alias("work").await.is_none());
     }
 
@@ -1115,7 +1348,7 @@ mod tests {
             .await
             .unwrap();
         let (_, first) = mgr.registration("ctx").await.unwrap();
-        mgr.remove("ctx").await.unwrap();
+        mgr.remove_for("ctx", "main").await.unwrap();
         mgr.add(make_info("ctx", &root, ContextType::Folder))
             .await
             .unwrap();

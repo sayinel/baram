@@ -24,6 +24,7 @@ import { previewTaskFieldLine, setTaskField } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useTaskStore } from "../../../stores/tasks/task-store";
+import { markContentLoaded } from "../../../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../../../utils/editor/serialize-live-doc";
 import { rescheduleOverdueToToday } from "../task-bulk-actions";
 
@@ -66,6 +67,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  markContentLoaded("t1");
   useEditorStore.setState({
     activeTabId: "t1",
     sourceBufferAccess: null,

@@ -215,10 +215,8 @@ export function editorSurfaceBlocked(): null | string {
   // as though it were open — for a macrotask while the deferred empty-document install is
   // pending, and then indefinitely, since that branch never calls `markContentLoaded`.
   //
-  // ‼️ A §89 single-file window has no tabs at all (`FileEditorLayout` never touches the
-  // tab store), so this would block its editor surface permanently. Harmless today because
-  // those realms skip `initializePlugins` entirely — but if plugins are ever loaded there,
-  // this predicate needs a file-window branch rather than a debugging session.
+  // A §89 single-file window passes too once its file has loaded: `FileEditorLayout` opens one
+  // tab and marks it installed. Those realms skip `initializePlugins` entirely today.
   if (!activeTabId) return "no document is open";
   if (isTabLoading(activeTabId)) return "the document is still loading";
   // …and the window BEFORE that flag is set (§260 Phase 4b security review, LOW). The
