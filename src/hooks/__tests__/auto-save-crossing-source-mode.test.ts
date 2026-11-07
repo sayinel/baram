@@ -25,6 +25,7 @@ import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
+  COLWIDTH_AUTO_INIT_META,
   getOriginalDoc,
   markContentLoaded,
 } from "../../utils/editor/programmatic-update";
@@ -86,6 +87,47 @@ function typeInSource(hook: Mounted, text: string) {
     hook.result.current.setSourceBuffer(TAB, text);
     useEditorStore.getState().markSourceEdited(TAB, true);
   });
+}
+
+/**
+ * What `createColResizePlugin` dispatches once it has measured a table — not an edit, and the
+ * widths it writes (`userResized: false`) are not serialized, so the text stays the same.
+ */
+function measureColumns() {
+  act(() => {
+    const { state } = editor;
+    const { tr } = state;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+        tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          colwidth: [120],
+          userResized: false,
+        });
+      }
+    });
+    expect(tr.docChanged).toBe(true);
+    tr.setMeta("addToHistory", false);
+    tr.setMeta(COLWIDTH_AUTO_INIT_META, true);
+    editor.view.dispatch(tr);
+  });
+}
+
+/** Holds the next write open until the returned function is called. */
+function holdNextWrite(): () => Promise<void> {
+  let finish: () => void = () => undefined;
+  writeFile.mockImplementationOnce(
+    () =>
+      new Promise<undefined>((resolve) => {
+        finish = () => resolve(undefined);
+      }),
+  );
+  return () =>
+    act(async () => {
+      finish();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 }
 
 function unsaved(): boolean {
@@ -299,6 +341,116 @@ describe("a tab that has been through source mode", () => {
     expect(written()).toHaveLength(1);
     expect(unsaved()).toBe(true);
     expect(getOriginalDoc(TAB)?.textContent).not.toContain("typed");
+  });
+
+  // §3.5 (#798) 돌아오는 길의 저장이 쓰는 사이 문서에 친 글은 그 쓰기에 없다. 소스 모드가 끝나 버퍼는 더
+  // 바뀌지 않으므로, 저장 판정을 버퍼에 물으면 그 글이 저장된 것으로 기록되고 다음 자동 저장 전에 닫으면 묻지
+  // 않고 잃는다.
+  // 이것을 실패시키는 것: use-source-mode.ts 의 `handBufferToDocument` 가 `outcome` 을 넘기지 않으면(버퍼
+  // 판정) 첫째가, `returnedOutcome` 이 설치한 문서 대신 늘 "그대로" 라고 답하면 첫째가 깨진다. 둘째는 같은
+  // 저장이 아무도 치지 않았을 때 저장됨을 기록하는 것을 보인다.
+  it("keeps the tab unsaved when the document is typed in while the save on the way back writes", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "typed in source\n");
+    let finish: () => void = () => undefined;
+    writeFile.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finish = () => resolve(undefined);
+        }),
+    );
+    toggle(hook);
+    await advance(0);
+    expect(written()).toEqual(["typed in source\n"]);
+
+    typeInDocument();
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(unsaved()).toBe(true);
+    // The document is live in the editor, so the cache is the file on disk.
+    expect(useFileStore.getState().openFiles.get(PATH)).toBe(
+      "typed in source\n",
+    );
+  });
+
+  // §3.5 (#798) source-edited 표시는 buffer 의 것이다. 돌아오는 저장이 쓰는 사이 다시 소스 모드로 들어가 친 글은
+  // buffer 에만 있고, 문서가 그대로라는 판정은 그 글에 대해 아무것도 말하지 않는다.
+  // 이것을 실패시키는 것: use-code-auto-save.ts 의 `saveFromBuffer` 가 buffer 를 다시 보지 않고 표시를 내리면 깨진다.
+  it("keeps the source mark of text typed after going back into source mode during the save on the way back", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "typed in source\n");
+    const finish = holdNextWrite();
+    toggle(hook);
+    await advance(0);
+    expect(written()).toEqual(["typed in source\n"]);
+
+    toggle(hook);
+    typeInSource(hook, "typed in source, again\n");
+    await finish();
+
+    expect(useEditorStore.getState().sourceEditedTabs).toEqual([TAB]);
+    expect(unsaved()).toBe(true);
+  });
+
+  it("has the tab saved when nothing is typed while the save on the way back writes", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "typed in source\n");
+    toggle(hook);
+    await advance(0);
+
+    expect(written()).toEqual(["typed in source\n"]);
+    expect(unsaved()).toBe(false);
+  });
+
+  // §3.5 (#798) 편집으로 세지 않는 트랜잭션(표 열 폭 측정 · 구문 펼침 · 내용 동기화)은 문서를 바꾸지만 글은
+  // 그대로이고 저장을 다시 걸지 않는다. 쓰기가 끝났을 때 그것을 "더 고쳤다" 로 읽으면 탭이 다음 입력까지 "저장 안
+  // 됨" 에 남는다. 돌아오는 길의 표는 설치 한 프레임 뒤 측정되므로, 한 프레임보다 긴 쓰기 안에 그것이 든다.
+  // 표는 흔히 쓰는 GFM 꼴(`| --- |`)로 친다 — 직렬화는 그것을 `| - |` 로 쓰므로, 비교는 buffer 가 아니라 끼운
+  // 문서의 직렬화와 해야 한다.
+  // 이것을 실패시키는 것: save-still-current.ts 의 `held.serialize() === …` 를 빼면(`eq` 만 보면), 또는
+  // use-source-mode.ts 의 `returnedOutcome` 이 끼운 문서의 직렬화 대신 쓴 buffer 와 비교하면 깨진다.
+  it("has the tab saved when the table is measured while the save on the way back writes", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "| a |\n| --- |\n| b |\n");
+    const finish = holdNextWrite();
+    toggle(hook);
+    await advance(0);
+    expect(written()).toEqual(["| a |\n| --- |\n| b |\n"]);
+
+    measureColumns();
+    await finish();
+
+    expect(unsaved()).toBe(false);
+    // The baseline is the document the tab holds now, measured widths and all.
+    // 이것을 실패시키는 것: use-source-mode.ts 가 `judged.baseline` 대신 끼운 문서를 기준으로 두면 깨진다.
+    expect(getOriginalDoc(TAB)?.eq(editor.state.doc)).toBe(true);
+  });
+
+  // 이것을 실패시키는 것: 이 자리도 같은 `held.serialize() === written` 이다. 기준 문서 단정은 use-auto-save.ts 가
+  // `baseline` 대신 쓸 때의 문서를 기준으로 두면 깨진다 — 다음 편집을 되돌려도 측정한 열 폭 때문에 "저장 안 됨" 이 남는다.
+  it("has a WYSIWYG auto-save recorded when the table is measured while it writes", async () => {
+    editor.commands.setContent(
+      "<table><tbody><tr><th><p>a</p></th></tr><tr><td><p>b</p></td></tr></tbody></table><p>end</p>",
+    );
+    mount();
+    typeInDocument();
+    const finish = holdNextWrite();
+    await advance(DELAY);
+    expect(written()).toHaveLength(1);
+
+    measureColumns();
+    await finish();
+
+    expect(unsaved()).toBe(false);
+    expect(getOriginalDoc(TAB)?.eq(editor.state.doc)).toBe(true);
   });
 
   // 이것을 실패시키는 것: 숨은 문서의 변경을 세면 AI 채팅 Apply 뒤 표시가 남고 그것을 내릴 저장이 없다.

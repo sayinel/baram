@@ -90,7 +90,7 @@ export function TabSurface({
     (s) => s.tabs.find((t) => t.id === entry.tabId)?.filePath ?? "",
   );
   const refreshKey = useFileStore(
-    (s) => s.fileMtimes.get(filePath)?.lastSaveMtime ?? 0,
+    (s) => s.fileMtimes.get(filePath)?.viewerVersion ?? 0,
   );
 
   // §287 활성일 때만 App의 ref가 이 표면을 가리킨다. 코드 표면이 여러 개 마운트돼 있으므로

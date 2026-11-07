@@ -114,6 +114,8 @@ describe("appendCaptureToNotes — disk branch", () => {
   // 진짜 `syncOpenSurfacesAfterFileRewrite`를 쓰므로 단정이 **상태**다: 그 함수가
   // `openFiles`를 방금 쓴 내용으로 맞췄는가, 그리고 리프레시 카운터는 그대로인가.
   it("syncs open surfaces without requestContentRefresh", async () => {
+    openTab({ id: "bg", isDirty: false });
+
     await appendCaptureToNotes({
       body: "x",
       editor: null,
@@ -125,6 +127,21 @@ describe("appendCaptureToNotes — disk branch", () => {
       writeFileMock.mock.calls[0][1],
     );
     expect(useEditorStore.getState().contentRefreshKey).toBe(0);
+  });
+
+  // §3.5 (#798) 원문 캐시는 탭이 보이는 파일의 것이다. 탭 없는 파일의 항목은 어떤 닫기로도 내려가지 않고
+  // (닫힌 탭의 release 는 탭이 빠지는 것만 본다), watcher 가 그것을 열린 파일로 보고 다음 외부 변경에 다시 읽는다.
+  // 이것을 실패시키는 것: sync-open-surfaces.ts 의 `tabs.some(...)` 관문을 빼면 캐시에 항목이 생긴다.
+  it("does not put a file no tab shows into the content cache", async () => {
+    await appendCaptureToNotes({
+      body: "x",
+      editor: null,
+      now: NOW,
+      targets: [TARGET],
+    });
+
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(useFileStore.getState().openFiles.has(PATH)).toBe(false);
   });
 
   // §313 배경 탭은 캐시된 ProseMirror 상태에서 복원된다 — 낡음 표시가 없으면 돌아왔을 때
@@ -163,6 +180,8 @@ describe("appendCaptureToNotes — disk branch", () => {
   // ‼️ 모든 저장 경로가 하는 일이다(`use-auto-save.ts:115` 등). 빠뜨리면 워처가 우리
   // 쓰기를 **외부 변경**으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다.
   it("seeds the self-write baseline so the watcher does not call it external", async () => {
+    openTab({ id: "bg", isDirty: false });
+
     await appendCaptureToNotes({
       body: "x",
       editor: null,
@@ -173,6 +192,21 @@ describe("appendCaptureToNotes — disk branch", () => {
     expect(
       useFileStore.getState().getFileMtime(PATH)?.lastSaveMtime,
     ).toBeGreaterThan(0);
+  });
+
+  // §3.5 (#798) 워처가 보는 것은 `openFiles` 에 든 파일이고, 파일은 탭이 그것을 보일 때 거기 든다. 탭 없는 파일에는
+  // 기준선이 필요 없고, 남기면 어떤 닫기로도 내려가지 않는다.
+  // 이것을 실패시키는 것: capture-append.ts 의 `tabs.some(...)` 관문을 빼면 기록이 생긴다.
+  it("leaves no mtime record for a file no tab shows", async () => {
+    await appendCaptureToNotes({
+      body: "x",
+      editor: null,
+      now: NOW,
+      targets: [TARGET],
+    });
+
+    expect(writeFileMock).toHaveBeenCalledTimes(1);
+    expect(useFileStore.getState().fileMtimes.has(PATH)).toBe(false);
   });
 });
 

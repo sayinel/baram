@@ -224,8 +224,12 @@ async function appendToOne(
   const next = appendOne(await readFile(target.path), entry, stamp);
   await writeFile(target.path, next);
   // 모든 저장 경로가 하는 일이다(`use-auto-save.ts:115`). 빠뜨리면 워처가 우리 쓰기를
-  // 외부 변경으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다.
-  useFileStore.getState().updateLastSaveMtime(target.path, Date.now());
+  // 외부 변경으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다. 워처가 보는 것은 `openFiles` 에 든
+  // 파일이고, 파일은 탭이 그것을 보일 때 거기 든다. 탭이 보이지 않는 파일에는 남기지 않는다 — 어떤
+  // 닫기로도 내려가지 않는 기록이 된다(§3.5, #798).
+  if (useEditorStore.getState().tabs.some((t) => t.filePath === target.path)) {
+    useFileStore.getState().updateLastSaveMtime(target.path, Date.now());
+  }
   // ‼️ `requestContentRefresh`가 아니다 — 그것은 `CONTENT_SYNC_META` 보호가 없어
   // 자동 저장이 방금 디스크에 쓴 내용을 덮어쓴다(§313에서 아카이브가 그렇게 깨졌다).
   syncOpenSurfacesAfterFileRewrite(target.path, next, editor);

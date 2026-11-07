@@ -1,8 +1,6 @@
 // §44 AI Chat Panel — right-side conversational AI interface
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ResolvedReference } from "../../utils/chat-context";
-
 import { Plus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
@@ -15,8 +13,7 @@ import {
   buildContextPrompt,
   isVaultQuery,
   parseReferences,
-  resolveReference,
-  resolveVaultContextReferences,
+  resolveReferences,
 } from "../../utils/chat-context";
 import { formatAIError } from "../../utils/format-error";
 import { ChatMessage } from "./ChatMessage";
@@ -195,14 +192,10 @@ export function AIChatPanel() {
       sessionId = createSession();
     }
 
-    // Parse @references
+    // Parse @references, then resolve them — §87 @vault:ID and @all-vaults, and an @file: the app
+    // does not hold, asynchronously
     const refStrings = parseReferences(trimmed);
-    const resolved: ResolvedReference[] = refStrings
-      .map(resolveReference)
-      .filter((r): r is ResolvedReference => r !== null);
-
-    // §87 Resolve @vault:ID and @all-vaults asynchronously
-    await resolveVaultContextReferences(resolved, refStrings);
+    const resolved = await resolveReferences(refStrings);
 
     // Add user message
     addMessage(sessionId, {

@@ -191,11 +191,17 @@ describe("source → preview: the flush (D17)", () => {
     expect(hook.result.current.sm.getSourceBuffer(TAB)).toBe("T10");
     expect(m.pending).toBe(false);
     release();
-    // `setFileContent` runs in the same callback, just before the D17 line — once the cache
-    // holds T9, that line has run.
+    // `updateLastSaveMtime` runs first in the same callback — once it is recorded, the D17 line
+    // has run. The tab is still the active one, so the cache is the file on disk, the written
+    // T9, while the tab's own text T10 stays in the buffer; leaving the tab copies the buffer
+    // into the cache (`saveOutgoingTab`). #798, `SaveOutcome.cacheIsDisk`.
     await vi.waitFor(() =>
-      expect(useFileStore.getState().openFiles.get(PATH)).toBe("T9"),
+      expect(
+        useFileStore.getState().fileMtimes.get(PATH)?.lastSaveMtime,
+      ).toBeGreaterThan(0),
     );
     expect(useEditorStore.getState().tabs[0].isDirty).toBe(true);
+    expect(useFileStore.getState().openFiles.get(PATH)).toBe("T9");
+    expect(hook.result.current.sm.getSourceBuffer(TAB)).toBe("T10");
   });
 });

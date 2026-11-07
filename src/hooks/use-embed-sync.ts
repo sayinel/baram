@@ -177,7 +177,14 @@ export function useEmbedSync({
         if (replaced === null) return;
 
         await writeFile(resolved.path, replaced);
-        useFileStore.getState().setFileContent(resolved.path, replaced);
+        // §3.5 Only for a file a tab shows (#798) — as in `syncOpenSurfacesAfterFileRewrite`.
+        if (
+          useEditorStore
+            .getState()
+            .tabs.some((t) => t.filePath === resolved.path)
+        ) {
+          useFileStore.getState().setFileContent(resolved.path, replaced);
+        }
         updateFileIndex(resolved.path).catch(() => {});
       }
     },

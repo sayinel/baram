@@ -12,7 +12,7 @@ import { matchFileViewer, usePluginUIStore } from "../plugins/plugin-ui-store";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import {
-  isBinaryViewerFile,
+  isEditableTextPath,
   isHtmlFile,
   isImageFile,
   isMarkdownFile,
@@ -76,8 +76,7 @@ export function useActiveTabSurface(): ActiveSurfaceSnapshot {
   // Named rather than inlined at the one call site on purpose: the next effect that
   // writes files must be able to ask this question by name instead of rediscovering it.
   // Guarding call sites one by one is what leaves the following one exposed.
-  const isEditableTextFile =
-    isCodeFile && !isBinaryViewerFile(activeTabFilePath);
+  const isEditableTextFile = isEditableTextPath(activeTabFilePath);
 
   // PDF file viewer — read-only, built-in (PDF.js)
   const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
@@ -110,12 +109,13 @@ export function useActiveTabSurface(): ActiveSurfaceSnapshot {
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
 
-  // Viewers reload whenever the file's saved/reloaded mtime bumps
-  // (manual save, auto-save, toggle-flush, or external auto-reload)
+  // Viewers reload whenever the file's viewer version moves on — a save or reload is recorded
+  // (manual save, auto-save, toggle-flush, or external auto-reload), or a tab starts to show the
+  // file (`viewer-version.ts`, #798).
   const previewFileMtime = useFileStore((s) =>
     (isHtmlTab || isPdfTab || isImageTab || isPluginPreviewTab) &&
     activeTabFilePath
-      ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
+      ? (s.fileMtimes.get(activeTabFilePath)?.viewerVersion ?? 0)
       : 0,
   );
 

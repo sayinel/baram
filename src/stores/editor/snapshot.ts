@@ -156,7 +156,15 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
         if (openFiles.has(fullPath)) {
           try {
             const content = await readFile(fullPath);
-            useFileStore.getState().setFileContent(fullPath, content);
+            // §3.5 A tab closed during the read has released this file (#798); putting it back
+            // would leave an entry no close releases.
+            if (
+              useEditorStore
+                .getState()
+                .tabs.some((t) => t.filePath === fullPath)
+            ) {
+              useFileStore.getState().setFileContent(fullPath, content);
+            }
             // Clear dirty flag so auto-save doesn't overwrite the restored file
             const tab = tabs.find((t) => t.filePath === fullPath);
             if (tab) markDirty(tab.id, false);

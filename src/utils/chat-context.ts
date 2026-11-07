@@ -1,6 +1,6 @@
 import type { FileEntry } from "../stores/file/file";
 
-import { listDir } from "../ipc/fs";
+import { listDir, readFile } from "../ipc/fs";
 import { useAIStore } from "../stores/ai/ai";
 import { useContextStore } from "../stores/context/context";
 // §44 AI Chat @reference resolver
@@ -160,6 +160,26 @@ export function resolveReference(ref: string): null | ResolvedReference {
   return null;
 }
 
+/**
+ * §44 Every reference in `refStrings`, resolved — first from what the app holds, then the ones that
+ * need the vault or the disk. Each result stays paired with the reference it came from:
+ * `resolveReference` drops a reference it cannot answer (`@current` with no tab), so the async steps
+ * are handed the two lists narrowed together rather than the parsed list.
+ */
+export async function resolveReferences(
+  refStrings: readonly string[],
+): Promise<ResolvedReference[]> {
+  const pairs = refStrings.flatMap((ref) => {
+    const resolved = resolveReference(ref);
+    return resolved ? [{ ref, resolved }] : [];
+  });
+  const refs = pairs.map((p) => p.resolved);
+  const kept = pairs.map((p) => p.ref);
+  await resolveVaultContextReferences(refs, kept);
+  await readUnheldFiles(refs, kept);
+  return refs;
+}
+
 function collectAllFiles(entries: FileEntry[], result: string[]): void {
   for (const entry of entries) {
     if (entry.isDir) {
@@ -168,6 +188,31 @@ function collectAllFiles(entries: FileEntry[], result: string[]): void {
       }
     } else {
       result.push(entry.path);
+    }
+  }
+}
+
+/**
+ * §3.5 An `@file:` whose text the app does not hold is read from disk (#798). A closed file's text is
+ * released with its tab, and the reference picker offers any file in the tree that matches what is
+ * typed (`ReferenceAutocomplete.tsx`), so a file closed earlier, or never opened, would otherwise go in
+ * as its path alone. A failed read leaves that
+ * placeholder. `@folder:` is left as it is: it puts in the text of
+ * the files tabs show and lists the rest by path, rather than reading a whole folder into the prompt.
+ */
+async function readUnheldFiles(
+  refs: ResolvedReference[],
+  refStrings: readonly string[],
+): Promise<void> {
+  for (let i = 0; i < refs.length; i++) {
+    const ref = refStrings[i];
+    if (!ref?.startsWith("@file:")) continue;
+    const path = ref.slice(6);
+    if (useFileStore.getState().openFiles.has(path)) continue;
+    try {
+      refs[i] = { ...refs[i], content: await readFile(path) };
+    } catch {
+      // Leave the placeholder.
     }
   }
 }

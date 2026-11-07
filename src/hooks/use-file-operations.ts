@@ -27,6 +27,11 @@ import {
   editorHoldsWholeDocument,
   loadedTabId,
 } from "../utils/editor/programmatic-update";
+import {
+  bufferSaveOutcome,
+  documentSaveOutcome,
+  tabStillShows,
+} from "../utils/editor/save-still-current";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
@@ -101,6 +106,15 @@ export function showConflictModal(
   useUIStore.getState().openConflictModal(filePath, externalMtime, base);
 }
 
+/** §3.5 The newest auto-reload started per path; an older one that finishes later stands down. */
+const reloadGenerations = new Map<string, number>();
+let reloadCounter = 0;
+
+/** How many paths have an auto-reload still reading — for tests. */
+export function pendingReloadPaths(): number {
+  return reloadGenerations.size;
+}
+
 /**
  * Auto-reload a file from disk when an external change is detected and the tab
  * is not dirty. Updates openFiles, syncs mtime, and triggers editor refresh via
@@ -111,10 +125,42 @@ export async function triggerAutoReload(
   externalMtime: number,
   options: AutoReloadOptions = {},
 ): Promise<void> {
+  // §3.5 이 리로드가 읽기를 기다리는 사이 세상이 바뀌었으면 결과를 쓰지 않는다(#798). 읽기를 시작할 때
+  // 이 파일을 보던 탭이 모두 닫혔으면 그 원문은 이미 내려놓았으므로, 여기서 쓰면 되살린다 — 그 사이
+  // 같은 파일을 새 탭으로 다시 열었다면 그 탭이 읽은 내용을 이 리로드의 옛 내용으로 덮는다. 같은 파일의
+  // 리로드가 겹치면 마지막에 시작한 것만 쓴다. 시작할 때 보던 탭이 없던 캐시 항목은 예전처럼 갱신한다.
+  const owners = new Set(
+    useEditorStore
+      .getState()
+      .tabs.filter((t) => t.filePath === filePath)
+      .map((t) => t.id),
+  );
+  // 경로마다가 아니라 전체에서 증가하는 번호다 — 경로의 항목은 끝나면 지우므로, 경로마다 1 부터 다시 세면
+  // 먼저 시작한 리로드와 나중 리로드가 같은 번호를 받을 수 있다.
+  const generation = ++reloadCounter;
+  reloadGenerations.set(filePath, generation);
+
   // PDFs are binary — keep the "" cache sentinel; the mtime bump below
   // refreshes the viewer iframe instead.
   const isBinary = isBinaryViewerFile(filePath);
-  const freshContent = isBinary ? "" : await readFile(filePath);
+  let freshContent: string;
+  try {
+    freshContent = isBinary ? "" : await readFile(filePath);
+  } catch (e) {
+    if (reloadGenerations.get(filePath) === generation) {
+      reloadGenerations.delete(filePath);
+    }
+    throw e;
+  }
+  // 늦게 시작한 리로드가 있으면 그것이 이 자리를 맡는다 — 먼저 끝나 자리를 비웠어도 마찬가지다.
+  if (reloadGenerations.get(filePath) !== generation) return;
+  reloadGenerations.delete(filePath);
+  const ownerLeft =
+    owners.size > 0 &&
+    !useEditorStore
+      .getState()
+      .tabs.some((t) => owners.has(t.id) && t.filePath === filePath);
+  if (ownerLeft) return;
 
   // §312 ‼️ 캐시를 덮기 **전에** 잡는다. 이 값이 "버퍼가 갈라졌는가"의 유일한 기준선인데,
   // setFileContent가 먼저 돌면 그 자리에 이미 새 내용이 들어와 모든 버퍼가 갈라져 보인다.
@@ -271,37 +317,50 @@ export function useFileOperations({
     const isCode = saveTab.filePath && !isMarkdownFile(saveTab.filePath);
     // §392 spec 0071 D17 — whether `md` is the buffer's text decides how the write below lowers
     // dirty.
-    const fromBuffer = isCode || sourceModeTabs.has(saveTab.id);
+    const fromBuffer = !!isCode || sourceModeTabs.has(saveTab.id);
     // ‼️ The editor may not hold this tab's whole document. A document still being filled holds
     // only its first blocks, which would cut the file short, and until a tab is installed the
     // editor still shows the one before it, which would write that text to this file. The tab
     // stays unsaved, so a close or a quit waiting on this save stops too.
     if (!fromBuffer && !editorHoldsWholeDocument(saveTab.id)) return;
+    // Read only for a document save — the buffer branch never touches the editor.
+    const docAtWrite = fromBuffer ? null : editor.state.doc;
     const md = fromBuffer
       ? getSourceBuffer(saveTab.id)
       : serializeLiveDoc(editor);
+    // §3.5 쓰는 사이 사용자가 더 고쳤으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다(#798).
+    // 버퍼에서 온 `md` 는 버퍼가 아직 그것을 담고 있는지로 본다(§392 D17 — 쓰는 사이 친 글자나 다른
+    // 읽기가 가져간 viewer 의 변경은 디스크에 없다. 이 읽기는 아직 대기 중인 viewer 의 변경도 가져온다).
+    const outcome = () =>
+      fromBuffer
+        ? bufferSaveOutcome(saveTab.id, getSourceBuffer(saveTab.id), md)
+        : documentSaveOutcome(editor, saveTab.id, docAtWrite!, md);
 
     if (saveTab.filePath) {
       // Existing file — save directly
       try {
         await writeFile(saveTab.filePath, md);
         useSnapshotStore.getState().markPendingAutoSnapshot();
-        useFileStore
-          .getState()
-          .updateLastSaveMtime(saveTab.filePath, Date.now());
-        setFileContent(saveTab.filePath, md);
-        // §392 spec 0071 D17 — when `md` came from the buffer, dirty comes down only while the
-        // buffer still holds it: text typed, or a viewer change another read took (a zoom tick),
-        // during the write is not on disk. The read takes a viewer change still pending, so that
-        // is compared too. A WYSIWYG save (`!fromBuffer`) clears as before.
-        if (!fromBuffer || getSourceBuffer(saveTab.id) === md) {
-          markDirty(saveTab.id, false);
+        // §3.5 A tab closed, renamed or moved while the write ran records nothing under this path
+        // (#798) — it stays unsaved if it is still open, and its next save writes where it is now.
+        if (tabStillShows(saveTab.id, saveTab.filePath)) {
+          useFileStore
+            .getState()
+            .updateLastSaveMtime(saveTab.filePath, Date.now());
+          const { cacheIsDisk, unchanged } = outcome();
+          if (cacheIsDisk) setFileContent(saveTab.filePath, md);
+          if (unchanged) {
+            markDirty(saveTab.id, false);
+            // ‼️ §82 "저장 안 됨"의 답은 두 곳에 산다. `isDirty`만 내리면 소스 모드로 고친
+            // 탭은 저장한 뒤에도 계속 점이 켜져 있고, 닫을 때마다 확인창이 뜬다 — 방금
+            // 디스크에 쓴 바로 그 내용을 두고. `md` 자체가 그 버퍼에서 나왔다(위 `fromBuffer`
+            // 갈래). 문서를 쓴 저장은 내리지 않는다 — 쓰는 사이 소스 모드로 들어가 친 글은 버퍼에만
+            // 있고, 문서가 그대로라는 답은 그 글에 대해 아무것도 말하지 않는다(§3.5, #798).
+            if (fromBuffer) {
+              useEditorStore.getState().markSourceEdited(saveTab.id, false);
+            }
+          }
         }
-        // ‼️ §82 "저장 안 됨"의 답은 두 곳에 산다. `isDirty`만 내리면 소스 모드로 고친
-        // 탭은 저장한 뒤에도 계속 점이 켜져 있고, 닫을 때마다 확인창이 뜬다 — 방금
-        // 디스크에 쓴 바로 그 내용을 두고. `md` 자체가 그 버퍼에서 나왔다(위 `fromBuffer`
-        // 갈래).
-        useEditorStore.getState().markSourceEdited(saveTab.id, false);
         notifyFileSave(saveTab.filePath);
         // §56 Refresh journal sidebars in real time on a manual save.
         if (
@@ -335,27 +394,40 @@ export function useFileOperations({
       try {
         await writeFile(savePath, md);
         useSnapshotStore.getState().markPendingAutoSnapshot();
-        useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
         if (!isCode) {
           updateFileIndex(savePath)
             .then(() => useLinkStore.getState().invalidate())
             .catch(() => {});
         }
+        // §3.5 Closed during the dialog or the write: the file exists, and nothing is left to
+        // record it for (#798).
+        if (!tabStillShows(saveTab.id, "")) return;
+        useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
         // Update tab with real path
         const fileName = savePath.split("/").pop() ?? "Unknown";
-        // Remove old untitled content
+        // The file exists now whatever happened meanwhile; only an unchanged document is clean
+        // (§3.5, #798).
+        const { cacheIsDisk, unchanged: clean } = outcome();
+        // The untitled entry moves to the new path. It becomes the written text, unless it is the
+        // tab's own newer text (`cacheIsDisk` false), which it carries as it is.
+        const kept = useFileStore.getState().openFiles.get(saveTab.id);
         useFileStore.getState().removeFileContent(saveTab.id);
-        setFileContent(savePath, md);
-        // Update the tab in store
+        setFileContent(savePath, cacheIsDisk || kept === undefined ? md : kept);
         useEditorStore.setState((state) => ({
           tabs: state.tabs.map((t) =>
             t.id === saveTab.id
-              ? { ...t, filePath: savePath, title: fileName, isDirty: false }
+              ? {
+                  ...t,
+                  filePath: savePath,
+                  title: fileName,
+                  isDirty: clean ? false : t.isDirty,
+                }
               : t,
           ),
         }));
         // Same second half as the existing-file branch above.
-        useEditorStore.getState().markSourceEdited(saveTab.id, false);
+        if (clean && fromBuffer)
+          useEditorStore.getState().markSourceEdited(saveTab.id, false);
       } catch (err) {
         logger.error("[App] Failed to save as:", err);
       }
@@ -377,9 +449,11 @@ export function useFileOperations({
 
     const isCode = saveAsTab.filePath && !isMarkdownFile(saveAsTab.filePath);
     // §392 spec 0071 D17 — as in `handleSave`.
-    const fromBuffer = isCode || sourceModeTabs.has(saveAsTab.id);
+    const fromBuffer = !!isCode || sourceModeTabs.has(saveAsTab.id);
     // As in `handleSave`: the copy would be missing most of the document, or be another tab's.
     if (!fromBuffer && !editorHoldsWholeDocument(saveAsTab.id)) return;
+    // Read only for a document save — the buffer branch never touches the editor.
+    const docAtWrite = fromBuffer ? null : editor.state.doc;
     const md = fromBuffer
       ? getSourceBuffer(saveAsTab.id)
       : serializeLiveDoc(editor);
@@ -394,24 +468,33 @@ export function useFileOperations({
     try {
       await writeFile(savePath, md);
       useSnapshotStore.getState().markPendingAutoSnapshot();
-      useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
       if (!isCode) {
         updateFileIndex(savePath)
           .then(() => useLinkStore.getState().invalidate())
           .catch(() => {});
       }
+      // §3.5 Closed, renamed or moved during the dialog or the write: the copy exists, and the tab
+      // it would be recorded for is not the one that asked (#798).
+      if (!tabStillShows(saveAsTab.id, saveAsTab.filePath)) return;
+      useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
       const fileName = savePath.split("/").pop() ?? "Unknown";
-      if (!saveAsTab.filePath) {
-        useFileStore.getState().removeFileContent(saveAsTab.id);
-      }
-      setFileContent(savePath, md);
       // §392 spec 0071 D17, applied to Save As (plan 0121 P10): when `md` came from the buffer,
       // the tab is marked clean only while the buffer still holds what was just written — text
       // drawn or typed during the dialog or the write is not in the new file. The comparison's
       // read sits BEFORE the path changes because it also takes an editable viewer's pending
       // change (§6.6): a new extension no viewer claims puts the code surface up in the same
       // render, and that surface reads the buffer in render (D16).
-      const holding = fromBuffer ? getSourceBuffer(saveAsTab.id) : md;
+      // §3.5 Same rule as `handleSave`: only an unchanged document is clean (#798).
+      const { cacheIsDisk, unchanged: clean } = fromBuffer
+        ? bufferSaveOutcome(saveAsTab.id, getSourceBuffer(saveAsTab.id), md)
+        : documentSaveOutcome(editor, saveAsTab.id, docAtWrite!, md);
+      // The tab's entry moves to the new path as in `handleSave`'s untitled branch. The old key —
+      // the tab's id for an untitled tab, the old path for a file — is then released unless another
+      // tab still shows it: the old file stays on disk, but no tab holds it, and the closed-tab
+      // release never sees this tab go, since its id stays.
+      const oldKey = saveAsTab.filePath || saveAsTab.id;
+      const kept = useFileStore.getState().openFiles.get(oldKey);
+      setFileContent(savePath, cacheIsDisk || kept === undefined ? md : kept);
       useEditorStore.setState((state) => ({
         tabs: state.tabs.map((t) =>
           t.id === saveAsTab.id
@@ -419,7 +502,14 @@ export function useFileOperations({
             : t,
         ),
       }));
-      if (holding === md) markDirty(saveAsTab.id, false);
+      if (
+        !useEditorStore
+          .getState()
+          .tabs.some((t) => (t.filePath || t.id) === oldKey)
+      ) {
+        useFileStore.getState().releaseFileContents([oldKey]);
+      }
+      if (clean) markDirty(saveAsTab.id, false);
       notifyFileSave(savePath);
     } catch (err) {
       logger.error("[App] Failed to save as:", err);

@@ -8,6 +8,10 @@ import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import {
+  bufferSaveOutcome,
+  tabStillShows,
+} from "../utils/editor/save-still-current";
+import {
   isBinaryViewerFile,
   isHtmlFile,
   isMarkdownFile,
@@ -60,14 +64,25 @@ export function usePreviewSourceView({
       const content = getSourceBuffer(tab.id);
       void writeFile(filePath, content)
         .then(() => {
+          // §3.5 Closed, renamed or moved while the write ran: nothing is recorded under this
+          // path (#798).
+          if (!tabStillShows(tab.id, filePath)) return;
           useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
-          useFileStore.getState().setFileContent(filePath, content);
           // §392 spec 0071 D17 — dirty comes down only while the buffer still holds what was
           // written. The preview this toggle puts up can be an editing mount, and a change it
           // reports during the write may already have been taken by another read (a zoom tick),
           // leaving D15 no mark to refuse on. The read below takes a change still pending, so it
-          // is compared too.
-          if (getSourceBuffer(tab.id) === content) markDirty(tab.id, false);
+          // is compared too. §3.5 Text typed while the write ran is not on disk either (#798);
+          // the cache follows `SaveOutcome.cacheIsDisk`.
+          const { cacheIsDisk, unchanged } = bufferSaveOutcome(
+            tab.id,
+            getSourceBuffer(tab.id),
+            content,
+          );
+          if (cacheIsDisk) {
+            useFileStore.getState().setFileContent(filePath, content);
+          }
+          if (unchanged) markDirty(tab.id, false);
           useSnapshotStore.getState().markPendingAutoSnapshot();
         })
         .catch(() => {

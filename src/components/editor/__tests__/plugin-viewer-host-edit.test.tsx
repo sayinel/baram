@@ -134,7 +134,10 @@ describe("what reaches an editing mount (§6.4 · §6.5 · D10)", () => {
     events.length = 0;
     act(() => useFileStore.getState().updateLastSaveMtime("/v/p.png", 1234));
     expect(events).toEqual(["onUpdate"]);
-    expect(double.contexts.at(-1)?.refreshKey).toBe(1234);
+    // The refresh key is the file's viewer version, which the recorded save moved on (#798).
+    expect(double.contexts.at(-1)?.refreshKey).toBe(
+      useFileStore.getState().fileMtimes.get("/v/p.png")?.viewerVersion,
+    );
   });
 
   // Both settings-store `act` calls in this describe (the two zoom rows) have block bodies. The

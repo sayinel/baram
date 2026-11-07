@@ -167,6 +167,22 @@ beforeEach(() => {
     setFileContent,
   } as never);
   activeTab("/vault/note.md");
+  // The entry above is that of a file a background tab shows. Since #798 a file no tab shows has no
+  // entry, and the referrer sync does not give it one (`syncCleanSurfacesAfterReferrerRewrite`).
+  useEditorStore.setState((s) => ({
+    tabs: [
+      ...s.tabs,
+      {
+        contextId: "c1",
+        filePath: "/vault/other.md",
+        id: "t2",
+        isDirty: false,
+        isPinned: false,
+        title: "other.md",
+        type: "file",
+      },
+    ],
+  }));
 });
 
 describe("commitBlockIdEdit — the document follows the backend (issue 594)", () => {

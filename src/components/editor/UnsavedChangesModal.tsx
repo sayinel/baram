@@ -2,7 +2,8 @@
 // closing a single tab (X button / Cmd+W on an Untitled tab), quitting the
 // app, reloading (§479, View > Reload / CmdOrCtrl+R), closing the whole workspace
 // (§81, File > Close Workspace), closing one context (§82, the context tab's x and
-// Settings > Vault's remove), installing an update (§206) and closing a file window (§89).
+// Settings > Vault's remove), closing several tabs (§38, the tab menu's Close Others and
+// Close to the Right), installing an update (§206) and closing a file window (§89).
 // Identical look and buttons
 // in every case:
 // Cancel / Don't Save / Save.
@@ -19,6 +20,7 @@ import {
   closesEveryTab,
   saveAllDirtyForQuit,
   saveDirtyTab,
+  saveDirtyTabsByIds,
   saveDirtyTabsForContexts,
 } from "../../hooks/use-close-guard";
 import { useTranslation } from "../../i18n/useTranslation";
@@ -43,6 +45,7 @@ import { useUIStore } from "../../stores/ui/ui";
 const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.closeContextMessage",
   closeTab: "unsavedChanges.closeMessage",
+  closeTabs: "unsavedChanges.closeTabsMessage",
   closeWindow: "unsavedChanges.closeMessage",
   closeWorkspace: "unsavedChanges.closeWorkspaceMessage",
   installUpdate: "unsavedChanges.installUpdateMessage",
@@ -53,6 +56,7 @@ const MESSAGE_KEY: Record<UnsavedModalRequest["intent"], string> = {
 const PRIMARY_KEY: Record<UnsavedModalRequest["intent"], string> = {
   closeContext: "unsavedChanges.saveAndCloseContext",
   closeTab: "unsavedChanges.saveAndClose",
+  closeTabs: "unsavedChanges.saveAndCloseTabs",
   closeWindow: "unsavedChanges.saveAndClose",
   closeWorkspace: "unsavedChanges.saveAndCloseWorkspace",
   installUpdate: "unsavedChanges.saveAndInstallUpdate",
@@ -76,13 +80,17 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
     !closesEveryTab(unsavedModal.contextIds)
       ? unsavedModal.contextIds
       : null;
+  // §38 `closeTabs` likewise answers only for the tabs it lists (#798).
+  const scopedTabIds =
+    unsavedModal?.intent === "closeTabs" ? unsavedModal.tabIds : null;
   const dirtyCount = useEditorStore(
     (s) =>
       s.tabs.filter(
         (tab) =>
           isTabUnsaved(tab, s.sourceEditedTabs) &&
           (scopedContextIds === null ||
-            scopedContextIds.includes(tab.contextId)),
+            scopedContextIds.includes(tab.contextId)) &&
+          (scopedTabIds === null || scopedTabIds.includes(tab.id)),
       ).length,
   );
   const fileWindowCount = useFileWindowStore((s) => s.unsaved.size);
@@ -127,7 +135,8 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
   const primaryLabel = t(PRIMARY_KEY[unsavedModal.intent]);
 
   // The terminal action once the decision is resolved: quit, reload, close the
-  // workspace, install the update, close one context, close a file window, or close the tab.
+  // workspace, install the update, close one context, close the listed tabs, close a file
+  // window, or close the tab.
   const proceed = async () => {
     if (unsavedModal.intent === "quit") {
       await quitApp();
@@ -139,6 +148,10 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
       await installDownloadedUpdate();
     } else if (unsavedModal.intent === "closeContext") {
       await closeContexts(unsavedModal.contextIds);
+    } else if (unsavedModal.intent === "closeTabs") {
+      useEditorStore
+        .getState()
+        .closeTabsById(unsavedModal.tabIds, unsavedModal.anchorTabId);
     } else if (unsavedModal.intent === "closeWindow") {
       await getCurrentWindow().destroy();
     } else {
@@ -163,6 +176,9 @@ export function UnsavedChangesModal(deps: CloseGuardDeps) {
       !closesEveryTab(unsavedModal.contextIds)
     ) {
       return saveDirtyTabsForContexts(unsavedModal.contextIds, deps);
+    }
+    if (unsavedModal.intent === "closeTabs") {
+      return saveDirtyTabsByIds(unsavedModal.tabIds, deps);
     }
     if (!(await saveAllDirtyForQuit(deps))) return false;
     return endsFileWindows ? saveFileWindows() : true;
