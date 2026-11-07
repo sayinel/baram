@@ -53,6 +53,7 @@ import {
   loadedTabId,
 } from "../../utils/editor/programmatic-update";
 import {
+  syncCleanSurfacesAfterReferrerRewrite,
   syncOpenSurfacesAfterDiskWrite,
   syncOpenSurfacesAfterFileRewrite,
 } from "../../utils/tasks/sync-open-surfaces";
@@ -390,5 +391,207 @@ describe("a panel's write to the active tab while its document is on the way", (
     expect(stale()).toEqual([]);
     open();
     await installed("t3");
+  });
+});
+
+describe("leaving a tab takes its name away", () => {
+  const AUTO_SAVE_PASSED = 120;
+
+  const type = () => {
+    act(() => {
+      editor.view.dispatch(editor.state.tr.insertText("x", 1));
+    });
+  };
+
+  // What fails these: dropping `forgetLoadedTab` from the tab switch. The first would write the
+  // document from before the reload, which undoes a global replace on disk.
+  it("a keystroke while a returning tab parses writes nothing", async () => {
+    mountApp();
+    await installed("t1");
+    show("t2");
+    act(() => useUIStore.getState().triggerContentReload());
+    await settle(20);
+    const open = holdParse();
+    show("t1");
+    await settle(10);
+
+    expect(loadedTabId()).toBeNull();
+    type();
+    await settle(AUTO_SAVE_PASSED);
+
+    expect(written).toEqual([]);
+    open();
+    await installed("t1");
+    expect(editor.state.doc.textContent).toContain("NOTE");
+  });
+
+  it("a referrer rewrite behind a non-markdown tab survives the return and the next save", async () => {
+    mountApp();
+    await installed("t1");
+    show("t2");
+    await settle(10);
+    expect(loadedTabId()).toBeNull();
+
+    const rewritten = "# NOTE\n\nnote body [[new-name]]\n";
+    disk.set(NOTE, rewritten);
+    act(() => {
+      syncCleanSurfacesAfterReferrerRewrite(NOTE, rewritten);
+    });
+    expect(stale()).toEqual(["t1"]);
+
+    show("t1");
+    await installed("t1");
+    type();
+    await settle(AUTO_SAVE_PASSED);
+
+    expect(written).toHaveLength(1);
+    expect(written[0][1]).toContain("[[new-name]]");
+  });
+
+  it("a large source-mode return names no tab until its fill ends", async () => {
+    const source = mountApp();
+    await installed("t1");
+    act(() => source.result.current.toggleSourceMode());
+    await settle(10);
+    act(() =>
+      source.result.current.setSourceBuffer("t1", paragraphs(700).join("\n\n")),
+    );
+    show("t3");
+    await installed("t3");
+    act(() => useFileStore.getState().removeFileEntry(NOTE));
+    show("t1");
+    await settle(10);
+
+    act(() => source.result.current.toggleSourceMode());
+    await waitFor(() =>
+      expect(editor.state.doc.textContent.startsWith("line 0")).toBe(true),
+    );
+
+    expect(isTabLoading("t1")).toBe(true);
+    expect(loadedTabId()).toBeNull();
+    await installed("t1");
+    expect(editor.state.doc.childCount).toBe(700);
+  });
+
+  // What fails these: dropping the restore for a tab with no text. The markdown case would show the
+  // tab before it, and the non-markdown case would refuse to save the tab's own document.
+  it.each([
+    ["a markdown tab", "t3", "OTHER"],
+    ["a non-markdown tab", "t2", "COPY"],
+  ])(
+    "a tab whose file was deleted behind %s comes back with its own document",
+    async (_name, between, foreign) => {
+      mountApp();
+      await installed("t1");
+      show(between);
+      await settle(20);
+      act(() => useFileStore.getState().removeFileEntry(NOTE));
+
+      show("t1");
+      await installed("t1");
+
+      expect(editor.state.doc.textContent).toContain("NOTE");
+      type();
+      await settle(AUTO_SAVE_PASSED);
+      expect(written).toHaveLength(1);
+      expect(written[0][0]).toBe(NOTE);
+      expect(written[0][1]).toContain("NOTE");
+      expect(written[0][1]).not.toContain(foreign);
+    },
+  );
+
+  it("a tab with neither text nor cache is not installed, and a keystroke writes nothing", async () => {
+    mountApp();
+    await installed("t1");
+    show("t3");
+    await installed("t3");
+    act(() => useUIStore.getState().triggerContentReload());
+    await settle(20);
+    act(() => useFileStore.getState().removeFileEntry(NOTE));
+
+    show("t1");
+    await settle(20);
+
+    expect(loadedTabId()).toBeNull();
+    type();
+    await settle(AUTO_SAVE_PASSED);
+    expect(written).toEqual([]);
+  });
+
+  it.each(["fresh", "patch"] as const)(
+    "%s reload on a non-markdown tab, then a keystroke on the tab whose file was deleted: its own text is written",
+    async (mode) => {
+      mountApp();
+      await installed("t1");
+      show("t2");
+      await act(async () => {
+        await triggerAutoReload(COPY, 999, { appOrigin: mode === "patch" });
+      });
+      await settle(20);
+      act(() => useFileStore.getState().removeFileEntry(NOTE));
+
+      show("t1");
+      await installed("t1");
+      type();
+      await settle(AUTO_SAVE_PASSED);
+
+      expect(written).toHaveLength(1);
+      expect(written[0][0]).toBe(NOTE);
+      expect(written[0][1]).not.toContain("COPY");
+    },
+  );
+
+  it("a tab that is no file (the graph) names nothing, and the way back restores the document", async () => {
+    mountApp();
+    await installed("t1");
+
+    act(() => useEditorStore.getState().openGraphTab());
+    await settle(10);
+    expect(loadedTabId()).toBeNull();
+
+    show("t1");
+    await installed("t1");
+    expect(editor.state.doc.textContent).toContain("NOTE");
+  });
+
+  it("a load flagged stale and cancelled by a switch reads the new text on the way back", async () => {
+    mountApp();
+    await installed("t1");
+    const open = holdParse();
+    show("t3");
+    await settle(10);
+    act(() => {
+      syncOpenSurfacesAfterFileRewrite(OTHER, "# OTHER\n\nrewritten\n", editor);
+    });
+
+    show("t2");
+    open();
+    await settle(10);
+    expect(stale()).toEqual(["t3"]);
+
+    show("t3");
+    await installed("t3");
+    expect(editor.state.doc.textContent).toContain("rewritten");
+    expect(stale()).toEqual([]);
+  });
+
+  it("closing a loading tab leaves its flag out of the next tab's install", async () => {
+    mountApp();
+    await installed("t1");
+    const open = holdParse();
+    show("t3");
+    await settle(10);
+    act(() => {
+      syncOpenSurfacesAfterFileRewrite(OTHER, "# OTHER\n\nrewritten\n", editor);
+    });
+
+    act(() => useEditorStore.getState().closeTab("t3"));
+    show("t1");
+    open();
+    await installed("t1");
+
+    expect(editor.state.doc.textContent).toContain("NOTE");
+    expect(editor.state.doc.textContent).not.toContain("rewritten");
+    expect(stale()).toEqual([]);
   });
 });

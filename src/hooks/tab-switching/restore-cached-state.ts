@@ -19,7 +19,7 @@ export function restoreCachedState(
   ctx: TabSwitchContext,
   activeTabId: string,
   incomingTab: EditorTab,
-  content: string,
+  content: null | string,
   cachedState: EditorState,
 ): void {
   logCacheEvent("hit", activeTabId, cachedState.doc.childCount);

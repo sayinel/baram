@@ -22,7 +22,7 @@ export function afterDocLoad(
   ctx: TabSwitchContext,
   loadEditor: Editor,
   filePath: string,
-  content: string,
+  content: null | string,
 ): void {
   // §29/§313 백링크·검색·아젠다가 건 스크롤 요청 — 이 파일 앞으로 온 것만
   // 소비하고, 다른 파일을 향한 요청은 여기서 버린다(`takePendingScroll`).
