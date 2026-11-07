@@ -40,6 +40,7 @@ import { useFileStore } from "../../../stores/file/file";
 import { useTaskStore } from "../../../stores/tasks/task-store";
 import { useUIStore } from "../../../stores/ui/ui";
 import { showConfirm } from "../../confirm-dialog";
+import { markContentLoaded } from "../../editor/programmatic-update";
 import { serializeLiveDoc } from "../../editor/serialize-live-doc";
 import { buildTriageItems, runTaskTriageAction } from "../task-triage";
 
@@ -85,6 +86,7 @@ function openDocumentTab(markdown: string): void {
       },
     ],
   });
+  markContentLoaded("t1");
 }
 
 /** 소스 모드 탭 하나 — 화면에 보이는 것이 CodeMirror 버퍼인 상태. */

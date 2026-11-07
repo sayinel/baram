@@ -1,7 +1,6 @@
-// §5.5 A non-markdown tab installs nothing in the shared editor, so `loadedTabId` goes
-// on naming the last markdown tab, and an external reload then replaces the shared
-// document without touching that name. Turning the column resize option off must not
-// read that document as the named tab's. Real hooks, fake IPC, no timing involved.
+// §5.5 A non-markdown tab installs nothing in the shared editor, and its reload does not
+// write there (§39). Turning the column resize option off while one is active clears the
+// tab behind it in that tab's own document. Real hooks, fake IPC, no timing involved.
 import { useRef } from "react";
 
 import type { Editor } from "@tiptap/core";
@@ -156,7 +155,7 @@ it.each([
   ],
   ["with none", "| COPY | B |\n| - | - |\n| 1 | 2 |\n"],
 ])(
-  "a reloaded non-markdown tab %s: the named tab is cleared in its own document",
+  "a reloaded non-markdown tab %s: the tab behind it is cleared in its own document",
   async (_name, copyText) => {
     disk.set(COPY, copyText);
     useFileStore.getState().setFileContent(COPY, copyText);
@@ -169,9 +168,9 @@ it.each([
     await act(async () => {
       await triggerAutoReload(COPY, 999);
     });
-    // The state itself: t1 is named while the shared editor holds the other document.
-    expect(loadedTabId()).toBe("t1");
-    expect(editor.state.doc.textContent).toContain("COPY");
+    // The reload did not reach the shared editor, which still holds t1's document.
+    expect(editor.state.doc.textContent).toContain("NOTE");
+    expect(editor.state.doc.textContent).not.toContain("COPY");
     const held = editor.state;
 
     setTableColumnResizeFromUser(false);

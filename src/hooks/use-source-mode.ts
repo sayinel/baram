@@ -33,8 +33,8 @@ import {
 } from "../utils/editor/cursor-mapper";
 import { focusEditorView } from "../utils/editor/focus-editor-view";
 import {
+  editorHoldsWholeDocument,
   forgetLoadedTab,
-  isTabLoading,
   loadedTabId,
   markContentLoaded,
   setTabLoading,
@@ -218,8 +218,7 @@ export function useSourceMode({
       // The buffer is about to become the truth, and it is read from this editor. While the
       // document is still being filled, or the tab's document is not installed yet, that would
       // be part of the document, or another tab's.
-      if (isTabLoading(currentTab.id) || loadedTabId() !== currentTab.id)
-        return;
+      if (!editorHoldsWholeDocument(currentTab.id)) return;
       // WYSIWYG → Source: collapse any active syntax reveal expansion first
       // (SyntaxReveal replaces marks with literal delimiter text, which would
       // cause remark-stringify to escape angle brackets like \<u>)
@@ -431,7 +430,8 @@ export function useSourceMode({
       replaceEditorStateWithVim(editor.view, tempState, "source-return");
       // Normally the tab switch installed this tab already, and marking again would make this text
       // the baseline. It did not if the tab came back with its text gone from memory (a file
-      // deleted on disk), and this is then the first document of this tab in the editor.
+      // deleted on disk) and no cache it could use, and this is then the tab's first document in
+      // the editor.
       if (loadedTabId() !== currentTab.id) markContentLoaded(currentTab.id);
 
       // Cache state with correct selection for tab-switching safety

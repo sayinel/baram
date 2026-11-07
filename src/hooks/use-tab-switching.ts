@@ -17,10 +17,15 @@ import {
 } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { useNavigationStore } from "../stores/ui/navigation";
-import { setTabLoading } from "../utils/editor/programmatic-update";
+import {
+  forgetLoadedTab,
+  setTabLoading,
+  subscribeContentLoaded,
+} from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 import { gcClosedTabs } from "./tab-switching/gc-closed-tabs";
 import { loadTabContent } from "./tab-switching/load-tab-content";
+import { rereadMissedReload } from "./tab-switching/reread-after-install";
 import { restoreCachedState } from "./tab-switching/restore-cached-state";
 import { resumeKeepaliveTab } from "./tab-switching/resume-keepalive-tab";
 import { saveOutgoingTab } from "./tab-switching/save-outgoing-tab";
@@ -118,6 +123,8 @@ export function useTabSwitching({
     }
   };
 
+  useEffect(() => subscribeContentLoaded(rereadMissedReload), []);
+
   // --- Tab switching: swap editor content when activeTabId changes ---
   //
   // ‼️ Every branch below that installs content must call `ctx.installContent` (§260
@@ -169,6 +176,11 @@ export function useTabSwitching({
 
     if (prevTabId && prevTabId !== activeTabId) {
       saveOutgoingTab(ctx, prevTabId);
+      // §39 The tab's document now lives elsewhere (its cache and text, its source buffer, its pool
+      // editor), and the next tab's install may be a parse away, or may never come (a non-markdown
+      // tab installs nothing). Reading the shared editor as this tab's from here on would miss what
+      // those places take in the meantime. After the save, which reads the name.
+      forgetLoadedTab(prevTabId);
       // §287 소스 모드는 이제 탭을 따라 남는다 — 여기서 끄지 않는다.
       //
       // 예전에는 전환할 때마다 전역 boolean을 껐다. 편집 영역이 표면을 하나만 마운트하던
@@ -272,6 +284,19 @@ export function useTabSwitching({
       // Clean up cache for closed tabs — only reached on this markdown load
       // path, see gc-closed-tabs.ts placement contract.
       gcClosedTabs(ctx);
+    } else if (isMarkdownFile(incomingTab.filePath)) {
+      // §39 The text is gone from memory (the file was deleted on disk behind this tab), and the
+      // document is still in the cache. With no cache either there is nothing to install: the tab
+      // goes unnamed, and a save refuses.
+      const cachedState = useEditorStore
+        .getState()
+        .staleContentTabs.includes(tabId)
+        ? undefined
+        : editorStateCache.current.get(tabId);
+      if (cachedState) {
+        onActiveEditorChange(null);
+        restoreCachedState(ctx, tabId, incomingTab, null, cachedState);
+      }
     }
     // Intentionally only re-run on activeTabId change; other values (editor,
     // tabs, openFiles, etc.) are read from store state or refs to avoid

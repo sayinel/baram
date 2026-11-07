@@ -19,6 +19,8 @@ import {
   scrollToTarget,
   takeSameTabScroll,
 } from "../utils/editor/pending-scroll";
+import { editorHoldsWholeDocument } from "../utils/editor/programmatic-update";
+import { isMarkdownFile } from "../utils/file-type";
 
 interface UseEditorEffectsParams {
   editor: Editor | null;
@@ -163,6 +165,7 @@ export function useEditorEffects({
     if (content === undefined) return;
     // Invalidate stale EditorState caches for replaced files
     editorStateCache.current.clear();
+    if (!reloadReachesDocument(incomingTab.id, incomingTab.filePath)) return;
     const cursorEnd = useUIStore.getState().contentReloadCursorEnd;
     // Re-parse and update editor from file-store
     const newDoc = markdownToProsemirror(content, editor.schema);
@@ -217,6 +220,7 @@ export function useEditorEffects({
     }
     const content = useFileStore.getState().openFiles.get(tab.filePath);
     if (content === undefined) return;
+    if (!reloadReachesDocument(tab.id, tab.filePath)) return;
     // §313 앱 자신이 만든 변경은 트랜잭션 하나로 맞춘다 — 실행 취소 스택도 커서도
     // 노드 뷰도 그대로 둔다. 아래 전체 재구축은 **남의 편집**에만 쓴다: 그쪽은 되돌리기가
     // 그 편집 너머로 걸어가지 못하게 히스토리를 끊는 것이 오히려 안전장치다.
@@ -260,4 +264,21 @@ export function useEditorEffects({
       ? `${isTabUnsaved(tab, sourceEditedTabs) ? "\u25CF " : ""}${tab.title} \u2014 Baram`
       : "Baram";
   }, [activeTabId, sourceEditedTabs, tabs]);
+}
+
+/**
+ * §39 Whether a reload may write into the active tab's editor: only if that editor holds the tab's
+ * whole document. Written anywhere else, the tab's text lands in the document of the tab before it,
+ * or under a load still appending blocks, and that load then appends what the text already has.
+ *
+ * A non-markdown tab's document is never in this editor, and its text is in its source buffer. A
+ * markdown tab's install, if one is under way, carries the text from before this reload, so the tab
+ * is flagged: `rereadMissedReload` reads the text when the install ends, and a later return parses it.
+ */
+function reloadReachesDocument(tabId: string, filePath: string): boolean {
+  if (editorHoldsWholeDocument(tabId)) return true;
+  if (isMarkdownFile(filePath)) {
+    useEditorStore.getState().markContentStale(tabId);
+  }
+  return false;
 }

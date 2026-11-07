@@ -23,7 +23,10 @@ import {
   awaitBlockIdRenames,
   hasBlockIdRenamesInFlight,
 } from "../utils/editor/block-id-rename-landing";
-import { isTabLoading, loadedTabId } from "../utils/editor/programmatic-update";
+import {
+  editorHoldsWholeDocument,
+  loadedTabId,
+} from "../utils/editor/programmatic-update";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isBinaryViewerFile, isMarkdownFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
@@ -528,10 +531,6 @@ export function useFileOperations({
     handleSave,
     handleSaveAs,
   };
-}
-
-function editorHoldsWholeDocument(tabId: string): boolean {
-  return !isTabLoading(tabId) && loadedTabId() === tabId;
 }
 
 /**

@@ -18,6 +18,7 @@ vi.mock("../../utils/editor/serialize-live-doc", () => ({
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { markContentLoaded } from "../../utils/editor/programmatic-update";
 import { appendCaptureToNotes, CaptureAppendError } from "../capture-append";
 
 const readFileMock = vi.fn<(p: string) => Promise<string>>();
@@ -56,6 +57,7 @@ function openTab(opts: {
       },
     ],
   });
+  if (active) markContentLoaded(id);
 }
 
 /** 소스 버퍼 접근자를 등록하고 그 버퍼를 읽는 창을 돌려준다. */

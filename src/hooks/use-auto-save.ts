@@ -15,6 +15,7 @@ import { useSettingsStore } from "../stores/settings/store";
 import {
   COLWIDTH_AUTO_INIT_META,
   CONTENT_SYNC_META,
+  editorHoldsWholeDocument,
   isTabLoading,
   JOURNAL_CURSOR_INIT_META,
   loadedTabId,
@@ -105,7 +106,7 @@ export function useAutoSave(editor: Editor | null) {
     // The editor may not hold this tab's whole document when a timer armed earlier fires: a
     // progressive load holds only its first blocks, which would cut the file short, and until a
     // tab is installed the editor still shows the one before it. The tab stays dirty instead.
-    if (isTabLoading(pending.id) || loadedTabId() !== pending.id) return;
+    if (!editorHoldsWholeDocument(pending.id)) return;
 
     // Phase 4: mtime race-condition guard — if an external file:changed event has
     // arrived but not yet been resolved, skip this save so we don't overwrite the
