@@ -223,7 +223,13 @@ export async function saveFromBuffer(
       if (cacheIsDisk) deps.setFileContent(filePath, content);
       if (unchanged) {
         deps.markDirty(tabId, false);
-        useEditorStore.getState().markSourceEdited(tabId, false);
+        // The source-edited mark is about the buffer, so it comes down only while the buffer still
+        // holds what was written. A judge that asked the document instead (the save on the way back
+        // from source mode) says nothing about text typed after going back into source mode during
+        // the write (§3.5, #798).
+        if (deps.getSourceBuffer(tabId) === content) {
+          useEditorStore.getState().markSourceEdited(tabId, false);
+        }
         saved = true;
       }
     }

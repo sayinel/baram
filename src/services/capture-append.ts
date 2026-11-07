@@ -224,8 +224,9 @@ async function appendToOne(
   const next = appendOne(await readFile(target.path), entry, stamp);
   await writeFile(target.path, next);
   // 모든 저장 경로가 하는 일이다(`use-auto-save.ts:115`). 빠뜨리면 워처가 우리 쓰기를
-  // 외부 변경으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다. 워처는 탭이 보이는 파일만 보므로,
-  // 탭 없는 파일에는 남기지 않는다 — 어떤 닫기로도 내려가지 않는 기록이 된다(§3.5, #798).
+  // 외부 변경으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다. 워처가 보는 것은 `openFiles` 에 든
+  // 파일이고, 파일은 탭이 그것을 보일 때 거기 든다. 탭이 보이지 않는 파일에는 남기지 않는다 — 어떤
+  // 닫기로도 내려가지 않는 기록이 된다(§3.5, #798).
   if (useEditorStore.getState().tabs.some((t) => t.filePath === target.path)) {
     useFileStore.getState().updateLastSaveMtime(target.path, Date.now());
   }

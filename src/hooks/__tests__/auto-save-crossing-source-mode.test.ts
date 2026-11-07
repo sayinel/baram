@@ -378,6 +378,26 @@ describe("a tab that has been through source mode", () => {
     );
   });
 
+  // §3.5 (#798) source-edited 표시는 buffer 의 것이다. 돌아오는 저장이 쓰는 사이 다시 소스 모드로 들어가 친 글은
+  // buffer 에만 있고, 문서가 그대로라는 판정은 그 글에 대해 아무것도 말하지 않는다.
+  // 이것을 실패시키는 것: use-code-auto-save.ts 의 `saveFromBuffer` 가 buffer 를 다시 보지 않고 표시를 내리면 깨진다.
+  it("keeps the source mark of text typed after going back into source mode during the save on the way back", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "typed in source\n");
+    const finish = holdNextWrite();
+    toggle(hook);
+    await advance(0);
+    expect(written()).toEqual(["typed in source\n"]);
+
+    toggle(hook);
+    typeInSource(hook, "typed in source, again\n");
+    await finish();
+
+    expect(useEditorStore.getState().sourceEditedTabs).toEqual([TAB]);
+    expect(unsaved()).toBe(true);
+  });
+
   it("has the tab saved when nothing is typed while the save on the way back writes", async () => {
     const hook = mount();
     toggle(hook);
@@ -392,15 +412,18 @@ describe("a tab that has been through source mode", () => {
   // §3.5 (#798) 편집으로 세지 않는 트랜잭션(표 열 폭 측정 · 구문 펼침 · 내용 동기화)은 문서를 바꾸지만 글은
   // 그대로이고 저장을 다시 걸지 않는다. 쓰기가 끝났을 때 그것을 "더 고쳤다" 로 읽으면 탭이 다음 입력까지 "저장 안
   // 됨" 에 남는다. 돌아오는 길의 표는 설치 한 프레임 뒤 측정되므로, 한 프레임보다 긴 쓰기 안에 그것이 든다.
-  // 이것을 실패시키는 것: save-still-current.ts 의 `held.serialize() === written` 을 빼면(`eq` 만 보면) 깨진다.
+  // 표는 흔히 쓰는 GFM 꼴(`| --- |`)로 친다 — 직렬화는 그것을 `| - |` 로 쓰므로, 비교는 buffer 가 아니라 끼운
+  // 문서의 직렬화와 해야 한다.
+  // 이것을 실패시키는 것: save-still-current.ts 의 `held.serialize() === …` 를 빼면(`eq` 만 보면), 또는
+  // use-source-mode.ts 의 `returnedOutcome` 이 끼운 문서의 직렬화 대신 쓴 buffer 와 비교하면 깨진다.
   it("has the tab saved when the table is measured while the save on the way back writes", async () => {
     const hook = mount();
     toggle(hook);
-    typeInSource(hook, "| a |\n| - |\n| b |\n");
+    typeInSource(hook, "| a |\n| --- |\n| b |\n");
     const finish = holdNextWrite();
     toggle(hook);
     await advance(0);
-    expect(written()).toEqual(["| a |\n| - |\n| b |\n"]);
+    expect(written()).toEqual(["| a |\n| --- |\n| b |\n"]);
 
     measureColumns();
     await finish();

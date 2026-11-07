@@ -53,7 +53,10 @@ import {
   bufferSaveOutcome,
   documentSaveOutcome,
 } from "../utils/editor/save-still-current";
-import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
+import {
+  serializeDetachedDoc,
+  serializeLiveDoc,
+} from "../utils/editor/serialize-live-doc";
 import { isMarkdownFile } from "../utils/file-type";
 import { saveFromBuffer } from "./use-code-auto-save";
 import { LARGE_DOC_BLOCK_THRESHOLD } from "./use-large-doc-keepalive";
@@ -278,7 +281,16 @@ export function useSourceMode({
         // buffer, so it also goes where a Save As in the background reads it, and where the load
         // reads it if the tab is left before the fill ends. A cached state from before source
         // mode would otherwise come back first, without it.
-        if (handBufferToDocument(currentTab, getSourceBuffer, editor)) {
+        // The document as the fill leaves it, for the save below to compare with (`returnedOutcome`).
+        const filled: { doc?: PmNode } = {};
+        if (
+          handBufferToDocument(
+            currentTab,
+            getSourceBuffer,
+            editor,
+            () => filled.doc,
+          )
+        ) {
           useFileStore
             .getState()
             .setFileContent(
@@ -345,6 +357,7 @@ export function useSourceMode({
             });
 
             const finishLoad = () => {
+              filled.doc = editor.state.doc;
               if (currentTabId) {
                 // [MAJOR fix] Mark complete so switch-back uses the pool entry.
                 pool?.markComplete(currentTabId);
@@ -472,7 +485,9 @@ export function useSourceMode({
 
       // With nothing unsaved this text is the file, and the next edit is compared with it. Left on
       // the older baseline, text put back to that by hand would read as saved.
-      if (!handBufferToDocument(currentTab, getSourceBuffer, editor, newDoc)) {
+      if (
+        !handBufferToDocument(currentTab, getSourceBuffer, editor, () => newDoc)
+      ) {
         updateOriginalDoc(currentTab.id, newDoc);
       }
       setSourceModeForTab(currentTab.id, false);
@@ -566,7 +581,8 @@ export function useSourceMode({
  * `update`가 없어 새로 걸지 않으므로, 켜져 있으면 그 저장을 여기서 대신 한다. 경로 없는 탭은 쓸
  * 곳이 없어 dirty로 남는다.
  *
- * `installed` 는 이 전환이 `editor` 에 넣은 문서다. 큰 문서는 조각으로 채우므로 없다.
+ * `installed` 는 이 전환이 `editor` 에 넣은 문서를 돌려준다. 큰 문서는 조각으로 채우므로 채우기가 끝나기
+ * 전에는 없다.
  *
  * @returns 저장 안 된 편집을 넘겼는지
  */
@@ -574,7 +590,7 @@ function handBufferToDocument(
   tab: EditorTab,
   getSourceBuffer: (tabId: string) => string,
   editor: Editor,
-  installed?: PmNode,
+  installed: () => PmNode | undefined,
 ): boolean {
   const store = useEditorStore.getState();
   const edited = store.sourceEditedTabs.includes(tab.id);
@@ -621,11 +637,13 @@ function handBufferToDocument(
  *
  * Source mode has ended, so the document holds the tab's text and the buffer no longer changes when
  * the user types — asking the buffer, as a save from source mode does, would record text typed
- * during the write as saved. A small document was installed whole, so the question is whether the
- * editor still holds that document. A large one is filled in pieces, so there is no installed
- * document to compare with: while the fill runs, the buffer is still the text (and the entry
- * `toggleSourceMode` set holds it); once it has ended, the filled document is serialized and
- * compared — once per return, after the write.
+ * during the write as saved. The question is whether the editor still holds the document this
+ * return installed. That document came from the buffer as typed, which the serializer may write
+ * differently (`| --- |` as `| - |`), so a document that moved on is compared with the installed
+ * one's serialization, not with the buffer. A large document is filled in pieces: while the fill
+ * runs, the buffer is still the text (and the entry `toggleSourceMode` set holds it); once it has
+ * ended, the filled document is the one to compare with. A fill that was given up when the tab was
+ * left leaves none, and the tab stays unsaved.
  */
 function returnedOutcome(
   tabId: string,
@@ -637,12 +655,17 @@ function returnedOutcome(
   }: {
     editor: Editor;
     getSourceBuffer: (tabId: string) => string;
-    installed?: PmNode;
+    installed: () => PmNode | undefined;
   },
 ): SaveOutcome {
-  if (installed) return documentSaveOutcome(editor, tabId, installed, written);
+  const doc = installed();
+  if (doc) {
+    return documentSaveOutcome(editor, tabId, doc, () =>
+      serializeDetachedDoc(doc),
+    );
+  }
   if (isTabLoading(tabId)) {
     return bufferSaveOutcome(tabId, getSourceBuffer(tabId), written);
   }
-  return documentSaveOutcome(editor, tabId, null, written);
+  return { cacheIsDisk: false, unchanged: false };
 }

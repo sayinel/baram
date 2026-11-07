@@ -1100,10 +1100,9 @@ describe("coming back from source mode", () => {
       await vi.waitFor(() => expect(unsaved()).toBe(false));
     });
 
-    // §3.5 (#798) 쓰기보다 채우기가 먼저 끝나면, 다 채운 문서를 직렬화해 쓴 글과 비교한다. 채운 뒤에는 아무것도
+    // §3.5 (#798) 쓰기보다 채우기가 먼저 끝나면, 채우기가 남긴 문서를 그대로 들고 있는지 본다. 채운 뒤에는 아무것도
     // 저장을 다시 걸지 않으므로, 비교하지 않고 "저장 안 됨" 으로 두면 다음 입력까지 그대로 남는다.
-    // 이것을 실패시키는 것: `returnedOutcome` 이 채운 뒤 `documentSaveOutcome(editor, tabId, null, written)` 대신
-    // "저장 안 됨" 을 돌려주면 깨진다.
+    // 이것을 실패시키는 것: use-source-mode.ts 의 `finishLoad` 가 `filled.doc` 을 남기지 않으면 깨진다.
     it("has the tab saved when the document arrives before its save ends", async () => {
       parse.held = false;
       useSettingsStore.setState({ autoSave: true });

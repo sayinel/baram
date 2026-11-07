@@ -54,9 +54,10 @@ export function bufferSaveOutcome(
 }
 
 /**
- * For a save that serialized `editor`'s document for `tabId` and wrote it as `written`. `docAtWrite`
- * is the document it serialized, or `null` when there is none to compare with (a document still
- * being filled in pieces when the write began).
+ * For a save of `tabId`'s document from `editor`. `docAtWrite` is the document the written text came
+ * from, and `written` is that text as the serializer puts it — a save that serialized the document
+ * passes what it wrote; the save on the way back from source mode wrote the buffer as typed, so it
+ * passes the serialization of the document it installed, computed only if it is needed.
  *
  * "Still holds" is asked of where the tab's document is now, not of whether the tab is active. A
  * keep-alive editor keeps its tab's document while that tab is in the background, and the shared
@@ -76,15 +77,15 @@ export function bufferSaveOutcome(
 export function documentSaveOutcome(
   editor: Editor,
   tabId: string,
-  docAtWrite: null | PMNode,
-  written: string,
+  docAtWrite: PMNode,
+  written: (() => string) | string,
 ): SaveOutcome {
   const held = heldDocument(editor, tabId);
   if (held === null) return { cacheIsDisk: false, unchanged: false };
   const unchanged =
     held.doc === docAtWrite ||
-    (docAtWrite !== null && held.doc.eq(docAtWrite)) ||
-    held.serialize() === written;
+    held.doc.eq(docAtWrite) ||
+    held.serialize() === (typeof written === "string" ? written : written());
   return {
     baseline: unchanged ? held.doc : undefined,
     cacheIsDisk: unchanged || held.live,
