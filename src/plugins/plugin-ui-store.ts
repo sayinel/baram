@@ -1,6 +1,10 @@
 // §69 Plugin UI registry — plugin-registered status-bar items, sidebar
 // panels, settings tabs, palette commands, and file viewers (runtime only)
-import type { PluginContributions, PluginFileViewerContext } from "./types";
+import type {
+  PluginContributions,
+  PluginFileViewerContext,
+  PluginTrust,
+} from "./types";
 
 import { create } from "zustand";
 
@@ -17,13 +21,17 @@ export interface PluginEntryCommand {
  * are drawn from: its name, every command it declared (`palette: false` included), and its
  * `menu` and `slash`. The manifest's own text — each entry point sanitises where it draws
  * (D16). Up only once the plugin has activated; see `registerEntryContributions`.
+ * §395 spec 0074 D16 — and the file tree menu's `fileMenu` (empty without `filetree`), and the plugin's
+ * tier, which decides the form of the targets that menu hands its commands.
  */
 export interface PluginEntryContributions {
   commands: PluginEntryCommand[];
+  fileMenu: NonNullable<PluginContributions["fileMenu"]>;
   menu: NonNullable<PluginContributions["menu"]>;
   name: string;
   pluginId: string;
   slash: NonNullable<PluginContributions["slash"]>;
+  trust: PluginTrust;
 }
 
 export interface PluginFileViewer {

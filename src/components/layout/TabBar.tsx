@@ -240,10 +240,27 @@ export function TabBar() {
           if (outside) {
             const tab = tabs[ds.index];
             if (tab && isFileTab(tab)) {
-              const { openFileWindow } =
-                await import("../../utils/file-window");
-              await openFileWindow(tab.filePath);
-              closeTab(tab.id);
+              // The new window reads the file from disk and this tab closes, so whatever is not
+              // on disk would be gone, and an untitled tab has no file to open there at all.
+              // Read now: `tab` is from when the drag began, and it may have changed since.
+              const holdsUnsavedWork = () => {
+                const { sourceEditedTabs, tabs: current } =
+                  useEditorStore.getState();
+                return isTabUnsaved(
+                  current.find((t) => t.id === tab.id),
+                  sourceEditedTabs,
+                );
+              };
+              if (!tab.filePath || holdsUnsavedWork()) {
+                useUIStore.getState().showToast(t("tabBar.tearOffUnsaved"));
+              } else {
+                const { openFileWindow } =
+                  await import("../../utils/file-window");
+                await openFileWindow(tab.filePath);
+                // Opening the window takes a moment, and the tab can gain work during it. Then both
+                // stay open on the file, which is what a pinned tab does too.
+                if (!holdsUnsavedWork()) closeTab(tab.id);
+              }
             }
             setDragIndex(null);
             setDropSlot(null);
@@ -268,7 +285,7 @@ export function TabBar() {
       document.body.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
     },
-    [tabs, setActiveTab, reorderTab, closeTab, computeDropSlot],
+    [tabs, setActiveTab, reorderTab, closeTab, computeDropSlot, t],
   );
 
   // §38 Context menu handler

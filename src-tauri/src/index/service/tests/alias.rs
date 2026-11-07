@@ -304,7 +304,7 @@ async fn an_alias_is_local_again_once_the_other_vault_carrying_it_is_removed() {
     )
     .await;
     let (_dir_b, _root_b) = aliased_vault(&ctx, "ctx-b", "work", &[("old.md", "t\n")]).await;
-    ctx.remove("ctx-b").await.unwrap();
+    ctx.remove_for("ctx-b", "main").await.unwrap();
     assert_eq!(ctx.resolve_alias("work").await, None);
     let state = LinkIndexState::new();
     refresh_index_inner(&state, &ctx, &root_a).await.unwrap();

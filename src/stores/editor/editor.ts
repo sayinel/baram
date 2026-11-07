@@ -90,7 +90,7 @@ export interface SourceBufferAccess {
  * by whoever registered them.
  */
 export interface DocumentSurfaceAccess {
-  /** The shared editor — holds the document of `loadedTabId()`. */
+  /** The shared editor — holds the document of `loadedTabId()`, unless a keep-alive editor does. */
   editor: Editor;
   editorStateCache: Map<string, PmEditorState>;
   /** Whether the pool's entry for the tab holds the WHOLE document. */

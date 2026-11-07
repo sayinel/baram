@@ -30,7 +30,9 @@ const loadingTabs = new Set<string>();
 const contentLoadedListeners = new Set<(tabId: string) => void>();
 
 /**
- * The tab whose content was last installed into the editor.
+ * The tab whose document has finished installing in an editor, the shared one or a keep-alive one.
+ * The name goes when the tab is left or closed, and when a large source-mode return starts filling
+ * the document again (`use-source-mode.ts`).
  *
  * §260 Phase 4b security review (LOW) — a VALIDITY predicate, not a change counter. At the
  * start of a tab switch the store's `activeTabId` has already flipped to the incoming tab
@@ -40,10 +42,17 @@ const contentLoadedListeners = new Set<(tabId: string) => void>();
  * plugin editor surface compares this against `activeTabId` to refuse rather than answer
  * with another file's content.
  *
- * ‼️ Deliberately not used as a "did the document change?" signal: two paths install a
- * whole document without coming through here (`use-editor-effects.ts` — external file
- * reload and the §72 properties refresh), which is why the write guard compares document
- * identity instead. This answers only "is the editor showing the active tab yet?".
+ * §39 What keeps it true. The switch clears it right after saving the tab it leaves
+ * (`useTabSwitching`), so a tab that is not active is named only until that effect runs, and
+ * the editor does hold that tab's document until then. A write of a whole document into an editor
+ * does one of three things: it announces itself (`markContentLoaded`), it asks first whether the
+ * editor holds the tab, and then replaces that tab's own document (`use-editor-effects.ts`,
+ * `sync-open-surfaces.ts`), or it runs with no tab named (a load's first blocks, and the empty
+ * document `useTabSwitching` installs when no tab is left).
+ *
+ * ‼️ Deliberately not used as a "did the document change?" signal: those reloads change the document
+ * without coming through here, which is why the plugin write guard compares document identity
+ * instead (`editor-ops.ts`). This answers only "does the editor hold the active tab yet?".
  */
 let lastLoadedTabId: null | string = null;
 
@@ -93,6 +102,25 @@ export function clearOriginalDoc(tabId: string): void {
   originalDocs.delete(tabId);
   pendingTabs.delete(tabId);
   loadingTabs.delete(tabId);
+  forgetLoadedTab(tabId);
+}
+
+/**
+ * Whether an editor holds this tab's whole document now: installed, and not partway through a
+ * progressive load, which holds only its first blocks. Ask this before reading the document as the
+ * tab's or writing into it.
+ */
+export function editorHoldsWholeDocument(tabId: string): boolean {
+  return !loadingTabs.has(tabId) && lastLoadedTabId === tabId;
+}
+
+/**
+ * The editor no longer holds this tab's document, so `loadedTabId` must stop saying it does. Left
+ * standing, a tab opened again under the same id reads as installed before its load has begun, and
+ * saving it would write whatever the editor holds now (`""` once the last tab has closed).
+ */
+export function forgetLoadedTab(tabId: string): void {
+  if (lastLoadedTabId === tabId) lastLoadedTabId = null;
 }
 
 /** Read the baseline doc (last saved/loaded) — used as the 3-way merge base */

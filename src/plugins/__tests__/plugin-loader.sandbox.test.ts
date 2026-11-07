@@ -161,7 +161,7 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
 
     // The palette executes through executePluginCommand → the sandbox session.
     await executePluginCommand("demo.hello");
-    expect(f.invokeCommand).toHaveBeenCalledWith("hello");
+    expect(f.invokeCommand).toHaveBeenCalledWith("hello", []);
   });
 
   it("honors palette:false — registers the handler but hides it from the palette", async () => {
@@ -185,7 +185,7 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     ).toEqual(["demo.shown"]);
     // ...but the hidden command is still invocable (menu/programmatic path).
     await executePluginCommand("demo.hidden");
-    expect(f.invokeCommand).toHaveBeenCalledWith("hidden");
+    expect(f.invokeCommand).toHaveBeenCalledWith("hidden", []);
   });
 
   it("stops the sandbox, deregisters, and removes palette commands on unload", async () => {

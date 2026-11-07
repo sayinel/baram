@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { useContextStore } from "../../../stores/context/context";
 import { useEditorStore } from "../../../stores/editor/editor";
 import {
+  forgetLoadedTab,
   markContentLoaded,
   setTabLoading,
 } from "../../../utils/editor/programmatic-update";
@@ -146,33 +147,25 @@ describe("codeBlockInfo", () => {
     });
   });
 
-  /** P29 — a cold load of a document under the keep-alive threshold puts its first chunks into the
-   *  shared editor and announces its tab (`markContentLoaded`) only once the last chunk is in
-   *  (`load-tab-content.ts`), so `loadedTabId` still names the outgoing tab meanwhile. What fails
-   *  this: answering `loadedTabId` while the active tab loads into the shared editor — the incoming
-   *  note's block would be told the outgoing note. The pairs: a tab loading into a keep-alive editor
-   *  of its own (t2 while it is pooled) leaves the shared editor's answer alone, and so does the
-   *  load's end. */
+  /** P29 §39 — the switch takes the name off the tab it leaves, so while the next tab loads no tab
+   *  is named, which is the `loaded === null` answer. What fails this: answering from the active
+   *  tab instead of the name. The pair: the install names the tab and the answer comes back. */
   it("names nothing for the shared editor while the active tab loads into it", () => {
     holding("/vaults/a/one.md", "/vaults/a/two.md");
     useEditorStore.setState({ activeTabId: "t2" } as never);
+    useEditorStore.getState().registerDocumentSurfaceAccess({
+      editor: shared,
+      editorStateCache: new Map(),
+      isKeepaliveComplete: () => true,
+      keepaliveEditor: () => null,
+    });
+    forgetLoadedTab("t1");
     setTabLoading("t2", true);
-    try {
-      expect(codeBlockInfo(shared, "chart", "trusted")?.path).toBe(
-        "/vaults/a/one.md",
-      );
-      useEditorStore.getState().registerDocumentSurfaceAccess({
-        editor: shared,
-        editorStateCache: new Map(),
-        isKeepaliveComplete: () => true,
-        keepaliveEditor: () => null,
-      });
-      expect(codeBlockInfo(shared, "chart", "trusted")).toBeNull();
-    } finally {
-      setTabLoading("t2", false);
-    }
+    expect(codeBlockInfo(shared, "chart", "trusted")).toBeNull();
+    setTabLoading("t2", false);
+    markContentLoaded("t2");
     expect(codeBlockInfo(shared, "chart", "trusted")?.path).toBe(
-      "/vaults/a/one.md",
+      "/vaults/a/two.md",
     );
   });
 });

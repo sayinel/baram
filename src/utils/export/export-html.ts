@@ -2,8 +2,6 @@ import type { CodeBlockInfo } from "./export-html-code-block";
 // §5.12 HTML Export — Standalone HTML document generator
 import type { Editor } from "@tiptap/core";
 
-import katexCSS from "katex/dist/katex.min.css?raw";
-
 import { withVirtualizationSuspendedAsync } from "../../extensions/plugins/viewport-virtualize";
 import { useSettingsStore } from "../../stores/settings/store";
 import { isAuthoredMarkup } from "./export-authored-markup";
@@ -33,7 +31,7 @@ import {
   type LivePluginBlock,
 } from "./export-html-plugin-blocks";
 import { buildExportStylesheet } from "./export-html-styles";
-import { inlineKatexFonts } from "./export-katex-fonts";
+import { embedJournalPhotos, photoCellsOf } from "./export-journal-photos";
 
 export interface CaptureEditorHTMLOptions {
   /**
@@ -58,6 +56,15 @@ export interface ExportHTMLOptions {
    * existing call site's output unchanged.
    */
   fontFaceCSS?: string;
+  /**
+   * §5.12 — KaTeX's stylesheet with its fonts embedded (`exportedKatexCSS` in
+   * export-katex-fonts.ts). Required when `needsKatexStylesheet` says the
+   * document has math; `generateStandaloneHTML` throws without it rather than
+   * ship formulas in fallback fonts. The caller loads it with a dynamic
+   * `import()` (`export.ts`): the 20 fonts are ~400KB the app must not read
+   * before an export runs (issue 799).
+   */
+  katexCSS?: string;
   /**
    * §362 — the active theme's `:root` block, built by `themeTokensBlock` and
    * resolved by the caller (`export.ts`'s two entry points, gated on
@@ -104,7 +111,7 @@ export async function captureEditorHTML(
   //
   // getComputedStyle() only works on elements in the live DOM, so the code
   // blocks' syntax colours are collected here, before the clone.
-  const { clone, codeBlockInfos, pluginBlocks } =
+  const { clone, codeBlockInfos, photoCells, pluginBlocks } =
     await withVirtualizationSuspendedAsync(async () => {
       const unsettled = await settleHeavyBlocks(dom);
       if (unsettled.length > 0) {
@@ -174,15 +181,27 @@ export async function captureEditorHTML(
       const infos: CodeBlockInfo[] = wrappers.map((wrapper, i) =>
         collectCodeBlockInfo(wrapper, codeTexts[i] ?? "", lineNumbers),
       );
+      const clone = dom.cloneNode(true) as HTMLElement;
       return {
-        clone: dom.cloneNode(true) as HTMLElement,
+        clone,
         codeBlockInfos: infos,
+        // In the cloning task: the pairing holds only while the two trees are identical.
+        photoCells: photoCellsOf(dom, clone),
         pluginBlocks,
       };
     });
 
   hideAtomBlockEditingUI(clone);
 
+  // Before the general conversion: the photos it embeds are already data URIs, which
+  // that pass leaves alone.
+  const photos = await embedJournalPhotos(photoCells);
+  if (photos.fallback > 0) {
+    // Same reason as the warning above: a degraded export should not pass for a whole one.
+    console.warn(
+      `[export] ${photos.fallback} of ${photoCells.length} journal photo(s) were exported as their names: unreadable, or past the deadline`,
+    );
+  }
   await convertImagesToDataURIs(clone, dom);
   resolveVideoSources(clone, forPdf);
   resolveVideoEmbeds(clone, forPdf);
@@ -309,7 +328,7 @@ export function generateStandaloneHTML(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="Baram">
   <title>${safeTitle}</title>
-  ${katexStyles(editorHTML)}
+  ${katexStyles(editorHTML, options?.katexCSS)}
   <style>${buildExportStylesheet(options?.fontFaceCSS, options?.themeTokens)}</style>
 </head>
 <body>
@@ -331,6 +350,14 @@ function isOrdinaryCodeBlock(el: Element): boolean {
 }
 
 /**
+ * Whether an export of `editorHTML` ships KaTeX's stylesheet — the caller asks
+ * this before loading it (see `katexStyles` for the test itself).
+ */
+export function needsKatexStylesheet(editorHTML: string): boolean {
+  return editorHTML.includes("katex");
+}
+
+/**
  * KaTeX's stylesheet — fonts embedded — or nothing at all.
  *
  * The 20 inlined woff2 faces are ~400KB of base64 and a document with no
@@ -346,7 +373,12 @@ function isOrdinaryCodeBlock(el: Element): boolean {
  * a document with math keeps the stylesheet even if something went wrong
  * upstream.
  */
-function katexStyles(editorHTML: string): string {
-  if (!editorHTML.includes("katex")) return "";
-  return `<style>${inlineKatexFonts(katexCSS)}</style>`;
+function katexStyles(editorHTML: string, katexCSS: string | undefined): string {
+  if (!needsKatexStylesheet(editorHTML)) return "";
+  if (katexCSS === undefined) {
+    throw new Error(
+      "generateStandaloneHTML: the document has math but no katexCSS was given",
+    );
+  }
+  return `<style>${katexCSS}</style>`;
 }

@@ -1,4 +1,5 @@
-// §395 spec 0074 D4 · D6 · D7 · D8 · D14 — the numbers file tree decorations run on, in one place. The
+// §395 spec 0074 D4 · D6 · D7 · D8 · D14 · D16 — the numbers file tree decorations and the file tree menu
+// run on, in one place. The
 // D14 values are starting values: the task that owns each one measures it, and ledger 0098 records the
 // run. Change a value here and the committed tests follow it, because they import it.
 //
@@ -43,6 +44,13 @@ export const MAX_FILE_ICON_SVG_BYTES = 8 * 1024;
 
 /** D6 — icons one plugin may define. */
 export const MAX_FILE_ICONS = 64;
+
+/**
+ * D16 — the most targets the file tree menu hands a plugin command. Above it every plugin item is drawn
+ * disabled, in both tiers, so a plugin never silently gets the first part of a selection. Read by
+ * `components/sidebar/file-tree-plugin-menu.ts`.
+ */
+export const MAX_FILE_MENU_TARGETS = 1_000;
 
 /** D8 — badges one row shows: from the first plugins, in plugin id order, that set one. */
 export const MAX_ROW_BADGES = 2;

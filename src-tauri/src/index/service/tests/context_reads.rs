@@ -202,7 +202,7 @@ async fn a_read_for_a_replaced_registration_is_not_ready() {
     let ctx = ContextManager::new();
     let (dir, root) = vault_with_a_link(&ctx, "ctx-a", true).await;
     let stale = registered(&ctx, "ctx-a").await;
-    ctx.remove("ctx-a").await.unwrap();
+    ctx.remove_for("ctx-a", "main").await.unwrap();
     ctx.add(info("ctx-a", &root, ContextType::Folder))
         .await
         .unwrap();

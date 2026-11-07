@@ -185,7 +185,7 @@ async fn a_rename_before_the_initial_build_builds_the_index_first() {
     state
         .forget(&root, incarnation_of(&ctx, "ctx-abc").await)
         .await;
-    ctx.remove("ctx-abc").await.unwrap();
+    ctx.remove_for("ctx-abc", "main").await.unwrap();
     ctx.add(info("ctx-abc", &root, ContextType::Folder))
         .await
         .unwrap();
@@ -511,6 +511,6 @@ async fn the_graph_term_reaches_hybrid_ranking_and_changes_the_order() {
     assert_eq!(without[0].file_path, at(&root, &["x.md"]));
     assert_eq!(with[0].file_path, at(&root, &["b.md"]));
     // No active context: the term is empty, not an error.
-    ctx.remove("ctx-abc").await.unwrap();
+    ctx.remove_for("ctx-abc", "main").await.unwrap();
     assert!(graph_term_for_active(&state, &ctx).await.is_empty());
 }

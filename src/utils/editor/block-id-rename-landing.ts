@@ -7,14 +7,10 @@
 // switched or closed the tab, entered source mode, or still be loading a large
 // file. The document is then not (only) in the view that asked: it is a
 // source-mode buffer, a live keep-alive editor, a cached EditorState, the
-// `openFiles` snapshot, or only the file on disk. This module knows every one
-// of those places, knows which of them is the AUTHORITY at the moment, and
-// puts the rename there. A toast is a receipt, not a destination.
-//
-// Authority, in order: a source-mode tab's buffer (its ProseMirror document is
-// still alive but stale); the text (`openFiles`) for a tab whose document
-// objects are not to be trusted — flagged stale, still loading, or an
-// incomplete keep-alive entry; then the document objects themselves.
+// `openFiles` snapshot, or only the file on disk. For an open tab,
+// `open-tab-surface.ts` says which of those places is the AUTHORITY at the
+// moment; this module puts the rename there, and on disk once the tab is
+// closed. A toast is a receipt, not a destination.
 import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
@@ -29,11 +25,12 @@ import {
   renameBlockIdInMarkdown,
 } from "./block-id-rename-markdown";
 import {
-  isTabLoading,
-  loadedTabId,
-  subscribeContentLoaded,
-} from "./programmatic-update";
-import { serializeEditorState } from "./serialize-live-doc";
+  applyToDocumentSurface,
+  type DocumentSurface,
+  liveViewOf,
+  locateOpenTabSurface,
+} from "./open-tab-surface";
+import { subscribeContentLoaded } from "./programmatic-update";
 
 export interface CommittedBlockIdRename {
   filePath: string;
@@ -151,17 +148,7 @@ export function drainPendingBlockIdRenames(tabId: string): void {
   const ops = pending.get(tabId);
   if (!ops) return;
   pending.delete(tabId);
-  const access = useEditorStore.getState().documentSurfaceAccess;
-  for (const op of ops) {
-    const editor =
-      access?.keepaliveEditor(tabId) ??
-      (loadedTabId() === tabId ? access?.editor : null);
-    void land(
-      op,
-      editor && !editor.isDestroyed ? editor.view : undefined,
-      true,
-    );
-  }
+  for (const op of ops) void land(op, liveViewOf(tabId), true);
 }
 
 /** Position of the paragraph/heading carrying `blockId`, or null. */
@@ -223,6 +210,11 @@ export function trackBlockIdRename(
   });
 }
 
+const NO_SUCH_BLOCK: Record<DocumentSurface["kind"], string> = {
+  cache: "the cached document has no such block",
+  keepalive: "the keep-alive editor has no such block",
+  view: "the document in the editor has no such block",
+};
 const inFlight = new Map<string, InFlight[]>();
 const pending = new Map<string, CommittedBlockIdRename[]>();
 
@@ -247,17 +239,14 @@ async function land(
   draining: boolean,
 ): Promise<Landing> {
   const editorStore = useEditorStore.getState();
-  const { documentSurfaceAccess: access, sourceBufferAccess } = editorStore;
   const tab = editorStore.tabs.find((t) => t.id === op.tabId);
 
   // The tab is gone: only the file on disk is left to hold the definition.
   if (!tab) return landOnDisk(op);
 
-  // 1. A source-mode tab: its buffer is the authoritative text. Its
-  //    ProseMirror document is still alive in the shared view — and stale;
-  //    a transaction there would be lost when the buffer is parsed back, and
-  //    would wake the auto-save for a document that is not the truth.
-  if (editorStore.sourceModeTabs.includes(op.tabId)) {
+  const surface = locateOpenTabSurface(op.tabId, view);
+  if (surface.kind === "source") {
+    const { access: sourceBufferAccess } = surface;
     if (!sourceBufferAccess) {
       if (draining) return dropped(op, "the source buffer is not reachable");
       enqueue(op);
@@ -277,74 +266,14 @@ async function land(
     return "source";
   }
 
-  // 2. Document objects that must not be trusted: a tab flagged stale (its
-  //    file changed while it was in the background; the cache is dropped on
-  //    return and the text re-parsed), a load still appending blocks, or a
-  //    keep-alive entry the load never completed. The text is the authority;
-  //    a document object gets the rename once one is installed for real.
-  const pooled = access?.keepaliveEditor(op.tabId) ?? null;
-  const textOnly =
-    editorStore.staleContentTabs.includes(op.tabId) ||
-    isTabLoading(op.tabId) ||
-    (pooled !== null &&
-      access !== null &&
-      !access.isKeepaliveComplete(op.tabId));
-  if (textOnly) return landInText(op, draining);
+  if (surface.kind === "text") return landInText(op, draining);
 
-  // 3. The view the edit was made in, if it still holds this tab's document.
-  //    A keep-alive view owns its document; the shared view holds this tab's
-  //    while the tab is installed in it. Once the tab is on its way OUT — the
-  //    active tab has moved on, the install of the next has not happened —
-  //    the document is still here, but a dispatched transaction would be
-  //    attributed by the auto-save to the incoming tab (it reads the active
-  //    tab at event time) and could write this document to that tab's file.
-  //    So the state is updated WITHOUT an event: `saveOutgoingTab` then caches
-  //    and serializes the renamed state, and the cache entry and text that
-  //    may already exist are refreshed here as well.
-  if (view && viewHoldsTab(view, op.tabId)) {
-    const tr = buildBlockIdRenameTransaction(view.state, op);
-    if (!tr) return dropped(op, "the document in the editor has no such block");
-    const keepalive = isKeepaliveView(view);
-    if (keepalive || editorStore.activeTabId === op.tabId) {
-      view.dispatch(tr);
-      // A hidden keep-alive editor's update reaches no auto-save.
-      if (keepalive && editorStore.activeTabId !== op.tabId) {
-        publishBackgroundChange(op, view.state);
-      }
-      return "view";
-    }
-    view.updateState(view.state.apply(tr));
-    if (access?.editorStateCache.has(op.tabId)) {
-      access.editorStateCache.set(op.tabId, view.state);
-    }
-    publishBackgroundChange(op, view.state);
-    return "view";
-  }
-
-  // 4. A large document's keep-alive editor: live, but hidden while its tab is
-  //    in the background, so nothing else marks it dirty for us.
-  if (pooled && !pooled.isDestroyed) {
-    const tr = buildBlockIdRenameTransaction(pooled.state, op);
-    if (!tr) return dropped(op, "the keep-alive editor has no such block");
-    pooled.view.dispatch(tr);
-    publishBackgroundChange(op, pooled.state);
-    return "keepalive";
-  }
-
-  // 5. An ordinary background tab: its document is a cached EditorState (undo
-  //    history included), restored when the tab comes back.
-  const cached = access?.editorStateCache.get(op.tabId);
-  if (access && cached) {
-    const tr = buildBlockIdRenameTransaction(cached, op);
-    if (!tr) return dropped(op, "the cached document has no such block");
-    const next = cached.apply(tr);
-    access.editorStateCache.set(op.tabId, next);
-    publishBackgroundChange(op, next);
-    return "cache";
-  }
-
-  // 6. No document object anywhere — only text, or nothing yet.
-  return landInText(op, draining);
+  const applied = applyToDocumentSurface(
+    surface,
+    { tabId: op.tabId, textKey: op.filePath },
+    (state) => buildBlockIdRenameTransaction(state, op),
+  );
+  return applied ? surface.kind : dropped(op, NO_SUCH_BLOCK[surface.kind]);
 }
 
 /**
@@ -408,40 +337,4 @@ async function landOnDisk(op: CommittedBlockIdRename): Promise<Landing> {
     );
   }
   return "disk";
-}
-
-/**
- * A background tab's `openFiles` snapshot and dirty flag follow its document.
- * The auto-save only watches the active tab (use-auto-save.ts), so a change
- * made to a background document must announce itself: the close/quit guard
- * writes dirty background tabs from `openFiles`.
- */
-function publishBackgroundChange(
-  op: CommittedBlockIdRename,
-  state: EditorState,
-): void {
-  useFileStore
-    .getState()
-    .setFileContent(op.filePath, serializeEditorState(state));
-  useEditorStore.getState().markDirty(op.tabId, true);
-}
-
-/**
- * Whether `view` still holds the document of `tabId`. The main editing surface
- * is ONE shared view whose document is swapped on every tab switch, plus a
- * pooled keep-alive editor (§perf-large-file C3.5) that keeps its own document
- * while its tab is in the background. A keep-alive view owns its document
- * until it is destroyed; the shared view owns a tab's document while that tab
- * is the one installed in it (`loadedTabId`, which — unlike the active tab id
- * — flips only once the content is actually in).
- */
-function viewHoldsTab(view: EditorView, tabId: string): boolean {
-  if (view.isDestroyed) return false;
-  return isKeepaliveView(view) || loadedTabId() === tabId;
-}
-
-/** The pooled editor's DOM sits under the keep-alive marker (MarkdownSurface). */
-function isKeepaliveView(view: EditorView): boolean {
-  const dom = (view as { dom?: HTMLElement }).dom;
-  return dom?.closest("[data-keepalive-editor]") !== null && dom !== undefined;
 }

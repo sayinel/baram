@@ -10,7 +10,7 @@ import katexCSS from "katex/dist/katex.min.css?raw";
 import { describe, expect, it } from "vitest";
 
 import { generateStandaloneHTML } from "../export-html";
-import { inlineKatexFonts } from "../export-katex-fonts";
+import { exportedKatexCSS, inlineKatexFonts } from "../export-katex-fonts";
 
 const RELATIVE_FONT_URL = /url\(\s*["']?fonts\//g;
 
@@ -47,9 +47,19 @@ describe("the KaTeX stylesheet the export ships", () => {
     const html = generateStandaloneHTML(
       '<p><span class="katex">E</span></p>',
       "t",
+      { katexCSS: exportedKatexCSS() },
     );
     expect(html).not.toMatch(RELATIVE_FONT_URL);
     expect(html).toContain("data:font/woff2;base64,");
+  });
+
+  // issue 799 — the stylesheet arrives from the caller, loaded at export time.
+  // Without it a document with math must fail loudly, not ship fallback fonts.
+  // 이것을 실패시키는 것: `katexStyles` 가 `katexCSS` 없이 "" 를 돌려준다.
+  it("refuses a document with math when no stylesheet was loaded for it", () => {
+    expect(() =>
+      generateStandaloneHTML('<p><span class="katex">E</span></p>', "t"),
+    ).toThrow(/katexCSS/);
   });
 
   it("is omitted entirely from a document with no math", () => {

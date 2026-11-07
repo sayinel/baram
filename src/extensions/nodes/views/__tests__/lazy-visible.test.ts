@@ -236,6 +236,75 @@ describe("flushPendingVisibility — the export's escape hatch", () => {
     expect(flushPendingVisibility(2)).toBe(0);
   });
 
+  describe("`onScreenOnly`", () => {
+    /** 이것을 실패시키는 것: `wanted` 에서 `leftToViewport` 검사를 지우는 것. */
+    it("is left for the viewport, whether it is only observed or already queued", () => {
+      vi.useFakeTimers();
+      const observed = document.createElement("div");
+      const queued = document.createElement("div");
+      const observedCb = vi.fn();
+      const queuedCb = vi.fn();
+      onFirstVisible(observed, observedCb, { onScreenOnly: true });
+      onFirstVisible(queued, queuedCb, { onScreenOnly: true });
+      const io = MockIntersectionObserver.instances.at(-1)!;
+      io.cb(
+        [
+          {
+            isIntersecting: true,
+            target: queued,
+          } as unknown as IntersectionObserverEntry,
+        ],
+        io as unknown as IntersectionObserver,
+      );
+      expect(_mountQueueLength()).toBe(1);
+
+      expect(flushPendingVisibility()).toBe(0);
+      expect(observedCb).not.toHaveBeenCalled();
+      expect(queuedCb).not.toHaveBeenCalled();
+
+      // Still registered: the viewport fires both, the flush only passed them over.
+      io.cb(
+        [
+          {
+            isIntersecting: true,
+            target: observed,
+          } as unknown as IntersectionObserverEntry,
+        ],
+        io as unknown as IntersectionObserver,
+      );
+      vi.runAllTimers();
+      expect(observedCb).toHaveBeenCalledTimes(1);
+      expect(queuedCb).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    });
+
+    /** 이것을 실패시키는 것: 건너뛴 등록이 `limit` 을 깎는 것 — 칸이 많은 블록 뒤의 코드 블록이
+     *  한 번도 깨지 못하고, 내보내기가 기다리다 자리표시로 찍는다. */
+    it("does not use up the limit of the ones that are flushed", () => {
+      for (let i = 0; i < 5; i++) {
+        onFirstVisible(document.createElement("div"), vi.fn(), {
+          onScreenOnly: true,
+        });
+      }
+      const block = vi.fn();
+      onFirstVisible(document.createElement("div"), block);
+
+      expect(flushPendingVisibility(1)).toBe(1);
+      expect(block).toHaveBeenCalledTimes(1);
+    });
+
+    /** 이것을 실패시키는 것: 옵션 없는 재등록이 표식을 지우지 않는 것. */
+    it("belongs to the latest registration of an element", () => {
+      const el = document.createElement("div");
+      onFirstVisible(el, vi.fn(), { onScreenOnly: true })();
+      const cb = vi.fn();
+      onFirstVisible(el, cb);
+
+      expect(flushPendingVisibility()).toBe(1);
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("never runs a callback twice, whichever stage it was in", () => {
     vi.useFakeTimers();
     const queued = vi.fn();

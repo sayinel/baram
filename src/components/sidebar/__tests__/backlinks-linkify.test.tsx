@@ -18,6 +18,7 @@ const ipc = vi.hoisted(() => ({
 }));
 vi.mock("../../../ipc/invoke", () => ipc);
 
+import { announceNoteChanges } from "../../../services/note-changes";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
@@ -32,7 +33,10 @@ describe("§390 Backlinks handleLinkify", () => {
     ipc.getBacklinks.mockResolvedValue([]);
     ipc.refreshIndex.mockResolvedValue(undefined);
     ipc.updateFileIndex.mockResolvedValue(undefined);
-    ipc.writeFile.mockResolvedValue(undefined);
+    // As the real wrapper does (`ipc/fs.ts`): a written note is announced (§34 issue 791).
+    ipc.writeFile.mockImplementation(async (path: string) =>
+      announceNoteChanges([path]),
+    );
     useLinkStore.getState().clear();
     useFileStore.setState({ rootPath: "/r" });
     useEditorStore.setState({
@@ -79,7 +83,8 @@ describe("§390 Backlinks handleLinkify", () => {
       "/r/src.md",
       `first\nabout [[Baram${NOTE}|baram${NOTE}]] today\nlast`,
     );
-    // The index update and the refetch it triggers settle inside the test.
+    // The write announces another note changed, and the search that runs again on it settles
+    // inside the test (§34 issue 791 — not the index update, which no longer drives it).
     await waitFor(() =>
       expect(ipc.getUnlinkedMentions.mock.calls.length).toBeGreaterThan(
         fetched,

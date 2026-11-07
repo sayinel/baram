@@ -62,6 +62,7 @@ export interface EditorSettingsSlice {
   setSpellCheck: (enabled: boolean) => void;
   setStrikethrough: (enabled: boolean) => void;
   setSymbolSuggest: (enabled: boolean) => void;
+  setTableColumnResize: (enabled: boolean) => void;
   setTabSize: (size: number) => void;
   setVimMode: (enabled: boolean) => void;
   setVirtualizeLargeDocs: (enabled: boolean) => void;
@@ -70,6 +71,8 @@ export interface EditorSettingsSlice {
   spellCheck: boolean;
   strikethrough: boolean;
   symbolSuggest: boolean;
+  // §5.5 Off removes the column resize handle; the table itself renders as before.
+  tableColumnResize: boolean;
   tabSize: number;
   // §298 Vim keybindings in source mode (Phase 0a). Off by default; the vim
   // module is dynamically imported only when enabled.
@@ -127,6 +130,7 @@ export const createEditorSettingsSlice: StateCreator<
   codeBlockStyle: "default",
   smartPunctuation: false,
   symbolSuggest: true,
+  tableColumnResize: true,
   // §377 기본값 `[]` 은 오늘 동작(최근 절 없음)과 같다 — store version 을 올리지 않는다.
   recentSymbols: [],
 
@@ -207,6 +211,7 @@ export const createEditorSettingsSlice: StateCreator<
   setStrikethrough: (strikethrough) => set({ strikethrough }),
   setSmartPunctuation: (smartPunctuation) => set({ smartPunctuation }),
   setSymbolSuggest: (symbolSuggest) => set({ symbolSuggest }),
+  setTableColumnResize: (tableColumnResize) => set({ tableColumnResize }),
 
   // Extension settings setter (with backward-compat sync)
   setExtensionSetting: (key, value) =>

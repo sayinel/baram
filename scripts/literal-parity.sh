@@ -49,11 +49,31 @@ dump_to() {
   # A `--skip` that matches nothing fails open — the test would quietly return
   # to the dump and take the deadlock with it — so the name is confirmed
   # present first, the way the pandoc step confirms its filter matched.
-  if ! cargo test --manifest-path "$manifest" --features parity-dump --lib -- \
-    md::literal --list 2>/dev/null | grep -q "$reader"; then
-    echo "literal-parity: $reader is not in the md::literal filter, so the skip below stopped meaning anything" >&2
+  #
+  # ‼️ The listing is read to its end before it is searched, never piped into
+  # `grep -q`. `grep -q` exits at the first match; the test binary, still
+  # writing the lines after it, then stops with `io error when listing tests:
+  # ... Broken pipe` and exit 101, and `pipefail` turned that into "not in the
+  # filter" for a name that was listed. The listing's stderr is kept for the
+  # same reason as the corpus run's below: a listing that fails (a compile
+  # error under `parity-dump`) must say so, not read as a missing name.
+  local listing list_log
+  list_log="$(mktemp "${TMPDIR:-/tmp}/literal-parity-list.XXXXXX")"
+  if ! listing="$(cargo test --manifest-path "$manifest" --features parity-dump \
+    --lib -- md::literal --list 2>"$list_log")"; then
+    echo "literal-parity: listing the md::literal tests failed:" >&2
+    cat "$list_log" >&2
+    rm -f -- "$list_log"
     exit 1
   fi
+  rm -f -- "$list_log"
+  case "$listing" in
+    *"$reader"*) ;;
+    *)
+      echo "literal-parity: $reader is not in the md::literal filter, so the skip below stopped meaning anything" >&2
+      exit 1
+      ;;
+  esac
   # ‼️ cargo's output is captured, not discarded. With the output on /dev/null
   # all that reached the log when a corpus test failed was `error: test failed,
   # to rerun pass --lib`, with no assertion message.

@@ -1,9 +1,11 @@
 // §5.6/§272/§276.1 Find/Replace + PDF-find state, and the single router that
 // decides which one a given "open find" call means.
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type { PdfFindApi } from "../components/editor/pdf/use-pdf-find";
+
+import { setFindOpen } from "../extensions/plugins/find-replace";
 
 interface UseFindReplaceRoutingReturn {
   findReplaceMode: "find" | "replace";
@@ -26,6 +28,12 @@ export function useFindReplaceRouting(
   const [findReplaceMode, setFindReplaceMode] = useState<"find" | "replace">(
     "find",
   );
+  // §5.6 Find 열림을 편집기 쪽 판정(`find-replace.ts` 의 `findOpen`)에 적는다 — 이 state 의
+  // 주인이 여기라 여기서 적는다. layout effect 라 commit 과 함께 바뀌고, 그 뒤의 탭 전환
+  // 콜백·state 설치가 읽을 때 낡지 않는다(#792 리뷰).
+  useLayoutEffect(() => {
+    setFindOpen(findReplaceOpen);
+  }, [findReplaceOpen]);
   // §272 PDF 찾기 상태 — PdfPreview가 소유한 usePdfFind의 live API를 여기로
   // 끌어올려 PdfFindBar를 PdfPreview 바깥(FindReplaceBar와 같은 자리)에서
   // 그린다.

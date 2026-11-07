@@ -15,10 +15,12 @@ describe("KeybindingConflictNote — plugin titles are text, not replacement pat
   const [entry] = pluginKeybindingEntries({
     cite: {
       commands: [{ id: "a", title: "$'" }],
+      fileMenu: [],
       menu: [],
       name: "Cite",
       pluginId: "cite",
       slash: [],
+      trust: "trusted",
     },
   });
   const conflict = {

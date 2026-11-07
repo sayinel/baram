@@ -39,6 +39,7 @@ const PHOTO: PhotoGalleryEntry = {
   journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
   kind: "image",
   relativePath: "assets/20260805-101500-a.jpg",
+  revision: "1:1",
 };
 
 const CLIP: PhotoGalleryEntry = {
@@ -50,6 +51,7 @@ const CLIP: PhotoGalleryEntry = {
   journalPath: "/vault/journal/daily/2026/08/2026-08-05.md",
   kind: "video-file",
   relativePath: "assets/20260805-102000-c.mp4",
+  revision: "1:1",
 };
 
 function renderLightbox(
@@ -89,9 +91,11 @@ describe("PhotoLightbox", () => {
   });
 
   test("stretches the already-cached grid thumbnail while the preview is built", async () => {
-    // 사용자는 보이는 칸을 눌러서 여기 왔다 — 그 칸의 썸네일은 이미 캐시에 있다.
+    // 사용자는 보이는 칸을 눌러서 여기 왔다 — 그 칸의 썸네일은 이미 캐시에 있다. 갤러리 칸이
+    // 그렇게 하듯 사진의 revision 으로 넣는다(이슈 793). 이것을 실패시키는 것: 라이트박스가
+    // 자리표시를 revision 없이 찾는 것 — 갤러리가 넣은 항목을 늘 놓친다.
     photoThumbnail.mockResolvedValue("/cache/thumbnails/small.jpg");
-    await resolveThumbUrl(PHOTO.absolutePath, GALLERY_THUMB_PX);
+    await resolveThumbUrl(PHOTO.absolutePath, GALLERY_THUMB_PX, PHOTO.revision);
 
     let releasePreview: (path: string) => void = () => {};
     photoThumbnail.mockImplementation(

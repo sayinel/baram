@@ -29,6 +29,7 @@ import {
   isMarkdownFile,
   isViewerEditableFile,
 } from "../utils/file-type";
+import { shouldDeferSave } from "./use-auto-save";
 
 export interface UseCodeAutoSaveOptions {
   /**
@@ -166,8 +167,9 @@ export function useCodeAutoSave({
 
 /**
  * The one save sequence both timers here run — the effect's, through `saveSourceTab`, and the one
- * `rearmForViewerEdit` arms through `saveViewerTab` — so a change to it reaches both: read the
- * buffer, write it, then record the save.
+ * `rearmForViewerEdit` arms through `saveViewerTab` — and the save `use-source-mode.ts` does in place
+ * of the effect's timer when source mode ends, so a change to it reaches all three: read the buffer,
+ * write it, then record the save.
  *
  * - The save's mtime is recorded while the tab still shows `filePath` (#798): a tab closed, or
  *   renamed or moved, while the write ran no longer stands for this file.
@@ -177,13 +179,20 @@ export function useCodeAutoSave({
  *   markdown tab in source mode keeps its unsaved state in the source-edited flag, not in dirty.
  *
  * A failed write keeps the dirty state.
+ *
+ * @returns whether the text reached the disk
  */
-async function saveFromBuffer(
+export async function saveFromBuffer(
   tabId: string,
   filePath: string,
   deps: BufferSaveDeps,
   { reindexLinks }: { reindexLinks: boolean },
-): Promise<void> {
+): Promise<boolean> {
+  // An external change is waiting for an answer, as in `use-auto-save`. Writing now would remove it
+  // from under the conflict question. The tab stays unsaved.
+  if (shouldDeferSave(useFileStore.getState().getFileMtime(filePath))) {
+    return false;
+  }
   try {
     const content = deps.getSourceBuffer(tabId);
     await writeFile(filePath, content);
@@ -208,8 +217,10 @@ async function saveFromBuffer(
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
     }
+    return true;
   } catch {
     // Save failed — keep dirty state
+    return false;
   }
 }
 

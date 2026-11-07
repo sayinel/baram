@@ -7,7 +7,7 @@ import type { Transaction } from "@tiptap/pm/state";
 import { useShallow } from "zustand/shallow";
 
 import { updateFileIndex, writeFile } from "../ipc/invoke";
-import { useEditorStore } from "../stores/editor/editor";
+import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
@@ -15,7 +15,10 @@ import { useSettingsStore } from "../stores/settings/store";
 import {
   COLWIDTH_AUTO_INIT_META,
   CONTENT_SYNC_META,
+  editorHoldsWholeDocument,
+  isTabLoading,
   JOURNAL_CURSOR_INIT_META,
+  loadedTabId,
   noteColwidthInit,
   noteContentSync,
   shouldSkipDirty,
@@ -54,6 +57,15 @@ export function shouldDeferSave(
 }
 
 /**
+ * Whether the document would serialize to nothing. `editor.isEmpty` alone is not that: it reads a
+ * callout with only a title as empty, and the title is text someone wrote. It comes first because
+ * this runs on every edit of an untitled tab, and it answers no for any tab with text in it.
+ */
+function holdsNothing(editor: Editor): boolean {
+  return editor.isEmpty && serializeLiveDoc(editor).trim() === "";
+}
+
+/**
  * Auto-save hook: 마지막 편집 후 설정된 딜레이(기본 2초) 뒤 자동 저장
  * §3.6: Debounced Write — 타이핑 중에는 저장하지 않음
  * Note: Non-MD files are auto-saved by App.tsx directly; this hook only handles markdown.
@@ -78,15 +90,28 @@ export function useAutoSave(editor: Editor | null) {
 
     // Guard: if the active tab changed since the save was scheduled, editor.state.doc
     // now belongs to the new tab — writing it to the pending path would corrupt data.
-    const { activeTabId, markDirty, tabs } = useEditorStore.getState();
+    const { activeTabId, markDirty, sourceModeTabs, tabs } =
+      useEditorStore.getState();
     if (activeTabId !== pending.id) return;
     // §3.5 경로는 예약할 때가 아니라 지금의 탭에서 읽는다(#798). 기다리는 사이 rename · move
     // 되었으면 예약할 때의 경로에 쓰는 것은 옛 파일을 되살리는 것이다.
     const filePath = tabs.find((t) => t.id === pending.id)?.filePath;
     if (!filePath) return;
 
+    // A timer armed before source mode began. The buffer is this tab's text now. It is written by
+    // `use-code-auto-save`, which armed its own save for an unsaved tab on the way in, or on the way
+    // back by `handBufferToDocument` if the tab returns before that. The document is still what it
+    // was: written here, it would put older text on disk and lower the mark, so a close before
+    // those saves would lose what was typed there.
+    if (sourceModeTabs.includes(pending.id)) return;
+
     // Non-MD files don't use ProseMirror — skip (handled by App.tsx code auto-save)
     if (!isMarkdownFile(filePath)) return;
+
+    // The editor may not hold this tab's whole document when a timer armed earlier fires: a
+    // progressive load holds only its first blocks, which would cut the file short, and until a
+    // tab is installed the editor still shows the one before it. The tab stays dirty instead.
+    if (!editorHoldsWholeDocument(pending.id)) return;
 
     // Phase 4: mtime race-condition guard — if an external file:changed event has
     // arrived but not yet been resolved, skip this save so we don't overwrite the
@@ -170,9 +195,19 @@ export function useAutoSave(editor: Editor | null) {
       transaction: Transaction;
     }) => {
       // Read current tab at event time — avoids stale closure
-      const { activeTabId, tabs, markDirty } = useEditorStore.getState();
+      const { activeTabId, sourceModeTabs, tabs, markDirty } =
+        useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
-      if (!tab?.filePath) return;
+      // The document of a tab in source mode is out of sight and not what gets saved, so a change
+      // to it (an AI chat Apply) is not unsaved work, and nothing would ever lower this mark.
+      if (activeTabId && sourceModeTabs.includes(activeTabId)) return;
+      // ‼️ Asked as "is this a file?", not "does it have a path?". An untitled tab has none, and
+      // its text is what the unsaved-changes prompts exist for. Only the write below needs a path.
+      if (!isFileTab(tab)) return;
+      // The active tab flips before the next document is installed, so in that gap an update
+      // belongs to the tab being left. A tab with a path has its save to lower a wrong mark; an
+      // untitled one has nothing, so it would ask about text it never held.
+      if (!tab.filePath && loadedTabId() !== tab.id) return;
 
       // ‼️ The active tab is read at EVENT TIME, so a transaction that belongs to the
       // markdown document can land on whatever tab is active by the time it fires. Open
@@ -238,14 +273,21 @@ export function useAutoSave(editor: Editor | null) {
       // so a genuine first edit (e.g. a media-block resize done as the first
       // action) is detected instead of being absorbed as the baseline. The
       // comparator only runs on that one update, never per-keystroke.
-      if (
-        shouldSkipDirty(tab.id, editor.state.doc, {
-          beforeDoc: transaction.before,
-          markdownEqual: (before, after) =>
-            serializeDetachedDoc(before) === serializeDetachedDoc(after),
-        })
-      )
+      const unchanged = shouldSkipDirty(tab.id, editor.state.doc, {
+        beforeDoc: transaction.before,
+        markdownEqual: (before, after) =>
+          serializeDetachedDoc(before) === serializeDetachedDoc(after),
+      });
+
+      // An untitled tab has no file to differ from and no save to lower its mark, so the mark is
+      // simply whether it holds anything. Asked of the document, not of the baseline: restoring
+      // the tab makes its text the baseline, so "same as the baseline" would read a draft brought
+      // back by an undo as clean.
+      if (!tab.filePath) {
+        if (!isTabLoading(tab.id)) markDirty(tab.id, !holdsNothing(editor));
         return;
+      }
+      if (unchanged) return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch

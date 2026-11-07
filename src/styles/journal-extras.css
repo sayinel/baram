@@ -846,21 +846,6 @@
   white-space: nowrap;
 }
 
-/* journal-photos */
-.journal-photos-grid {
-  display: grid;
-  gap: var(--space-1);
-  overflow-x: auto;
-}
-
-.journal-photos-thumb {
-  display: block;
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: var(--radius-default);
-}
-
 /* journal source edit textarea */
 .journal-block-source-edit {
   box-sizing: border-box;

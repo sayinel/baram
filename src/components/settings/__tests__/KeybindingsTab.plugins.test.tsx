@@ -95,17 +95,21 @@ const CITE: PluginEntryContributions = {
     { id: "insert", title: "Insert citation" },
     { id: "pick", title: "Pick a source" },
   ],
+  fileMenu: [],
   menu: [],
   name: "Cite",
   pluginId: "cite",
   slash: [],
+  trust: "trusted",
 };
 const ZETA: PluginEntryContributions = {
   commands: [{ id: "one", title: "Zeta one" }],
+  fileMenu: [],
   menu: [],
   name: "Zeta",
   pluginId: "zeta",
   slash: [],
+  trust: "trusted",
 };
 const withPlugins = () =>
   usePluginUIStore.setState({ contributions: { cite: CITE, zeta: ZETA } });
@@ -160,10 +164,12 @@ describe("plugin rows (§391 §8)", () => {
       contributions: {
         x: {
           commands: [{ id: "a", title: "\u202eab\u0007c" }],
+          fileMenu: [],
           menu: [],
           name: "\u2066Name",
           pluginId: "x",
           slash: [],
+          trust: "trusted",
         },
       },
     });

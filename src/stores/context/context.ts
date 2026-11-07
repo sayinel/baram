@@ -4,6 +4,7 @@ import type { ContextInfo, ContextType, VaultType } from "../../ipc/types";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { isApprovalDeniedError } from "../../ipc/approval";
 import {
   addContext as ipcAddContext,
   removeContext as ipcRemoveContext,
@@ -197,7 +198,31 @@ export const useContextStore = create<ContextState>()(
         const existing = contexts.find(
           (c) => c.contextType === "file" && c.path === filePath,
         );
-        if (existing) return existing;
+        if (existing) {
+          // The backend counts who holds a file context, by window, and this store can know one it
+          // never asked for: a file window starts from the main window's saved list. So it asks
+          // again. The backend dedups, and what comes back is the registration. The approval gate
+          // runs too, so a file whose approval is gone asks once more, and a refusal stands.
+          try {
+            const saved = await ipcAddContext(existing);
+            if (saved.id !== existing.id) {
+              set((state) => ({
+                activeContextId:
+                  state.activeContextId === existing.id
+                    ? saved.id
+                    : state.activeContextId,
+                contexts: state.contexts.map((c) =>
+                  c.id === existing.id ? saved : c,
+                ),
+              }));
+            }
+            return saved;
+          } catch (err) {
+            if (isApprovalDeniedError(err)) throw err;
+            logger.error("[contextStore] could not hold a file context:", err);
+            return existing;
+          }
+        }
 
         // Create new FileContext
         return get().addContext("file", filePath, {

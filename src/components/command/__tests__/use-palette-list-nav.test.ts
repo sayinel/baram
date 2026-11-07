@@ -113,4 +113,20 @@ describe("usePaletteListNav", () => {
       expect(args.onEscape).toHaveBeenCalled();
     });
   });
+
+  // §385 플러그인 선택창은 onEscape 안에서 포커스를 연 자리(편집기에서 열었으면 편집기)로
+  // 돌려준다. 취소되지 않은 Escape keydown 뒤에 macOS WebView 가 보내는 keypress(charCode 27)는
+  // 그 편집기에 닿고, 선택이 한 부모 안의 텍스트 선택이 아니면 ProseMirror 가 그 글자를 문서에
+  // 넣는다(2026-11-04 실측). Escape 를 뺀 행은 수정 전에도 통과했다 — 검사 자체를 고정한다.
+  describe("다루는 키는 기본 동작을 취소한다", () => {
+    it.each(["Escape", "ArrowDown", "ArrowUp", "Enter"])("%s", (k) => {
+      const args = makeArgs({ itemCount: 2 });
+      const { result } = renderHook(() => usePaletteListNav(args));
+      const e = key(k);
+
+      act(() => result.current.handleKeyDown(e));
+
+      expect(e.preventDefault).toHaveBeenCalled();
+    });
+  });
 });

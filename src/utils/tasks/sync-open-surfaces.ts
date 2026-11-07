@@ -20,7 +20,7 @@ import type { Editor } from "@tiptap/react";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { patchEditorContent } from "../editor/patch-editor-content";
-import { loadedTabId } from "../editor/programmatic-update";
+import { editorHoldsWholeDocument } from "../editor/programmatic-update";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { logger } from "../logger";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
@@ -29,9 +29,10 @@ import { isSameLine, lineAt, spliceLine } from "./line-splice";
  * `task.line`이 `newRaw`가 됐다는 사실을 열린 표면들에 반영한다.
  *
  * - `openFiles` 캐시 — 탭을 다시 여는 경로와 읽기 전용 패널들이 읽는다.
- * - 활성 WYSIWYG 탭의 라이브 문서 — 사용자가 지금 보고 있는 것.
- * - 배경 탭 — 캐시된 ProseMirror 상태에 낡음 표시를 달아, 돌아왔을 때 그 캐시가 아니라
- *   방금 갱신한 `openFiles`를 다시 읽게 한다.
+ * - 활성 WYSIWYG 탭의 라이브 문서 — 사용자가 지금 보고 있는 것. 설치를 마친 뒤에만이다
+ *   (§39). 그 전에 에디터가 든 문서는 앞 탭의 것이거나 채우는 중인 일부다.
+ * - 배경 탭과 설치 중인 활성 탭 — 낡음 표시를 달아, 캐시가 아니라 방금 갱신한 `openFiles`를
+ *   읽게 한다.
  *
  * ‼️ dirty 탭에는 낡음 표시를 달지 않는다. 그 캐시는 아직 저장되지 않은 편집을 들고 있고,
  * 표시를 달면 탭 전환이 그것을 버린다 — 이 조작이 고치려던 것보다 나쁜 손실이다.
@@ -52,7 +53,11 @@ export function syncOpenSurfacesAfterDiskWrite(
     // 그 버퍼의 접근자가 아예 등록돼 있지 않다는 뜻이므로(라우터 주석) 쓸 버퍼가 없다.
     if (sourceModeTabs.includes(tab.id)) continue;
 
-    if (tab.id === activeTabId && editor?.view) {
+    if (
+      tab.id === activeTabId &&
+      editor?.view &&
+      editorHoldsWholeDocument(tab.id)
+    ) {
       patchLiveDocument(task, newRaw, editor);
     } else if (!tab.isDirty) {
       markContentStale(tab.id);
@@ -93,7 +98,11 @@ export function syncOpenSurfacesAfterFileRewrite(
     // 소스 모드 탭의 권위 있는 텍스트는 CodeMirror 버퍼다 — 여기서 손댈 것이 없다.
     if (sourceModeTabs.includes(tab.id)) continue;
 
-    if (tab.id === activeTabId && editor?.view) {
+    if (
+      tab.id === activeTabId &&
+      editor?.view &&
+      editorHoldsWholeDocument(tab.id)
+    ) {
       patchEditorContent(editor.view, content);
     } else if (!tab.isDirty) {
       markContentStale(tab.id);
@@ -174,7 +183,7 @@ export function syncCleanSurfacesAfterReferrerRewrite(
     }
     const holder =
       access?.keepaliveEditor(tab.id) ??
-      (loadedTabId() === tab.id ? access?.editor : null);
+      (editorHoldsWholeDocument(tab.id) ? access?.editor : null);
     if (holder && !holder.isDestroyed) {
       patchEditorContent(holder.view, content);
     } else {

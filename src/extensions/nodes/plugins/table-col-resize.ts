@@ -12,11 +12,55 @@ import type { EditorView } from "@tiptap/pm/view";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { columnResizingPluginKey } from "@tiptap/pm/tables";
 
+import { useSettingsStore } from "../../../stores/settings/store";
 import { COLWIDTH_AUTO_INIT_META } from "../../../utils/editor/programmatic-update";
 
 const pluginKey = new PluginKey("baramTableColwidthInit");
 
 const MIN_COL_WIDTH = 40;
+
+/**
+ * §5.5 Clears the widths of every user-resized table in the document: all
+ * cells of a table that has a `userResized` cell go back to
+ * `colwidth: null, userResized: false`. Tables without a mark are untouched.
+ * Returns null when no table is marked. The transaction stays out of the undo
+ * history — turning the option off is a setting change, not an edit.
+ */
+export function buildClearTableWidthsTransaction(
+  state: EditorState,
+): null | Transaction {
+  const { tr } = state;
+  let changed = false;
+
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== "table") return true;
+
+    let marked = false;
+    node.descendants((cell) => {
+      if (cell.attrs.userResized) marked = true;
+      return !marked;
+    });
+    if (!marked) return false;
+
+    node.descendants((cell, offset) => {
+      if (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader") {
+        return true;
+      }
+      tr.setNodeMarkup(pos + 1 + offset, undefined, {
+        ...cell.attrs,
+        colwidth: null,
+        userResized: false,
+      });
+      changed = true;
+      return false;
+    });
+    return false;
+  });
+
+  if (!changed) return null;
+  tr.setMeta("addToHistory", false);
+  return tr;
+}
 
 export function createColResizePlugin(): Plugin {
   let initScheduled = false;
@@ -92,6 +136,10 @@ function findTableElement(domNode: Node): HTMLTableElement | null {
 }
 
 function measureColumnWidths(tableDOM: HTMLTableElement): number[] {
+  // A table that is not laid out (display:none in a hidden tab) reads 0, which
+  // the per-column floor below would turn into MIN_COL_WIDTH for every column.
+  // An empty result is skipped by the caller; the next update measures it.
+  if (tableDOM.offsetWidth === 0) return [];
   const firstRow = tableDOM.querySelector("tr");
   if (!firstRow) return [];
   const widths: number[] = [];
@@ -161,6 +209,18 @@ export function createUserResizeTracker(): Plugin {
       const handlePos = prevResizeState.activeHandle;
       if (handlePos == null || handlePos < 0) return null;
 
+      // prosemirror-tables sends `{setDragging: null}` at mouseup even when
+      // the width did not change, so compare the dragged column's width with
+      // the one the drag started from and mark nothing when they match.
+      const draggedCw = newState.doc.nodeAt(handlePos)?.attrs.colwidth as
+        null | number[] | undefined;
+      if (
+        draggedCw?.[draggedCw.length - 1] ===
+        prevResizeState.dragging.startWidth
+      ) {
+        return null;
+      }
+
       // Resolve the cell that was actually dragged and find its enclosing
       // table — mark ONLY that table's cells, not every table in the doc.
       let $handle;
@@ -210,6 +270,44 @@ export function createUserResizeTracker(): Plugin {
       return null;
     },
   });
+}
+
+/**
+ * §5.5 Takes the resize handle away when `tableColumnResize` is off. Wraps the
+ * `mousemove` and `mousedown` handlers of the columnResizing plugin in place
+ * and returns the same array. The plugin itself stays installed, so toggling
+ * changes no editor's plugin list; the table's NodeView and colgroup come from
+ * Tiptap's addNodeView, not from this plugin. The setting is read when the
+ * event fires.
+ * Off, `mousemove` only takes down a handle that is already up and
+ * `mousedown` returns false, so the press stays an ordinary click — returning
+ * true would stop later handlers and ProseMirror's own mousedown handling.
+ */
+export function gateColumnResizing(plugins: Plugin[]): Plugin[] {
+  for (const plugin of plugins) {
+    if (plugin.spec.key !== columnResizingPluginKey) continue;
+    const handlers = plugin.props.handleDOMEvents;
+    if (!handlers) continue;
+    const { mousedown, mousemove } = handlers;
+
+    handlers.mousemove = function (view, event) {
+      if (useSettingsStore.getState().tableColumnResize) {
+        return mousemove?.call(plugin, view, event);
+      }
+      const state = columnResizingPluginKey.getState(view.state);
+      if (state && state.activeHandle > -1) {
+        view.dispatch(
+          view.state.tr.setMeta(columnResizingPluginKey, { setHandle: -1 }),
+        );
+      }
+      return false;
+    };
+    handlers.mousedown = function (view, event) {
+      if (!useSettingsStore.getState().tableColumnResize) return false;
+      return mousedown?.call(plugin, view, event);
+    };
+  }
+  return plugins;
 }
 
 /** True when `meta` is the columnResizing plugin's "drag just ended" action. */

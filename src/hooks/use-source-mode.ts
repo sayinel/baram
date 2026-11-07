@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject, RefObject } from "react";
 
 import type { SourceCodeEditorRef } from "../components/editor/SourceCodeEditor";
+import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState as PmEditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 
@@ -19,15 +20,25 @@ import {
 } from "../pipeline/md-to-pm";
 import { parseMdastAsync } from "../pipeline/parse-async";
 import { deliverHostWrite } from "../plugins/viewer-edit-mounts";
-import { isFileTab, useEditorStore } from "../stores/editor/editor";
+import {
+  type EditorTab,
+  isFileTab,
+  useEditorStore,
+} from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
 import {
   mdOffsetToPmPos,
   pmPosToMdOffset,
 } from "../utils/editor/cursor-mapper";
 import { focusEditorView } from "../utils/editor/focus-editor-view";
 import {
+  editorHoldsWholeDocument,
+  forgetLoadedTab,
+  loadedTabId,
   markContentLoaded,
   setTabLoading,
+  updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
 import {
   appendChunksProgressively,
@@ -38,6 +49,7 @@ import {
 } from "../utils/editor/progressive-load";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isMarkdownFile } from "../utils/file-type";
+import { saveFromBuffer } from "./use-code-auto-save";
 import { LARGE_DOC_BLOCK_THRESHOLD } from "./use-large-doc-keepalive";
 import { pullViewerEdit } from "./viewer-edit-pull";
 
@@ -221,6 +233,10 @@ export function useSourceMode({
     if (!isMarkdownFile(currentTab.filePath)) return;
 
     if (!isSourceMode) {
+      // The buffer is about to become the truth, and it is read from this editor. While the
+      // document is still being filled, or the tab's document is not installed yet, that would
+      // be part of the document, or another tab's.
+      if (!editorHoldsWholeDocument(currentTab.id)) return;
       // WYSIWYG → Source: collapse any active syntax reveal expansion first
       // (SyntaxReveal replaces marks with literal delimiter text, which would
       // cause remark-stringify to escape angle brackets like \<u>)
@@ -252,9 +268,22 @@ export function useSourceMode({
       // to avoid a multi-second whole-DOM rebuild on toggle-back. Cursor
       // restore is deferred to finishLoad (same as fold restore in tab switch).
       if (newDoc.childCount >= LARGE_DOC_BLOCK_THRESHOLD) {
-        // §82 버퍼가 문서로 넘어갔다 — 여기서부터 dirty의 주인은 use-auto-save다.
-        useEditorStore.getState().markSourceEdited(currentTab.id, false);
+        // The document arrives in pieces from here on. Until it has, unsaved text is only in this
+        // buffer, so it also goes where a Save As in the background reads it, and where the load
+        // reads it if the tab is left before the fill ends. A cached state from before source
+        // mode would otherwise come back first, without it.
+        if (handBufferToDocument(currentTab, getSourceBuffer)) {
+          useFileStore
+            .getState()
+            .setFileContent(
+              currentTab.filePath || currentTab.id,
+              currentSource,
+            );
+        }
+        if (currentTabId) editorStateCache.current.delete(currentTabId);
         setSourceModeForTab(currentTab.id, false);
+        // The editor stops holding this tab's document until `finishLoad`.
+        forgetLoadedTab(currentTab.id);
 
         // [MAJOR fix] Mark the pool entry incomplete so a mid-fill tab
         // switch + return takes the release-and-reload path instead of
@@ -264,9 +293,31 @@ export function useSourceMode({
         // Parse async and progressive-load into the keep-alive editor
         if (currentTabId) setTabLoading(currentTabId, true);
 
+        // Every tab switch cancels this (`cancelInflightAppend`). Comparing tab ids alone would miss
+        // leaving and coming back, when a second load is already filling this document.
+        let cancelled = false;
+        if (appendHandleRef && currentTabId) {
+          appendHandleRef.current?.handle.cancel();
+          appendHandleRef.current = {
+            handle: {
+              cancel: () => {
+                cancelled = true;
+              },
+            },
+            tabId: currentTabId,
+          };
+        }
+        const left = () =>
+          cancelled || useEditorStore.getState().activeTabId !== currentTabId;
+
         parseMdastAsync(currentSource)
           .then((mdast) => {
-            if (useEditorStore.getState().activeTabId !== currentTabId) return;
+            // Left before the parse finished: nothing will fill this tab now, and a flag left on
+            // makes `shouldSkipDirty` ignore every edit after it comes back.
+            if (left()) {
+              if (currentTabId) setTabLoading(currentTabId, false);
+              return;
+            }
 
             const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
             const chunks = chunkBlocks(
@@ -337,6 +388,11 @@ export function useSourceMode({
             };
 
             setTimeout(() => {
+              // Left in the gap before this timer: the editor belongs to the next tab now.
+              if (left()) {
+                if (currentTabId) setTabLoading(currentTabId, false);
+                return;
+              }
               replaceEditorStateWithVim(
                 editor.view,
                 firstState,
@@ -348,10 +404,6 @@ export function useSourceMode({
               }
               // [NEW-MODERATE-C] Register the handle in the shared ref so
               // cancelInflightAppend (tab switch / cleanup) can cancel it.
-              // Also cancel any prior fill (rapid re-toggle guard).
-              if (appendHandleRef?.current) {
-                appendHandleRef.current.handle.cancel();
-              }
               const handle = appendChunksProgressively(editor, restChunks, {
                 onComplete: () => {
                   if (appendHandleRef?.current?.tabId === currentTabId) {
@@ -387,7 +439,18 @@ export function useSourceMode({
         plugins: editor.state.plugins,
         selection: TextSelection.atStart(newDoc),
       });
+      // A load still filling this document would go on appending to the one installed here.
+      if (appendHandleRef?.current) {
+        appendHandleRef.current.handle.cancel();
+        setTabLoading(appendHandleRef.current.tabId, false);
+        appendHandleRef.current = null;
+      }
       replaceEditorStateWithVim(editor.view, tempState, "source-return");
+      // Normally the tab switch installed this tab already, and marking again would make this text
+      // the baseline. It did not if the tab came back with its text gone from memory (a file
+      // deleted on disk) and no cache it could use, and this is then the tab's first document in
+      // the editor.
+      if (loadedTabId() !== currentTab.id) markContentLoaded(currentTab.id);
 
       // Cache state with correct selection for tab-switching safety
       const targetPos = clampedPos;
@@ -401,8 +464,11 @@ export function useSourceMode({
         editorStateCache.current.set(currentTabId, cachedState);
       }
 
-      // §82 버퍼가 문서로 넘어갔다 — 여기서부터 dirty의 주인은 use-auto-save다.
-      useEditorStore.getState().markSourceEdited(currentTab.id, false);
+      // With nothing unsaved this text is the file, and the next edit is compared with it. Left on
+      // the older baseline, text put back to that by hand would read as saved.
+      if (!handBufferToDocument(currentTab, getSourceBuffer, newDoc)) {
+        updateOriginalDoc(currentTab.id, newDoc);
+      }
       setSourceModeForTab(currentTab.id, false);
 
       // Apply cursor AFTER EditorContent mounts (DOM attached).
@@ -481,4 +547,51 @@ export function useSourceMode({
     sourceModeTabs,
     toggleSourceMode,
   };
+}
+
+/**
+ * §82 소스 모드를 떠난다 — 여기서부터 dirty의 주인은 use-auto-save다.
+ *
+ * ‼️ 다만 소스 모드에서 고친 글은 여기서 넘겨줘야 한다. 이 전환은 `view.updateState`로 문서를
+ * 바꾸므로 `update`가 나지 않아 use-auto-save가 보지 못한다. 표시만 지우면 글이 디스크에 없는데
+ * 탭은 깨끗하다 — 묻지 않고 닫히고, 묻지 않고 종료된다.
+ *
+ * 자동 저장 타이머도 이 전환이 지운다(`use-code-auto-save.ts`의 effect 정리). use-auto-save는
+ * `update`가 없어 새로 걸지 않으므로, 켜져 있으면 그 저장을 여기서 대신 한다. 경로 없는 탭은 쓸
+ * 곳이 없어 dirty로 남는다.
+ *
+ * @returns 저장 안 된 편집을 넘겼는지
+ */
+function handBufferToDocument(
+  tab: EditorTab,
+  getSourceBuffer: (tabId: string) => string,
+  installed?: PmNode,
+): boolean {
+  const store = useEditorStore.getState();
+  const edited = store.sourceEditedTabs.includes(tab.id);
+  store.markSourceEdited(tab.id, false);
+  // `isDirty` too: what was typed before source mode has lost its timer to the source mode, whose
+  // own is cancelled by coming back. Its text is in this buffer.
+  if (!edited && !tab.isDirty) return false;
+  // 경로 없는 탭은 담긴 것이 없으면 잃을 것도 없다(`use-auto-save.ts`의 같은 판정).
+  if (!tab.filePath && getSourceBuffer(tab.id).trim() === "") {
+    store.markDirty(tab.id, false);
+    return false;
+  }
+  store.markDirty(tab.id, true);
+  if (tab.filePath && useSettingsStore.getState().autoSave) {
+    void saveFromBuffer(
+      tab.id,
+      tab.filePath,
+      {
+        getSourceBuffer,
+        markDirty: store.markDirty,
+        setFileContent: useFileStore.getState().setFileContent,
+      },
+      { reindexLinks: true },
+    ).then((written) => {
+      if (written && installed) updateOriginalDoc(tab.id, installed);
+    });
+  }
+  return true;
 }

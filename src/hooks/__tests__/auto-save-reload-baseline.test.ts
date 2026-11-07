@@ -32,6 +32,7 @@ import { Editor } from "@tiptap/core";
 import { createBaramExtensions } from "../../extensions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { markContentLoaded } from "../../utils/editor/programmatic-update";
 import { useAutoSave } from "../use-auto-save";
 import { triggerAutoReload, useFileOperations } from "../use-file-operations";
 
@@ -65,7 +66,7 @@ beforeEach(() => {
         buffers.set(id, content);
       },
     },
-    sourceModeTabs: [TAB],
+    sourceModeTabs: [],
     tabs: [
       {
         contextId: "c",
@@ -85,6 +86,7 @@ describe("auto-save keeps the auto-reload baseline honest", () => {
       content: "<p>hello</p>",
       extensions: createBaramExtensions(),
     });
+    markContentLoaded(TAB);
     const autoSave = renderHook(() => useAutoSave(editor));
 
     // ① 사용자가 WYSIWYG에서 타이핑한다 → 자동 저장이 예약되고, 여기서는 그 디바운스를
@@ -101,6 +103,7 @@ describe("auto-save keeps the auto-reload baseline honest", () => {
 
     // ② Cmd+/ — 버퍼는 **라이브 문서**에서 채워진다(캐시가 아니다).
     buffers.set(TAB, autoSaved as string);
+    useEditorStore.setState({ sourceModeTabs: [TAB] });
 
     // ③ 외부 변경이 도착한다. 탭은 자동 저장 직후라 clean이므로 워처는 자동 리로드로 간다.
     await act(async () => {

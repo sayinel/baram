@@ -397,6 +397,116 @@ async fn a_context_without_an_index_is_announced_for_notes_and_removals() {
     }
 }
 
+/// §34 With no live index a removal or a folder cannot be judged, so it counts as a tree change:
+/// the search reads the disk whatever the index holds. What fails this: taking `tree_changed`
+/// from `Some(true)` alone, in phase 2 (`gone.md`) or in phase 1 (`empty`).
+#[tokio::test]
+async fn a_context_without_an_index_counts_removals_and_folders_as_tree_changes() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-a", true).await;
+    let state = LinkIndexState::new(); // never built
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+
+    for path in ["gone.md", "empty"] {
+        let got = answer(&state, &ctx, &[(&at(&root, &[path]), false)]).await;
+        assert!(got.tree_changed, "{path}");
+        assert!(got.notes.is_empty(), "{path}");
+    }
+}
+
+/// §34 The answer tells a reader of the notes' text what the batch meant for it, and a note's
+/// own echo stays named even where `links_changed` is true — no live index, or its links
+/// changed. What fails the note half: announcing such a note through `tree_changed`, which
+/// reads as "something else changed" and walks the vault on every save of the viewed note.
+#[tokio::test]
+async fn a_note_is_named_whatever_the_link_index_says() {
+    let ctx = ContextManager::new();
+    let (dir, root) = vault_with_a_link(&ctx, "ctx-a", true).await;
+    let never_built = LinkIndexState::new();
+    let c = at(&root, &["c.md"]);
+    std::fs::write(dir.path().join("c.md"), "x").unwrap();
+
+    let got = answer(&never_built, &ctx, &[(&c, false)]).await;
+    assert!(got.links_changed);
+    assert_eq!(got.notes, vec![c.clone()]);
+    assert!(!got.tree_changed);
+
+    let live = LinkIndexState::new();
+    refresh_index_inner(&live, &ctx, &root).await.unwrap();
+    std::fs::write(dir.path().join("c.md"), "see [[b]]").unwrap();
+    let got = answer(&live, &ctx, &[(&c, false)]).await;
+    assert!(got.links_changed);
+    assert_eq!(got.notes, vec![c.clone()]);
+    assert!(!got.tree_changed);
+
+    let got = answer(&live, &ctx, &[(&c, true)]).await;
+    assert!(!got.links_changed, "the echo finds the index as it was");
+    assert_eq!(got.notes, vec![c]);
+    assert!(!got.tree_changed);
+}
+
+/// §34 A folder that came or went names no note. What fails this: taking `tree_changed` from
+/// `Note` · `Other` paths, or not at all — the unlinked mentions under the folder stay stale.
+#[tokio::test]
+async fn a_folder_that_came_or_went_is_a_tree_change_and_names_no_note() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("sub/e.md", "plain")]).await;
+    let sub = at(&root, &["sub"]);
+
+    std::fs::rename(dir.path().join("sub"), dir.path().join("moved")).unwrap();
+    let gone = answer(&state, &ctx, &[(&sub, false)]).await;
+    assert!(gone.tree_changed);
+    assert!(gone.notes.is_empty());
+
+    let came = answer(&state, &ctx, &[(&at(&root, &["moved"]), false)]).await;
+    assert!(came.tree_changed);
+    assert!(came.notes.is_empty());
+}
+
+/// §34 The negatives of the two above: none of these is a change a reader of the notes' text
+/// needs to hear about. What fails each row: `paper.pdf`, `tree_changed` taken from
+/// `links_changed` (its registration changes the index) · `empty`, a refill counted as a tree
+/// change whatever it changed · `sub`, walking a changed-only directory · `.omc`, naming a path
+/// `holding` drops · `never-existed.md`, a removal counted whatever it removed.
+#[tokio::test]
+async fn what_changes_no_note_is_neither_named_nor_a_tree_change() {
+    let ctx = ContextManager::new();
+    let (dir, root, state) = built(&ctx, &[("sub/e.md", "plain")]).await;
+    std::fs::write(dir.path().join("paper.pdf"), "%PDF").unwrap();
+    std::fs::create_dir(dir.path().join("empty")).unwrap();
+    std::fs::create_dir(dir.path().join(".omc")).unwrap();
+    std::fs::write(dir.path().join(".omc/notepad.md"), "note").unwrap();
+
+    for (path, changed_only) in [
+        (at(&root, &["paper.pdf"]), false),
+        (at(&root, &["empty"]), false),
+        (at(&root, &["sub"]), true),
+        (at(&root, &[".omc", "notepad.md"]), false),
+        (at(&root, &["never-existed.md"]), false),
+    ] {
+        let got = answer(&state, &ctx, &[(&path, changed_only)]).await;
+        assert!(got.notes.is_empty(), "{path}");
+        assert!(!got.tree_changed, "{path}");
+    }
+}
+
+/// §34 A note outside every context is not this app's to announce, wherever it is watched from
+/// (a tab's parent folder is watched too, `useFileWatcher`). What fails this: naming the note
+/// before `holding` is asked.
+#[tokio::test]
+async fn a_note_no_context_holds_is_not_named() {
+    let ctx = ContextManager::new();
+    let (_dir, _root, state) = built(&ctx, &[]).await;
+    let elsewhere = tempfile::tempdir().unwrap();
+    let note = elsewhere.path().join("x.md");
+    std::fs::write(&note, "plain").unwrap();
+
+    let got = answer(&state, &ctx, &[(&note.to_string_lossy(), false)]).await;
+
+    assert!(got.notes.is_empty());
+    assert!(!got.tree_changed);
+}
+
 /// The positive pair of `a_deleted_folder_takes_its_notes_with_it`: a removal the live index
 /// knows nothing about is not news.
 #[tokio::test]

@@ -2,6 +2,7 @@
 // Highlights all matches in the document. Active match uses a distinct style.
 // Meta-based state updates (same pattern as ghost-text.ts).
 
+import type { FindReplaceMatch } from "./find-replace-text";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 
@@ -9,7 +10,7 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
-import { searchPatternSource } from "../../utils/search-pattern";
+import { findMatches } from "./find-replace-text";
 import { withVimExternalEdit } from "./vim/vim-keys";
 
 // ── Plugin key ────────────────────────────────────────────────────────
@@ -17,11 +18,6 @@ import { withVimExternalEdit } from "./vim/vim-keys";
 export const findReplacePluginKey = new PluginKey("findReplace");
 
 // ── State interface ───────────────────────────────────────────────────
-
-export interface FindReplaceMatch {
-  from: number;
-  to: number;
-}
 
 export interface FindReplaceState {
   activeMatchIndex: number;
@@ -34,81 +30,7 @@ export interface FindReplaceState {
   wholeWord: boolean;
 }
 
-// ── Match computation ─────────────────────────────────────────────────
-
-/** Maximum character length for user-supplied regex patterns (ReDoS mitigation) */
-const MAX_REGEX_PATTERN_LENGTH = 500;
-
-/** Build a regex from the search options */
-export function buildSearchRegex(
-  term: string,
-  caseSensitive: boolean,
-  useRegex: boolean,
-  wholeWord: boolean,
-): null | RegExp {
-  if (!term) return null;
-  // Reject overly long patterns to prevent ReDoS (catastrophic backtracking)
-  if (useRegex && term.length > MAX_REGEX_PATTERN_LENGTH) return null;
-  const pattern = searchPatternSource(term, useRegex, wholeWord);
-  if (pattern === null) return null; // Invalid regex
-
-  const flags = caseSensitive ? "g" : "gi";
-  try {
-    return new RegExp(pattern, flags);
-  } catch {
-    return null;
-  }
-}
-
-/** Find all matches in the document */
-export function findMatches(
-  doc: PmNode,
-  searchTerm: string,
-  caseSensitive: boolean,
-  useRegex: boolean,
-  wholeWord: boolean,
-): FindReplaceMatch[] {
-  const regex = buildSearchRegex(
-    searchTerm,
-    caseSensitive,
-    useRegex,
-    wholeWord,
-  );
-  if (!regex) return [];
-
-  const { text, posMap } = extractTextWithPositions(doc);
-  const matches: FindReplaceMatch[] = [];
-
-  let m: null | RegExpExecArray;
-  while ((m = regex.exec(text)) !== null) {
-    const start = m.index;
-    const end = start + m[0].length;
-
-    // Skip matches that span block boundaries (contain sentinel positions)
-    let valid = true;
-    for (let i = start; i < end; i++) {
-      if (posMap[i] === -1) {
-        valid = false;
-        break;
-      }
-    }
-    if (!valid) continue;
-
-    if (start < posMap.length && end - 1 < posMap.length) {
-      matches.push({
-        from: posMap[start],
-        to: posMap[end - 1] + 1,
-      });
-    }
-
-    // Prevent infinite loop for zero-length matches
-    if (m[0].length === 0) {
-      regex.lastIndex++;
-    }
-  }
-
-  return matches;
-}
+// ── Decorations ───────────────────────────────────────────────────────
 
 /** Build decoration set from matches */
 function buildDecorations(
@@ -160,65 +82,6 @@ function computeState(
     matches,
     decorations,
   };
-}
-
-/** Extract all text content from ProseMirror doc with position mapping.
- *  Includes text representation of inline atom nodes (tag, wikilink, etc.)
- *  so they are searchable via Find/Replace. */
-function extractTextWithPositions(doc: PmNode): {
-  posMap: number[];
-  text: string;
-} {
-  let text = "";
-  const posMap: number[] = [];
-
-  doc.descendants((node, pos) => {
-    if (node.isText && node.text) {
-      for (let i = 0; i < node.text.length; i++) {
-        posMap.push(pos + i);
-        text += node.text[i];
-      }
-    } else if (node.isInline && node.isLeaf && !node.isText) {
-      // Inline atom node — include its text representation for searchability.
-      // All chars map to the atom's position so decoration spans the whole node.
-      const atomText = getAtomText(node);
-      for (let i = 0; i < atomText.length; i++) {
-        posMap.push(pos);
-        text += atomText[i];
-      }
-    } else if (
-      node.isBlock &&
-      text.length > 0 &&
-      text[text.length - 1] !== "\n"
-    ) {
-      // Add separator between blocks to avoid matching across them
-      posMap.push(-1); // sentinel — not a valid position
-      text += "\n";
-    }
-    return true;
-  });
-
-  return { text, posMap };
-}
-
-/** Get searchable text representation of an inline atom node */
-function getAtomText(node: PmNode): string {
-  switch (node.type.name) {
-    case "blockReference":
-      return `![[${node.attrs.href}]]`;
-    case "footnoteRef":
-      return `[^${node.attrs.id}]`;
-    case "mathInline":
-      return `$${node.attrs.latex}$`;
-    case "mention":
-      return `@${node.attrs.id}`;
-    case "tagNode":
-      return `#${node.attrs.tag}`;
-    case "wikiLink":
-      return `[[${node.attrs.href}]]`;
-    default:
-      return "";
-  }
 }
 
 // ── Initial state ─────────────────────────────────────────────────────
@@ -397,6 +260,61 @@ export const FindReplace = Extension.create({
   },
 });
 
+// ── Find 가 닫힌 동안의 상태 설치 (#792) ─────────────────────────────
+
+// Find 막대가 열려 있는가. 앱 창마다 Find 상태는 하나이고, 그 state 를 가진
+// use-find-replace-routing 이 commit 과 함께(layout effect) 여기 적는다 — 그래서 탭 전환처럼 그
+// 뒤에 도는 코드가 읽을 때 늘 지금 값이다.
+//
+// ‼️ "닫힌 Find 는 활성 편집기에 검색을 남기지 않는다" 를 지키는 자리는 셋이고, 모두 이 값을
+// 본다. 순서를 timing 에 맡기지 않으려고 셋 다 동기다 (#792 리뷰).
+// 1. 닫는 순간 — MarkdownSurface 의 layout effect 가 열림→닫힘 전이에서만 활성 편집기를 지운다.
+// 2. 캐시된 state 를 설치할 때 — `replaceEditorStateWithVim` 이 `withoutClosedSearch` 를 거친다.
+// 3. keep-alive 편집기로 돌아올 때 — `useKeepaliveEditors` 의 전환 콜백이
+//    `clearSearchIfFindClosed` 를 부른다. 그 편집기는 state 를 설치하지 않는다.
+// 편집기가 바뀌는 것 자체를 보고 지우는 effect 는 두지 않는다. 그것은 passive 라서 탭 전환이
+// 50 ms 뒤에 넣는 검색어(Global Search 의 강조)보다 늦게 돌아 그것을 지울 수 있었다.
+let findOpen = false;
+
+export function setFindOpen(open: boolean): void {
+  findOpen = open;
+}
+
+/**
+ * Find 가 닫혀 있으면 `view` 의 검색을 지운다 — 활성 편집기가 된 keep-alive 편집기에 (위 3).
+ * 지울 것이 없으면 아무것도 dispatch 하지 않는다(`dispatchClearSearch`).
+ */
+export function clearSearchIfFindClosed(view: {
+  dispatch: (tr: Transaction) => void;
+  state: EditorState;
+}): void {
+  if (findOpen) return;
+  dispatchClearSearch(view);
+}
+
+/**
+ * 통째로 설치할 상태가 검색을 들고 있는데 Find 가 닫혀 있으면, 검색을 지운 상태를 돌려준다.
+ *
+ * 탭마다 캐시해 둔 EditorState 는 캐시할 때의 검색을 싣고 있다. A 에서 검색하고 Find 를 연 채
+ * B 로 가서 닫으면 지워지는 것은 B 의 상태뿐이라, A 로 돌아와 캐시를 설치하면 보이지 않는
+ * 검색이 되살아나 편집마다 match 를 다시 구한다. `view.updateState` 는 transaction 을 거치지
+ * 않아 MarkdownSurface 의 닫힘 effect 도 이것을 못 본다. 그래서 설치의 관문인
+ * `replaceEditorStateWithVim` 이 이것을 부른다.
+ */
+export function withoutClosedSearch(state: EditorState): EditorState {
+  if (findOpen) return state;
+  const ps = findReplacePluginKey.getState(state) as
+    FindReplaceState | undefined;
+  if (ps === undefined || ps === EMPTY_STATE) return state;
+  return state.apply(
+    state.tr
+      .setMeta(findReplacePluginKey, {
+        type: "clear",
+      } satisfies FindReplaceMeta)
+      .setMeta("addToHistory", false),
+  );
+}
+
 // ── Helper command dispatchers ────────────────────────────────────────
 // These are convenience functions for use by the UI component.
 
@@ -404,6 +322,9 @@ export function dispatchClearSearch(view: {
   dispatch: (tr: Transaction) => void;
   state: EditorState;
 }) {
+  // 이미 비어 있으면 dispatch 하지 않는다 — Find 가 닫혀 있는 동안 활성 편집기가 바뀔
+  // 때마다 `clearSearchIfFindClosed` 가 부른다.
+  if (findReplacePluginKey.getState(view.state) === EMPTY_STATE) return;
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "clear",
   } satisfies FindReplaceMeta);

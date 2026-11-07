@@ -22,6 +22,7 @@ import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import { markContentLoaded } from "../../utils/editor/programmatic-update";
 import { useFileOperations } from "../use-file-operations";
 
 const PATH = "/v/a.md";
@@ -62,6 +63,7 @@ describe("§384 handleSave writes canonical bytes, not a mid-expansion literal",
       editor.commands.setTextSelection(9);
     });
 
+    markContentLoaded(TAB);
     const ops = renderHook(() =>
       useFileOperations({
         editor,

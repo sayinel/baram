@@ -12,6 +12,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { IndexSyncAnswer } from "../../ipc/types";
 
+import { onNoteChanges } from "../../services/note-changes";
 import { VAULT_SYNC_QUIET_MS } from "../../services/vault-change-batcher";
 import { subscribeVaultChanges } from "../../services/vault-changes";
 import { useLinkStore } from "../../stores/editor/link";
@@ -50,6 +51,70 @@ describe("useVaultChangeSync", () => {
   });
   afterEach(() => vi.useRealTimers());
 
+  describe("§34 what a reader of the notes' text hears (issue 791)", () => {
+    const heardFor = async (answer: IndexSyncAnswer) => {
+      syncIndexPaths.mockResolvedValue(answer);
+      const heard: Array<null | string[]> = [];
+      const stop = onNoteChanges((paths) => heard.push(paths && [...paths]));
+      try {
+        await syncOnePath();
+      } finally {
+        stop();
+      }
+      return heard;
+    };
+
+    // Fails if `announce` does not pass `notes` on.
+    it("names the notes the sync named, links unchanged", async () => {
+      expect(
+        await heardFor({
+          contexts: ["ctx-1"],
+          linksChanged: false,
+          notes: ["/v/a.md"],
+          treeChanged: false,
+        }),
+      ).toEqual([["/v/a.md"]]);
+    });
+
+    // Fails if `linksChanged` turns into the unnamed announcement: with no live index every save
+    // of the viewed note answers `linksChanged`, and each would walk the vault.
+    it("still only names them when the link index changed", async () => {
+      expect(
+        await heardFor({
+          contexts: ["ctx-1"],
+          linksChanged: true,
+          notes: ["/v/a.md"],
+          treeChanged: false,
+        }),
+      ).toEqual([["/v/a.md"]]);
+    });
+
+    // Fails if `treeChanged` is not read — a folder renamed or moved names no note — or if a batch
+    // with both announces twice, which runs a second walk over the same disk.
+    it("announces once, unnamed, when the tree changed", async () => {
+      expect(
+        await heardFor({
+          contexts: ["ctx-1"],
+          linksChanged: true,
+          notes: ["/v/a.md"],
+          treeChanged: true,
+        }),
+      ).toEqual([null]);
+    });
+
+    // Fails if `announceNoteChanges` tells listeners of an empty list.
+    it("announces nothing when the batch changed no note", async () => {
+      expect(
+        await heardFor({
+          contexts: ["ctx-1"],
+          linksChanged: true,
+          notes: [],
+          treeChanged: false,
+        }),
+      ).toEqual([]);
+    });
+  });
+
   it("syncs the touched paths, then invalidates the panel and publishes each context", async () => {
     // Fails if `announce` does not invalidate when `linksChanged` (the second `indexVersion` check).
     let release: (answer: IndexSyncAnswer) => void = () => undefined;
@@ -83,7 +148,14 @@ describe("useVaultChangeSync", () => {
     expect(heard).toEqual([]);
     expect(useLinkStore.getState().indexVersion).toBe(version);
 
-    act(() => release({ contexts: ["ctx-1", "ctx-2"], linksChanged: true }));
+    act(() =>
+      release({
+        contexts: ["ctx-1", "ctx-2"],
+        linksChanged: true,
+        notes: [],
+        treeChanged: false,
+      }),
+    );
     await flush();
     expect(useLinkStore.getState().indexVersion).toBe(version + 1);
     expect(heard).toEqual(["ctx-1", "ctx-2"]);
@@ -97,6 +169,8 @@ describe("useVaultChangeSync", () => {
     syncIndexPaths.mockResolvedValue({
       contexts: ["ctx-1", "ctx-2"],
       linksChanged: false,
+      notes: ["/v/a.md"],
+      treeChanged: false,
     });
     const heard: string[] = [];
     const stop = subscribeVaultChanges((id) => heard.push(id));

@@ -24,6 +24,7 @@ import {
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
+import { editorHoldsWholeDocument } from "../editor/programmatic-update";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
 import { syncOpenSurfacesAfterDiskWrite } from "./sync-open-surfaces";
@@ -240,7 +241,8 @@ export function isUnsavedWrite<R extends TaskDeleteResult | TaskWriteResult>(
  * 조용한 자동 리로드 경로로 간다. 문서 분기가 이미 하는 일과 같다.
  *
  * ‼️ 이것은 **소스 모드 타이핑**을 dirty로 만드는 것이 아니다. 그 판정은 지금처럼
- * use-auto-save가 Tiptap `update`에서 홀로 갖는다(tab-surface-renderers.tsx의 주석).
+ * use-auto-save가 Tiptap `update`에서, 소스 모드에서 돌아올 때는 `handBufferToDocument`가
+ * 갖는다(tab-surface-renderers.tsx의 주석).
  * 여기서 세우는 것은 아젠다가 만든 프로그램적 쓰기 하나뿐이다.
  *
  * `markDirty`는 동등성 관문이 없어 tabs 배열을 새로 만들고 모든 구독자를 깨운다 —
@@ -270,7 +272,7 @@ export function markSourceTabDirty(tabId: string): void {
  *   버퍼에 해당하지 않는다 — 버퍼 Map 자체가 그 캐시다.
  * - **editor가 아니다.** 이 경로는 라이브 문서를 한 줄도 읽지 않는다.
  *
- * 문서 경로는 그대로 "활성 + dirty" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
+ * 문서 경로는 "활성 + dirty + 설치 완료" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
  * - 탭이 없다(닫힌 파일) → 디스크가 유일한 진실원.
  * - 배경 탭 → openFiles에 써도 나중에 그 탭으로 돌아오면 캐시된 PM 상태가
  *   덮어쓴다(use-tab-switching.ts:466-482는 openFiles가 아니라
@@ -285,6 +287,8 @@ export function markSourceTabDirty(tabId: string): void {
  *   왕복이었고, 그렇게 돌아온 변경은 **남의 편집**으로 도착해 토스트를 띄우고 실행 취소
  *   스택을 버렸으며, 배경 탭에서는 캐시된 PM 상태가 그것을 조용히 되돌렸다. 이제 쓰기가
  *   성공한 자리에서 열린 표면을 직접 맞춘다(`syncOpenSurfacesAfterDiskWrite`).
+ * - 활성이지만 설치 전(§39) → 에디터가 든 것은 앞 탭의 문서이거나 채우는 중인 일부다. 그것을
+ *   이 탭의 텍스트로 읽으면 남의 글이 이 탭의 `openFiles`로 들어간다. 배경 탭과 같이 다룬다.
  * - editor가 없다 → 문서를 읽을 방법이 없다.
  */
 export function resolveTaskWriteTarget(
@@ -297,7 +301,12 @@ export function resolveTaskWriteTarget(
   // ‼️ 이 검사는 document 판정 **앞**에 있어야 한다. 소스 모드인 더티 활성 탭은
   // document 조건을 전부 만족하는 부분집합이라, 뒤로 옮기면 영원히 도달하지 못한다.
   if (sourceModeTabs.includes(tab.id)) return { kind: "source", tabId: tab.id };
-  if (tab.id !== activeTabId || !tab.isDirty || !editor) {
+  if (
+    tab.id !== activeTabId ||
+    !tab.isDirty ||
+    !editor ||
+    !editorHoldsWholeDocument(tab.id)
+  ) {
     return { kind: "disk" };
   }
   return { kind: "document", tabId: tab.id };

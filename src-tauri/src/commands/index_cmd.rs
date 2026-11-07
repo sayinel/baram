@@ -59,8 +59,8 @@ pub async fn update_file_index(
 /// §393 Bring the link index up to date with paths the file watcher reported, and say which
 /// contexts' reads may have changed and whether the link index did (spec 0072 §5.4,
 /// `SyncAnswer`). The frontend batches the watcher's events (`use-vault-change-sync`),
-/// announces `vault:changed` for each id in `contexts`, and refreshes the link readers only
-/// when `linksChanged`.
+/// announces `vault:changed` for each id in `contexts`, refreshes the link readers only when
+/// `linksChanged`, and tells the unlinked-mention search from `notes` and `treeChanged` (§34).
 #[tauri::command]
 pub async fn sync_index_paths(
     paths: Vec<SyncPath>,
