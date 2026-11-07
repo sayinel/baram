@@ -1,15 +1,17 @@
+// §3.5 닫힌 탭이 쓰던 원문 · 수정 시각 · dirty 기준 문서를 내려놓는다 (#798).
+//
+// 항목 수를 센다. 열린 탭이 쓰는 것은 그대로 남아야 하므로 단정마다 남아 있어야 할 것을 짝으로 둔다.
 import type { TabSwitchContext } from "../../../hooks/tab-switching/types";
 import type { EditorTab } from "../editor";
 
 import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
-//
-// 항목 수를 센다. 열린 탭이 쓰는 것은 그대로 남아야 하므로 단정마다 남아 있어야 할 것을 짝으로 둔다.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { saveOutgoingTab } from "../../../hooks/tab-switching/save-outgoing-tab"; // §3.5 닫힌 탭이 쓰던 원문 · 수정 시각 · dirty 기준 문서를 내려놓는다 (#798).
+import { saveOutgoingTab } from "../../../hooks/tab-switching/save-outgoing-tab";
 import {
   getOriginalDoc,
+  markContentLoaded,
   updateOriginalDoc,
 } from "../../../utils/editor/programmatic-update";
 import { useFileStore } from "../../file/file";
@@ -196,8 +198,9 @@ describe("§3.5 the tab switch after closing the active tab", () => {
     expect(useFileStore.getState().openFiles.has("/v/a.md")).toBe(false);
     expect(cache.size).toBe(0);
 
-    // 긍정 짝 — 열린 탭이면 같은 호출이 원문을 쓴다.
+    // 긍정 짝 — 편집기가 들고 있는 열린 탭이면 같은 호출이 원문을 쓴다.
     open("b", "/v/b.md", "stale");
+    markContentLoaded("b");
     saveOutgoingTab(ctx, "b");
     expect(useFileStore.getState().openFiles.get("/v/b.md")).not.toBe("stale");
   });

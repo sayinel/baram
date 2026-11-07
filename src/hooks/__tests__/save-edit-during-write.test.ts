@@ -5,6 +5,8 @@
 // 손으로 끝내는 promise 로 바꿔 "쓰기 시작 → 편집 → 쓰기 끝" 을 만든다. 저장 자리는
 // `grep -rn "markDirty([^,]*, false)\|updateOriginalDoc(\|markSourceEdited([^,]*, false)\|isDirty: false" src`
 // 로 찾은 것 가운데 사용자의 내용을 쓰고 깨끗하다고 기록하는 여덟 곳이다.
+import type { EditorState } from "@tiptap/pm/state";
+
 import { act, renderHook } from "@testing-library/react";
 import Document from "@tiptap/extension-document";
 import Text from "@tiptap/extension-text";
@@ -37,7 +39,10 @@ import { Paragraph } from "../../extensions/nodes/paragraph";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
-import { updateOriginalDoc } from "../../utils/editor/programmatic-update";
+import {
+  markContentLoaded,
+  updateOriginalDoc,
+} from "../../utils/editor/programmatic-update";
 import { useAutoSave } from "../use-auto-save";
 import { saveDirtyTab } from "../use-close-guard";
 import { useCodeAutoSave } from "../use-code-auto-save";
@@ -70,6 +75,14 @@ function makeEditor(html = "<p>hello</p>") {
   return editor;
 }
 
+/** Another editor, destroyed by its test — the shared editor beside a keep-alive one. */
+function makeSecondEditor() {
+  return new Editor({
+    content: "<p>other</p>",
+    extensions: [Document, Paragraph, Text],
+  });
+}
+
 function setTabs(...tabs: ReturnType<typeof tab>[]) {
   useEditorStore.setState({
     activeTabId: tabs[0]?.id ?? null,
@@ -77,6 +90,9 @@ function setTabs(...tabs: ReturnType<typeof tab>[]) {
     sourceModeTabs: [],
     tabs,
   } as never);
+  // The editor holds the active tab's document, as after the app installs it — main's saves skip a
+  // tab the editor does not hold (`editorHoldsWholeDocument`).
+  if (tabs[0]) markContentLoaded(tabs[0].id);
 }
 
 function tab(id: string, filePath: string, isDirty = true) {
@@ -102,11 +118,12 @@ afterEach(() => {
   vi.useRealTimers();
   editor?.destroy();
   editor = null;
+  useEditorStore.getState().registerDocumentSurfaceAccess(null);
 });
 
-// 이것을 실패시키는 것: use-auto-save.ts 의 `editorStillHolds(...)` 조건을 지우면 첫 시험이,
-// save-still-current.ts 의 직렬화 비교(`serializeLiveDoc(editor) === written`)를 지우면 둘째가,
-// 활성 탭 확인을 지우면 셋째가 깨진다.
+// 이것을 실패시키는 것: use-auto-save.ts 의 `unchanged` 조건을 지우면 첫 시험이, save-still-current.ts 의
+// `held.doc.eq(docAtWrite)` 를 지우면(같은 객체만 같다고 보면) 둘째가 깨진다. 캐시를 `unchanged` 일 때만
+// 쓰게 되돌리면 첫 시험의 캐시 단정이 깨진다.
 describe("markdown auto-save", () => {
   async function editThenWaitForWrite(ed: Editor) {
     vi.useFakeTimers();
@@ -132,7 +149,11 @@ describe("markdown auto-save", () => {
     await finishWrite(0);
 
     expect(dirty("m")).toBe(true);
-    expect(useFileStore.getState().openFiles.has("/v/note.md")).toBe(false);
+    // The editor still holds the tab, so the cache is the file on disk — what the first write put
+    // there, not the newer document — and the conflict modal's 3-way base stays right.
+    expect(useFileStore.getState().openFiles.get("/v/note.md")).toBe(
+      writes[0].content,
+    );
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
@@ -156,15 +177,111 @@ describe("markdown auto-save", () => {
     expect(dirty("m")).toBe(false);
     h.unmount();
   });
+});
 
-  it("does not record a save after the editor moved on to another tab", async () => {
-    const ed = makeEditor();
-    const h = await editThenWaitForWrite(ed);
+// §3.5 A tab left while its write ran: "still holds" is asked of where its document is now, not of
+// whether it is the active tab (#798). The switch is played as the app does it — the next tab is
+// installed in the shared editor (`markContentLoaded`) and the left tab's state goes to the
+// tab-switch cache, its text to `openFiles` (`saveOutgoingTab`); a keep-alive editor keeps its own
+// document.
+// 이것을 실패시키는 것: save-still-current.ts 의 `heldDocument` 를 활성 탭 확인
+// (`activeTabId !== tabId` 면 null)으로 되돌리면 첫째와 셋째가, 캐시에서 읽은 문서를 `live: true` 로
+// 돌려주면 둘째의 캐시 단정이 깨진다.
+describe("markdown auto-save of a tab left during the write", () => {
+  async function writeThen(ed: Editor) {
+    vi.useFakeTimers();
+    setTabs(tab("m", "/v/note.md", false), tab("other", "/v/other.md", false));
+    updateOriginalDoc("m", ed.state.doc);
+    const h = renderHook(() => useAutoSave(ed));
     act(() => {
-      useEditorStore.setState((s) => ({
-        activeTabId: "other",
-        tabs: [...s.tabs, tab("other", "/v/other.md", false)],
-      }));
+      ed.commands.insertContentAt(1, "first ");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(writes).toHaveLength(1);
+    return h;
+  }
+
+  function switchToOther(cache: Map<string, EditorState>, ed: Editor) {
+    cache.set("m", ed.state);
+    useFileStore.getState().setFileContent("/v/note.md", "text on the way out");
+    useEditorStore.setState({ activeTabId: "other" });
+    markContentLoaded("other");
+  }
+
+  it("records the save when the cached document is what was written", async () => {
+    const ed = makeEditor();
+    const cache = new Map<string, EditorState>();
+    useEditorStore.getState().registerDocumentSurfaceAccess({
+      editor: ed,
+      editorStateCache: cache,
+      isKeepaliveComplete: () => true,
+      keepaliveEditor: () => null,
+    });
+    const h = await writeThen(ed);
+    act(() => switchToOther(cache, ed));
+    await finishWrite(0);
+
+    expect(dirty("m")).toBe(false);
+    h.unmount();
+  });
+
+  it("keeps the tab unsaved, and its text in the cache, when it was edited before it was left", async () => {
+    const ed = makeEditor();
+    const cache = new Map<string, EditorState>();
+    useEditorStore.getState().registerDocumentSurfaceAccess({
+      editor: ed,
+      editorStateCache: cache,
+      isKeepaliveComplete: () => true,
+      keepaliveEditor: () => null,
+    });
+    const h = await writeThen(ed);
+    act(() => {
+      ed.commands.insertContentAt(1, "second ");
+      switchToOther(cache, ed);
+    });
+    await finishWrite(0);
+
+    expect(dirty("m")).toBe(true);
+    // The close guard's background save writes this entry; the older written text must not
+    // replace it.
+    expect(useFileStore.getState().openFiles.get("/v/note.md")).toBe(
+      "text on the way out",
+    );
+    h.unmount();
+  });
+
+  it("records the save of a keep-alive tab, whose editor keeps its document in the background", async () => {
+    const ed = makeEditor();
+    const shared = makeSecondEditor();
+    useEditorStore.getState().registerDocumentSurfaceAccess({
+      editor: shared,
+      editorStateCache: new Map(),
+      isKeepaliveComplete: () => true,
+      keepaliveEditor: (id) => (id === "m" ? ed : null),
+    });
+    const h = await writeThen(ed);
+    act(() => {
+      useEditorStore.setState({ activeTabId: "other" });
+      markContentLoaded("other");
+    });
+    await finishWrite(0);
+
+    expect(dirty("m")).toBe(false);
+    expect(useFileStore.getState().openFiles.get("/v/note.md")).toBe(
+      writes[0].content,
+    );
+    h.unmount();
+    shared.destroy();
+  });
+
+  it("does not record a save once nothing holds the document", async () => {
+    const ed = makeEditor();
+    const h = await writeThen(ed);
+    act(() => {
+      useEditorStore.setState({ activeTabId: "other" });
+      markContentLoaded("other");
     });
     await finishWrite(0);
 
@@ -195,7 +312,39 @@ describe("source buffer auto-save", () => {
     await finishWrite(0);
 
     expect(dirty("t")).toBe(true);
-    expect(useFileStore.getState().openFiles.has("/v/note.txt")).toBe(false);
+    // Still the active tab, so the cache is the file on disk.
+    expect(useFileStore.getState().openFiles.get("/v/note.txt")).toBe("first");
+    h.unmount();
+  });
+
+  // 이것을 실패시키는 것: save-still-current.ts 의 `bufferSaveOutcome` 에서 활성 탭 확인을 빼고 캐시를 늘
+  // 쓰면, 떠날 때 버퍼를 옮겨 둔 캐시를 옛 글로 덮는다.
+  it("leaves the cache alone for a tab left during the write, which holds its newer text", async () => {
+    vi.useFakeTimers();
+    setTabs(tab("t", "/v/note.txt"), tab("other", "/v/other.md", false));
+    let buffer = "first";
+    const h = renderHook(() =>
+      useCodeAutoSave({
+        bufferVersion: 1,
+        getSourceBuffer: () => buffer,
+        isEditableTextFile: true,
+        markDirty: (id, d) => useEditorStore.getState().markDirty(id, d),
+        sourceModeTabs: new Set(),
+      }),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    buffer = "first and more";
+    // `saveOutgoingTab` copies a code tab's buffer into `openFiles` on the way out.
+    useFileStore.getState().setFileContent("/v/note.txt", buffer);
+    useEditorStore.setState({ activeTabId: "other" });
+    await finishWrite(0);
+
+    expect(dirty("t")).toBe(true);
+    expect(useFileStore.getState().openFiles.get("/v/note.txt")).toBe(
+      "first and more",
+    );
     h.unmount();
   });
 });
@@ -288,6 +437,64 @@ describe("Cmd+S and Save As", () => {
     expect(useEditorStore.getState().sourceEditedTabs).toEqual(["u"]);
   });
 
+  // §3.5 (#798) 이것을 실패시키는 것: handleSave 의 `tabStillShows` 관문을 빼면 옛 경로에 원문 · 수정 시각이
+  // 다시 생기고, 탭이 옛 경로에서 깨끗하다고 기록된다.
+  it("Cmd+S records nothing under a path the tab was renamed away from during the write", async () => {
+    const ed = makeEditor();
+    setTabs(tab("m", "/v/note.md"));
+    const h = ops(ed);
+    let done: Promise<void> = Promise.resolve();
+    act(() => {
+      done = h.result.current.handleSave();
+    });
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+    expect(writes).toHaveLength(1);
+    act(() => {
+      useEditorStore
+        .getState()
+        .renameTab("/v/note.md", "/v/renamed.md", "renamed.md");
+    });
+    await finishWrite(0);
+    await act(async () => {
+      await done;
+    });
+
+    expect(useFileStore.getState().openFiles.has("/v/note.md")).toBe(false);
+    expect(useFileStore.getState().fileMtimes.has("/v/note.md")).toBe(false);
+    expect(dirty("m")).toBe(true);
+  });
+
+  // §3.5 (#798) Save As leaves the old file on disk with no tab showing it, and the tab keeps its id,
+  // so the closed-tab release never sees the old path go.
+  // 이것을 실패시키는 것: handleSaveAs 의 `releaseFileContents([oldKey])` 를 빼면 옛 경로의 원문과 수정 시각이
+  // 남아, watcher 가 그 파일을 아직 열려 있다고 본다.
+  it("Save As of a file tab releases the path it left", async () => {
+    const ed = makeEditor();
+    setTabs(tab("m", "/v/note.md", false));
+    useFileStore.getState().setFileContent("/v/note.md", "hello\n");
+    useFileStore.getState().updateLastSaveMtime("/v/note.md", 1);
+    const h = ops(ed);
+    let done: Promise<void> = Promise.resolve();
+    act(() => {
+      done = h.result.current.handleSaveAs();
+    });
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    await finishWrite(0);
+    await act(async () => {
+      await done;
+    });
+
+    const files = useFileStore.getState();
+    expect(files.openFiles.has("/v/note.md")).toBe(false);
+    expect(files.fileMtimes.has("/v/note.md")).toBe(false);
+    expect(files.openFiles.get("/v/chosen.md")).toBe(writes[0].content);
+    expect(useEditorStore.getState().tabs[0].filePath).toBe("/v/chosen.md");
+  });
+
   it("Save As leaves the tab dirty when the document changed during the write", async () => {
     const ed = makeEditor();
     setTabs(tab("m", "/v/note.md"));
@@ -344,6 +551,10 @@ describe("saving a background tab before a close", () => {
     const after = useEditorStore.getState().tabs[1];
     expect(after.filePath).toBe("/v/chosen.md");
     expect(after.isDirty).toBe(true);
+    // The entry was where the tab's text lived, so the newer text moves with the tab.
+    // 이것을 실패시키는 것: use-close-guard.ts 의 `carried` 대신 `content` 를 옮기면 "older" 가 된다.
+    expect(useFileStore.getState().openFiles.get("/v/chosen.md")).toBe("newer");
+    expect(useFileStore.getState().openFiles.has("u")).toBe(false);
   });
 });
 

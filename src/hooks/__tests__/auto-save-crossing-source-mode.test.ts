@@ -301,6 +301,52 @@ describe("a tab that has been through source mode", () => {
     expect(getOriginalDoc(TAB)?.textContent).not.toContain("typed");
   });
 
+  // §3.5 (#798) 돌아오는 길의 저장이 쓰는 사이 문서에 친 글은 그 쓰기에 없다. 소스 모드가 끝나 버퍼는 더
+  // 바뀌지 않으므로, 저장 판정을 버퍼에 물으면 그 글이 저장된 것으로 기록되고 다음 자동 저장 전에 닫으면 묻지
+  // 않고 잃는다.
+  // 이것을 실패시키는 것: use-source-mode.ts 의 `handBufferToDocument` 가 `outcome` 을 넘기지 않으면(버퍼
+  // 판정) 첫째가, `returnedOutcome` 이 설치한 문서 대신 늘 "그대로" 라고 답하면 첫째가 깨진다. 둘째는 같은
+  // 저장이 아무도 치지 않았을 때 저장됨을 기록하는 것을 보인다.
+  it("keeps the tab unsaved when the document is typed in while the save on the way back writes", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "typed in source\n");
+    let finish: () => void = () => undefined;
+    writeFile.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          finish = () => resolve(undefined);
+        }),
+    );
+    toggle(hook);
+    await advance(0);
+    expect(written()).toEqual(["typed in source\n"]);
+
+    typeInDocument();
+    await act(async () => {
+      finish();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(unsaved()).toBe(true);
+    // The document is live in the editor, so the cache is the file on disk.
+    expect(useFileStore.getState().openFiles.get(PATH)).toBe(
+      "typed in source\n",
+    );
+  });
+
+  it("has the tab saved when nothing is typed while the save on the way back writes", async () => {
+    const hook = mount();
+    toggle(hook);
+    typeInSource(hook, "typed in source\n");
+    toggle(hook);
+    await advance(0);
+
+    expect(written()).toEqual(["typed in source\n"]);
+    expect(unsaved()).toBe(false);
+  });
+
   // 이것을 실패시키는 것: 숨은 문서의 변경을 세면 AI 채팅 Apply 뒤 표시가 남고 그것을 내릴 저장이 없다.
   it("does not count a change to the document out of sight", async () => {
     const hook = mount();

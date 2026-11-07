@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { Paragraph } from "../../extensions/nodes/paragraph";
 import { useEditorStore } from "../../stores/editor/editor";
+import { markContentLoaded } from "../../utils/editor/programmatic-update";
 import { useSourceMode } from "../use-source-mode";
 
 beforeEach(() => {
@@ -118,6 +119,8 @@ describe("releasing a closed tab's source buffer", () => {
       extensions: [Document, Paragraph, Text],
     });
     editor.commands.setTextSelection(4);
+    // The editor holds A's document, as after the app installs it — source mode reads it from there.
+    markContentLoaded("a");
     const { result } = renderHook(() => useSourceMode({ editor }));
     act(() => {
       result.current.toggleSourceMode();

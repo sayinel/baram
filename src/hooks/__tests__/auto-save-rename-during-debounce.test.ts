@@ -21,7 +21,10 @@ import { Paragraph } from "../../extensions/nodes/paragraph";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
-import { updateOriginalDoc } from "../../utils/editor/programmatic-update";
+import {
+  markContentLoaded,
+  updateOriginalDoc,
+} from "../../utils/editor/programmatic-update";
 import { useAutoSave } from "../use-auto-save";
 import { useCodeAutoSave } from "../use-code-auto-save";
 
@@ -121,6 +124,7 @@ describe("markdown auto-save after a rename during the debounce", () => {
       tabs: [tab("m", "/v/note.md", false)],
     } as never);
     updateOriginalDoc("m", editor.state.doc);
+    markContentLoaded("m");
     const h = renderHook(() => useAutoSave(editor));
 
     act(() => {

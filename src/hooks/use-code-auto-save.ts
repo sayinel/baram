@@ -16,6 +16,8 @@
 // was in flight is not on disk.
 import { useCallback, useEffect, useRef } from "react";
 
+import type { SaveOutcome } from "../utils/editor/save-still-current";
+
 import { useShallow } from "zustand/shallow";
 
 import { updateFileIndex, writeFile } from "../ipc/invoke";
@@ -24,6 +26,10 @@ import { useLinkStore } from "../stores/editor/link";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
+import {
+  bufferSaveOutcome,
+  tabStillShows,
+} from "../utils/editor/save-still-current";
 import {
   isEditableTextPath,
   isMarkdownFile,
@@ -173,20 +179,31 @@ export function useCodeAutoSave({
  *
  * - The save's mtime is recorded while the tab still shows `filePath` (#798): a tab closed, or
  *   renamed or moved, while the write ran no longer stands for this file.
- * - The content, dirty and the source-edited flag are recorded only while the buffer still holds
- *   what was written (spec 0071 D17, and #798 for the cache and the source-edited flag): text
- *   typed, or a viewer change taken by another read, while the write ran is not on disk, and a
- *   markdown tab in source mode keeps its unsaved state in the source-edited flag, not in dirty.
+ * - Dirty and the source-edited flag are lowered only while the tab still holds what was written
+ *   (spec 0071 D17, and #798 for the source-edited flag): text typed, or a viewer change taken by
+ *   another read, while the write ran is not on disk, and a markdown tab in source mode keeps its
+ *   unsaved state in the source-edited flag, not in dirty. The cache is set as
+ *   `SaveOutcome.cacheIsDisk` says.
+ * - What holds the tab's text is the buffer, unless `outcome` says otherwise: once source mode has
+ *   ended, the document holds it, and the buffer no longer changes when the user types.
  *
  * A failed write keeps the dirty state.
  *
- * @returns whether the text reached the disk
+ * @returns whether the tab was recorded saved — the text reached the disk, the tab still shows
+ *   `filePath`, and it still holds what was written
  */
 export async function saveFromBuffer(
   tabId: string,
   filePath: string,
   deps: BufferSaveDeps,
-  { reindexLinks }: { reindexLinks: boolean },
+  {
+    outcome,
+    reindexLinks,
+  }: {
+    /** Judges the tab after the write, given the text written. */
+    outcome?: (written: string) => SaveOutcome;
+    reindexLinks: boolean;
+  },
 ): Promise<boolean> {
   // An external change is waiting for an answer, as in `use-auto-save`. Writing now would remove it
   // from under the conflict question. The tab stays unsaved.
@@ -196,17 +213,19 @@ export async function saveFromBuffer(
   try {
     const content = deps.getSourceBuffer(tabId);
     await writeFile(filePath, content);
-    const stillShown = useEditorStore
-      .getState()
-      .tabs.some((t) => t.id === tabId && t.filePath === filePath);
-    if (stillShown) {
+    let saved = false;
+    if (tabStillShows(tabId, filePath)) {
       useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
-    }
-    // The read takes a viewer change still pending, so that is compared too (§392 D17).
-    if (stillShown && deps.getSourceBuffer(tabId) === content) {
-      deps.setFileContent(filePath, content);
-      deps.markDirty(tabId, false);
-      useEditorStore.getState().markSourceEdited(tabId, false);
+      // The read takes a viewer change still pending, so that is compared too (§392 D17).
+      const { cacheIsDisk, unchanged } = outcome
+        ? outcome(content)
+        : bufferSaveOutcome(tabId, deps.getSourceBuffer(tabId), content);
+      if (cacheIsDisk) deps.setFileContent(filePath, content);
+      if (unchanged) {
+        deps.markDirty(tabId, false);
+        useEditorStore.getState().markSourceEdited(tabId, false);
+        saved = true;
+      }
     }
     // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
     useSnapshotStore.getState().markPendingAutoSnapshot();
@@ -217,7 +236,7 @@ export async function saveFromBuffer(
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
     }
-    return true;
+    return saved;
   } catch {
     // Save failed — keep dirty state
     return false;

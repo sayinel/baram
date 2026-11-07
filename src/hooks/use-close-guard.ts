@@ -20,6 +20,7 @@ import { useFileStore } from "../stores/file/file";
 import { useFileWindowStore } from "../stores/system/file-windows";
 import { useUIStore } from "../stores/ui/ui";
 import { awaitBlockIdRenames } from "../utils/editor/block-id-rename-landing";
+import { tabStillShows } from "../utils/editor/save-still-current";
 import {
   serializeEditorState,
   serializeLiveDoc,
@@ -195,6 +196,9 @@ export async function saveDirtyTab(
     const content = backgroundText(tab);
     if (content === null) return false;
     await writeFile(tab.filePath, content);
+    // §3.5 Closed, renamed or moved while the write ran: nothing is recorded under this path, and
+    // the caller does not close or quit on it (#798).
+    if (!tabStillShows(tab.id, tab.filePath)) return false;
     useFileStore.getState().updateLastSaveMtime(tab.filePath, Date.now());
     // §3.5 What it holds may have moved on while the write ran (a block ID rename or a
     // task edit landing in a background tab). Then the file has the older text and the
@@ -230,10 +234,19 @@ export async function saveDirtyTab(
   const content = backgroundText(tab);
   if (content === null) return false;
   await writeFile(savePath, content);
+  // §3.5 Closed during the dialog or the write: the file exists, and nothing is left to record it
+  // for (#798).
+  if (!tabStillShows(tab.id, "")) return false;
   useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
   // §3.5 The file exists now; the tab is clean only if it still holds what was written,
   // and the caller must not close it otherwise (#798).
-  const clean = backgroundText(tab) === content;
+  const holdsNow = backgroundText(tab);
+  const clean = holdsNow === content;
+  // The untitled entry moves to the new path. When that entry is where the tab's text lives and the
+  // text changed during the write, the newer text goes with it; otherwise it is the written text.
+  const kept = useFileStore.getState().openFiles.get(tab.id);
+  const carried =
+    !clean && kept !== undefined && kept === holdsNow ? kept : content;
   useEditorStore.setState((state) => ({
     tabs: state.tabs.map((t) =>
       t.id === tab.id
@@ -248,7 +261,7 @@ export async function saveDirtyTab(
   }));
   if (clean) useEditorStore.getState().markSourceEdited(tab.id, false);
   useFileStore.getState().removeFileContent(tab.id);
-  useFileStore.getState().setFileContent(savePath, content);
+  useFileStore.getState().setFileContent(savePath, carried);
   if (isMarkdownFile(savePath)) {
     updateFileIndex(savePath)
       .then(() => useLinkStore.getState().invalidate())

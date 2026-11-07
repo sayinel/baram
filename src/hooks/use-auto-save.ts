@@ -24,7 +24,10 @@ import {
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
-import { editorStillHolds } from "../utils/editor/save-still-current";
+import {
+  documentSaveOutcome,
+  tabStillShows,
+} from "../utils/editor/save-still-current";
 import {
   serializeDetachedDoc,
   serializeLiveDoc,
@@ -135,26 +138,30 @@ export function useAutoSave(editor: Editor | null) {
       // §3.5 쓰는 사이 탭이 닫혔거나 다른 경로로 옮겨졌으면 저장 결과를 탭의 기록에 남기지 않는다
       // (#798). 남기면 닫힌 파일의 원문 · 수정 시각이 되살아나고, 그 사이 같은 파일을 새 탭으로 다시
       // 열었다면 그 탭이 읽은 내용을 이 저장의 옛 내용으로 덮는다. 디스크와 index 갱신은 그대로 한다.
-      const stillShown = useEditorStore
-        .getState()
-        .tabs.some((t) => t.id === pending.id && t.filePath === filePath);
+      const stillShown = tabStillShows(pending.id, filePath);
       if (stillShown) {
         // Phase 4: record save time so future mtime comparisons have a baseline — this
         // write is ours whatever happened to the document since.
         useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
       }
-      // §3.5 쓰는 사이 사용자가 더 고쳤으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다.
-      if (
-        stillShown &&
-        editorStillHolds(editor, pending.id, docAtWrite, markdown)
-      ) {
-        // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
-        // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
-        // 쓰는 자동 리로드의 갈라짐 판정(use-file-operations.ts의 `syncSourceBuffers`)이
-        // 멀쩡한 버퍼를 "갈라졌다"고 오판해 외부 변경을 화면에 반영하지 않는다 — 그러면서
-        // `lastSaveMtime`은 올라가므로 다음 저장이 그 외부 변경을 디스크에서 지운다.
-        // 그 캐시를 읽는 읽기 전용 패널들(PropertiesPanel·Skill 미리보기)도 함께 낫는다.
+      const { cacheIsDisk, unchanged } = documentSaveOutcome(
+        editor,
+        pending.id,
+        docAtWrite,
+      );
+      // §312 ‼️ 방금 쓴 내용이 곧 그 파일의 새 기준선이다. 이것을 빠뜨리면 자동 저장
+      // 한 번마다 `openFiles`가 낡고(자동 저장은 기본값이 켜짐이다), 그 캐시를 기준선으로
+      // 쓰는 자동 리로드의 갈라짐 판정(use-file-operations.ts의 `syncSourceBuffers`)이
+      // 멀쩡한 버퍼를 "갈라졌다"고 오판해 외부 변경을 화면에 반영하지 않는다 — 그러면서
+      // `lastSaveMtime`은 올라가므로 다음 저장이 그 외부 변경을 디스크에서 지운다.
+      // 그 캐시를 읽는 읽기 전용 패널들(PropertiesPanel·Skill 미리보기)도 함께 낫는다.
+      // 쓰는 사이 더 친 글이 있어도 그렇다. 다만 쓰는 사이 공유 편집기가 떠난 탭이면 캐시는 그 탭의
+      // 글이라 바꾸지 않는다(#798, `SaveOutcome.cacheIsDisk`).
+      if (stillShown && cacheIsDisk) {
         useFileStore.getState().setFileContent(filePath, markdown);
+      }
+      // §3.5 쓰는 사이 사용자가 더 고쳤으면 "저장됨" 을 기록하지 않는다 — 그 편집은 파일에 없다.
+      if (stillShown && unchanged) {
         markDirty(pending.id, false);
         // The written doc becomes the new baseline for dirty detection.
         updateOriginalDoc(pending.id, docAtWrite);

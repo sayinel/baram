@@ -27,7 +27,10 @@ import { Paragraph } from "../../extensions/nodes/paragraph";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
-import { updateOriginalDoc } from "../../utils/editor/programmatic-update";
+import {
+  markContentLoaded,
+  updateOriginalDoc,
+} from "../../utils/editor/programmatic-update";
 import { useAutoSave } from "../use-auto-save";
 import { useCodeAutoSave } from "../use-code-auto-save";
 
@@ -182,6 +185,7 @@ describe("markdown auto-save that finishes after its tab closed", () => {
       tabs: [tab("t", "/v/note.md", false)],
     } as never);
     updateOriginalDoc("t", editor.state.doc);
+    markContentLoaded("t");
     const h = renderHook(() => useAutoSave(editor));
     act(() => {
       editor.commands.insertContentAt(1, "edited ");
@@ -216,6 +220,7 @@ describe("markdown auto-save that finishes after its tab closed", () => {
       tabs: [tab("t", "/v/note.md", false)],
     } as never);
     updateOriginalDoc("t", editor.state.doc);
+    markContentLoaded("t");
     const h = renderHook(() => useAutoSave(editor));
     act(() => {
       editor.commands.insertContentAt(1, "edited ");
@@ -223,6 +228,8 @@ describe("markdown auto-save that finishes after its tab closed", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
     });
+    // The write did start: the assertion below is about what the save records, not a save skipped.
+    expect(writeFile).toHaveBeenCalledTimes(1);
     act(() => {
       useEditorStore
         .getState()

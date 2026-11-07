@@ -7,6 +7,7 @@ import { matchFileViewer, usePluginUIStore } from "../plugins/plugin-ui-store";
 import { isFileTab, useEditorStore } from "../stores/editor/editor";
 import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
+import { tabStillShows } from "../utils/editor/save-still-current";
 import {
   isBinaryViewerFile,
   isHtmlFile,
@@ -60,6 +61,9 @@ export function usePreviewSourceView({
       const content = getSourceBuffer(tab.id);
       void writeFile(filePath, content)
         .then(() => {
+          // §3.5 Closed, renamed or moved while the write ran: nothing is recorded under this
+          // path (#798).
+          if (!tabStillShows(tab.id, filePath)) return;
           useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
           // §3.5 Typed again while the write ran → that text is not on disk (#798).
           if (getSourceBuffer(tab.id) !== content) return;

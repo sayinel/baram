@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject, RefObject } from "react";
 
 import type { SourceCodeEditorRef } from "../components/editor/SourceCodeEditor";
+import type { SaveOutcome } from "../utils/editor/save-still-current";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import type { EditorState as PmEditorState } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
@@ -35,6 +36,7 @@ import { focusEditorView } from "../utils/editor/focus-editor-view";
 import {
   editorHoldsWholeDocument,
   forgetLoadedTab,
+  isTabLoading,
   loadedTabId,
   markContentLoaded,
   setTabLoading,
@@ -47,6 +49,10 @@ import {
   type ProgressiveLoadHandle,
   REST_CHUNK_BLOCKS,
 } from "../utils/editor/progressive-load";
+import {
+  bufferSaveOutcome,
+  documentSaveOutcome,
+} from "../utils/editor/save-still-current";
 import { serializeLiveDoc } from "../utils/editor/serialize-live-doc";
 import { isMarkdownFile } from "../utils/file-type";
 import { saveFromBuffer } from "./use-code-auto-save";
@@ -272,7 +278,7 @@ export function useSourceMode({
         // buffer, so it also goes where a Save As in the background reads it, and where the load
         // reads it if the tab is left before the fill ends. A cached state from before source
         // mode would otherwise come back first, without it.
-        if (handBufferToDocument(currentTab, getSourceBuffer)) {
+        if (handBufferToDocument(currentTab, getSourceBuffer, editor)) {
           useFileStore
             .getState()
             .setFileContent(
@@ -466,7 +472,7 @@ export function useSourceMode({
 
       // With nothing unsaved this text is the file, and the next edit is compared with it. Left on
       // the older baseline, text put back to that by hand would read as saved.
-      if (!handBufferToDocument(currentTab, getSourceBuffer, newDoc)) {
+      if (!handBufferToDocument(currentTab, getSourceBuffer, editor, newDoc)) {
         updateOriginalDoc(currentTab.id, newDoc);
       }
       setSourceModeForTab(currentTab.id, false);
@@ -560,11 +566,14 @@ export function useSourceMode({
  * `update`가 없어 새로 걸지 않으므로, 켜져 있으면 그 저장을 여기서 대신 한다. 경로 없는 탭은 쓸
  * 곳이 없어 dirty로 남는다.
  *
+ * `installed` 는 이 전환이 `editor` 에 넣은 문서다. 큰 문서는 조각으로 채우므로 없다.
+ *
  * @returns 저장 안 된 편집을 넘겼는지
  */
 function handBufferToDocument(
   tab: EditorTab,
   getSourceBuffer: (tabId: string) => string,
+  editor: Editor,
   installed?: PmNode,
 ): boolean {
   const store = useEditorStore.getState();
@@ -588,10 +597,49 @@ function handBufferToDocument(
         markDirty: store.markDirty,
         setFileContent: useFileStore.getState().setFileContent,
       },
-      { reindexLinks: true },
-    ).then((written) => {
-      if (written && installed) updateOriginalDoc(tab.id, installed);
+      {
+        outcome: (written) =>
+          returnedOutcome(tab.id, written, {
+            editor,
+            getSourceBuffer,
+            installed,
+          }),
+        reindexLinks: true,
+      },
+    ).then((saved) => {
+      if (saved && installed) updateOriginalDoc(tab.id, installed);
     });
   }
   return true;
+}
+
+/**
+ * §3.5 How the save `handBufferToDocument` starts judges the tab once its write has ended (#798).
+ *
+ * Source mode has ended, so the document holds the tab's text and the buffer no longer changes when
+ * the user types — asking the buffer, as a save from source mode does, would record text typed
+ * during the write as saved. A small document was installed whole, so the question is whether the
+ * editor still holds that document. A large one is filled in pieces: while the fill runs, the buffer
+ * is still the text (and the entry `toggleSourceMode` set holds it); once it has ended, an edit may
+ * be in the document, which only serializing all of it would show, so the tab stays unsaved and its
+ * next save writes the document.
+ */
+function returnedOutcome(
+  tabId: string,
+  written: string,
+  {
+    editor,
+    getSourceBuffer,
+    installed,
+  }: {
+    editor: Editor;
+    getSourceBuffer: (tabId: string) => string;
+    installed?: PmNode;
+  },
+): SaveOutcome {
+  if (installed) return documentSaveOutcome(editor, tabId, installed);
+  if (isTabLoading(tabId)) {
+    return bufferSaveOutcome(tabId, getSourceBuffer(tabId), written);
+  }
+  return { cacheIsDisk: false, unchanged: false };
 }
