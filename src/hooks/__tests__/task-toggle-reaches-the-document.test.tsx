@@ -92,7 +92,10 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useTaskStore } from "../../stores/tasks/task-store";
 import { useUIStore } from "../../stores/ui/ui";
-import { clearOriginalDoc } from "../../utils/editor/programmatic-update";
+import {
+  clearOriginalDoc,
+  markContentLoaded,
+} from "../../utils/editor/programmatic-update";
 import { advanceTaskState } from "../../utils/tasks/task-triage";
 import { useAutoSave } from "../use-auto-save";
 import { useEditorEffects } from "../use-editor-effects";
@@ -242,6 +245,8 @@ beforeEach(() => {
   });
   clearOriginalDoc("t1");
   clearOriginalDoc("t2");
+  // `install` above put t1's document in the editor, as a tab switch does.
+  markContentLoaded("t1");
   CTX.editor = editor;
 });
 

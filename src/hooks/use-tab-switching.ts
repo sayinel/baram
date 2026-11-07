@@ -17,10 +17,14 @@ import {
 } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { useNavigationStore } from "../stores/ui/navigation";
-import { setTabLoading } from "../utils/editor/programmatic-update";
+import {
+  setTabLoading,
+  subscribeContentLoaded,
+} from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 import { gcClosedTabs } from "./tab-switching/gc-closed-tabs";
 import { loadTabContent } from "./tab-switching/load-tab-content";
+import { rereadMissedReload } from "./tab-switching/reread-after-install";
 import { restoreCachedState } from "./tab-switching/restore-cached-state";
 import { resumeKeepaliveTab } from "./tab-switching/resume-keepalive-tab";
 import { saveOutgoingTab } from "./tab-switching/save-outgoing-tab";
@@ -117,6 +121,8 @@ export function useTabSwitching({
       appendHandleRef.current = null;
     }
   };
+
+  useEffect(() => subscribeContentLoaded(rereadMissedReload), []);
 
   // --- Tab switching: swap editor content when activeTabId changes ---
   //

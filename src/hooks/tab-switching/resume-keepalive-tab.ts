@@ -5,10 +5,8 @@ import type { Editor } from "@tiptap/core";
 
 import { dispatchSetSearchTerm } from "../../extensions/plugins/find-replace";
 import { activateEditorForDocument } from "../../extensions/plugins/vim/vim-activation";
-import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
-import { patchEditorContent } from "../../utils/editor/patch-editor-content";
 import {
   scrollToTarget,
   takePendingScroll,
@@ -49,19 +47,10 @@ export function resumeKeepaliveTab(
   });
   ctx.installContent(activeTabId, incomingTab.filePath);
 
-  // §313 유지 풀의 탭은 캐시가 아니라 **살아 있는 에디터**가 문서를 들고 있다. 그
-  // 문서도 배경에 있는 동안 파일이 바뀌면 낡는다 — 아래 mtime 판정은 자동 리로드가
-  // 이미 지나간 경우를 잡지 못하므로(두 mtime이 같아진다) 표시를 따로 본다.
-  if (
-    incomingTab.filePath &&
-    useEditorStore.getState().staleContentTabs.includes(activeTabId)
-  ) {
-    const fresh = openFiles.get(incomingTab.filePath);
-    if (fresh !== undefined) {
-      patchEditorContent(incomingKeepaliveEditor.view, fresh);
-    }
-    useEditorStore.getState().clearContentStale(activeTabId);
-  }
+  // §313 유지 풀의 탭은 캐시가 아니라 **살아 있는 에디터**가 문서를 들고 있다. 그 문서도
+  // 배경에 있는 동안 파일이 바뀌면 낡는다. 낡음 표시는 위 `installContent` 가
+  // `rereadMissedReload` 로 처리한다 — 아래 mtime 판정은 자동 리로드가 이미 지나간 경우를
+  // 잡지 못한다(두 mtime이 같아진다).
 
   // [MINOR-a] Consume pending scroll/search so backlink navigation to a
   // pooled tab scrolls correctly — not just pendingSearchHighlight.
