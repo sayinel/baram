@@ -155,7 +155,7 @@ it.each([
   ],
   ["with none", "| COPY | B |\n| - | - |\n| 1 | 2 |\n"],
 ])(
-  "a reloaded non-markdown tab %s: the named tab is cleared in its own document",
+  "a reloaded non-markdown tab %s: the tab behind it is cleared in its own document",
   async (_name, copyText) => {
     disk.set(COPY, copyText);
     useFileStore.getState().setFileContent(COPY, copyText);

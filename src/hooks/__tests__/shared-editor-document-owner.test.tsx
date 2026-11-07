@@ -216,6 +216,9 @@ beforeEach(() => {
       fileTab("t4", PDF),
     ],
   });
+  // A mount runs the reload effect once if an earlier test left this above zero, and an app's first
+  // mount never does.
+  useUIStore.setState({ contentReloadVersion: 0 });
   for (const id of ["t1", "t2", "t3", "t4"]) clearOriginalDoc(id);
 });
 
@@ -504,6 +507,27 @@ describe("leaving a tab takes its name away", () => {
       expect(written[0][1]).not.toContain(foreign);
     },
   );
+
+  // What fails this: restoring a flagged cache. The flag says the cached document is older than a
+  // text that is gone now, and a keystroke would write that older document back as the file.
+  it("a tab whose file was rewritten and then deleted is not restored from its older cache", async () => {
+    mountApp();
+    await installed("t1");
+    show("t2");
+    await settle(10);
+    act(() => {
+      syncCleanSurfacesAfterReferrerRewrite(NOTE, "# NOTE\n\nrewritten\n");
+    });
+    act(() => useFileStore.getState().removeFileEntry(NOTE));
+
+    show("t1");
+    await settle(20);
+
+    expect(loadedTabId()).toBeNull();
+    type();
+    await settle(AUTO_SAVE_PASSED);
+    expect(written).toEqual([]);
+  });
 
   it("a tab with neither text nor cache is not installed, and a keystroke writes nothing", async () => {
     mountApp();
