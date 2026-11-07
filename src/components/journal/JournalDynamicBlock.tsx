@@ -7,9 +7,10 @@ import { listDir, readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { trackListingBlock } from "../../utils/journal/journal-photo-cells";
 import {
   GALLERY_THUMB_PX,
-  JOURNAL_GRID_THUMB_PX,
+  journalGridThumbPx,
   sourceRevision,
 } from "../../utils/journal/photo-thumbnail";
 import { basename } from "../../utils/path-utils";
@@ -265,46 +266,42 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
     })();
   }, [rootPath, journalDirectory, params.range]);
 
-  // `data-journal-photos` says whether the photo list is known yet. An export waits
-  // while it is "loading" (`pendingHeavyBlocks`): before the listing lands there are no
-  // cells, and the block would export as its loading line.
+  // An export waits while the list is unknown (`pendingHeavyBlocks` reads
+  // `trackListingBlock`): before the listing lands there are no cells, and the block would
+  // export as its loading line.
   if (loading)
     return (
       <div
         aria-live="polite"
         className="journal-block-loading"
-        data-journal-photos="loading"
+        ref={trackListingBlock}
       >
         {t("journal.loading")}
       </div>
     );
   if (photos.length === 0)
     return (
-      <div className="journal-block-empty" data-journal-photos="empty">
-        {t("journal.block.empty")}
-      </div>
+      <div className="journal-block-empty">{t("journal.block.empty")}</div>
     );
 
-  const gridStyle =
-    layout === "strip"
-      ? {
-          gridTemplateColumns: `repeat(${photos.length}, 80px)`,
-          overflowX: "auto" as const,
-        }
-      : { gridTemplateColumns: `repeat(${columns}, 1fr)` };
-
+  const strip = layout === "strip";
   return (
     <div
-      className="journal-photos-grid"
-      data-journal-photos="ready"
-      style={gridStyle}
+      className={
+        strip
+          ? "journal-photos-grid journal-photos-strip"
+          : "journal-photos-grid"
+      }
+      style={
+        strip ? undefined : { gridTemplateColumns: `repeat(${columns}, 1fr)` }
+      }
     >
       {photos.map((photo) => (
         <JournalPhotoCell
           absolutePath={photo.absolutePath}
           alt={photo.filename}
           key={photo.absolutePath}
-          maxPx={layout === "strip" ? GALLERY_THUMB_PX : JOURNAL_GRID_THUMB_PX}
+          maxPx={strip ? GALLERY_THUMB_PX : journalGridThumbPx(columns)}
           revision={photo.revision}
           title={`${photo.date} — ${photo.filename}`}
         />

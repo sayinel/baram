@@ -17,11 +17,15 @@ export const GALLERY_THUMB_PX = 320;
 
 /**
  * §56f `journal-photos` 블록의 격자 칸(이슈 793). 칸은 정사각형이고 `object-fit: cover`라
- * 칸을 채우는 것은 사진의 **짧은 변**이다. 기본 4열은 에디터 폭(~900px)에서 칸이 ~215px,
+ * 칸을 채우는 것은 사진의 **짧은 변**이다. 기본 4열은 본문 폭 ~900px에서 칸이 ~215px,
  * 2배 밀도 화면에서 ~430 device px인데, 320 썸네일의 짧은 변(4:3 사진이면 240px)으로는
  * 1.8배 늘어나 흐려진다. 640이면 짧은 변이 480px라 그 칸을 덮는다. 디코드는 640×480×4 =
  * 1.2 MB로 12 MP 원본(48 MB)의 1/40이다. 한 줄 배치(80px 칸)는 갤러리와 같은
- * `GALLERY_THUMB_PX`를 써서 캐시 항목을 함께 쓴다.
+ * `GALLERY_THUMB_PX`를 써서 캐시 항목을 함께 쓴다. 열이 적은 격자는 `journalGridThumbPx`.
+ *
+ * ‼️ ~900px은 본문 폭 다이얼을 쓴 경우의 폭이다. 기본값은 제한이 없어(`editor/base.css`의
+ * `--editor-max-width`) 본문이 창을 따라 넓어지고, 넓은 창에서는 4열 칸도 이 계층보다 커져
+ * 늘어난다. 계층은 열 수로만 고르고 칸을 재지 않는다.
  */
 export const JOURNAL_GRID_THUMB_PX = 640;
 
@@ -37,6 +41,17 @@ export const JOURNAL_GRID_THUMB_PX = 640;
  * 캐시 키만 갈라진다.
  */
 export const PREVIEW_MAX_PX = 2048;
+
+/**
+ * `columns`열 격자의 칸에 쓰는 계층. 본문 폭 ~900px에서 2배 밀도 칸은 ~1800/`columns` device
+ * px이고, 4:3 사진의 짧은 변은 640 계층에서 480px다. 3열이면 1.25배 늘어나 640에 둔다. 2열은
+ * 1.9배인데, 기본 격자에서 320을 버린 이유가 1.8배였으므로 2열 이하는 `PREVIEW_MAX_PX`로
+ * 간다. 12 MP 4:3 사진의 디코드는 12.6 MB로 커지지만 원본(48 MB)보다 작고, 칸이 커서 한
+ * 화면에 드는 사진도 적으며, 라이트박스 · 에디터 본문과 캐시 항목을 함께 쓴다.
+ */
+export function journalGridThumbPx(columns: number): number {
+  return columns >= 3 ? JOURNAL_GRID_THUMB_PX : PREVIEW_MAX_PX;
+}
 
 /** 해결된 URL. 원본 폴백이면 `isOriginal`이 참이라 호출자가 큰 디코드를 각오할 수 있다. */
 export interface ThumbUrl {

@@ -21,25 +21,40 @@ vi.mock("../../../ipc/thumbnail", () => ({
     photoThumbnail(path, maxPx) as Promise<string>,
 }));
 
-const { embedJournalPhotos } = await import("../export-journal-photos");
+const { embedJournalPhotos, photoCellsOf } =
+  await import("../export-journal-photos");
+const { registerCellPhoto } = await import("../../journal/journal-photo-cells");
 const { convertImagesToDataURIs, IMAGE_CONVERSION_CONCURRENCY } =
   await import("../export-html-media");
 const { _resetThumbCache } = await import("../../journal/photo-thumbnail");
 const { captureEditorHTML } = await import("../export-html");
 
-/** A cloned block of `n` cells that never came into view: no image in any of them. */
-function cells(n: number): HTMLElement {
-  const root = document.createElement("div");
+/** `n` live cells that never came into view, registered the way `JournalPhotoCell` does. */
+function liveCells(n: number): HTMLElement {
+  const live = document.createElement("div");
   for (let i = 0; i < n; i++) {
     const cell = document.createElement("div");
     cell.className = "journal-photos-cell";
-    cell.dataset.photoAlt = `p${i}.jpg`;
-    cell.dataset.photoPath = `/vault/journal/assets/2026-08/p${i}.jpg`;
-    cell.dataset.photoPx = "640";
-    cell.dataset.photoRevision = "1:1";
-    root.append(cell);
+    registerCellPhoto(cell, {
+      alt: `p${i}.jpg`,
+      path: `/vault/journal/assets/2026-08/p${i}.jpg`,
+      px: 640,
+      revision: "1:1",
+    });
+    live.append(cell);
   }
-  return root;
+  return live;
+}
+
+/** The clone of `live` and its cells, as `captureEditorHTML` pairs them. */
+function cloneOf(live: HTMLElement) {
+  const root = live.cloneNode(true) as HTMLElement;
+  return { cells: photoCellsOf(live, root), root };
+}
+
+/** A cloned block of `n` cells: no image in any of them. */
+function cells(n: number) {
+  return cloneOf(liveCells(n));
 }
 
 /** `fetch` answering every URL with a few bytes, or `status` for URLs matching `fail`. */
@@ -77,8 +92,8 @@ describe("embedJournalPhotos", () => {
   /** 이것을 실패시키는 것: 칸을 채우지 않는 것, 또는 `data-photo-*`(절대 경로)를 남기는 것. */
   test("fills every cell the reader never scrolled to, and ships no source path", async () => {
     stubFetch();
-    const root = cells(5);
-    const result = await embedJournalPhotos(root);
+    const { cells: five, root } = cells(5);
+    const result = await embedJournalPhotos(five);
 
     expect(result).toEqual({ embedded: 5, fallback: 0 });
     const imgs = [...root.querySelectorAll("img")];
@@ -86,6 +101,23 @@ describe("embedJournalPhotos", () => {
     expect(imgs.every((img) => img.src.startsWith("data:"))).toBe(true);
     expect(photoThumbnail.mock.calls.every(([, px]) => px === 640)).toBe(true);
     expect(root.innerHTML).not.toContain("/vault/");
+  });
+
+  /** A cell the reader scrolled to holds its live image, an asset URL; its copy holds it too.
+   *  이것을 실패시키는 것: 사본의 자식을 비우지 않는 것 — 칸에 사진이 둘 들어간다. */
+  test("a cell the reader scrolled to exports one image, not its live one too", async () => {
+    stubFetch();
+    const live = liveCells(1);
+    const shown = document.createElement("img");
+    shown.setAttribute("src", "asset://localhost//cache/640/p0.jpg");
+    live.firstElementChild!.append(shown);
+    const { cells: one, root } = cloneOf(live);
+
+    await embedJournalPhotos(one);
+
+    const imgs = [...root.querySelectorAll("img")];
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0].getAttribute("src")).toMatch(/^data:/);
   });
 
   /** 이것을 실패시키는 것: 동시 요청 수를 backend 의 2 보다 넓히는 것. */
@@ -100,7 +132,7 @@ describe("embedJournalPhotos", () => {
       inFlight--;
       return `/cache/${path}`;
     });
-    await embedJournalPhotos(cells(10));
+    await embedJournalPhotos(cells(10).cells);
 
     expect(photoThumbnail).toHaveBeenCalledTimes(10);
     expect(peak).toBe(2);
@@ -112,7 +144,7 @@ describe("embedJournalPhotos", () => {
   test("stops at its deadline: no request after it, the rest by name", async () => {
     stubFetch();
     photoThumbnail.mockImplementation(() => new Promise<string>(() => {}));
-    const root = cells(10);
+    const { cells: ten, root } = cells(10);
     // Fake timers, so the deadline passes when the test moves the clock and not
     // when a loaded machine gets round to it: with real time, both workers can
     // find the 30 ms already gone before their first request, and the count
@@ -120,7 +152,7 @@ describe("embedJournalPhotos", () => {
     vi.useFakeTimers();
     let result;
     try {
-      const pending = embedJournalPhotos(root, { deadlineMs: 30 });
+      const pending = embedJournalPhotos(ten, { deadlineMs: 30 });
       await vi.advanceTimersByTimeAsync(31);
       result = await pending;
     } finally {
@@ -138,8 +170,8 @@ describe("embedJournalPhotos", () => {
   /** 이것을 실패시키는 것: 읽지 못한 사진에 asset URL 을 그대로 건 <img> 를 남기는 것. */
   test("a photo whose bytes cannot be read exports as its name, not a broken image", async () => {
     stubFetch(/p1\.jpg/);
-    const root = cells(3);
-    const result = await embedJournalPhotos(root);
+    const { cells: three, root } = cells(3);
+    const result = await embedJournalPhotos(three);
 
     expect(result).toEqual({ embedded: 2, fallback: 1 });
     const second = root.children[1];
@@ -149,12 +181,44 @@ describe("embedJournalPhotos", () => {
     );
   });
 
+  /** A note can write the class and any `data-*` attribute: `sanitizeHtmlBlock` and
+   *  `sanitizeSvg` keep both. Neither an HTML block nor an ```svg fence makes a cell.
+   *  이것을 실패시키는 것: `photoCellsOf` 가 등록이 아니라 class 나 속성으로 칸을 고르는 것 —
+   *  저자의 내용이 지워지고, 저자가 적은 경로의 파일이 내보내기에 들어간다. */
+  test.each([
+    [
+      "an HTML block",
+      '<div class="html-block-render"><div class="journal-photos-cell" data-photo-path="/vault/private/secret.md" data-photo-px="320">my text</div></div>',
+    ],
+    [
+      "an svg fence",
+      '<div class="svg-block-render"><svg><g class="journal-photos-cell" data-photo-path="/vault/private/secret.md" data-photo-px="320"><text>my text</text></g></svg></div>',
+    ],
+  ])("leaves a forged cell in %s as written", async (_where, markup) => {
+    stubFetch();
+    const live = liveCells(1);
+    const forged = document.createElement("div");
+    forged.innerHTML = markup;
+    live.append(forged);
+    const { cells: found, root } = cloneOf(live);
+    const copy = root.lastElementChild!;
+    const written = copy.innerHTML;
+
+    const result = await embedJournalPhotos(found);
+
+    expect(result).toEqual({ embedded: 1, fallback: 0 });
+    expect(copy.innerHTML).toBe(written);
+    expect(photoThumbnail.mock.calls.map(([path]) => path)).toEqual([
+      "/vault/journal/assets/2026-08/p0.jpg",
+    ]);
+  });
+
   test("a photo the backend cannot thumbnail embeds the original, marked", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     stubFetch();
     photoThumbnail.mockRejectedValue(new Error("unsupported"));
-    const root = cells(1);
-    await embedJournalPhotos(root);
+    const { cells: one, root } = cells(1);
+    await embedJournalPhotos(one);
 
     const img = root.querySelector("img")!;
     expect(img.src.startsWith("data:")).toBe(true);
@@ -163,32 +227,47 @@ describe("embedJournalPhotos", () => {
 });
 
 describe("captureEditorHTML", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  /** The HTML and PDF capture fills the cells — the reader never scrolled to them.
-   *  이것을 실패시키는 것: `captureEditorHTML` 에서 `embedJournalPhotos` 호출을 지우는 것. */
-  test("captures every cell of a block the reader never scrolled to", async () => {
+  beforeEach(() => {
     _resetThumbCache();
     photoThumbnail.mockReset();
     photoThumbnail.mockImplementation((path: string) =>
       Promise.resolve(`/cache/${path}`),
     );
-    stubFetch();
-    const dom = document.createElement("div");
-    const grid = document.createElement("div");
-    grid.dataset.journalPhotos = "ready";
-    grid.append(...cells(4).children);
-    dom.append(grid);
-    const editor = {
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function editorOver(dom: HTMLElement) {
+    return {
       state: { doc: { descendants() {} } },
       view: { dom },
     } as unknown as Parameters<typeof captureEditorHTML>[0];
+  }
 
-    const html = await captureEditorHTML(editor);
+  /** The HTML and PDF capture fills the cells — the reader never scrolled to them.
+   *  이것을 실패시키는 것: `captureEditorHTML` 에서 `embedJournalPhotos` 호출을 지우는 것. */
+  test("captures every cell of a block the reader never scrolled to", async () => {
+    stubFetch();
+    const html = await captureEditorHTML(editorOver(liveCells(4)));
     const out = document.createElement("div");
     out.innerHTML = html;
     expect(out.querySelectorAll(".journal-photos-cell img")).toHaveLength(4);
     expect(html).not.toContain("/vault/journal");
+  });
+
+  /** The settle pass says so when a block falls back; a photo exported as its name is the same
+   *  kind of loss. 이것을 실패시키는 것: `embedJournalPhotos` 의 결과를 버리는 것. */
+  test("says how many photos were exported as their names", async () => {
+    stubFetch(/p[02]\.jpg/);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await captureEditorHTML(editorOver(liveCells(3)));
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("2 of 3 journal photo(s)"),
+    );
   });
 });
 

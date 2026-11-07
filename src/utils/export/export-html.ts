@@ -31,7 +31,7 @@ import {
   type LivePluginBlock,
 } from "./export-html-plugin-blocks";
 import { buildExportStylesheet } from "./export-html-styles";
-import { embedJournalPhotos } from "./export-journal-photos";
+import { embedJournalPhotos, photoCellsOf } from "./export-journal-photos";
 
 export interface CaptureEditorHTMLOptions {
   /**
@@ -111,7 +111,7 @@ export async function captureEditorHTML(
   //
   // getComputedStyle() only works on elements in the live DOM, so the code
   // blocks' syntax colours are collected here, before the clone.
-  const { clone, codeBlockInfos, pluginBlocks } =
+  const { clone, codeBlockInfos, photoCells, pluginBlocks } =
     await withVirtualizationSuspendedAsync(async () => {
       const unsettled = await settleHeavyBlocks(dom);
       if (unsettled.length > 0) {
@@ -181,9 +181,12 @@ export async function captureEditorHTML(
       const infos: CodeBlockInfo[] = wrappers.map((wrapper, i) =>
         collectCodeBlockInfo(wrapper, codeTexts[i] ?? "", lineNumbers),
       );
+      const clone = dom.cloneNode(true) as HTMLElement;
       return {
-        clone: dom.cloneNode(true) as HTMLElement,
+        clone,
         codeBlockInfos: infos,
+        // In the cloning task: the pairing holds only while the two trees are identical.
+        photoCells: photoCellsOf(dom, clone),
         pluginBlocks,
       };
     });
@@ -192,7 +195,13 @@ export async function captureEditorHTML(
 
   // Before the general conversion: the photos it embeds are already data URIs, which
   // that pass leaves alone.
-  await embedJournalPhotos(clone);
+  const photos = await embedJournalPhotos(photoCells);
+  if (photos.fallback > 0) {
+    // Same reason as the warning above: a degraded export should not pass for a whole one.
+    console.warn(
+      `[export] ${photos.fallback} of ${photoCells.length} journal photo(s) were exported as their names: unreadable, or past the deadline`,
+    );
+  }
   await convertImagesToDataURIs(clone, dom);
   resolveVideoSources(clone, forPdf);
   resolveVideoEmbeds(clone, forPdf);

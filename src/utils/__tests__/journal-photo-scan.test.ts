@@ -160,6 +160,40 @@ describe("scanJournalPhotos caption pass", () => {
 // §293 갤러리가 보는 파일 목록. 예전에는 이 파일이 확장자를 손으로 다시 열거했다(네 번째
 // 목록) — 그래서 §292–§301이 동영상을 사진과 **같은** assets/에 저장하도록 만든 뒤에도
 // 갤러리에는 동영상만 빠져 있었다. 이제 `isMediaFilePath` 하나에 묻는다.
+describe("scanJournalPhotos revision", () => {
+  beforeEach(() => {
+    listDir.mockReset();
+    readFile.mockReset();
+    readFile.mockResolvedValue("");
+  });
+
+  /** The thumbnail caches find a photo by its revision, so a photo replaced at the same path
+   *  shows anew only if the listing's modification time and size reach it (issue 793).
+   *  이것을 실패시키는 것: 스캔이 revision 을 상수로 두거나, `sourceRevision` 이 둘 중 하나를
+   *  빼는 것. */
+  test("comes from the listing's modification time and size", async () => {
+    const photos = [
+      { ...file("20260105-101500-a.jpg"), modifiedAt: 7, size: 100 },
+      { ...file("20260105-101500-b.jpg"), modifiedAt: 7, size: 200 },
+      { ...file("20260105-101500-c.jpg"), modifiedAt: 8, size: 100 },
+    ];
+    listDir.mockImplementation((path: string) => {
+      if (path === "/vault/journal/daily")
+        return Promise.resolve([dir("2026")]);
+      if (path === "/vault/journal/daily/2026")
+        return Promise.resolve([dir("01")]);
+      if (path.endsWith("/assets")) return Promise.resolve(photos);
+      return Promise.resolve([dir("assets")]);
+    });
+
+    const entries = await scanJournalPhotos("/vault", "/vault/journal");
+
+    const revisions = entries.map((e) => e.revision);
+    expect(revisions).toHaveLength(3);
+    expect(new Set(revisions).size).toBe(3);
+  });
+});
+
 describe("scanJournalPhotos media filter", () => {
   beforeEach(() => {
     listDir.mockReset();

@@ -245,11 +245,18 @@ fn scale_if_needed(src: &Path, max_px: u32) -> Result<Option<DynamicImage>, Thum
 
 /// 임시 파일에 쓰고 rename한다. 같은 사진을 두 곳(그리드와 라이트박스)에서 동시에 요청할 수
 /// 있고, 반쯤 쓰인 파일을 asset 프로토콜이 읽으면 깨진 이미지가 캐시된 것처럼 보인다.
+///
+/// ‼️ 임시 이름은 호출마다 다르다. 프로세스 id 만 붙이면 같은 썸네일을 동시에 만드는 두 호출이
+/// 한 임시 파일을 함께 쓰고, 먼저 rename 한 쪽이 그 파일을 가져가 늦은 쪽의 rename 이 실패한다.
+/// 그 실패는 프론트엔드에서 세션 내내 원본 폴백으로 남는다(photo-thumbnail.ts). 프론트엔드의
+/// 진행 중 요청 공유는 revision 이 다른 두 호출자를 합치지 않으므로 이 경합에 닿을 수 있다.
 fn write_atomic(out: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let tmp = out.with_extension(format!(
-        "{}.tmp{}",
+        "{}.tmp{}-{}",
         out.extension().and_then(|e| e.to_str()).unwrap_or("bin"),
-        std::process::id()
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, out)
@@ -268,6 +275,35 @@ mod tests {
         }
         DynamicImage::ImageRgb8(img).save(&path).unwrap();
         path
+    }
+
+    /// 같은 썸네일을 동시에 쓰는 호출은 모두 성공하고, 남는 것은 온전한 파일 하나다.
+    /// 무엇이 이것을 실패시키는가: 임시 이름을 프로세스 id 로만 짓는 것 — 늦은 쪽의 rename 이
+    /// 임시 파일을 찾지 못한다.
+    #[test]
+    fn concurrent_writes_of_one_thumbnail_all_succeed() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("t.jpg");
+        let bytes = vec![7u8; 256 * 1024];
+        for _ in 0..50 {
+            let barrier = std::sync::Barrier::new(4);
+            std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..4)
+                    .map(|_| {
+                        scope.spawn(|| {
+                            barrier.wait();
+                            write_atomic(&out, &bytes)
+                        })
+                    })
+                    .collect();
+                for handle in handles {
+                    handle.join().unwrap().unwrap();
+                }
+            });
+            assert_eq!(std::fs::read(&out).unwrap(), bytes);
+        }
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(left.len(), 1, "no temporary file is left behind");
     }
 
     #[test]

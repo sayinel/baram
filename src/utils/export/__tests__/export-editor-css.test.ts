@@ -16,6 +16,7 @@
 // would pass on an empty string and prove nothing.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import editorCSS from "../../../styles/editor.css?raw";
 import {
   DROPPED_PROPERTIES,
   editorContentCSS,
@@ -304,6 +305,69 @@ describe("what the exported page actually looks like", () => {
       "li",
     ) as HTMLElement;
     expect(getComputedStyle(li).position).toBe("relative");
+  });
+
+  describe("a journal-photos block", () => {
+    /** 이것을 실패시키는 것: `EDITOR_STYLESHEETS` 에서 `journalPhotosCSS` 를 빼는 것 — 4열 격자가
+     *  한 줄에 한 장씩 큰 사진으로 쌓이고, 읽지 못한 사진의 이름은 스타일이 없다. */
+    it("keeps the layout it has on screen", () => {
+      const grid = mount(
+        '<div class="journal-photos-grid"><div class="journal-photos-cell"><img class="journal-photos-thumb"></div><div class="journal-photos-cell"><span class="journal-photos-missing">a.jpg</span></div></div>',
+      ).firstElementChild as HTMLElement;
+      expect(getComputedStyle(grid).display).toBe("grid");
+      expect(
+        getComputedStyle(grid.querySelector("img")!).getPropertyValue(
+          "object-fit",
+        ),
+      ).toBe("cover");
+      expect(getComputedStyle(grid.querySelector("span")!).display).toBe(
+        "flex",
+      );
+    });
+
+    /** The sheet has two readers, the export above and the app. 이것을 실패시키는 것:
+     *  `editor.css` 의 `@import` 를 지우는 것 — 이 파일의 다른 시험은 모두 통과한 채 화면의 격자만
+     *  사라진다. */
+    it("is also the sheet the app loads", () => {
+      expect(editorCSS).toContain('@import "./editor/journal-photos.css"');
+    });
+
+    /** 이것을 실패시키는 것: `.journal-photos-strip` 규칙을 지우는 것 — 칸이 한 줄이 아니라 한
+     *  칸 폭의 세로 줄로 쌓인다. */
+    it("keeps a strip on one row on screen", () => {
+      const strip = mount('<div class="journal-photos-strip"></div>')
+        .firstElementChild as HTMLElement;
+      expect(getComputedStyle(strip).getPropertyValue("grid-auto-flow")).toBe(
+        "column",
+      );
+    });
+
+    /** A PDF cannot scroll, and jsdom's cascade skips `@media print`, so the rules are read
+     *  from the parsed sheet. What they do was measured in Chrome, not here: without them a
+     *  strip of 40 photos printed 8 whole cells and cut the rest at the page's edge, and a
+     *  row of name-only cells split across two pages.
+     *  이것을 실패시키는 것: `journal-photos.css` 의 print 규칙을 지우는 것. */
+    it("wraps a strip into rows and keeps cells whole in a PDF", () => {
+      const printRules = [...style.sheet!.cssRules]
+        .filter((rule) =>
+          (rule as CSSMediaRule).media?.mediaText.includes("print"),
+        )
+        .flatMap((rule) => [...(rule as CSSMediaRule).cssRules])
+        .map((rule) => rule as CSSStyleRule);
+      const printed = (selector: string, property: string) =>
+        printRules
+          .filter((rule) => rule.selectorText === selector)
+          .map((rule) => rule.style.getPropertyValue(property))
+          .find(Boolean);
+
+      expect(printed(".journal-photos-strip", "grid-auto-flow")).toBe("row");
+      // A row of name-only cells has no image to keep it whole: Chrome split one across
+      // two pages without this.
+      expect(printed(".journal-photos-cell", "break-inside")).toBe("avoid");
+      expect(printed(".journal-photos-strip", "grid-template-columns")).toBe(
+        "repeat(auto-fill, 80px)",
+      );
+    });
   });
 
   it("gives a toggle its disclosure arrow's room", () => {

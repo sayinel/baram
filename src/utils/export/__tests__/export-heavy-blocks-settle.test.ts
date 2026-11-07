@@ -89,11 +89,10 @@ describe("settleHeavyBlocks", () => {
   }, 30_000);
 
   it("wakes only the document being exported, not the rest of the app", async () => {
-    // ‼️ The lazy queue is APP-WIDE. Journal's photo tiles register on it too
-    // (use-photo-thumb.ts), and a retained Journal tab can hold hundreds of
-    // never-intersected registrations. Without a root filter the export spends
-    // its wake budget on those — firing the IPC stampede the queue exists to
-    // spread out — while the document's own blocks stay unmounted.
+    // ‼️ The lazy queue is APP-WIDE. A retained tab's blocks and Journal's video
+    // tiles (`useVisibleOnce` in use-photo-thumb.ts) wait on it too. Without a
+    // root filter the export spends its wake budget on those while the
+    // document's own blocks stay unmounted.
     const outsider = document.createElement("div");
     document.body.append(outsider);
     const strangerWoken = vi.fn();
@@ -107,6 +106,19 @@ describe("settleHeavyBlocks", () => {
     expect(strangerWoken).not.toHaveBeenCalled();
     outsider.remove();
   }, 30_000);
+
+  /** A journal-photos block is waited on through its own registry (journal-photo-cells.ts), so
+   *  markup a note writes — an svg fence keeps `class` and `data-*` — cannot make an export
+   *  wait. The real block's wait is in journal-photos-block.test.tsx. 이것을 실패시키는 것:
+   *  목록 대기를 class 나 속성으로 다시 읽는 것 — 그런 노트는 내보낼 때마다 stall 예산을 다 쓴다. */
+  it("does not wait on markup that only looks like a listing journal-photos block", () => {
+    const fence = document.createElement("div");
+    fence.className = "svg-block-render";
+    fence.innerHTML =
+      '<svg><g class="journal-block-loading" data-journal-photos="loading"></g></svg>';
+    root.append(fence);
+    expect(pendingHeavyBlocks(root)).toEqual([]);
+  });
 
   it("does not wait on an empty math block that is being edited", async () => {
     // ‼️ math-block-view writes `textContent = selected ? "" : "Empty math

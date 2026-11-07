@@ -90,7 +90,7 @@ export function useVisibleOnce(
  * `onFirstVisible`은 idle 틱마다 한 건씩 흘리므로 보이는 칸이 먼저, 하나씩 채워진다.
  *
  * `maxPx`는 칸의 크기에 맞춘 계층이다 — 갤러리는 `GALLERY_THUMB_PX`, `journal-photos`
- * 블록의 격자는 `JOURNAL_GRID_THUMB_PX`(이슈 793). `revision`(`sourceRevision`)이 바뀌면
+ * 블록의 격자는 열 수에 따라 `journalGridThumbPx`(이슈 793). `revision`(`sourceRevision`)이 바뀌면
  * 같은 경로라도 다시 묻는다 — 사진을 같은 이름으로 바꿔 넣은 경우다.
  */
 export function useVisibleThumb(
@@ -115,11 +115,17 @@ export function useVisibleThumb(
     if (!el) return;
 
     let alive = true;
-    const dispose = onFirstVisible(el, () => {
-      resolveThumbUrl(absolutePath, maxPx, revision).then((r) => {
-        if (alive) setThumb(r);
-      });
-    });
+    // `onScreenOnly`: an export never needs a tile drawn. `embedJournalPhotos` fills the
+    // cloned journal-photos cells itself, and a gallery tile is not in a document.
+    const dispose = onFirstVisible(
+      el,
+      () => {
+        resolveThumbUrl(absolutePath, maxPx, revision).then((r) => {
+          if (alive) setThumb(r);
+        });
+      },
+      { onScreenOnly: true },
+    );
     return () => {
       alive = false;
       dispose();

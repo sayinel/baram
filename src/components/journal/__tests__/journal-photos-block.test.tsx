@@ -4,6 +4,8 @@
 // 48 MB). 그래서 확인하는 것은 "썸네일이 결국 뜬다"가 아니라, 블록이 한 번이라도 건 src 가운데
 // 원본 경로가 0건이라는 것이다 — 썸네일을 기다리는 동안도 포함해서.
 
+import { createRoot } from "react-dom/client";
+
 import { act, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -26,13 +28,16 @@ vi.mock("../../../ipc/invoke", () => ({
 }));
 
 const { JournalDynamicBlock } = await import("../JournalDynamicBlock");
-const { _resetForTest } =
+const { _resetForTest, onFirstVisible } =
   await import("../../../extensions/nodes/views/lazy-visible");
 const { _resetThumbCache } =
   await import("../../../utils/journal/photo-thumbnail");
 const { useFileStore } = await import("../../../stores/file/file");
 const { pendingHeavyBlocks, settleHeavyBlocks } =
   await import("../../../utils/export/export-heavy-blocks");
+const { captureEditorHTML } = await import("../../../utils/export/export-html");
+const { cellPhotoOf } =
+  await import("../../../utils/journal/journal-photo-cells");
 const { useSettingsStore } = await import("../../../stores/settings/store");
 
 declare const MockIntersectionObserver: {
@@ -70,10 +75,10 @@ function recordSrcs(root: HTMLElement): string[] {
   return seen;
 }
 
-async function renderBlock(layout: "grid" | "strip") {
+async function renderBlock(layout: "grid" | "strip", extraParams = "") {
   const view = render(
     <JournalDynamicBlock
-      content={`range: 2026-08-01..2026-08-31\nlayout: ${layout}`}
+      content={`range: 2026-08-01..2026-08-31\nlayout: ${layout}\n${extraParams}`}
       language="journal-photos"
       onShowSource={vi.fn()}
     />,
@@ -156,6 +161,42 @@ describe("journal-photos block", () => {
     ]);
   });
 
+  /** A grid cell is as wide as the columns leave it, so the tier has to cover that: 640 does
+   *  from three columns up. 이것을 실패시키는 것: 격자의 계층을 열 수와 무관하게 정하는 것. */
+  test.each([
+    ["columns: 1", 2048],
+    ["columns: 2", 2048],
+    ["columns: 3", 640],
+    ["columns: 4", 640],
+    ["columns: 8", 640],
+  ] as const)("a grid with %s asks for the %i px tier", async (params, px) => {
+    await renderBlock("grid", params);
+    await scrollIntoView();
+
+    await waitFor(() => expect(photoThumbnail).toHaveBeenCalledTimes(3));
+    expect(
+      new Set(photoThumbnail.mock.calls.map(([, maxPx]) => maxPx)),
+    ).toEqual(new Set([px]));
+  });
+
+  /** The strip's one row and its wrapping in a PDF hang on this class; a grid's column count
+   *  is inline, because the note chooses it. 이것을 실패시키는 것: 한 줄 배치에
+   *  `.journal-photos-strip` 을 달지 않거나 격자에 달아 버리는 것. */
+  test("a strip is marked as one, and a grid carries its column count", async () => {
+    const strip = await renderBlock("strip");
+    const stripRoot = strip.container.querySelector(".journal-photos-grid")!;
+    expect(stripRoot.classList.contains("journal-photos-strip")).toBe(true);
+    expect(stripRoot.getAttribute("style")).toBeNull();
+    strip.unmount();
+
+    const grid = await renderBlock("grid", "columns: 5");
+    const gridRoot = grid.container.querySelector<HTMLElement>(
+      ".journal-photos-grid",
+    )!;
+    expect(gridRoot.classList.contains("journal-photos-strip")).toBe(false);
+    expect(gridRoot.style.gridTemplateColumns).toBe("repeat(5, 1fr)");
+  });
+
   /** 이것을 실패시키는 것: 썸네일을 기다리는 동안 칸에 원본을 거는 것. */
   test("never sets an original as a src, while the thumbnail is pending or after", async () => {
     let finish: (() => void) | undefined;
@@ -219,6 +260,11 @@ describe("journal-photos block", () => {
       "asset://localhost//cache/640/20260801-a.jpg",
     );
     expect(photoThumbnail).toHaveBeenCalledTimes(3);
+    // Rendered at once from the session cache, so the browser is the one left to defer the
+    // cells off screen. 이것을 실패시키는 것: `loading="lazy"` 를 빼는 것.
+    expect(imgs.every((img) => img.getAttribute("loading") === "lazy")).toBe(
+      true,
+    );
   });
 
   /** 이것을 실패시키는 것: 칸이 원본 폴백(`isOriginal`)을 그리지 않는 것 — 썸네일을 만들 수 없는
@@ -241,7 +287,8 @@ describe("journal-photos block", () => {
   /** An export waits while the block is still listing its photos — before the listing
    *  there are no cells, and the block would export as its loading line. It does not wait
    *  on the cells themselves (`embedJournalPhotos` fills those from their source).
-   *  이것을 실패시키는 것: `pendingHeavyBlocks` 에서 `[data-journal-photos]` 검사를 지우는 것. */
+   *  이것을 실패시키는 것: `pendingHeavyBlocks` 에서 `listingBlocksIn` 을 지우거나, 목록을 다
+   *  읽은 블록이 `trackListingBlock` 에서 빠지지 않는 것. */
   test("an export waits for the photo list, not for the cells", async () => {
     let finishListing: () => void = () => {};
     listDir.mockImplementation(
@@ -286,6 +333,107 @@ describe("journal-photos block", () => {
     expect(pendingHeavyBlocks(container)).toEqual([]);
     expect(await settleHeavyBlocks(container)).toEqual([]);
     expect(photoThumbnail).not.toHaveBeenCalled();
+  });
+
+  /** The test above never reaches the wake pass: with nothing else pending, the settle loop
+   *  returns on its first read. Another block still rendering is what sends it there, and
+   *  that pass must leave the cells alone: each would queue a request at a backend that
+   *  decodes two at a time, behind which the gallery then waits.
+   *  이것을 실패시키는 것: `useVisibleThumb` 의 등록에서 `onScreenOnly` 를 빼는 것. */
+  test("an export waiting on another block does not wake the cells", async () => {
+    const { container } = await renderBlock("grid");
+    const diagram = document.createElement("div");
+    diagram.className = "mermaid-block";
+    diagram.setAttribute("data-render-state", "pending");
+    container.append(diagram);
+    onFirstVisible(diagram, () => {
+      setTimeout(() => diagram.setAttribute("data-render-state", "done"), 100);
+    });
+
+    const settled = settleHeavyBlocks(container);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(await settled).toEqual([]);
+    // The pass ran: it woke the diagram, whose `done` is what ended the wait.
+    expect(diagram.getAttribute("data-render-state")).toBe("done");
+    expect(photoThumbnail).not.toHaveBeenCalled();
+  });
+
+  /** The cell's contract with the export, end to end: the real block, `captureEditorHTML`, and
+   *  a forged cell beside it in an ```svg fence (`sanitizeSvg` keeps `class` and `data-*`).
+   *  이것을 실패시키는 것: `JournalPhotoCell` 이 등록하지 않는 것 — 진짜 칸이 이름으로
+   *  내보내진다. 또는 칸을 class 나 속성으로 고르는 것 — 위조한 경로의 파일이 들어간다. */
+  test("an export fills the block's own cells, and only those, without a path in the DOM", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Blob(["x"], { type: "image/jpeg" }))),
+    );
+    const { container } = await renderBlock("grid");
+    const fence = document.createElement("div");
+    fence.className = "svg-block-render";
+    fence.innerHTML =
+      '<svg><g class="journal-photos-cell" data-photo-path="/vault/private/secret.md" data-photo-px="320"><text>mine</text></g></svg>';
+    container.append(fence);
+    // The live cells carry no path an export or a note could read.
+    expect(container.innerHTML).not.toContain(MONTH);
+
+    const html = await captureEditorHTML({
+      state: { doc: { descendants() {} } },
+      view: { dom: container },
+    } as unknown as Parameters<typeof captureEditorHTML>[0]);
+    vi.unstubAllGlobals();
+
+    const out = document.createElement("div");
+    out.innerHTML = html;
+    expect(out.querySelectorAll(".journal-photos-cell img")).toHaveLength(3);
+    expect(out.querySelector("g.journal-photos-cell text")?.textContent).toBe(
+      "mine",
+    );
+    expect(photoThumbnail.mock.calls.map(([path]) => path).sort()).toEqual(
+      ORIGINALS,
+    );
+    expect(html).not.toContain(MONTH);
+  });
+
+  /** An export clones the DOM in whatever task finds nothing pending, and that can fall
+   *  between the commit that inserts the cells and React's passive effects, which run in a
+   *  later task outside `act`. A MutationObserver callback is a microtask after that commit,
+   *  so it sees what such an export would see.
+   *  이것을 실패시키는 것: 칸의 등록을 `useLayoutEffect` 에서 `useEffect` 로 옮기는 것. */
+  test("a cell is registered in the commit that inserts it", async () => {
+    vi.useRealTimers();
+    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const actEnvironment = env.IS_REACT_ACT_ENVIRONMENT;
+    env.IS_REACT_ACT_ENVIRONMENT = false;
+    const host = document.createElement("div");
+    document.body.append(host);
+    const seen: boolean[] = [];
+    const observer = new MutationObserver(() => {
+      for (const cell of host.querySelectorAll(".journal-photos-cell")) {
+        seen.push(cellPhotoOf(cell) !== undefined);
+      }
+    });
+    observer.observe(host, { childList: true, subtree: true });
+    const root = createRoot(host);
+    try {
+      root.render(
+        <JournalDynamicBlock
+          content="range: 2026-08-01..2026-08-31"
+          language="journal-photos"
+          onShowSource={vi.fn()}
+        />,
+      );
+      for (let i = 0; i < 100 && seen.length === 0; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every(Boolean)).toBe(true);
+    } finally {
+      observer.disconnect();
+      root.unmount();
+      host.remove();
+      env.IS_REACT_ACT_ENVIRONMENT = actEnvironment;
+    }
   });
 
   /** A photo replaced at the same path (new modification time) is asked for again; the
