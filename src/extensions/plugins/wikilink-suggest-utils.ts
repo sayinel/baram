@@ -14,11 +14,7 @@ import {
   isTextFile,
 } from "../../utils/file-type";
 import { foldName } from "../../utils/name-fold";
-import {
-  dirname,
-  isWindowsSpelledPath,
-  normalizePath,
-} from "../../utils/path-utils";
+import { dirname, folderPrefix, slashPath } from "../../utils/path-utils";
 import {
   extractLeadingId,
   parseNoteTitle,
@@ -402,7 +398,9 @@ export function relativePrefixFolder(
   sourcePath: string,
   dirPrefix: string,
 ): string {
-  return slashPath(`${dirname(slashPath(sourcePath))}/${dirPrefix}`);
+  // Joined onto the folder as written and read once, as the click joins a
+  // relative link (`resolveRelativeTarget`).
+  return slashPath(`${folderPrefix(sourcePath)}${dirPrefix}`);
 }
 
 /**
@@ -461,18 +459,4 @@ function isHiddenPath(relativePath: string): boolean {
 function isJsonFile(fileName: string): boolean {
   // eslint-disable-next-line no-restricted-properties -- a file extension compared with an ASCII literal, not a name
   return fileName.toLowerCase().endsWith(".json");
-}
-
-/**
- * §61 `path` with `/` as its one separator and `.` · `..` resolved
- * (`normalizePath`), for comparing folders — not for I/O. In a Windows path
- * (`isWindowsSpelledPath`) `\` separates too: Rust lists `C:\…\plan.md`, and
- * the frontend joins `/` onto such paths (today's journal entry,
- * `getHierarchicalJournalPath`), so one path can carry both. In a Unix path
- * `\` is a character of a name and stays.
- */
-function slashPath(path: string): string {
-  return normalizePath(
-    isWindowsSpelledPath(path) ? path.replace(/\\/g, "/") : path,
-  );
 }

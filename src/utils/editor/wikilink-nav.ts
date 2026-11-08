@@ -11,24 +11,28 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { flattenFileTree } from "../file-search";
 import { isDateString, resolveJournalDir } from "../journal/journal";
 import { foldName } from "../name-fold";
-import { normalizePath } from "../path-utils";
+import { dirname, folderPrefix, slashPath } from "../path-utils";
 
 /**
  * §61 Resolve a relative wikilink target (starting with ./ or ../)
- * against the current file's directory.
+ * against the current file's directory — in `slashPath` form, the key a
+ * listed path is compared by, not a path to open.
+ *
+ * ‼️ The folder used to be cut at the last `/`. A Windows path Rust lists
+ * (`C:\…\notes\note.md`) has none, so the folder came out empty, `./plan`
+ * became `plan.md` — no listed path — and no relative link resolved on
+ * Windows; the click went on to create a new note instead (`use-navigation.ts`).
  */
 export function resolveRelativeTarget(
   target: string,
   sourcePath: string,
 ): null | string {
-  const sourceDir = sourcePath.substring(0, sourcePath.lastIndexOf("/"));
-  const isAbsolute = sourceDir.startsWith("/");
-  // Build candidate: join sourceDir + target, then normalize
-  const normalized = normalizePath(`${sourceDir}/${target}`);
-  // normalizePath reads absoluteness off the joined string, which starts with
-  // "/" even when sourcePath had no directory part at all ("note.md" → "").
-  // Absoluteness is a property of the source, not of the join.
-  const candidateBase = isAbsolute ? normalized : normalized.replace(/^\//, "");
+  // The target joined onto the note's folder as written and read once by
+  // `slashPath`, so the note's path decides whether a `\` separates — in the
+  // folder and in the target typed after it alike. The [[ menu reads `./` the
+  // same way (`relativePrefixFolder`). The join is absolute exactly when the
+  // note's path is: `note.md` gives `plan.md`, not `/plan.md`.
+  const candidateBase = slashPath(`${folderPrefix(sourcePath)}${target}`);
   // Try with .md extension
   const candidate = candidateBase.endsWith(".md")
     ? candidateBase
@@ -92,9 +96,10 @@ export function resolveWikilinkTarget(
       if (candidate) {
         // §390 Compared under `foldName` (NFC, lowercase, NFC — §390; spec
         // 0069 §3.3): the candidate joins the open note's folder as stored
-        // with the name as typed.
+        // with the name as typed. §61 Each listed path is read by `slashPath`,
+        // as the candidate was; the match hands back the path as listed.
         const wanted = foldName(candidate);
-        const match = flat.find((f) => foldName(f.path) === wanted);
+        const match = flat.find((f) => foldName(slashPath(f.path)) === wanted);
         if (match) return { path: match.path, name: match.name };
       }
     }
@@ -342,20 +347,24 @@ function resolveInSameFolder(
   target: string,
   sourceFilePath: string,
 ): null | { name: string; path: string } {
-  const dir = sourceFilePath.substring(0, sourceFilePath.lastIndexOf("/"));
+  // §61 The file's folder, read the way its path is spelled: `\` separates
+  // too in a Windows path. Cut at the last `/` alone, `C:\…\note.md` had no
+  // folder, no listed note was beside it, and `[[plan]]` built `/plan.md`.
+  const folderKey = dirname(slashPath(sourceFilePath));
   const key = foldName(target);
   const candidateName = key.endsWith(".md") ? target : `${target}.md`;
-  const candidatePath = `${dir}/${candidateName}`;
+  // Built on the folder as written, so its folder is spelled as the file's is
+  // (`C:\…\plan.md` beside `C:\…\note.md`) — an open tab is found by its path
+  // string (`openFileByPath`). The name is the target as typed.
+  const candidatePath = `${folderPrefix(sourceFilePath)}${candidateName}`;
 
   // Try to find in file tree if available (some other context may cover this folder)
   const { fileTree, rootPath } = useFileStore.getState();
   if (rootPath && fileTree.length > 0) {
     const flat = flattenFileTree(fileTree, rootPath);
     for (const f of flat) {
-      if (!f.path.startsWith(dir + "/")) continue;
       // Only same folder, not subfolders
-      const relFromDir = f.path.slice(dir.length + 1);
-      if (relFromDir.includes("/")) continue;
+      if (dirname(slashPath(f.path)) !== folderKey) continue;
 
       const stem = f.name.endsWith(".md") ? f.name.slice(0, -3) : f.name;
       if (foldName(stem) === key) {

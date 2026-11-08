@@ -3,12 +3,14 @@ import { describe, expect, test } from "vitest";
 import {
   decodePercent,
   extractNamespace,
+  folderPrefix,
   getRelativePath,
   isDescendantPath,
   isImageFile,
   lastPathSegment,
   normalizePath,
   resolveNameConflict,
+  slashPath,
 } from "../path-utils";
 
 describe("normalizePath", () => {
@@ -188,6 +190,41 @@ describe("lastPathSegment (issue 595)", () => {
     expect(lastPathSegment("\\\\server\\share\\ns")).toBe("ns");
     // A drive-relative `C:foo` is not spelled as a Windows path here.
     expect(lastPathSegment("C:foo")).toBe("C:foo");
+  });
+});
+
+describe("§61 folderPrefix (issue 595)", () => {
+  test("keeps the folder as written, its last separator included", () => {
+    expect(folderPrefix("C:\\vault\\notes\\a.md")).toBe("C:\\vault\\notes\\");
+    expect(folderPrefix("C:\\vault/notes/a.md")).toBe("C:\\vault/notes/");
+    expect(folderPrefix("\\\\server\\share\\a.md")).toBe("\\\\server\\share\\");
+    expect(folderPrefix("/v/notes/a.md")).toBe("/v/notes/");
+    expect(folderPrefix("/a.md")).toBe("/");
+    expect(folderPrefix("a.md")).toBe("");
+  });
+
+  test("leaves a POSIX backslash in the name", () => {
+    expect(folderPrefix("/v/notes/a\\b.md")).toBe("/v/notes/");
+  });
+});
+
+describe("§61 slashPath (issue 595)", () => {
+  test("reads a backslash as a separator in a path spelled as a Windows path", () => {
+    expect(slashPath("C:\\vault\\notes\\a.md")).toBe("C:/vault/notes/a.md");
+    // The frontend joins `/` onto a path Rust listed with `\`.
+    expect(slashPath("C:\\vault/notes/a.md")).toBe("C:/vault/notes/a.md");
+    expect(slashPath("\\\\server\\share\\notes\\a.md")).toBe(
+      "/server/share/notes/a.md",
+    );
+  });
+
+  test("keeps a backslash in a POSIX path, a character of a name", () => {
+    expect(slashPath("/v/notes/a\\b.md")).toBe("/v/notes/a\\b.md");
+  });
+
+  test("resolves . and .. on both", () => {
+    expect(slashPath("/v/notes/../a/./b.md")).toBe("/v/a/b.md");
+    expect(slashPath("C:\\v\\notes\\..\\a/./b.md")).toBe("C:/v/a/b.md");
   });
 });
 
