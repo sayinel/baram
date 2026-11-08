@@ -176,11 +176,19 @@ export function isDescendantPath(candidate: string, dir: string): boolean {
  * callers want.
  */
 export function lastPathSegment(path: string): string {
-  const windows = hasDriveLetter(path) || path.startsWith("\\\\");
-  const at = windows
+  const at = isWindowsSpelledPath(path)
     ? Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"))
     : path.lastIndexOf("/");
   return at >= 0 ? path.substring(at + 1) : path;
+}
+
+/**
+ * Is `path` spelled as a Windows path — a drive letter (`C:\…`, `C:/…`) or a
+ * UNC root (`\\server\…`) — so that `\` separates its parts as `/` does? On
+ * Unix a backslash is a character of a name (issue 595).
+ */
+export function isWindowsSpelledPath(path: string): boolean {
+  return hasDriveLetter(path) || path.startsWith("\\\\");
 }
 
 /**

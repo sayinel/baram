@@ -15,6 +15,11 @@ import {
 } from "../../utils/file-type";
 import { foldName } from "../../utils/name-fold";
 import {
+  dirname,
+  isWindowsSpelledPath,
+  normalizePath,
+} from "../../utils/path-utils";
+import {
   extractLeadingId,
   parseNoteTitle,
 } from "../../utils/zettelkasten/parse-note-title";
@@ -369,17 +374,35 @@ export function namespaceItems(
   dirPrefix: string,
 ): WikilinkSuggestionItem[] {
   // §390 `targetDir` joins the open note's folder as stored with the folders
-  // typed, so the two folders compare under foldName.
-  const dirKey = foldName(targetDir);
+  // typed, so the two folders compare under foldName. §61 Both are read by
+  // `slashPath`, so a Windows path Rust listed (`C:\…\plan.md`) has a folder.
+  const dirKey = foldName(slashPath(targetDir));
   return files
-    .filter(
-      (f) => foldName(f.path.substring(0, f.path.lastIndexOf("/"))) === dirKey,
-    )
+    .filter((f) => foldName(dirname(slashPath(f.path))) === dirKey)
     .map((f) => ({
       ...f,
       label: `${dirPrefix}${f.label}`,
       target: `${dirPrefix}${f.target}`,
     }));
+}
+
+/**
+ * §61 The folder a relative prefix names from the note it is typed in — `./`
+ * that note's folder, `../` its parent, `./a/` a folder inside it — in
+ * `slashPath` form, as `namespaceItems` compares it.
+ *
+ * ‼️ The folder used to be resolved by splitting on `/` and skipping empty
+ * parts. That dropped the leading `/` of a macOS or Linux path —
+ * `/Users/me/vault/notes` became `Users/me/vault/notes`, a folder no listed
+ * file is in — so every `[[./` listed nothing there. A Windows path Rust
+ * listed (`C:\…\note.md`) has no `/` to split on, and `[[./` listed files
+ * from every folder of the vault.
+ */
+export function relativePrefixFolder(
+  sourcePath: string,
+  dirPrefix: string,
+): string {
+  return slashPath(`${dirname(slashPath(sourcePath))}/${dirPrefix}`);
 }
 
 /**
@@ -438,4 +461,18 @@ function isHiddenPath(relativePath: string): boolean {
 function isJsonFile(fileName: string): boolean {
   // eslint-disable-next-line no-restricted-properties -- a file extension compared with an ASCII literal, not a name
   return fileName.toLowerCase().endsWith(".json");
+}
+
+/**
+ * §61 `path` with `/` as its one separator and `.` · `..` resolved
+ * (`normalizePath`), for comparing folders — not for I/O. In a Windows path
+ * (`isWindowsSpelledPath`) `\` separates too: Rust lists `C:\…\plan.md`, and
+ * the frontend joins `/` onto such paths (today's journal entry,
+ * `getHierarchicalJournalPath`), so one path can carry both. In a Unix path
+ * `\` is a character of a name and stays.
+ */
+function slashPath(path: string): string {
+  return normalizePath(
+    isWindowsSpelledPath(path) ? path.replace(/\\/g, "/") : path,
+  );
 }
