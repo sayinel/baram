@@ -36,11 +36,19 @@ When a version is found you get a dialog with the release notes and an **Install
 button. Baram downloads the update, replaces itself, and restarts — on macOS, Windows, and
 Linux AppImage alike.
 
-Two cases fall back to opening the releases page for a manual download instead:
+If a document has unsaved changes, in the main window or a separate window, Baram asks first,
+once the download has finished: **Save & Install**, **Don't Save** or **Cancel**. After
+**Cancel** the downloaded update is kept, so pressing **Install & Restart** again asks without
+downloading it again.
 
-- **Linux `.deb` and `.rpm`** installs, which the updater cannot perform.
-- **Any install that fails.** The dialog says what went wrong and opens the page, so a
-  failed replace never leaves you without a way forward.
+If the download or the install fails, the dialog says Baram can't install the update
+automatically and opens the releases page for a manual download, so a failed replace never
+leaves you without a way forward.
+
+On a Linux `.deb` or `.rpm` install, the updater installs the new package with `dpkg` or
+`rpm` through `pkexec` or `sudo`, which ask for an administrator password; if neither can ask,
+the install fails and the releases page opens. This has not been tried on a Linux machine
+yet.
 
 > **Updating to v0.7.0 on macOS is still manual.** In-place installing arrived *in* v0.7.0,
 > and the version performing an update is the one you are updating *from* — so v0.6.x asks
@@ -52,6 +60,11 @@ Two cases fall back to opening the releases page for a manual download instead:
 > area outside the Settings panel to close Settings; the dialog is waiting behind it.
 > Escape closes the dialog rather than Settings, so use the click. From v0.7.1 onward it
 > appears on top.
+
+> **Updating to v0.8.0 does not ask about unsaved changes.** The question arrived *in*
+> v0.8.0, and the version performing an update is the one you are updating *from* — so on
+> v0.7.x, save your documents, in separate windows too, before you press **Install &
+> Restart**. From v0.8.0 onward Baram asks.
 
 ---
 

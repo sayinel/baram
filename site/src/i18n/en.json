@@ -17,6 +17,8 @@
   "faq.title": "FAQ",
   "features.ai.d": "Inline AI edits (Cmd+J), Ghost Text autocomplete, and AI chat — powered by Claude, OpenAI, Gemini, or local Ollama.",
   "features.ai.t": "AI-native editing",
+  "features.cli.d": "On macOS and Linux, query a vault from a terminal — list and read notes, search them, follow links, list tags and tasks — or let an AI client such as Claude Code do the same over MCP. Every command only reads.",
+  "features.cli.t": "Command line & MCP",
   "features.journal.d": "A diary-focused daily-notes space with calendar, photos, and streaks — plus an atomic-notes space where a capture's tags are its address: tag it with a note's name and it lands inside that note.",
   "features.journal.t": "Journal & Zettelkasten",
   "features.light.d": "~10MB binary, instant startup, low memory. A desktop app that feels like the wind.",

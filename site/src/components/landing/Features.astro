@@ -1,12 +1,12 @@
 ---
-// 카드 11개는 키 목록에서 돌린다 — 마크업을 11번 복제하면 하나를 고칠 때 나머지가 낡는다.
+// 카드는 키 목록에서 돌린다 — 마크업을 카드마다 복제하면 하나를 고칠 때 나머지가 낡는다.
 import { useTranslations, type Locale, type MessageKey } from "../../i18n";
 const { locale } = Astro.props as { locale: Locale };
 const t = useTranslations(locale);
 
 const CARDS = [
-  "wysiwyg", "roundtrip", "ai", "links", "pdf", "rich",
-  "vault", "journal", "tasks", "plugins", "light",
+  "wysiwyg", "roundtrip", "ai", "cli", "links", "pdf",
+  "rich", "vault", "journal", "tasks", "plugins", "light",
 ] as const;
 ---
 <section id="features" class="section">

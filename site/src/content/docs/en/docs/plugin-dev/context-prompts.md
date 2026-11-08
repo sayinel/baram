@@ -39,17 +39,21 @@ ctx.commands.register("insert-template", async () => {
 A prompt opens only while **one of your plugin's commands, started by the user, is still
 running** — from the command palette, your status-bar item, your item in the editor's
 right-click menu, the file tree's right-click menu or the slash menu, or a shortcut the user
-gave the command — and only until the user **types, clicks or drops something outside the
+gave the command — or while your handlers answer the user's click on a `data-action` element
+in a [code block](/en/docs/plugin-dev/code-blocks/) your plugin drew or, for a sandboxed
+plugin, in one of its [sidebar panels](/en/docs/plugin-dev/sidebar-panels/), for as long as
+those pages say, and only until the user **types, clicks or drops something outside the
 prompt**.
 
 - Ask before the promise your command handler returned settles. Once it settles, and no other
-  command of yours is running, requests are refused.
+  command or `data-action` handler of yours is running, requests are refused.
 - The right belongs to your plugin, not to one call: while a command runs, your event handlers
   and timers may prompt too.
 - The first key, click, text input (dictation included) or drop outside the prompt ends the
   right. Keys typed between two steps of a flow — after one prompt closes, before the next
   opens — go where focus is and end it too. A modifier key alone does not count.
-- Cancelling ends it as well: later requests are refused until the user runs a command again.
+- Cancelling ends it as well: later requests are refused until the user runs one of your commands again or
+  clicks one of your `data-action` elements.
   Picking or entering a value does not — "pick a template, then type a title" works.
 - A sandboxed command has 30 seconds from its start to its first prompt, and again from each
   prompt closing to the next. Time spent in a prompt does not count.
