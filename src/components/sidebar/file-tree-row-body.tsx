@@ -5,6 +5,8 @@
 // so a subscription there would re-render all of them (spec 0074 §2 "다시 그리기", review I1). The chevron
 // stays in the row, outside this box. The box must shrink (`.file-tree-row-body` in `file-tree.css`) or the
 // name inside never truncates.
+import { useRef } from "react";
+
 import type { DecorationIcon } from "../../plugins/file-decorations/file-decoration-store";
 import type { FileEntry } from "../../stores/file/file";
 
@@ -147,6 +149,21 @@ export function RenameInput({
   onConfirm: (value: string) => void;
   placeholder?: string;
 }): React.JSX.Element {
+  // §33 — one input, one outcome: the first of Enter, Escape or a blur decides, and nothing after it does.
+  // A blur after Enter or Escape is not the person leaving the input. It is the decision's own effect:
+  // `handleConfirmRename` and `handleCancelRename` (use-file-tree-rename.ts) give focus back to the tree
+  // while this input is still mounted, and that blur used to confirm again — Enter sent a second rename
+  // that found the file already moved, and Escape renamed to whatever had been typed. This input has two
+  // parents, `FileTreeRowBody` above and `CreateInputRow` (FileTreeNode.tsx). `FileTree.tsx` gives them
+  // the handlers of `useFileTreeRename` and `useFileTreeCrud`, and each of those handlers clears the state
+  // that mounts this input on every path, before awaiting anything. So no input ever needs a second
+  // outcome, and one that did would have to be mounted anew.
+  const decided = useRef(false);
+  const decide = (outcome: () => void): void => {
+    if (decided.current) return;
+    decided.current = true;
+    outcome();
+  };
   return (
     <input
       autoFocus={!defaultValue}
@@ -154,21 +171,24 @@ export function RenameInput({
       defaultValue={defaultValue}
       onBlur={(e) => {
         const val = e.target.value;
-        if (defaultValue !== undefined) {
-          onConfirm(val);
-        } else {
-          if (val.trim()) onConfirm(val);
-          else onCancel();
-        }
+        decide(() => {
+          if (defaultValue !== undefined) {
+            onConfirm(val);
+          } else {
+            if (val.trim()) onConfirm(val);
+            else onCancel();
+          }
+        });
       }}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          onConfirm((e.target as HTMLInputElement).value);
+          const val = (e.target as HTMLInputElement).value;
+          decide(() => onConfirm(val));
         } else if (e.key === "Escape") {
           e.preventDefault();
-          onCancel();
+          decide(onCancel);
         }
         e.stopPropagation();
       }}
