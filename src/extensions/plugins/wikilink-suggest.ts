@@ -42,6 +42,7 @@ import {
   loadFileHeadings,
   longestCommonPrefix,
   namespaceItems,
+  relativePrefixFolder,
   searchKey,
   shouldBlockCompletedWikilink,
   type WikilinkSuggestionItem,
@@ -349,30 +350,17 @@ export const WikilinkSuggest = Extension.create({
             const { rootPath } = useFileStore.getState();
 
             if (sourcePath && rootPath) {
-              const sourceDir = sourcePath.substring(
-                0,
-                sourcePath.lastIndexOf("/"),
-              );
               // Find the last separator in the query to split dir prefix from file query
               const lastSlash = query.lastIndexOf("/");
               const dirPrefix = query.substring(0, lastSlash + 1); // e.g. "./" or "../sub/"
               const fileQuery = query.substring(lastSlash + 1);
 
-              // Resolve the target directory
-              const targetParts = `${sourceDir}/${dirPrefix}`.split("/");
-              const resolved: string[] = [];
-              for (const p of targetParts) {
-                if (p === "." || p === "") continue;
-                if (p === "..") {
-                  resolved.pop();
-                } else {
-                  resolved.push(p);
-                }
-              }
-              const targetDir = resolved.join("/");
-
               // Filter files in the target directory, prefix target with relative path
-              const dirFiles = namespaceItems(files, targetDir, dirPrefix);
+              const dirFiles = namespaceItems(
+                files,
+                relativePrefixFolder(sourcePath, dirPrefix),
+                dirPrefix,
+              );
 
               if (!fileQuery) return dirFiles.slice(0, 20);
 
