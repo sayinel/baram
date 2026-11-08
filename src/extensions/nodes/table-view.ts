@@ -27,9 +27,16 @@ import { TableView } from "@tiptap/extension-table";
  * `update` therefore lets Tiptap do everything it does, and then gives each
  * `<col>` the style the constructor would give a new one for this node: only
  * `width` for a column with a colwidth, only `min-width` for one without.
- * A drag does not pass through here while it moves: prosemirror-tables draws
- * each move on the `<col>`s itself, without a transaction, and the width the
- * drag ends on comes back as the column's new colwidth.
+ *
+ * A drag reaches `update` too, though not through its moves: prosemirror-tables
+ * draws each move on the `<col>`s itself, without a transaction. But while its
+ * resize handle is shown, every transaction updates this view — the handle is a
+ * widget decoration built anew for each state, so the table's decorations never
+ * compare equal — and the drag starts with one (`setDragging`). Such an update
+ * puts a column with a colwidth back at the document's width, as Tiptap's own
+ * does, and takes the drawn width off a column without one, where Tiptap left it;
+ * the next move draws it again. The width the drag ends on comes back as the
+ * column's new colwidth.
  */
 export class BaramTableView extends TableView {
   override update(node: ProseMirrorNode): boolean {

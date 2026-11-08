@@ -105,7 +105,7 @@ describe("Table: 제자리 갱신 뒤의 <col> 은 새로 그린 표와 같다",
     const editor = mount(doc(table(W, { ...W, colwidth: [80] })));
     const before = tableOf(editor);
 
-    // The shared editor installs another tab's document this way (`replaceEditorState`).
+    // The shared editor installs another tab's document this way (`replaceEditorStateWithVim`).
     const next = editor.schema.nodeFromJSON(doc(table(NONE, NONE)));
     editor.view.updateState(
       EditorState.create({ doc: next, plugins: editor.state.plugins }),
