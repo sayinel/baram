@@ -434,7 +434,8 @@ PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 �
     mermaid `$$…$$` 수식(§5.1/§5.5 #825), 성능(#934 · #935 · #936 · #954 · #955), VoiceOver 파일 트리(§4.4 #922), zip 보안
     권고(§53 #940). 새 API 를 보이려고 만든 예제 플러그인 넷(backlinks-block · link-count · sketch-pad · tree-badges)의
     `engines.baram` 은 `>=0.8.0` 이다 — 레지스트리에 올린다면 앱 v0.8.0 이 발행된 **뒤에**. 예제 ai-summary 와 시험
-    픽스처 sandbox-smoke · malicious-fixture 도 새 API 를 부르지만 게시하지 않으므로 `>=0.5.0` 그대로다
+    픽스처 sandbox-smoke · malicious-fixture 도 새 API 를 부르지만 게시하지 않으므로 `>=0.5.0` 그대로다. 릴리스 PR #958,
+    그 앞에 앱 확인에서 찾은 수정 #957
   - 🚧 미착수: Canvas, Agent Mode(§11.6), Knowledge Q&A(§11.4), 실시간 협업, E2E 스위트
 
 > 버전 번호는 추측하지 말 것 — `git tag --sort=-creatordate`와 `package.json`의 `version`이 출처다.
