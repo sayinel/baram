@@ -436,7 +436,8 @@ PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 �
     권고(§53 #940), 파일 트리 이름 바꾸기가 확정 한 번에 rename 을 두 번 보내고 Esc 도 입력한 이름으로
     rename 하던 결함(§33 #959),
     `[[./` · `[[../` 제안이 열린 노트의 폴더를 못 찾던 결함(§61 #960), Windows 경로의 노트에서 상대 위키링크 클릭이
-    노트를 못 찾던 결함(§61 #961). 새 API 를 보이려고 만든 예제 플러그인 넷(backlinks-block · link-count · sketch-pad · tree-badges)의
+    노트를 못 찾던 결함(§61 #961), Windows 경로에서 다른 vault 경로 · 저널 · 마크다운 링크 · Skills 경로가 대상을 못 찾던
+    결함(§87/§56l/§278.1/§72 #962). 새 API 를 보이려고 만든 예제 플러그인 넷(backlinks-block · link-count · sketch-pad · tree-badges)의
     `engines.baram` 은 `>=0.8.0` 이다 — 레지스트리에 올린다면 앱 v0.8.0 이 발행된 **뒤에**. 예제 ai-summary 와 시험
     픽스처 sandbox-smoke · malicious-fixture 도 새 API 를 부르지만 게시하지 않으므로 `>=0.5.0` 그대로다. 릴리스 PR #958,
     그 앞에 앱 확인에서 찾은 수정 #957
