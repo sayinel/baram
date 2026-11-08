@@ -242,3 +242,69 @@ describe("§390 a file the disk stores decomposed (NFD)", () => {
     );
   });
 });
+
+describe("§278.1 a Windows note's folder", () => {
+  // `sourceDir` is the folder as written (`folderOf`): the caller passes
+  // `C:\…\notes` for `C:\…\notes\note.md`.
+  const WIN = [
+    { path: "C:\\v\\notes\\Paper.pdf" },
+    { path: "C:\\v\\notes\\sub\\Nested.pdf" },
+    { path: "C:\\v\\Root.png" },
+  ];
+
+  it("finds a listed file and returns it as listed", () => {
+    // What fails this: comparing the join (`C:\v\notes/Paper.pdf`) with the
+    // listed path as written.
+    expect(resolveLocalLinkTarget("Paper.pdf", "C:\\v\\notes", WIN)).toBe(
+      "C:\\v\\notes\\Paper.pdf",
+    );
+    expect(resolveLocalLinkTarget("../Root.png", "C:\\v\\notes", WIN)).toBe(
+      "C:\\v\\Root.png",
+    );
+  });
+
+  it("reads a typed \\ as a separator, on a drive and on a UNC share", () => {
+    // What fails this: deciding whether `\` separates from anything but the
+    // whole join — on a UNC share a folder read first is `/server/…`, which
+    // no longer reads as a Windows path.
+    expect(resolveLocalLinkTarget("sub\\Nested.pdf", "C:\\v\\notes", WIN)).toBe(
+      "C:\\v\\notes\\sub\\Nested.pdf",
+    );
+    const UNC = [{ path: "\\\\srv\\share\\v\\notes\\sub\\Nested.pdf" }];
+    expect(
+      resolveLocalLinkTarget(
+        "sub\\Nested.pdf",
+        "\\\\srv\\share\\v\\notes",
+        UNC,
+      ),
+    ).toBe("\\\\srv\\share\\v\\notes\\sub\\Nested.pdf");
+  });
+
+  it("does not match a link from / with a file on a UNC share", () => {
+    // `slashPath` reads `\\\\srv\\share\\v\\Paper.pdf` as `/srv/share/v/Paper.pdf`,
+    // the key of the link `/srv/share/v/Paper.pdf` — which on Windows names
+    // the current drive's folder. What fails this: comparing keys alone.
+    const UNC = [{ path: "\\\\srv\\share\\v\\Paper.pdf" }];
+    expect(
+      resolveLocalLinkTarget(
+        "/srv/share/v/Paper.pdf",
+        "\\\\srv\\share\\v\\notes",
+        UNC,
+      ),
+    ).toBeNull();
+    expect(
+      resolveLocalLinkTarget("../Paper.pdf", "\\\\srv\\share\\v\\notes", UNC),
+    ).toBe("\\\\srv\\share\\v\\Paper.pdf");
+  });
+
+  it("on POSIX a backslash stays a character of a name", () => {
+    // What fails this: folding `\` on every platform (`toPosixPath`).
+    const files = [
+      { path: "/v/notes/sub/x.pdf" },
+      { path: "/v/notes/sub\\x.pdf" },
+    ];
+    expect(resolveLocalLinkTarget("sub\\x.pdf", "/v/notes", files)).toBe(
+      "/v/notes/sub\\x.pdf",
+    );
+  });
+});

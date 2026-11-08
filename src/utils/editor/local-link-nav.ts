@@ -13,7 +13,12 @@
 // ‼️ 이 함수는 해석을 **추가만** 한다. 지금 앱에서 열리는 링크(`.md`/`.markdown`)는
 // 호출부가 별도로 계속 붙잡으므로, 여기서 못 찾았다고 기존 링크가 외부로 새지 않는다.
 import { foldName } from "../name-fold";
-import { decodePercent, normalizePath } from "../path-utils";
+import {
+  decodePercent,
+  isWindowsSpelledPath,
+  openablePath,
+  slashPath,
+} from "../path-utils";
 
 /** 트리에서 조회할 때 필요한 최소 형태 — `FlatFile`이 이것을 만족한다. */
 export interface LocalLinkFile {
@@ -40,7 +45,8 @@ export function isMarkdownHref(filePart: string): boolean {
  * 스토어도 에디터도 건드리지 않으므로 결정 자체를 그대로 단정할 수 있다.
  *
  * @param href      링크 href 전체(`#fragment` 포함 가능).
- * @param sourceDir 링크가 들어 있는 문서의 디렉터리. 없으면 상대 경로는 못 푼다.
+ * @param sourceDir 링크가 들어 있는 문서의 디렉터리, 쓴 그대로(`folderOf`). 없으면
+ *                  상대 경로는 못 푼다.
  * @param files     현재 컨텍스트의 평탄화된 파일 목록.
  */
 export function planLocalLinkNavigation(
@@ -56,12 +62,14 @@ export function planLocalLinkNavigation(
   // ‼️ 마크다운 폴백은 트리 조회가 **실패한 뒤에만** 돈다. 이것이 §278.1을
   // '해석을 추가만 하는' 변경으로 만든다: 트리에 없는 `.md` href도 예전처럼
   // 열기를 시도하고(같은 실패 로그를 남기고), OS opener로 새지 않는다.
+  // §61 여는 경로는 `openablePath` 로 정리한다 — Unix 에서는 `normalizePath` 와
+  // 같고(`/vault/notes/../gone.md` 그대로면 이미 열린 탭과 문자열이 달라 같은
+  // 파일이 두 번 열린다), Windows 경로는 `\` 철자로 루트를 지켜 정리한다. Rust 는
+  // `..` 가 남은 경로를 읽기 전에 거부한다(`validate_path`).
   const isMarkdown = isMarkdownHref(filePart);
   const target =
     existing ??
-    (isMarkdown && sourceDir
-      ? normalizePath(`${sourceDir}/${filePart}`)
-      : null);
+    (isMarkdown && sourceDir ? openablePath(`${sourceDir}/${filePart}`) : null);
 
   // 열 것이 없어도 마크다운이면 가져간다: 기준 디렉터리가 없으면 풀 수가 없고,
   // §278.1 이전 코드도 이 자리에서 아무 일도 하지 않았다.
@@ -80,11 +88,16 @@ export function planLocalLinkNavigation(
 }
 
 /**
- * 인라인 링크의 경로 부분(`#fragment` 제외)을 열 수 있는 절대 경로로 바꾼다.
+ * 인라인 링크의 경로 부분(`#fragment` 제외)을 트리에 적힌 파일의 경로로 바꾼다.
  * 트리에 없으면 `null` — 호출부가 외부 URL로 처리하도록.
  *
+ * §61 후보와 트리의 경로는 둘 다 `slashPath` 로 읽어 비교하고, 돌려주는 것은 트리에
+ * 적힌 경로다 — 열린 탭은 경로 문자열로 찾으므로(`openFileByPath`) Windows 에서
+ * Rust 가 나열한 `C:\…\Paper.pdf` 철자여야 같은 파일이 두 번 열리지 않는다.
+ *
  * @param filePart  링크의 경로 부분. 상대 경로이거나 `/`로 시작하는 절대 경로.
- * @param sourceDir 링크가 들어 있는 문서의 디렉터리. 없으면 상대 경로는 못 푼다.
+ * @param sourceDir 링크가 들어 있는 문서의 디렉터리, 쓴 그대로(`folderOf`). 없으면
+ *                  상대 경로는 못 푼다.
  * @param files     현재 컨텍스트의 평탄화된 파일 목록.
  */
 export function resolveLocalLinkTarget(
@@ -95,8 +108,16 @@ export function resolveLocalLinkTarget(
   const candidates = localLinkCandidates(filePart, sourceDir);
   if (candidates.length === 0 || files.length === 0) return null;
 
+  const listed = files.map((f) => ({
+    key: slashPath(f.path),
+    path: f.path,
+    windows: isWindowsSpelledPath(f.path),
+  }));
   for (const candidate of candidates) {
-    if (files.some((f) => f.path === candidate)) return candidate;
+    const hit = listed.find(
+      (f) => f.windows === candidate.windows && f.key === candidate.key,
+    );
+    if (hit) return hit.path;
   }
   // `foldName` 기준(NFC → 소문자 → NFC, §390) 비교는 정확 일치가 전부 실패한
   // 뒤에만. macOS/Windows의 기본 파일시스템은 대소문자를 구분하지 않고, macOS 의
@@ -104,15 +125,27 @@ export function resolveLocalLinkTarget(
   // 파일명과 다를 수 있다. 순서를 지켜야 대소문자나 정규화만 다른 두 파일이 공존하는
   // 파일시스템에서 정확한 쪽이 이긴다.
   for (const candidate of candidates) {
-    const key = foldName(candidate);
-    const hit = files.find((f) => foldName(f.path) === key);
+    const key = foldName(candidate.key);
+    const hit = listed.find(
+      (f) => f.windows === candidate.windows && foldName(f.key) === key,
+    );
     if (hit) return hit.path;
   }
   return null;
 }
 
 /**
- * 시도해 볼 절대 경로들. 가장 그럴듯한 것부터.
+ * 시도해 볼 절대 경로들, `slashPath` 형태로(비교용 — 여는 경로가 아니다). 가장
+ * 그럴듯한 것부터.
+ *
+ * §61 상대 링크는 쓴 그대로의 폴더에 `/` 로 이어 붙인 뒤 `slashPath` 로 한 번 읽는다.
+ * 그래서 상대 링크에서 `\` 를 구분자로 읽을지는 문서 경로가 정한다 — Windows
+ * 경로면 링크에 친 `\` 도 구분자이고, Unix 에서는 이름의 글자다(issue 595). `/` 로
+ * 시작하는 링크는 제 철자대로 읽는다.
+ *
+ * 후보마다 Windows 표기인지를 함께 낸다. `slashPath` 는 UNC 루트의 `\\` 를 `/`
+ * 하나로 읽으므로 `/srv/share/x.pdf` 라는 링크와 `\\srv\share\x.pdf` 라는 파일이 같은
+ * 키가 되는데, Windows 에서 앞의 것은 현재 드라이브의 경로다 — 비교는 같은 표기끼리만.
  *
  * ‼️ 퍼센트 디코딩한 후보를 함께 낸다. 우리 직렬화기는 공백이 든 이름을
  * `[label](<My Paper.pdf>)`로 쓰지만(꺾쇠), Obsidian을 비롯한 다른 편집기와
@@ -123,18 +156,27 @@ export function resolveLocalLinkTarget(
 function localLinkCandidates(
   filePart: string,
   sourceDir: null | string,
-): string[] {
+): { key: string; windows: boolean }[] {
   const forms = [filePart];
   const decoded = decodePercent(filePart);
   if (decoded !== filePart) forms.push(decoded);
 
-  const candidates: string[] = [];
+  const candidates: { key: string; windows: boolean }[] = [];
   for (const form of forms) {
     if (!form) continue;
     // `/`로 시작하면 OS 절대 경로로 읽는다. 예전 코드는 이것도 현재 디렉터리에
     // 이어 붙여 `/vault/dir//abs/path`를 만들었다 — 어떤 파일도 가리키지 못한다.
-    if (form.startsWith("/")) candidates.push(normalizePath(form));
-    else if (sourceDir) candidates.push(normalizePath(`${sourceDir}/${form}`));
+    const path = form.startsWith("/")
+      ? form
+      : sourceDir
+        ? `${sourceDir}/${form}`
+        : null;
+    if (path !== null) {
+      candidates.push({
+        key: slashPath(path),
+        windows: isWindowsSpelledPath(path),
+      });
+    }
   }
   return candidates;
 }

@@ -34,7 +34,7 @@ import {
 import { flattenFileTree } from "../utils/file-search";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
-import { dirname } from "../utils/path-utils";
+import { folderOf, openablePath } from "../utils/path-utils";
 import { isZettelId } from "../utils/zettelkasten/parse-note-title";
 
 interface UseNavigationParams {
@@ -443,12 +443,14 @@ export function useNavigation({
         return true;
       }
 
-      // Resolve relative paths against the current file's directory
+      // Resolve relative paths against the current file's directory, as
+      // written: §61 `dirname` reads `/` alone, and a Windows path Rust lists
+      // (`C:\…\notes\note.md`) had no folder there.
       const { activeTabId: currentTabId, tabs: currentTabs } =
         useEditorStore.getState();
       const activeTab = currentTabs.find((t) => t.id === currentTabId);
       const sourceDir = activeTab?.filePath
-        ? dirname(activeTab.filePath)
+        ? folderOf(activeTab.filePath)
         : null;
 
       const { fileTree, rootPath } = useFileStore.getState();
@@ -541,22 +543,21 @@ export function useNavigation({
       if (!detail?.path) return;
       const filePath = detail.path;
 
-      // Resolve relative paths against current file's directory or rootPath
+      // Resolve relative paths against current file's directory or rootPath.
+      // §61 The folder is read as written (`folderOf`): cut at the last `/`
+      // alone, a Windows path Rust lists had none and the click opened
+      // `/agents/x.md`. The join is resolved in its own spelling
+      // (`openablePath`): Rust refuses a path with a `..` segment before it
+      // reads, and an open tab is found by its path string, which on Windows
+      // Rust spells with `\`.
       const resolveAbsolute = (p: string): null | string => {
         if (p.startsWith("/")) return p;
         const { activeTabId: curTabId, tabs: curTabs } =
           useEditorStore.getState();
         const curTab = curTabs.find((t) => t.id === curTabId);
-        if (curTab?.filePath) {
-          const curDir = curTab.filePath.substring(
-            0,
-            curTab.filePath.lastIndexOf("/"),
-          );
-          return `${curDir}/${p}`;
-        }
         const { rootPath } = useFileStore.getState();
-        if (rootPath) return `${rootPath}/${p}`;
-        return null;
+        const dir = curTab?.filePath ? folderOf(curTab.filePath) : rootPath;
+        return dir ? openablePath(`${dir}/${p}`) : null;
       };
 
       const resolved = resolveAbsolute(filePath);
