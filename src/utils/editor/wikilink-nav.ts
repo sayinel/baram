@@ -120,14 +120,18 @@ export function resolveWikilinkTarget(
       // §390 The settings spell the journal's paths and the disk spells the
       // tree's, so the notes/ loop and the date lookup below compare them
       // composed (NFC), case as written — paths, not names (spec 0069 D4).
-      // `rel` is cut from the composed path at a length measured on the
-      // composed folder, never from `f.path`, a spelling it was not measured on.
-      const notesDir = `${journalDir}/notes`.normalize("NFC");
+      // §61 Both are read by `slashPath` too: the journal's folder is joined
+      // with `/` and Rust lists `C:\…\notes\plan.md` on Windows, so neither
+      // the start of a path nor a date's path ever met there. `rel` is cut from
+      // that reading of the path at a length measured on the same reading of
+      // the folder, never from `f.path`, a spelling it was not measured on.
+      const notesDir = slashPath(`${journalDir}/notes`.normalize("NFC"));
 
-      // Try notes/name.md (supports folder/name too)
+      // Try notes/name.md (supports folder/name too). The `/` after the folder
+      // is its boundary: `notes-old/plan.md` is not in notes/.
       for (const f of flat) {
-        const path = f.path.normalize("NFC");
-        if (!path.startsWith(notesDir)) continue;
+        const path = slashPath(f.path.normalize("NFC"));
+        if (!path.startsWith(`${notesDir}/`)) continue;
         const noteStem = f.name.endsWith(".md") ? f.name.slice(0, -3) : f.name;
         if (foldName(noteStem) === targetKey) {
           return { path: f.path, name: f.name };
@@ -142,12 +146,15 @@ export function resolveWikilinkTarget(
       // Try date string → daily path
       if (isDateString(target)) {
         const [y, m] = target.split("-");
-        const dailyPath = (
-          journalUseHierarchy
+        const dailyPath = slashPath(
+          (journalUseHierarchy
             ? `${journalDir}/daily/${y}/${m}/${target}.md`
             : `${journalDir}/${target}.md`
-        ).normalize("NFC");
-        const match = flat.find((f) => f.path.normalize("NFC") === dailyPath);
+          ).normalize("NFC"),
+        );
+        const match = flat.find(
+          (f) => slashPath(f.path.normalize("NFC")) === dailyPath,
+        );
         if (match) return { path: match.path, name: match.name };
       }
     }
@@ -319,10 +326,14 @@ function resolveCrossVaultTarget(
     const byStem = findNoteByStem(flat, target);
     if (byStem) return { path: byStem.path, name: byStem.name };
 
-    // Try path match (e.g., "skills/analyzer")
+    // Try path match (e.g., "skills/analyzer"). §61 The path after the root
+    // is read by `slashPath`, the root measured in the same reading: Rust
+    // lists `skills\analyzer.md` on Windows, and a UNC root reads one
+    // character shorter than it is written.
     const targetKey = foldName(target);
+    const rootKey = slashPath(rootPath);
     for (const f of flat) {
-      const rel = f.path.slice(rootPath.length + 1);
+      const rel = slashPath(f.path).slice(rootKey.length + 1);
       const relNoExt = rel.endsWith(".md")
         ? rel.slice(0, -3)
         : rel.endsWith(".markdown")

@@ -3,12 +3,14 @@ import { describe, expect, test } from "vitest";
 import {
   decodePercent,
   extractNamespace,
+  folderOf,
   folderPrefix,
   getRelativePath,
   isDescendantPath,
   isImageFile,
   lastPathSegment,
   normalizePath,
+  openablePath,
   resolveNameConflict,
   slashPath,
 } from "../path-utils";
@@ -205,6 +207,54 @@ describe("§61 folderPrefix (issue 595)", () => {
 
   test("leaves a POSIX backslash in the name", () => {
     expect(folderPrefix("/v/notes/a\\b.md")).toBe("/v/notes/");
+  });
+});
+
+describe("§61 folderOf (issue 595)", () => {
+  test("is the folder as written, without its last separator", () => {
+    expect(folderOf("C:\\v\\notes\\a.md")).toBe("C:\\v\\notes");
+    expect(folderOf("C:\\v/notes/a.md")).toBe("C:\\v/notes");
+    expect(folderOf("\\\\srv\\share\\a.md")).toBe("\\\\srv\\share");
+    expect(folderOf("/v/notes/a.md")).toBe("/v/notes");
+  });
+
+  test("keeps a root and gives nothing for a bare name", () => {
+    expect(folderOf("/a.md")).toBe("/");
+    expect(folderOf("a.md")).toBe("");
+    // A drive's root gives the bare drive: callers join onto it.
+    expect(folderOf("C:\\a.md")).toBe("C:");
+  });
+
+  test("leaves a POSIX backslash in the name", () => {
+    expect(folderOf("/v/notes/a\\b.md")).toBe("/v/notes");
+  });
+});
+
+describe("§61 openablePath (issue 595)", () => {
+  test("resolves a Windows path in its own spelling, keeping its root", () => {
+    expect(openablePath("C:\\v\\notes/../gone.md")).toBe("C:\\v\\gone.md");
+    expect(openablePath("C:\\v\\notes/./gone.md")).toBe(
+      "C:\\v\\notes\\gone.md",
+    );
+    expect(openablePath("C:/v/notes/a.md")).toBe("C:\\v\\notes\\a.md");
+    expect(openablePath("\\\\srv\\share\\v\\notes/../x.md")).toBe(
+      "\\\\srv\\share\\v\\x.md",
+    );
+  });
+
+  test("stops .. at a drive or UNC root", () => {
+    // What fails this: a `..` that pops the root — `C:` or the share —
+    // leaving a path relative to nothing.
+    expect(openablePath("C:\\v\\..\\..\\..\\x.md")).toBe("C:\\x.md");
+    expect(openablePath("\\\\srv\\share\\..\\..\\x.md")).toBe(
+      "\\\\srv\\share\\x.md",
+    );
+  });
+
+  test("is normalizePath on POSIX, a backslash staying in the name", () => {
+    expect(openablePath("/v/notes/../gone.md")).toBe("/v/gone.md");
+    expect(openablePath("//agents/x.md")).toBe("/agents/x.md");
+    expect(openablePath("/v/notes/a\\b.md")).toBe("/v/notes/a\\b.md");
   });
 });
 

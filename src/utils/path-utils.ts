@@ -194,6 +194,21 @@ export function folderPrefix(path: string): string {
 }
 
 /**
+ * The folder of `path` as written — `dirname` read the way the path is
+ * spelled (`folderPrefix` without its last separator). `C:\…\notes\note.md`
+ * gives `C:\…\notes`, `/v/note.md` gives `/v`, `/note.md` gives `/`, and
+ * `note.md` gives `""`. A file at a drive's root gives the bare drive
+ * (`C:\note.md` → `C:`), which alone names the drive's current folder — join
+ * onto it, do not open it. `dirname` reads `/` alone, so on Windows a path Rust
+ * lists has no folder there. Text joined onto it with `/` keeps the path's
+ * start, so `slashPath` reads the join by the path's own rule.
+ */
+export function folderOf(path: string): string {
+  const prefix = folderPrefix(path);
+  return prefix.length > 1 ? prefix.slice(0, -1) : prefix;
+}
+
+/**
  * Is `path` spelled as a Windows path — a drive letter (`C:\…`, `C:/…`) or a
  * UNC root (`\\server\…`) — so that `\` separates its parts as `/` does? On
  * Unix a backslash is a character of a name (issue 595).
@@ -229,6 +244,36 @@ export function normalizePath(path: string): string {
     out.push(segment);
   }
   return (isAbsolute ? "/" : "") + out.join("/");
+}
+
+/**
+ * `path` with `.` · `..` resolved, spelled for opening — where `slashPath` is
+ * for comparing. A path spelled as a Windows path (`isWindowsSpelledPath`)
+ * comes back with `\` as its one separator, its drive (`C:`) or UNC root
+ * (`\\server\share`) kept, and `..` stopped at that root:
+ * `C:\v\notes/../gone.md` → `C:\v\gone.md`. Any other path is
+ * `normalizePath`'s.
+ *
+ * ‼️ Rust refuses any path with a `..` segment before it reads
+ * (`validate_path`, `src-tauri/src/fs/mod.rs`), so a path the frontend opens
+ * must arrive resolved. `normalizePath` cannot do it for a Windows path: it
+ * splits on `/` alone, so `../` deletes all of `C:\v\notes` and leaves
+ * `gone.md`. `slashPath` cannot either: its `C:/…` is not the spelling a vault
+ * root `C:\…` starts with (`getContextForPath`) or an open tab carries, and
+ * past the root it drops the drive.
+ */
+export function openablePath(path: string): string {
+  if (!isWindowsSpelledPath(path)) return normalizePath(path);
+  const unc = path.startsWith("\\\\");
+  const parts = (unc ? path.slice(2) : path).split(/[\\/]/);
+  const root = parts.splice(0, unc ? 2 : 1);
+  const out: string[] = [];
+  for (const segment of parts) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") out.pop();
+    else out.push(segment);
+  }
+  return (unc ? "\\\\" : "") + [...root, ...out].join("\\");
 }
 
 /**
