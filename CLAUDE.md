@@ -439,8 +439,8 @@ PR에서 rust skip이 허용되는 유일한 경우는 "rust 관련 경로를 �
     노트를 못 찾던 결함(§61 #961), Windows 경로에서 열린 vault 를 별칭으로 가리키는 경로 링크 · 마크다운
     링크 · Skills 경로가 대상을 못 찾고 저널의 `[[이름]]` 이 다른 폴더의 같은 이름 노트를 고르던 결함(§87/§56l/§278.1/§72 #962). 새 API 를 보이려고 만든 예제 플러그인 넷(backlinks-block · link-count · sketch-pad · tree-badges)의
     `engines.baram` 은 `>=0.8.0` 이다 — 레지스트리에 올린다면 앱 v0.8.0 이 발행된 **뒤에**. 예제 ai-summary 와 시험
-    픽스처 sandbox-smoke · malicious-fixture 도 새 API 를 부르지만 게시하지 않으므로 `>=0.5.0` 그대로다. 릴리스 PR #958,
-    그 앞에 앱 확인에서 찾은 수정 #957
+    픽스처 sandbox-smoke · malicious-fixture 도 새 API 를 부르지만 게시하지 않으므로 `>=0.5.0` 그대로다. 릴리스 PR #958 과
+    노트 보강 PR #963, 그 앞에 앱 확인에서 찾은 수정 #957
   - 🚧 미착수: Canvas, Agent Mode(§11.6), Knowledge Q&A(§11.4), 실시간 협업, E2E 스위트
 
 > 버전 번호는 추측하지 말 것 — `git tag --sort=-creatordate`와 `package.json`의 `version`이 출처다.
