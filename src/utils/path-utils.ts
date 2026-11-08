@@ -183,6 +183,17 @@ export function lastPathSegment(path: string): string {
 }
 
 /**
+ * §61 `path` up to and including its last separator, as written — `\` counts
+ * in a Windows path (`lastPathSegment`). `C:\…\notes\note.md` gives
+ * `C:\…\notes\`, `/v/note.md` gives `/v/`, and `note.md` gives `""`. Text
+ * joined onto it keeps the path's spelling, so `slashPath` reads the whole of
+ * it — folder and joined text — by the one rule its start decides.
+ */
+export function folderPrefix(path: string): string {
+  return path.slice(0, path.length - lastPathSegment(path).length);
+}
+
+/**
  * Is `path` spelled as a Windows path — a drive letter (`C:\…`, `C:/…`) or a
  * UNC root (`\\server\…`) — so that `\` separates its parts as `/` does? On
  * Unix a backslash is a character of a name (issue 595).
@@ -256,6 +267,27 @@ export function resolveNameConflict(
   } while (existingNames.has(candidate));
 
   return candidate;
+}
+
+/**
+ * §61 `path` with `/` as its one separator and `.` · `..` resolved
+ * (`normalizePath`), for comparing paths — not for I/O. In a Windows path
+ * (`isWindowsSpelledPath`) `\` separates too: Rust lists `C:\…\plan.md`, and
+ * the frontend joins `/` onto such paths (today's journal entry,
+ * `getHierarchicalJournalPath`), so one path can carry both. In a Unix path
+ * `\` is a character of a name and stays — `toPosixPath` folds it on every
+ * platform (issue 595).
+ *
+ * The two leading `\` of a UNC root become one `/` (`\\server\share` →
+ * `/server/share`), and the result no longer reads as a Windows path. Compare
+ * it with another `slashPath` only, and join typed text onto the path as
+ * written (`folderPrefix`) rather than onto this result — a `\` typed after
+ * `/server/share/…` would stay a character.
+ */
+export function slashPath(path: string): string {
+  return normalizePath(
+    isWindowsSpelledPath(path) ? path.replace(/\\/g, "/") : path,
+  );
 }
 
 /**

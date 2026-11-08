@@ -25,6 +25,7 @@ import {
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { logger } from "../../utils/logger";
 import { foldName } from "../../utils/name-fold";
+import { slashPath } from "../../utils/path-utils";
 import { wikilinkSuggestPluginKey } from "./suggestion-keys";
 import {
   createSuggestionRenderer,
@@ -286,10 +287,14 @@ export const WikilinkSuggest = Extension.create({
                   return filterFiles(crossFiles, crossTarget, 30);
                 }
 
-                // §87 Browsing (empty query): grouped by folder with headers
+                // §87 Browsing (empty query): grouped by folder with headers.
+                // §61 Paths read by `slashPath`: Rust lists `C:\…\a\x.md` on
+                // Windows, and a folder cut at the last `/` alone put every
+                // note under the root.
+                const rootKey = slashPath(ctx.path);
                 const groups = new Map<string, typeof mdFiles>();
                 for (const f of mdFiles) {
-                  const dir = f.path.slice(ctx.path.length + 1);
+                  const dir = slashPath(f.path).slice(rootKey.length + 1);
                   const folder =
                     dir.lastIndexOf("/") > 0
                       ? dir.slice(0, dir.lastIndexOf("/"))
