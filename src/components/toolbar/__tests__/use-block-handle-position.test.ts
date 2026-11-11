@@ -13,9 +13,14 @@ import { createBaramExtensions } from "../../../extensions";
 import { useBlockHandlePosition } from "../use-block-handle-position";
 
 const editors: Editor[] = [];
+/** Mounted in the document, as the app's editor is: a mousemove can only reach a connected
+ *  editor, and `getComputedStyle` answers a disconnected block with empty strings (jsdom
+ *  31.0.0, as CSSOM says — 30.1.3 answered with initial values), which the hook's
+ *  line-height arithmetic turns into a `NaN` top that no two ticks can share. */
 function makeEditor(): Editor {
   const editor = new Editor({
     content: "<p>hello</p>",
+    element: document.body.appendChild(document.createElement("div")),
     extensions: createBaramExtensions(),
   });
   editors.push(editor);
@@ -30,6 +35,7 @@ function moveOverBlock(dom: HTMLElement): void {
 
 afterEach(() => {
   for (const e of editors.splice(0)) e.destroy();
+  document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
 
@@ -51,6 +57,9 @@ describe("useBlockHandlePosition — production wiring (not just the nextHandleS
     act(() => moveOverBlock(editor.view.dom));
     const first = result.current.handle;
     expect(first).not.toBeNull();
+    // The fixture's premise: a `NaN` top fails the identity check below for a reason that is
+    // not the wiring's.
+    expect(Number.isFinite(first?.top)).toBe(true);
 
     act(() => moveOverBlock(editor.view.dom));
     const second = result.current.handle;
