@@ -11,9 +11,13 @@
 //     user's report was about how the page LOOKS, so the assertions are about
 //     computed values.
 //
-// ‼️ jsdom does not substitute `var()`, so every check here reads a property
-// whose value is a literal in the source CSS. Asserting a token-valued property
-// would pass on an empty string and prove nothing.
+// ‼️ jsdom 31.0.0 substitutes `var()` (30.1.3 did not), so a token-valued
+// property computes to a real colour. A reference that resolves to nothing
+// does not show up as an empty string, though: the declaration is invalid at
+// computed-value time and the property falls back to its inherited or initial
+// value — `border-left-color` to `currentcolor`. So a token-valued check here
+// compares against a value the bundled sheet itself defines, never just
+// "is a colour".
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import editorCSS from "../../../styles/editor.css?raw";
@@ -163,23 +167,19 @@ describe("what the exported page actually looks like", () => {
     // Discriminating: one generic `.callout` rule — which is what shipped
     // before — paints tip and bug identically.
     //
-    // blocks.css의 callout 색이 리터럴에서 var(--color-callout-X)로 바뀐 뒤로
-    // jsdom의 getComputedStyle은 var()를 실색으로 풀어주지 않는다 — 그래서
-    // "타입별로 다른 토큰을 참조한다"와 "그 토큰이 번들된 시트에 실값으로
-    // 정의돼 있다"를 나눠서 판정한다. 브라우저에서는 이 둘이 합쳐져 실색이 된다.
-    const tip = mount(`<div class="callout callout-tip"></div>`)
-      .firstElementChild as HTMLElement;
-    const tipColor = getComputedStyle(tip).borderLeftColor;
-    const bug = mount(`<div class="callout callout-bug"></div>`)
-      .firstElementChild as HTMLElement;
+    // 기대값은 번들 시트의 글에서 나온다 — 13개 타입 전부의 토큰을 참조
+    // 사슬(semantic → primitive)대로 따라가 hex에 닿게 하고, jsdom의 cascade가
+    // 그 타입 callout에 계산한 테두리 색이 바로 그 hex여야 한다. 계산값만으로는
+    // 판정하지 못한다: 사슬이 허공을 가리키면 테두리는 `currentcolor`로
+    // 계산돼(31.0.0 실측) 여전히 "색"이다. (danger/failure처럼 같은 primitive를
+    // 공유하는 쌍은 의도된 설계라 pairwise-distinct는 걸지 않는다.)
+    const borderOf = (type: string): string =>
+      getComputedStyle(
+        mount(`<div class="callout callout-${type}"></div>`)
+          .firstElementChild as HTMLElement,
+      ).borderLeftColor;
+    expect(borderOf("bug")).not.toBe(borderOf("tip"));
 
-    expect(tipColor).toBe("var(--color-callout-tip)");
-    expect(getComputedStyle(bug).borderLeftColor).not.toBe(tipColor);
-
-    // 참조가 허공을 가리키면 위 판정은 통과해도 내보낸 문서는 무색이 된다 —
-    // 번들 시트 안에서 13개 타입 전부의 참조 사슬(semantic → primitive)을
-    // 따라가 실제 hex에 닿는지까지 고정한다. (danger/failure처럼 같은
-    // primitive를 공유하는 쌍은 의도된 설계라 pairwise-distinct는 걸지 않는다.)
     const sheet = buildExportStylesheet();
     const resolve = (name: string, depth = 0): string => {
       expect(depth, `${name} 참조가 너무 깊다(순환?)`).toBeLessThan(5);
@@ -204,26 +204,29 @@ describe("what the exported page actually looks like", () => {
       "todo",
       "warning",
     ];
+    /** `#10b981` → `rgb(16, 185, 129)`, the form jsdom serializes an opaque colour in. */
+    const rgb = (hex: string): string => {
+      const digits = hex.slice(1);
+      const pairs =
+        digits.length === 3
+          ? [...digits].map((d) => d + d)
+          : (digits.match(/../g) ?? []);
+      return `rgb(${pairs.map((pair) => parseInt(pair, 16)).join(", ")})`;
+    };
     for (const type of TYPES) {
-      expect(resolve(`--color-callout-${type}`)).toMatch(
-        /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i,
-      );
+      const hex = resolve(`--color-callout-${type}`);
+      expect(hex).toMatch(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i);
+      expect(borderOf(type), type).toBe(rgb(hex));
     }
   });
 
-  // jsdom은 var()가 든 `background` 단축 속성에서 온 배경색을 풀지 못해 초기값인
-  // 투명으로 읽는다(30.1.2·30.1.3 실측 — 30.1.3에서는 computed-style.js
-  // `handleProperty`가 그 longhand를 `unset`으로 둔다, 변수 치환 전에는 계산하지
-  // 못한다는 TODO). 30.1.2의 `.background`는 선언 문자열을 그대로 돌려줘 토큰
-  // 이름이 보였지만 30.1.3은 longhand로 직렬화해 투명만 남는다. 그러면 타입 규칙과,
-  // var() 값으로 다시 들어온 일반 다크 규칙(아래 CONTROL)이 둘 다 투명으로 읽힌다
-  // — 옛 규칙처럼 리터럴이면 치환 없이도 구별된다. 그래서 tip 토큰 참조만 리터럴로
-  // 바꿔 끼운다. 셀렉터는 건드리지 않으므로 누가 이기는지는 여전히 jsdom의
-  // cascade가 정한다.
+  // tip의 배경은 `color-mix(in srgb, var(--color-callout-tip) 8%, transparent)`,
+  // var()가 든 `background` 단축 속성이다. 31.0.0의 cascade는 이것을 실색으로
+  // 계산하므로(실측) 출하된 시트를 그대로 읽는다 — 30.1.2·30.1.3은 그 배경을
+  // 투명으로 읽어서, tip 토큰 참조를 리터럴로 바꿔 끼워야 구별이 됐다.
   function tipBackground(theme?: "dark", extraCSS = ""): string {
     const shipped = style.textContent;
-    style.textContent =
-      shipped.replaceAll("var(--color-callout-tip)", "#123456") + extraCSS;
+    style.textContent = shipped + extraCSS;
     if (theme) document.documentElement.dataset.theme = theme;
     try {
       const tip = mount(`<div class="callout callout-tip"></div>`)
@@ -242,14 +245,13 @@ describe("what the exported page actually looks like", () => {
     // 있었다. 정규식 핀은 표기(인용부호·:where()·selector list)에 속았으므로,
     // 다크 root 아래 타입 callout을 실제로 마운트해 계산된 배경이 라이트와
     // 같은 규칙에서 오는지를 본다. 인용부호·:where()·:is()·selector list·
-    // !important·`@media screen` 안의 규칙으로 다시 들어와도 cascade 결과로
-    // 잡힌다(30.1.3 실측). CSS 중첩 규칙은 CSSOM에는 들어가지만 jsdom의 cascade가
-    // style rule 안의 규칙으로 내려가지 않아(30.1.3 computed-style.js
-    // `collectCandidateStylesFrom`은 `@import`·`@media`만 내려간다) 이 핀이 보지
-    // 못한다. tip만 마운트하므로 다크 override는 일반 `.callout` 규칙과 tip 규칙만
-    // 걸린다 — 다른 타입의 override는 보지 못한다(blocks.css에는 어느 쪽도 없다).
+    // !important·`@media screen` 안의 규칙·CSS 중첩 규칙으로 다시 들어와도
+    // cascade 결과로 잡힌다(31.0.0 실측 — 30.1.3의 cascade는 중첩 규칙으로 내려가지
+    // 않아 이 핀이 그것만은 보지 못했다). tip만 마운트하므로 다크 override는 일반
+    // `.callout` 규칙과 tip 규칙만 걸린다 — 다른 타입의 override는 보지 못한다
+    // (blocks.css에는 어느 쪽도 없다).
     const light = tipBackground();
-    // 짝: 치환이 빗나가면(토큰 표기가 바뀌면) 라이트가 투명으로 남고, 아래 비교는
+    // 짝: 라이트 배경이 실색으로 계산되지 않고 투명으로 남으면 아래 비교는
     // 투명 = 투명이 된다.
     expect(light).not.toBe("rgba(0, 0, 0, 0)");
     expect(tipBackground("dark")).toBe(light);
