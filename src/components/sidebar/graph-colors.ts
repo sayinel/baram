@@ -68,10 +68,10 @@ const FALLBACK_COLORS: GraphColors = {
  * writes those to the root element) win here exactly as they do for the rest of the UI.
  *
  * ‼️ A value that still contains `var(` is DISCARDED for the fallback rather than passed
- * along: substitution is the browser's job, and an environment that skips it exists —
- * jsdom returns the unsubstituted reference verbatim. Handing that to cytoscape reproduces
- * the original defect exactly, since cytoscape answers an unparseable colour with its own
- * default of black.
+ * along: substitution is the browser's job, and an environment that skips it existed —
+ * jsdom 30.1.3 returned the unsubstituted reference verbatim (31.0.0 substitutes). Handing
+ * that to cytoscape reproduces the original defect exactly, since cytoscape answers an
+ * unparseable colour with its own default of black.
  */
 export function resolveGraphColors(
   root: HTMLElement = document.documentElement,

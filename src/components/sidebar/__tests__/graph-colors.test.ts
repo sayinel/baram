@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // §30 Graph View — graph colour token resolution
 import { resolveGraphColors, sameGraphColors } from "../graph-colors";
@@ -25,6 +25,7 @@ function testValue(index: number): string {
 
 describe("resolveGraphColors", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const [name] of TOKEN_VALUES) {
       document.documentElement.style.removeProperty(name);
     }
@@ -43,19 +44,36 @@ describe("resolveGraphColors", () => {
     expect(resolveGraphColors()).toEqual(expected);
   });
 
-  it("never returns a value that is still a var() reference", () => {
+  it("reads a token chain as the colour it substitutes to", () => {
     const style = document.createElement("style");
     style.dataset.test = "chain";
     style.textContent =
       ":root { --color-gray-300: #d1d5db; --color-graph-label: var(--color-gray-300); }";
     document.head.append(style);
 
-    // A browser substitutes the chain before this reads it; jsdom does not, which is what
-    // makes this assertion possible at all. Either way the one thing cytoscape must never
-    // receive is the unsubstituted reference — it answers that with black.
-    const label = resolveGraphColors().label;
-    expect(label).not.toContain("var(");
-    expect(label).toBe("#374151");
+    // The computed value of a custom property arrives with the chain substituted — in a
+    // browser, and in jsdom 31.0.0 (30.1.3 returned `var(--color-gray-300)` as written).
+    // What fails this: reading the root's inline style instead of its computed style — the
+    // chain lives in a stylesheet, so the fallback `#374151` would come back.
+    expect(resolveGraphColors().label).toBe("#d1d5db");
+  });
+
+  it("never returns a value that is still a var() reference", () => {
+    // An environment that hands the reference back unsubstituted — jsdom 30.1.3 did — must
+    // get the fallback: cytoscape answers an unparseable colour with black. jsdom 31
+    // substitutes, so such an environment is stood in for here. `edge` is the pair: it shows
+    // the stand-in is the one being read, so the fallback on `label` is the guard's doing.
+    vi.spyOn(window, "getComputedStyle").mockReturnValue({
+      getPropertyValue: (name: string) =>
+        ({
+          "--color-graph-edge": "#0a0b0c",
+          "--color-graph-label": "var(--color-gray-300)",
+        })[name] ?? "",
+    } as unknown as CSSStyleDeclaration);
+
+    const colors = resolveGraphColors();
+    expect(colors.edge).toBe("#0a0b0c");
+    expect(colors.label).toBe("#374151");
   });
 
   it("falls back to the light palette when no token is defined", () => {
