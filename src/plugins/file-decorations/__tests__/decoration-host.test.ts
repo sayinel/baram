@@ -48,7 +48,12 @@ function watch(promise: Promise<unknown>): { done: boolean } {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  // Only the clock the buckets run on — `startRefill`'s `setTimeout` and `dropLine`'s `clearTimeout` —
+  // so `vi.getTimerCount()` counts refills and nothing else. jsdom 31.0.0 queues the `load` event of a
+  // connected style element with `setImmediate` each time its style block is updated, and the first
+  // `defineIcon` updates one twice (inserted, then its text set): with every timer faked, those two
+  // tasks were counted as refills.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 });
 afterEach(() => {
   __resetDecorationHost();
