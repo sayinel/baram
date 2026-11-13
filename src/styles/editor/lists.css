@@ -259,7 +259,12 @@
  *                         does the bundled `bullet-threading` example. The guide alone could
  *                         read the axis directly; this second name exists for the example,
  *                         whose thread is drawn from a CHILD item, where the parent's axis
- *                         is shadowed by the child's own.
+ *                         is shadowed by the child's own. The example also draws from the
+ *                         parent's own paragraphs and images, where this name is a level
+ *                         too high, so there it reads the axis and restates `li`'s
+ *                         `padding-left` — `bullet-threading-example.test.ts` holds that
+ *                         copy to this formula. Both rest on those blocks and the nested
+ *                         list starting at the same edge of the item.
  *
  * Anchoring to the marker is what makes a deep list readable: the eye follows a line that
  * starts at a bullet it can see, rather than one that begins in the middle of a word. It
