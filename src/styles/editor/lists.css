@@ -306,9 +306,14 @@
  * The width is em, not a device pixel: a fixed-pixel rail reads as heavy chrome at a small
  * editor font and as a hairline at a large one. 0.09em is ~1.4px at the default 16px.
  *
- * Spanning the list's full box is deliberate — measured against the reference, the rail
- * runs from the first child's line-box top to the last child's, which is what makes it
- * look like it descends from the parent's bullet. */
+ * Measured against the reference, the rail runs from the first child's line-box top to the
+ * last child's, which is what makes it look like it descends from the parent's bullet. That
+ * holds only while the parent's text is ONE line-box tall: the first child starts below
+ * the parent's last line, so a parent that wrapped left the rail a whole line-box further
+ * from its bullet per extra line, and an image between the text and the sub-list left it
+ * the image's height further. So an item's own sub-list hangs the rail from the ITEM (the
+ * rule after this one): one line-box and one item gap below the item's top, where the
+ * first child of a one-line parent starts, whatever stands between. */
 .tiptap li ul::before,
 .tiptap li ol::before {
   --guide-width: 0.09em;
@@ -325,6 +330,50 @@
     var(--color-editor-guide-tint) var(--editor-guide-strength, 22%),
     var(--color-editor-bg)
   );
+}
+
+/* An item's OWN sub-list — directly in the item, or in a task item's content div — is
+ * not positioned, so the containing block of its rail is the item (`.tiptap li` is
+ * `position: relative` in editor/base.css). A list further in, inside a blockquote or a
+ * toggle of the item, keeps the rule above: the item's top is not where ITS parent's text
+ * starts.
+ *
+ * Against the item, the rail starts one line-box and one item gap (`li`'s
+ * `margin: 0.15em 0`, which collapses through the sub-list's top) below the item's top.
+ * That is where the first child starts under a parent whose text is one line of plain
+ * text, so such a parent looks as it did; a first line made taller by inline content
+ * (math, an inline image), or a first child that starts with an image, whose larger
+ * margin collapses through the same edge, puts the child lower than the rail's start. The
+ * rail still ends `0.1em` above the bottom, now the item's, which is the sub-list's while
+ * the sub-list is the item's last block. Text after the sub-list in the same item
+ * lengthens the rail to there, and two sub-lists in one item draw the same line twice.
+ *
+ * ‼️ These two rules win over the two above on SOURCE ORDER alone — `.tiptap li > ul` and
+ * `.tiptap li ul` have the same specificity — so they have to stay below them.
+ * `list-styling.test.ts` checks the order.
+ *
+ * `left` is the same axis measured from the item's padding edge instead of the list's
+ * edge, which sits `li`'s `padding-left: 0.5em` to the right of it. It still reads
+ * `--list-guide-left`, so the bullet-threading example, which traces that variable from
+ * the child items, moves with any change to it.
+ *
+ * Static lists change the containing block of this `::before` and of nothing else: every
+ * other absolutely positioned box in a list sits in an `li`, which is positioned — the
+ * markers, task checkboxes and fold arrows (read in src/styles, the list widget
+ * decorations and the node views when this was written). */
+.tiptap li > ul,
+.tiptap li > ol,
+.tiptap li[data-type="taskItem"] > div > ul,
+.tiptap li[data-type="taskItem"] > div > ol {
+  position: static;
+}
+
+.tiptap li > ul::before,
+.tiptap li > ol::before,
+.tiptap li[data-type="taskItem"] > div > ul::before,
+.tiptap li[data-type="taskItem"] > div > ol::before {
+  top: calc(var(--editor-line-height, 1.75) * 1em + 0.15em);
+  left: calc(var(--list-guide-left) + 0.5em);
 }
 
 /* A bullet, and a task checkbox, is centred in a 1em column ending at the item's edge

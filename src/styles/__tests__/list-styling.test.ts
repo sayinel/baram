@@ -634,6 +634,11 @@ describe("list geometry", () => {
 
     // ① — the guide is a `::before` on the nested LIST. Matching `li::before` instead picks
     // up the marker rules, which are anchored with `right: 100%` and have no `left` at all.
+    // A guide measured from the list's edge reads the variable as it is; one measured from
+    // the item's padding edge (an item's own sub-list, which is static) adds back the gap
+    // the list starts at — `li`'s own padding, transcribed rather than assumed.
+    const gap = declared(".tiptap li", "padding-left");
+    expect(gap).toBe("0.5em");
     const guides = LIST_RULES.filter((rule) =>
       selectorParts(rule.selector).some(
         (part) =>
@@ -641,22 +646,28 @@ describe("list geometry", () => {
           /^(?:ul|ol)::before$/u.test(selectorTarget(part)),
       ),
     );
-    expect(guides.length).toBeGreaterThan(0);
+    const fromItem = (rule: { selector: string }) =>
+      selectorParts(rule.selector).every((part) =>
+        / > (?:ul|ol)::before$/u.test(part.replaceAll(/\s+/gu, " ")),
+      );
+    // Both kinds exist, so neither half of the check below is vacuous.
+    expect(guides.filter(fromItem).length).toBeGreaterThan(0);
+    expect(guides.filter((rule) => !fromItem(rule)).length).toBeGreaterThan(0);
     const constant = guides
       .filter(
         (rule) =>
           squash(
             cssDeclarations(rule.body).find((d) => d.prop === "left")?.value ??
               "",
-          ) !== "var(--list-guide-left)",
+          ) !==
+          (fromItem(rule)
+            ? `calc(var(--list-guide-left)+${gap})`
+            : "var(--list-guide-left)"),
       )
       .map(where);
     expect(constant).toEqual([]);
 
     // ② — the nested list hangs it the item's text gap plus the parent's axis to its left.
-    // The gap is `li`'s own padding, transcribed rather than assumed.
-    const gap = declared(".tiptap li", "padding-left");
-    expect(gap).toBe("0.5em");
     expect(declared(".tiptap li ul, .tiptap li ol", "--list-guide-left")).toBe(
       `calc(-${gap}-var(--list-marker-axis))`,
     );
@@ -698,6 +709,82 @@ describe("list geometry", () => {
     ).toBe("1");
   });
 
+  it("starts an item's own guide a fixed distance below its marker, however tall its text", () => {
+    // The guide used to span its list's box, so it began at the first child — below the
+    // parent's LAST line. A parent that wrapped pushed it a line-box further from the
+    // bullet per extra line, and an image between the text and the sub-list by the image's
+    // height. Anchored to the item, it starts where the first child of a parent whose text
+    // is one line starts, whatever stands between.
+    //
+    // What fails this, five ways:
+    // ① the item's own sub-list is positioned again — the guide's box is the list's once
+    //    more, and the offset below runs it a line-box INTO the sub-list;
+    // ② a list further in (in a blockquote of the item) loses `position: relative` — its
+    //    guide would be placed against the outer item, far from its own parent;
+    // ③ `top` stops reading the line height setting, or assumes a different item gap than
+    //    the margin `li` declares;
+    // ④ a selector is dropped — the task item's content div is the easy one to miss;
+    // ⑤ the item-anchored rules move above the general ones. They win on source order
+    //    alone (`li > ul` and `li ul` weigh the same), so the cascade would quietly put back
+    //    `position: relative` and `top: 0` while every declaration above still reads right.
+    const squash = (value: string) => value.replaceAll(/\s+/gu, "");
+    const own = [
+      ".tiptap li > ul",
+      ".tiptap li > ol",
+      '.tiptap li[data-type="taskItem"] > div > ul',
+      '.tiptap li[data-type="taskItem"] > div > ol',
+    ];
+    const ruleOf = (selectors: string[]) => {
+      const found = LIST_RULES.filter(
+        (rule) =>
+          selectorParts(rule.selector)
+            .map((part) => part.replaceAll(/\s+/gu, " "))
+            .join(", ") === selectors.join(", "),
+      );
+      expect(found, selectors.join(", ")).toHaveLength(1);
+      return found[0];
+    };
+    const ruleFor = (selectors: string[]) =>
+      Object.fromEntries(
+        cssDeclarations(ruleOf(selectors).body).map((d) => [
+          d.prop,
+          squash(d.value),
+        ]),
+      );
+
+    expect(ruleFor(own).position).toBe("static"); // ①
+    expect(ruleFor([".tiptap li ul", ".tiptap li ol"]).position).toBe(
+      "relative",
+    ); // ②
+
+    // ⑤ — each item-anchored rule sits below the general rule it overrides, in one file.
+    for (const [general, anchored] of [
+      [[".tiptap li ul", ".tiptap li ol"], own],
+      [
+        [".tiptap li ul::before", ".tiptap li ol::before"],
+        own.map((selector) => `${selector}::before`),
+      ],
+    ]) {
+      const before = ruleOf(general);
+      const after = ruleOf(anchored);
+      expect(after.file).toBe(before.file);
+      expect(after.index).toBeGreaterThan(before.index);
+    }
+
+    const itemMargin = LIST_RULES.filter(
+      (rule) => rule.selector.trim() === ".tiptap li",
+    )
+      .flatMap((rule) => cssDeclarations(rule.body))
+      .filter((d) => d.prop === "margin");
+    expect(itemMargin).toHaveLength(1);
+    const itemGap = itemMargin[0].value.trim().split(/\s+/u)[0];
+    expect(itemGap).toMatch(/^[\d.]+em$/u);
+    const guide = ruleFor(own.map((selector) => `${selector}::before`)); // ④
+    expect(guide.top).toBe(
+      `calc(var(--editor-line-height,1.75)*1em+${itemGap})`,
+    ); // ③
+  });
+
   it("mixes the indent guide from a theme key and the user's strength dial", () => {
     // §369 — 가이드는 두 축으로 열려 있고, 이 테스트는 그 둘이 실제로 선언에
     // 도달하는지를 본다. 무엇이 이것을 실패시키는가, 셋이다.
@@ -715,14 +802,30 @@ describe("list geometry", () => {
     //    두 파일을 여기서 함께 읽는다.
     //
     // ③ 농도 변수를 아예 읽지 않으면 다이얼이 조용히 무의미해진다.
-    const guides = LIST_RULES.filter((rule) =>
+    //
+    // 가이드를 **그리는** 규칙(`content` 로 상자를 만드는 규칙)만 본다. 항목 자신의
+    // 하위 리스트 가이드를 항목에 거는 규칙은 위치만 옮기고 색을 선언하지 않는다 — 그
+    // 규칙이 색을 선언하면 이 검사에 들어오도록, 색 속성이 없음을 따로 확인한다.
+    const allGuides = LIST_RULES.filter((rule) =>
       selectorParts(rule.selector).some(
         (part) =>
           /\bli\b/u.test(part) &&
           /^(?:ul|ol)::before$/u.test(selectorTarget(part)),
       ),
     );
+    const guides = allGuides.filter((rule) =>
+      cssDeclarations(rule.body).some((d) => d.prop === "content"),
+    );
     expect(guides.length).toBeGreaterThan(0);
+    const movers = allGuides.filter((rule) => !guides.includes(rule));
+    expect(movers.length).toBeGreaterThan(0);
+    expect(
+      movers.filter((rule) =>
+        cssDeclarations(rule.body).some((d) =>
+          /^(?:background|color)/u.test(d.prop),
+        ),
+      ),
+    ).toEqual([]);
 
     const dial = DIALS.find((d) => d.id === "editorListGuideStrength");
     expect(dial).toBeDefined();
