@@ -69,6 +69,12 @@
   display: flex;
   gap: var(--space-0-5);
   align-items: center;
+
+  /* The left clamp (clampToolbarLeft) is computed from the drawn width. An
+     absolutely placed box with an auto width narrows when the room right of
+     its left is less than its content, so the width could follow the left it
+     is computed into. */
+  width: max-content;
   padding: var(--space-1) var(--space-1-5);
   pointer-events: auto;
   background-color: var(--color-bg-default);

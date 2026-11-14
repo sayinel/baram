@@ -43,9 +43,18 @@ export function MenuList({ items, onClose, toggleRef, x, y }: MenuListProps) {
     null,
   );
 
+  // `x`/`y` are visual-viewport px (a mouse event's clientX/Y, a button's
+  // getBoundingClientRect). The menu is `position: fixed`, and a CSS zoom on an
+  // ancestor draws a fixed box at zoom × its `left`/`top` from the viewport
+  // corner (zoom-coords.ts, rule 2). ContextMenu and TableToolbar draw it inside
+  // `.editor-area-scroll`, which carries the editor zoom; GraphView draws it in
+  // the sidebar, outside any zoom, or in the graph tab's `.editor-area-scroll`.
+  // So clamp in visual px, then divide by the zoom this menu is drawn at,
+  // measured on the menu itself: its visual width over its CSS width.
   useLayoutEffect(() => {
-    if (!menuRef.current) return;
-    const rect = menuRef.current.getBoundingClientRect();
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
     let nx = x;
     let ny = y;
     if (nx + rect.width > window.innerWidth)
@@ -54,7 +63,8 @@ export function MenuList({ items, onClose, toggleRef, x, y }: MenuListProps) {
       ny = window.innerHeight - rect.height - 4;
     if (nx < 0) nx = 4;
     if (ny < 0) ny = 4;
-    setAdjusted({ x: nx, y: ny });
+    const zoom = el.offsetWidth > 0 ? rect.width / el.offsetWidth : 1;
+    setAdjusted({ x: nx / zoom, y: ny / zoom });
   }, [x, y, items]);
 
   useEffect(() => {

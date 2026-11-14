@@ -14,6 +14,15 @@ export interface InsertButtonAnchor {
   y: number;
 }
 
+/** Half the 20px ⊕ button, in CSS px. */
+const INSERT_BUTTON_HALF = 10;
+
+/**
+ * How far the ⊕ reaches past the table edge it sits on, in CSS px: half the
+ * 20px button plus a 12px gutter nudge. Its far side is this far out.
+ */
+export const INSERT_BUTTON_REACH = 22;
+
 /** Per-side margins (visual px) by which to expand a rect for hit-testing. */
 export interface NearMargins {
   bottom: number;
@@ -49,8 +58,8 @@ export function computeInsertButtonStyle(
 ): { left: number; top: number } {
   const isCol = button.type === "col";
   return {
-    left: button.x / zoom - (isCol ? 10 : 22),
-    top: button.y / zoom - (isCol ? 22 : 10),
+    left: button.x / zoom - (isCol ? INSERT_BUTTON_HALF : INSERT_BUTTON_REACH),
+    top: button.y / zoom - (isCol ? INSERT_BUTTON_REACH : INSERT_BUTTON_HALF),
   };
 }
 

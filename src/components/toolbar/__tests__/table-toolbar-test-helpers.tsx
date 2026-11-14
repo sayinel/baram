@@ -36,14 +36,16 @@ export async function flush(): Promise<void> {
   });
 }
 
-export async function mountTableWithToolbar(): Promise<{
+export async function mountTableWithToolbar(
+  rects: (el: Element) => DOMRect = rectFor,
+): Promise<{
   editor: Editor;
   more: HTMLElement;
   view: RenderResult;
 }> {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
     function (this: Element) {
-      return rectFor(this);
+      return rects(this);
     },
   );
   const editor = new Editor({ extensions: createBaramExtensions() });
@@ -81,6 +83,54 @@ export async function mountTableWithToolbar(): Promise<{
     view.getByLabelText(en["tableToolbar.moreOptions"]),
   );
   return { editor, more, view };
+}
+
+/**
+ * Mounts a paragraph above a table with the caret in the paragraph, so the
+ * toolbar has never been drawn, then moves the caret into a cell in ONE
+ * transaction. What the toolbar shows after that is what its first show
+ * draws: no later transaction gets to place it again.
+ */
+export async function mountThenEnterTable(
+  rects: (el: Element) => DOMRect,
+): Promise<void> {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      return rects(this);
+    },
+  );
+  const editor = new Editor({ extensions: createBaramExtensions() });
+  editors.push(editor);
+  render(
+    <div className="editor-area-scroll">
+      <EditorContent editor={editor} />
+      <TableToolbar editor={editor} />
+    </div>,
+  );
+  act(() => {
+    editor.commands.setContent(
+      markdownToProsemirror(
+        "above\n\n| a | b |\n| --- | --- |\n| c | d |\n",
+        editor.schema,
+      ).toJSON(),
+    );
+    editor.commands.setTextSelection(2);
+  });
+  await flush();
+  if (document.querySelector(".table-toolbar"))
+    throw new Error("the toolbar showed before the caret entered the table");
+  let cellTextPos = -1;
+  editor.state.doc.descendants((node, pos) => {
+    if (cellTextPos === -1 && node.isText && node.text === "c") {
+      cellTextPos = pos;
+    }
+    return cellTextPos === -1;
+  });
+  if (cellTextPos === -1) throw new Error("table cell text did not mount");
+  act(() => {
+    editor.commands.setTextSelection(cellTextPos + 1);
+  });
+  await flush();
 }
 
 /** jsdom has no layout; the toolbar shows itself only when the table sits

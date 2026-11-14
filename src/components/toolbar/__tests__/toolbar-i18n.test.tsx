@@ -71,6 +71,7 @@ const KEYS = new Set(Object.keys(en));
  */
 const ALLOWED = new Set([
   ...KEYBINDING_REGISTRY.map((entry) => entry.id),
+  ":scope > table", // CSS selector
   ":scope > thead > tr, :scope > tbody > tr, :scope > tr", // CSS selector
   "[data-editor-scroll]", // attribute selector
   "[data-type='mathInline']", // attribute selector

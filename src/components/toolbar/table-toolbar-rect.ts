@@ -17,12 +17,19 @@ export function getTableToolbarRect(): DOMRect | null {
  * vertically adjacent to it (within `margin` px above/below). Used to hide a
  * top-edge ⊕/grip candidate that would collide with the toolbar. A null rect
  * (toolbar hidden) always returns false, so affordances show normally.
+ *
+ * All arguments are visual px. `margin` is how far the candidate reaches past
+ * the table edge — its reach in CSS px (INSERT_BUTTON_REACH, HANDLE_REACH)
+ * × the editor zoom, since the zoom scales it like the table. A toolbar in its
+ * usual place sits TOOLBAR_GAP above the table, more than either reach, so it
+ * hides nothing; this matters when the toolbar is pinned to the top of the
+ * editor area just above a table's top.
  */
 export function isUnderToolbar(
   x: number,
   y: number,
   rect: DOMRect | null,
-  margin = 16,
+  margin: number,
 ): boolean {
   if (!rect) return false;
   return isPointNearRect(x, y, rect, {

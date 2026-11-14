@@ -13,6 +13,7 @@ import { Tooltip } from "../Tooltip";
 import {
   computeInsertButtonStyle,
   findTableNearPoint,
+  INSERT_BUTTON_REACH,
 } from "./table-insert-coords";
 import { findCellPos } from "./table-selection";
 import { getTableToolbarRect, isUnderToolbar } from "./table-toolbar-rect";
@@ -147,7 +148,14 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
         // §5.5 — the column ⊕ shares the top edge with the floating toolbar;
         // hide it only where it would render under the toolbar (footprint-only).
-        if (isUnderToolbar(bestX, tableRect.top, getTableToolbarRect())) {
+        if (
+          isUnderToolbar(
+            bestX,
+            tableRect.top,
+            getTableToolbarRect(),
+            INSERT_BUTTON_REACH * zoom,
+          )
+        ) {
           setButton(null);
           lockedButtonRef.current = null;
           return;

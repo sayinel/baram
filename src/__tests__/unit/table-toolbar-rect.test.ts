@@ -12,26 +12,26 @@ const rect = { left: 200, right: 400, top: 100, bottom: 132 } as DOMRect;
 
 describe("isUnderToolbar", () => {
   it("is false when the rect is null (toolbar hidden)", () => {
-    expect(isUnderToolbar(300, 132, null)).toBe(false);
+    expect(isUnderToolbar(300, 132, null, 16)).toBe(false);
   });
 
   it("is true for a point inside the horizontal footprint at the table edge", () => {
-    // grip/⊕ sits just below the toolbar bottom (132) → within default margin 16
-    expect(isUnderToolbar(300, 140, rect)).toBe(true);
+    // grip/⊕ sits just below the toolbar bottom (132) → within a 16 px margin
+    expect(isUnderToolbar(300, 140, rect, 16)).toBe(true);
   });
 
   it("is false for a point outside the horizontal footprint", () => {
     // same y, but x left of the toolbar → the ⊕ there must still show
-    expect(isUnderToolbar(150, 140, rect)).toBe(false);
+    expect(isUnderToolbar(150, 140, rect, 16)).toBe(false);
   });
 
   it("is false for a point vertically far from the toolbar", () => {
     // deep inside a tall table, far below the toolbar → not suppressed
-    expect(isUnderToolbar(300, 400, rect)).toBe(false);
+    expect(isUnderToolbar(300, 400, rect, 16)).toBe(false);
   });
 
-  it("respects a custom margin", () => {
-    expect(isUnderToolbar(300, 150, rect, 4)).toBe(false); // 150 > 132 + 4
+  it("respects its margin", () => {
+    expect(isUnderToolbar(300, 150, rect, 16)).toBe(false); // 150 > 132 + 16
     expect(isUnderToolbar(300, 150, rect, 32)).toBe(true); // 150 < 132 + 32
   });
 
