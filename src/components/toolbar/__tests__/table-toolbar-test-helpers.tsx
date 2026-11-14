@@ -3,6 +3,8 @@
 // (§338) can prove the ✨ button actually disappears at runtime instead of only
 // scanning source text. Same move Task 7 made for createMockEditor, same
 // reason: a second ~60-line copy would drift from the first.
+import { Profiler } from "react";
+
 import type { RenderResult } from "@testing-library/react";
 
 import { act, render, waitFor } from "@testing-library/react";
@@ -36,8 +38,11 @@ export async function flush(): Promise<void> {
   });
 }
 
+/** `onRender` counts the toolbar's commits (React Profiler) when given. */
 export async function mountTableWithToolbar(
   rects: (el: Element) => DOMRect = rectFor,
+  markdown = "| a | b |\n| --- | --- |\n| c | d |\n",
+  onRender?: () => void,
 ): Promise<{
   editor: Editor;
   more: HTMLElement;
@@ -53,15 +58,18 @@ export async function mountTableWithToolbar(
   const view = render(
     <div className="editor-area-scroll">
       <EditorContent editor={editor} />
-      <TableToolbar editor={editor} />
+      {onRender ? (
+        <Profiler id="table-toolbar" onRender={onRender}>
+          <TableToolbar editor={editor} />
+        </Profiler>
+      ) : (
+        <TableToolbar editor={editor} />
+      )}
     </div>,
   );
   act(() => {
     editor.commands.setContent(
-      markdownToProsemirror(
-        "| a | b |\n| --- | --- |\n| c | d |\n",
-        editor.schema,
-      ).toJSON(),
+      markdownToProsemirror(markdown, editor.schema).toJSON(),
     );
   });
   await flush();

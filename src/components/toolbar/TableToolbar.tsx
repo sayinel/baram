@@ -1,5 +1,4 @@
 import {
-  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -27,139 +26,62 @@ import { Tooltip } from "../Tooltip";
 import { buildTableOverflowItems } from "./context-menu-table";
 import { MenuList } from "./MenuList";
 import {
+  DeleteColIcon,
+  DeleteRowIcon,
+  MergeCellsIcon,
+  MoreIcon,
+  SplitCellsIcon,
+} from "./table-toolbar-icons";
+import {
   clampToolbarLeft,
   computeToolbarTop,
   shownTableCenter,
 } from "./table-toolbar-position";
 import { setTableToolbarRect } from "./table-toolbar-rect";
-
-// Mono-style inline SVG icons (16×16, stroke-based)
-const ICON_SIZE = 16;
-const S = {
-  xmlns: "http://www.w3.org/2000/svg",
-  width: ICON_SIZE,
-  height: ICON_SIZE,
-  viewBox: "0 0 16 16",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 1.5,
-  strokeLinecap: "round" as const,
-};
+import { useTableToolbarRelayout } from "./use-table-toolbar-relayout";
 
 const TABLE_ICON = { size: 16, strokeWidth: 1.5 } as const;
-// Merge cells icon: 3×2 grid, middle row merged into one cell
-const MergeCellsIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.3}>
-    {/* Outer border */}
-    <rect height="12" rx="1" width="12" x="2" y="2" />
-    {/* Horizontal row dividers (3 rows) */}
-    <line x1="2" x2="14" y1="6" y2="6" />
-    <line x1="2" x2="14" y1="10" y2="10" />
-    {/* Vertical column divider — top and bottom rows only (middle row merged) */}
-    <line x1="8" x2="8" y1="2" y2="6" />
-    <line x1="8" x2="8" y1="10" y2="14" />
-    {/* Highlight merged middle row */}
-    <rect
-      fill="currentColor"
-      height="3.5"
-      opacity="0.25"
-      rx="0.3"
-      stroke="none"
-      width="11"
-      x="2.5"
-      y="6.3"
-    />
-  </svg>
-);
-// Split cell icon: 3×2 grid, middle row has dashed vertical divider
-const SplitCellsIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.3}>
-    {/* Outer border */}
-    <rect height="12" rx="1" width="12" x="2" y="2" />
-    {/* Horizontal row dividers (3 rows) */}
-    <line x1="2" x2="14" y1="6" y2="6" />
-    <line x1="2" x2="14" y1="10" y2="10" />
-    {/* Vertical column divider — top and bottom rows solid */}
-    <line x1="8" x2="8" y1="2" y2="6" />
-    <line x1="8" x2="8" y1="10" y2="14" />
-    {/* Middle row: dashed divider (about to split) */}
-    <line strokeDasharray="1.5 1.5" x1="8" x2="8" y1="6" y2="10" />
-  </svg>
-);
-// Delete row icon: table row with X
-const DeleteRowIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.4}>
-    <rect height="12" rx="1" width="12" x="2" y="2" />
-    <line x1="2" x2="14" y1="6" y2="6" />
-    <line x1="2" x2="14" y1="10" y2="10" />
-    {/* X mark on middle row */}
-    <line
-      stroke="currentColor"
-      strokeWidth={1.8}
-      x1="5"
-      x2="11"
-      y1="6.5"
-      y2="9.5"
-    />
-    <line
-      stroke="currentColor"
-      strokeWidth={1.8}
-      x1="11"
-      x2="5"
-      y1="6.5"
-      y2="9.5"
-    />
-  </svg>
-);
-// Delete column icon: table column with X
-const DeleteColIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.4}>
-    <rect height="12" rx="1" width="12" x="2" y="2" />
-    <line x1="6" x2="6" y1="2" y2="14" />
-    <line x1="10" x2="10" y1="2" y2="14" />
-    {/* X mark on middle column */}
-    <line
-      stroke="currentColor"
-      strokeWidth={1.8}
-      x1="6.5"
-      x2="9.5"
-      y1="5"
-      y2="11"
-    />
-    <line
-      stroke="currentColor"
-      strokeWidth={1.8}
-      x1="9.5"
-      x2="6.5"
-      y1="5"
-      y2="11"
-    />
-  </svg>
-);
-// Overflow icon: horizontal three-dot "more" glyph
-const MoreIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.6}>
-    <circle cx="3.5" cy="8" fill="currentColor" r="1.1" stroke="none" />
-    <circle cx="8" cy="8" fill="currentColor" r="1.1" stroke="none" />
-    <circle cx="12.5" cy="8" fill="currentColor" r="1.1" stroke="none" />
-  </svg>
-);
+
+/**
+ * What one placement decides: whether and where the toolbar shows, over which
+ * table, and the cell state its buttons draw. One object so that placement can
+ * tell "nothing changed" in one comparison and leave React alone.
+ */
+interface Placed {
+  align: null | string;
+  isSelection: boolean;
+  left: number;
+  /**
+   * The `<table>` the toolbar belongs over, for the relayout watch: set while
+   * the caret is in a table with an empty or a cell selection — also when the
+   * toolbar hides because that table is out of view or no editor area holds
+   * it — and null otherwise (outside a table, a text selection inside a cell,
+   * a table with no DOM).
+   */
+  table: HTMLTableElement | null;
+  top: number;
+  visible: boolean;
+}
 
 interface TableToolbarProps {
   editor: Editor;
 }
 
+const HIDDEN: Placed = {
+  align: null,
+  isSelection: false,
+  left: 0,
+  table: null,
+  top: 0,
+  visible: false,
+};
+
 export function TableToolbar({ editor }: TableToolbarProps) {
   const { t } = useTranslation();
   const commandLabel = useCommandLabel();
   const { ai: aiEnabled } = useFeatureFlags();
-  const [visible, setVisible] = useState(false);
-  const [position, setPosition] = useState<{ left: number; top: number }>({
-    top: 0,
-    left: 0,
-  });
-  const [currentAlign, setCurrentAlign] = useState<null | string>(null);
-  const [isSelection, setIsSelection] = useState(false);
+  const [placed, setPlaced] = useState<Placed>(HIDDEN);
+  const { align: currentAlign, isSelection, visible } = placed;
   const [overflow, setOverflow] = useState<null | { x: number; y: number }>(
     null,
   );
@@ -170,122 +92,166 @@ export function TableToolbar({ editor }: TableToolbarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   // The toolbar's size in CSS px (offsetWidth/offsetHeight) as last drawn,
   // which placing it needs: the left clamp its width, `top` its height. Zero
-  // until the toolbar has been drawn once; the layout effect below keeps it.
+  // until the toolbar has been drawn once; placement and the layout effect
+  // below keep it.
   const toolbarSizeRef = useRef({ height: 0, width: 0 });
+  // `placed` as last set, for placement to compare against.
+  const placedRef = useRef(placed);
 
-  const updatePosition = useCallback(() => {
-    const { selection } = editor.state;
-    const isCellSel = selection instanceof CellSelection;
-    setIsSelection(isCellSel);
-    const isTable =
-      editor.isActive("tableCell") || editor.isActive("tableHeader");
+  // `relayout`: a change of layout — one the relayout watch reported, or a
+  // scroll — with the editor state as it was. A placement equal to the last
+  // one sets no state, so React does not render; a drawn toolbar's rect is
+  // published again, since the area itself may have moved on screen (a side
+  // panel opening) and the ⊕/grip suppression reads it. Every other call (a
+  // selection or transaction event, the layout effect) renders a shown
+  // toolbar regardless — its buttons read the editor state (`editor.can()`)
+  // as they render.
+  const place = useCallback(
+    (relayout: boolean) => {
+      const drawn = toolbarRef.current;
+      const commit = (next: Placed) => {
+        if (
+          samePlaced(placedRef.current, next) &&
+          (relayout || !next.visible)
+        ) {
+          if (drawn && next.visible) {
+            setTableToolbarRect(drawn.getBoundingClientRect());
+          }
+          return;
+        }
+        placedRef.current = next;
+        setPlaced(next);
+      };
 
-    // Show for: cursor in table (empty selection) OR CellSelection (multi-cell)
-    if (!isTable && !isCellSel) {
-      setVisible(false);
-      return;
-    }
+      const { selection } = editor.state;
+      const isCellSel = selection instanceof CellSelection;
+      const isTable =
+        editor.isActive("tableCell") || editor.isActive("tableHeader");
 
-    // Hide for regular text selections inside a table cell (FloatingToolbar handles those)
-    if (!isCellSel && !selection.empty) {
-      setVisible(false);
-      return;
-    }
-
-    // Find the table DOM node
-    const $pos = selection.$from;
-    let depth = $pos.depth;
-    while (depth > 0 && $pos.node(depth).type.name !== "table") {
-      depth--;
-    }
-    if (depth === 0) {
-      setVisible(false);
-      return;
-    }
-
-    // The table's NodeView (BaramTableView, a Tiptap TableView) draws
-    // `div.tableWrapper > table`. The wrapper is a block as wide as its
-    // container — the whole text column for a table at the top level — so only
-    // the `<table>` says where the table is across.
-    const tablePos = $pos.before(depth);
-    const tableDOM = editor.view.nodeDOM(tablePos);
-    const tableEl =
-      tableDOM instanceof HTMLElement
-        ? tableDOM.querySelector<HTMLTableElement>(":scope > table")
-        : null;
-    if (!(tableDOM instanceof HTMLElement) || !tableEl) {
-      setVisible(false);
-      return;
-    }
-
-    // Get the current cell alignment
-    for (let d = $pos.depth; d >= 0; d--) {
-      const n = $pos.node(d);
-      if (n.type.name === "tableCell" || n.type.name === "tableHeader") {
-        setCurrentAlign((n.attrs.alignment as null | string) ?? null);
-        break;
+      // Show for: cursor in table (empty selection) OR CellSelection (multi-cell)
+      if (!isTable && !isCellSel) {
+        commit(HIDDEN);
+        return;
       }
-    }
 
-    // Position toolbar above the table, clamped to the top of the visible editor
-    // area so it stays reachable while scrolling a tall table (§5.5), and across
-    // over the middle of the part of the table that shows.
-    const tableRect = tableEl.getBoundingClientRect();
-    const wrapperRect = tableDOM.getBoundingClientRect();
-    const scrollEl = editor.view.dom.closest(".editor-area-scroll");
-    if (!scrollEl) {
-      setVisible(false);
-      return;
-    }
-    const scrollRect = scrollEl.getBoundingClientRect();
-    // The rects are visual px; the toolbar's `top`/`left` are its CSS px, which
-    // the editor zoom scales (table-toolbar-position.ts).
-    const zoom = getEditorZoom();
+      // Hide for regular text selections inside a table cell (FloatingToolbar handles those)
+      if (!isCellSel && !selection.empty) {
+        commit(HIDDEN);
+        return;
+      }
 
-    const size = toolbarSizeRef.current;
-    // Before the first draw there is no height to read; 32 is a guess the
-    // layout effect corrects before paint.
-    const toolbarHeight = size.height || 32;
-    const placement = computeToolbarTop({
-      tableTop: tableRect.top,
-      tableBottom: tableRect.bottom,
-      scrollTop: scrollRect.top,
-      scrollHeight: scrollRect.height,
-      toolbarHeight,
-      zoom,
-    });
-    if (!placement.visible) {
-      setVisible(false);
-      return;
-    }
+      // Find the table DOM node
+      const $pos = selection.$from;
+      let depth = $pos.depth;
+      while (depth > 0 && $pos.node(depth).type.name !== "table") {
+        depth--;
+      }
+      if (depth === 0) {
+        commit(HIDDEN);
+        return;
+      }
 
-    const left = clampToolbarLeft({
-      areaWidth: scrollEl.clientWidth,
-      center: shownTableCenter({
-        scrollLeft: scrollRect.left,
-        tableLeft: tableRect.left,
-        tableRight: tableRect.right,
-        wrapperLeft: wrapperRect.left,
-        wrapperRight: wrapperRect.right,
+      // The table's NodeView (BaramTableView, a Tiptap TableView) draws
+      // `div.tableWrapper > table`. The wrapper is a block as wide as its
+      // container — the whole text column for a table at the top level — so only
+      // the `<table>` says where the table is across.
+      const tablePos = $pos.before(depth);
+      const tableDOM = editor.view.nodeDOM(tablePos);
+      const tableEl =
+        tableDOM instanceof HTMLElement
+          ? tableDOM.querySelector<HTMLTableElement>(":scope > table")
+          : null;
+      if (!(tableDOM instanceof HTMLElement) || !tableEl) {
+        commit(HIDDEN);
+        return;
+      }
+
+      // Get the current cell alignment
+      let align: null | string = null;
+      for (let d = $pos.depth; d >= 0; d--) {
+        const n = $pos.node(d);
+        if (n.type.name === "tableCell" || n.type.name === "tableHeader") {
+          align = (n.attrs.alignment as null | string) ?? null;
+          break;
+        }
+      }
+
+      // Position toolbar above the table, clamped to the top of the visible editor
+      // area so it stays reachable while scrolling a tall table (§5.5), and across
+      // over the middle of the part of the table that shows.
+      const tableRect = tableEl.getBoundingClientRect();
+      const wrapperRect = tableDOM.getBoundingClientRect();
+      const scrollEl = editor.view.dom.closest(".editor-area-scroll");
+      if (!scrollEl) {
+        commit({ ...HIDDEN, table: tableEl });
+        return;
+      }
+      const scrollRect = scrollEl.getBoundingClientRect();
+      // The rects are visual px; the toolbar's `top`/`left` are its CSS px, which
+      // the editor zoom scales (table-toolbar-position.ts).
+      const zoom = getEditorZoom();
+
+      // A drawn toolbar's size is read now: a dial can change it with no render.
+      // Before the first draw there is none; 32 is a guess the layout effect
+      // corrects before paint.
+      if (drawn) {
+        toolbarSizeRef.current = {
+          height: drawn.offsetHeight,
+          width: drawn.offsetWidth,
+        };
+      }
+      const size = toolbarSizeRef.current;
+      const toolbarHeight = size.height || 32;
+      const placement = computeToolbarTop({
+        tableTop: tableRect.top,
+        tableBottom: tableRect.bottom,
+        scrollTop: scrollRect.top,
+        scrollHeight: scrollRect.height,
+        toolbarHeight,
         zoom,
-      }),
-      toolbarWidth: size.width,
-    });
-    setPosition({ top: placement.top, left });
-    setVisible(true);
-  }, [editor]);
+      });
+      if (!placement.visible) {
+        commit({ ...HIDDEN, table: tableEl });
+        return;
+      }
+
+      const left = clampToolbarLeft({
+        areaWidth: scrollEl.clientWidth,
+        center: shownTableCenter({
+          scrollLeft: scrollRect.left,
+          tableLeft: tableRect.left,
+          tableRight: tableRect.right,
+          wrapperLeft: wrapperRect.left,
+          wrapperRight: wrapperRect.right,
+          zoom,
+        }),
+        toolbarWidth: size.width,
+      });
+      commit({
+        align,
+        isSelection: isCellSel,
+        left,
+        table: tableEl,
+        top: placement.top,
+        visible: true,
+      });
+    },
+    [editor],
+  );
+  const updatePosition = useCallback(() => place(false), [place]);
+  const relayout = useCallback(() => place(true), [place]);
 
   useEffect(() => {
     editor.on("selectionUpdate", updatePosition);
     editor.on("transaction", updatePosition);
     const scrollEl = editor.view.dom.closest(".editor-area-scroll");
-    scrollEl?.addEventListener("scroll", updatePosition, { passive: true });
+    scrollEl?.addEventListener("scroll", relayout, { passive: true });
     return () => {
       editor.off("selectionUpdate", updatePosition);
       editor.off("transaction", updatePosition);
-      scrollEl?.removeEventListener("scroll", updatePosition);
+      scrollEl?.removeEventListener("scroll", relayout);
     };
-  }, [editor, updatePosition]);
+  }, [editor, updatePosition, relayout]);
 
   // §5.5 — placing the toolbar needs its size, which only a drawn toolbar has.
   // Measure it here, before paint, and when it differs from the size this
@@ -298,7 +264,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
   // that would render under this toolbar.
   useLayoutEffect(() => {
     const el = toolbarRef.current;
-    if (!visible || !el) {
+    if (!placed.visible || !el) {
       setTableToolbarRect(null);
       return;
     }
@@ -312,9 +278,11 @@ export function TableToolbar({ editor }: TableToolbarProps) {
       return;
     }
     setTableToolbarRect(el.getBoundingClientRect());
-  }, [visible, position, isSelection, aiEnabled, updatePosition]);
+  }, [placed, aiEnabled, updatePosition]);
 
   useEffect(() => () => setTableToolbarRect(null), []);
+
+  useTableToolbarRelayout(editor, placed.table, toolbarRef, visible, relayout);
 
   // Close the ⋯ overflow when the toolbar hides so it can't reopen stale on the
   // next show (the toolbar unmounts its whole tree while hidden).
@@ -340,7 +308,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         className="table-toolbar"
         onMouseDown={(e) => e.preventDefault()}
         ref={toolbarRef}
-        style={{ top: position.top, left: position.left }}
+        style={{ top: placed.top, left: placed.left }}
       >
         <Tooltip label={t("tableToolbar.alignLeft")} placement="top">
           <button
@@ -502,4 +470,16 @@ function findTable(
     }
   }
   return null;
+}
+
+/** Whether two placements decide the same thing. */
+function samePlaced(a: Placed, b: Placed): boolean {
+  return (
+    a.align === b.align &&
+    a.isSelection === b.isSelection &&
+    a.left === b.left &&
+    a.table === b.table &&
+    a.top === b.top &&
+    a.visible === b.visible
+  );
 }
