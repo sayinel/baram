@@ -13,6 +13,7 @@ import { TOOLBAR_GAP } from "../table-toolbar-position";
 import {
   cleanupEditors,
   mountTableWithToolbar,
+  mountThenEnterTable,
 } from "./table-toolbar-test-helpers";
 
 afterEach(() => {
@@ -99,12 +100,24 @@ describe("the table toolbar's horizontal place", () => {
 
   it("moves in from the area's edge by its own measured width", async () => {
     // Table middle 40, toolbar 236 wide: its left end would sit at -78. The
-    // clamp needs the width the toolbar has once drawn — the first render
-    // has none to measure — so 4 + 236 / 2 = 122 shows the measured width
-    // reached the clamp. 236 is no default anyone would write.
+    // clamp needs the width the toolbar has once drawn, so 4 + 236 / 2 = 122
+    // shows the measured width reached the clamp. 236 is no default anyone
+    // would write.
     sizes(236);
     await mountTableWithToolbar(layout(80, 236));
     expect(toolbarLeft()).toBe("122px");
+  });
+
+  it("is placed with its drawn size the first time it shows", async () => {
+    // One transaction takes the caret into the table, and nothing follows it.
+    // That placement has no size to read (the toolbar was never drawn): only
+    // the re-placement after measuring, before paint, gets the left to 122
+    // and the top to 200 - 30 (drawn height) - gap, not 200 - 32 (the guess).
+    sizes(236);
+    await mountThenEnterTable(layout(80, 236));
+    const toolbar = document.querySelector<HTMLElement>(".table-toolbar");
+    expect(toolbar?.style.left).toBe("122px");
+    expect(toolbar?.style.top).toBe(`${200 - 30 - TOOLBAR_GAP}px`);
   });
 
   it("is the middle of the part a table wider than its wrapper shows", async () => {
