@@ -46,3 +46,34 @@ export function ancestorRungs($pos: ResolvedLike): Rung[] {
   }
   return rungs;
 }
+
+/** A node's span in the document. */
+export interface Span {
+  from: number;
+  to: number;
+}
+
+/**
+ * The list holding each rung — the node one level above it. `rungs` is `ancestorRungs($pos)`.
+ *
+ * In the schema `createBaramExtensions` builds, an item's parent is its list: `bulletList`
+ * and `orderedList` hold `listItem`, `taskList` holds `taskItem`, neither item type has a
+ * `group` a `block+` could take it through, and no other node in `src/extensions/nodes`
+ * names either. Each list renders its items as direct children of its `ul`/`ol` — through
+ * its own `toDOM` spec, which is also what the large-document virtualising node views
+ * render — so a list marked here is exactly a list with a threaded `li` child: what the
+ * stylesheet used to find with `:has(> li.bt-thread)`, wherever the list sits. Where it
+ * must sit (directly in the item above, or in a `div` there) stays the stylesheet's call.
+ *
+ * An item directly in the document would have no list to mark, and `before(0)` throws —
+ * inside the `decorations` prop, which takes the editor's rendering with it. Baram's schema
+ * never puts one there; a host whose schema did gets no mark for that rung instead.
+ */
+export function rungLists($pos: ResolvedLike, rungs: readonly Rung[]): Span[] {
+  return rungs
+    .filter((rung) => rung.depth > 1)
+    .map((rung) => ({
+      from: $pos.before(rung.depth - 1),
+      to: $pos.after(rung.depth - 1),
+    }));
+}

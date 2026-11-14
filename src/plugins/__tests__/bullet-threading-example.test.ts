@@ -504,7 +504,7 @@ describe("the Bullet Threading example", () => {
       const ed = await threadAt(markdown);
       const rule = ruleWhere(
         shippedSheet(),
-        /:has\(> li\.bt-thread\) ~ :is\(ul, ol\) > li::after$/u,
+        /:is\(ul, ol\)\.bt-rung-list ~ :is\(ul, ol\) > li::after$/u,
       );
       expect(rule.body).toBe("border-color:transparent");
       const hidden = [
@@ -515,6 +515,50 @@ describe("the Bullet Threading example", () => {
       expect(hidden).toEqual(expected);
     },
   );
+
+  it.each([
+    ["plain lists", "- parent\n  - before\n  - CARET\n\n  1. after\n", 2],
+    ["task lists", "- [ ] task parent\n  - [ ] CARET\n", 2],
+    ["a list in a blockquote", "- parent\n\n  > - CARET\n", 2],
+    ["a top-level item", "- CARET\n", 1],
+  ])(
+    "marks exactly the lists with a threaded item in them: %s",
+    async (_name, markdown, count) => {
+      // The stylesheet reads `.bt-rung-list` where it used to ask `:has(> li.bt-thread)`, so
+      // on Baram's markup the two have to pick the same lists — a list that is marked but
+      // has no rung would hide segments the thread needs, and one the other way round would
+      // leave a stray stroke beside a later sub-list.
+      const ed = await threadAt(markdown);
+      const lists = [...ed.view.dom.querySelectorAll("ul, ol")];
+      const marked = lists.filter((l) => l.matches(".bt-rung-list"));
+      const holding = lists.filter((l) =>
+        l.querySelector(":scope > li.bt-thread"),
+      );
+      expect(marked).toHaveLength(count);
+      expect(marked).toEqual(holding);
+    },
+  );
+
+  it("moves the mark with the caret from one sub-list to a later one", async () => {
+    // A mark left on the first list would hide the later list's segments — the very
+    // ones the thread now runs through.
+    const ed = await threadAt("- parent\n  - CARET\n\n  1. later\n");
+    const [first, later] = [
+      ...ed.view.dom.querySelectorAll(":scope > ul > li > :is(ul, ol)"),
+    ];
+    expect(first.matches(".bt-rung-list")).toBe(true);
+    expect(later.matches(".bt-rung-list")).toBe(false);
+    let pos = -1;
+    ed.state.doc.descendants((node, p) => {
+      if (pos === -1 && node.isText && node.text === "later") pos = p + 1;
+    });
+    act(() => {
+      ed.commands.setTextSelection(pos);
+    });
+    expect(first.matches(".bt-rung-list")).toBe(false);
+    expect(later.matches(".bt-rung-list")).toBe(true);
+    expect(later.querySelector(":scope > li.bt-thread-cursor")).not.toBeNull();
+  });
 
   it("stretches the image strokes by the margin the host gives an image", () => {
     // `--bt-image-gap` restates the image node view's margin. Change that margin and every
@@ -576,5 +620,6 @@ describe("the Bullet Threading example", () => {
     ed.commands.setTextSelection(2);
 
     expect(ed.view.dom.querySelectorAll("li.bt-thread")).toHaveLength(0);
+    expect(ed.view.dom.querySelectorAll(".bt-rung-list")).toHaveLength(0);
   });
 });

@@ -268,6 +268,62 @@ describe("buildCss", () => {
     );
   });
 
+  describe("a sub-list after the one holding the next rung", () => {
+    const rung = "li.bt-thread:not(.bt-thread-cursor) > ";
+    const hide = `:is(ul, ol).bt-rung-list ~ :is(ul, ol) > li::after`;
+
+    it("hides its segments by the class the plugin puts on the rung's list", () => {
+      // Both list shapes, as the sibling segments it overrides are drawn in both.
+      expect(css).toContain(
+        `.tiptap ${rung}${hide},\n.tiptap ${rung}div > ${hide}{border-color:transparent}`,
+      );
+      // Later than the segments in the sheet as well as more specific than them, so neither
+      // alone decides it.
+      const segments = css.indexOf(`${rung}:is(ul, ol) > li:not(.bt-thread)::after`);
+      expect(segments).toBeGreaterThan(-1);
+      expect(css.indexOf(hide)).toBeGreaterThan(segments);
+    });
+
+    /** Whether a `:has(` comes before the selector's last combinator. */
+    const hasBeforeLastCompound = (selector: string) => {
+      let depth = 0;
+      let lastCompound = 0;
+      for (let i = 0; i < selector.length; i++) {
+        const ch = selector[i];
+        if (ch === "(") depth++;
+        else if (ch === ")") depth--;
+        else if (depth === 0 && /[\s>~+]/u.test(ch)) lastCompound = i + 1;
+      }
+      const first = selector.indexOf(":has(");
+      return first !== -1 && first < lastCompound;
+    };
+
+    it("keeps every :has() in the compound the rule styles", () => {
+      // ‼️ The shape this rule used to have — `:is(ul, ol):has(> li.bt-thread) ~ …` — made a
+      // caret move on a 3000-item text list three times as slow in the app's WebKit, and
+      // neither the Chromium run nor these tests could see it (css.ts gives the numbers).
+      // The `:has()` conditions in the LAST compound measured close to free on the same
+      // list. That is one measured middle `:has()` against 26 last-compound ones, so this is
+      // a policy drawn from it rather than a law: keep `:has()` out of the middle.
+      expect(
+        hasBeforeLastCompound(
+          ".tiptap li.bt-thread:not(.bt-thread-cursor) > :is(ul, ol):has(> li.bt-thread) ~ :is(ul, ol) > li::after",
+        ),
+        "the check must catch the old rule",
+      ).toBe(true);
+      const selectors = [...css.matchAll(/([^{}]*)\{[^}]*\}/gu)].flatMap(([, group]) =>
+        group.trim().split(",\n"),
+      );
+      const withHas = selectors.filter((s) => s.includes(":has("));
+      expect(withHas.length, "no :has() at all — this test is vacuous").toBeGreaterThan(0);
+      for (const selector of withHas) {
+        expect(hasBeforeLastCompound(selector), selector).toBe(false);
+      }
+      // The measurement covered this many. Re-measure in the app before raising it.
+      expect(css.match(/:has\(/gu)).toHaveLength(26);
+    });
+  });
+
   it("drops the curve but keeps the drop when showElbow is off", () => {
     const straight = buildCss({ ...DEFAULT_SETTINGS, showElbow: false });
     expect(straight).not.toContain("border-bottom-left-radius");
