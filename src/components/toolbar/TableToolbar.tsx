@@ -22,10 +22,15 @@ import {
   serializeDetachedDoc,
 } from "../../utils/editor/serialize-live-doc";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { getEditorZoom } from "../../utils/zoom-coords";
 import { Tooltip } from "../Tooltip";
 import { buildTableOverflowItems } from "./context-menu-table";
 import { MenuList } from "./MenuList";
-import { computeToolbarTop } from "./table-toolbar-position";
+import {
+  clampToolbarLeft,
+  computeToolbarTop,
+  shownTableCenter,
+} from "./table-toolbar-position";
 import { setTableToolbarRect } from "./table-toolbar-rect";
 
 // Mono-style inline SVG icons (16×16, stroke-based)
@@ -163,6 +168,10 @@ export function TableToolbar({ editor }: TableToolbarProps) {
   // simply flips it — no "was it open at mousedown" bookkeeping.
   const overflowToggleRef = useRef<HTMLButtonElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  // The toolbar's size in CSS px (offsetWidth/offsetHeight) as last drawn,
+  // which placing it needs: the left clamp its width, `top` its height. Zero
+  // until the toolbar has been drawn once; the layout effect below keeps it.
+  const toolbarSizeRef = useRef({ height: 0, width: 0 });
 
   const updatePosition = useCallback(() => {
     const { selection } = editor.state;
@@ -194,9 +203,17 @@ export function TableToolbar({ editor }: TableToolbarProps) {
       return;
     }
 
+    // The table's NodeView (BaramTableView, a Tiptap TableView) draws
+    // `div.tableWrapper > table`. The wrapper is a block as wide as its
+    // container — the whole text column for a table at the top level — so only
+    // the `<table>` says where the table is across.
     const tablePos = $pos.before(depth);
-    const tableDOM = editor.view.nodeDOM(tablePos) as HTMLElement | null;
-    if (!tableDOM) {
+    const tableDOM = editor.view.nodeDOM(tablePos);
+    const tableEl =
+      tableDOM instanceof HTMLElement
+        ? tableDOM.querySelector<HTMLTableElement>(":scope > table")
+        : null;
+    if (!(tableDOM instanceof HTMLElement) || !tableEl) {
       setVisible(false);
       return;
     }
@@ -211,29 +228,49 @@ export function TableToolbar({ editor }: TableToolbarProps) {
     }
 
     // Position toolbar above the table, clamped to the top of the visible editor
-    // area so it stays reachable while scrolling a tall table (§5.5).
-    const tableRect = tableDOM.getBoundingClientRect();
+    // area so it stays reachable while scrolling a tall table (§5.5), and across
+    // over the middle of the part of the table that shows.
+    const tableRect = tableEl.getBoundingClientRect();
+    const wrapperRect = tableDOM.getBoundingClientRect();
     const scrollEl = editor.view.dom.closest(".editor-area-scroll");
-    const scrollRect = scrollEl?.getBoundingClientRect();
-    if (!scrollRect) {
+    if (!scrollEl) {
       setVisible(false);
       return;
     }
+    const scrollRect = scrollEl.getBoundingClientRect();
+    // The rects are visual px; the toolbar's `top`/`left` are its CSS px, which
+    // the editor zoom scales (table-toolbar-position.ts).
+    const zoom = getEditorZoom();
 
-    const toolbarHeight = toolbarRef.current?.offsetHeight ?? 32;
+    const size = toolbarSizeRef.current;
+    // Before the first draw there is no height to read; 32 is a guess the
+    // layout effect corrects before paint.
+    const toolbarHeight = size.height || 32;
     const placement = computeToolbarTop({
       tableTop: tableRect.top,
       tableBottom: tableRect.bottom,
       scrollTop: scrollRect.top,
       scrollHeight: scrollRect.height,
       toolbarHeight,
+      zoom,
     });
     if (!placement.visible) {
       setVisible(false);
       return;
     }
 
-    const left = tableRect.left - scrollRect.left + tableRect.width / 2;
+    const left = clampToolbarLeft({
+      areaWidth: scrollEl.clientWidth,
+      center: shownTableCenter({
+        scrollLeft: scrollRect.left,
+        tableLeft: tableRect.left,
+        tableRight: tableRect.right,
+        wrapperLeft: wrapperRect.left,
+        wrapperRight: wrapperRect.right,
+        zoom,
+      }),
+      toolbarWidth: size.width,
+    });
     setPosition({ top: placement.top, left });
     setVisible(true);
   }, [editor]);
@@ -250,15 +287,32 @@ export function TableToolbar({ editor }: TableToolbarProps) {
     };
   }, [editor, updatePosition]);
 
-  // §5.5 — publish our rect so TableInsertButtons/TableSelectionHandles can
-  // suppress the top-edge ⊕/grip that would render under this toolbar.
+  // §5.5 — placing the toolbar needs its size, which only a drawn toolbar has.
+  // Measure it here, before paint, and when it differs from the size this
+  // placement used (the first show has none; the Selection variant and the AI
+  // button change the width), place it again — the setState that follows is
+  // drawn before paint too. `.table-toolbar` is `width: max-content`, so its
+  // size does not move with `left` and one more pass settles it. Sizes are CSS
+  // px, which a zoom change leaves alone. Then publish our rect so
+  // TableInsertButtons/TableSelectionHandles can suppress the top-edge ⊕/grip
+  // that would render under this toolbar.
   useLayoutEffect(() => {
-    setTableToolbarRect(
-      visible && toolbarRef.current
-        ? toolbarRef.current.getBoundingClientRect()
-        : null,
-    );
-  }, [visible, position]);
+    const el = toolbarRef.current;
+    if (!visible || !el) {
+      setTableToolbarRect(null);
+      return;
+    }
+    const size = toolbarSizeRef.current;
+    if (el.offsetWidth !== size.width || el.offsetHeight !== size.height) {
+      toolbarSizeRef.current = {
+        height: el.offsetHeight,
+        width: el.offsetWidth,
+      };
+      updatePosition();
+      return;
+    }
+    setTableToolbarRect(el.getBoundingClientRect());
+  }, [visible, position, isSelection, aiEnabled, updatePosition]);
 
   useEffect(() => () => setTableToolbarRect(null), []);
 

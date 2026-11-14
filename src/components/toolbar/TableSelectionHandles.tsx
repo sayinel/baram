@@ -18,6 +18,7 @@ import {
   axisHasSpan,
   columnAnchorPos,
   computeHandleStyle,
+  HANDLE_REACH,
   type HandleAnchor,
   rowAnchorPos,
   selectColumn,
@@ -114,7 +115,14 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
             // §5.5 — don't place a column grip under the floating toolbar; that
             // real estate belongs to the toolbar (footprint-only suppression).
             const colCenterX = (c.left + c.right) / 2;
-            if (isUnderToolbar(colCenterX, rect.top, getTableToolbarRect())) {
+            if (
+              isUnderToolbar(
+                colCenterX,
+                rect.top,
+                getTableToolbarRect(),
+                HANDLE_REACH * zoom,
+              )
+            ) {
               if (!hoveringRef.current) setHandle(null);
               return;
             }

@@ -27,6 +27,9 @@ const HANDLE_MAIN = 18;
 const HANDLE_CROSS = 14;
 const HANDLE_GAP = 2; // lift off the table border
 
+/** How far a grip reaches past the table edge it sits on, in CSS px. */
+export const HANDLE_REACH = HANDLE_CROSS + HANDLE_GAP;
+
 /**
  * True if any cell in the table spans more than one column ("col") or row ("row").
  * Conservative merged-cell guard: reorder is disabled for spanned tables in v1
@@ -118,11 +121,11 @@ export function computeHandleStyle(
   if (anchor.axis === "col") {
     return {
       left: anchor.x / zoom - HANDLE_MAIN / 2,
-      top: anchor.y / zoom - HANDLE_CROSS - HANDLE_GAP,
+      top: anchor.y / zoom - HANDLE_REACH,
     };
   }
   return {
-    left: anchor.x / zoom - HANDLE_CROSS - HANDLE_GAP,
+    left: anchor.x / zoom - HANDLE_REACH,
     top: anchor.y / zoom - HANDLE_MAIN / 2,
   };
 }

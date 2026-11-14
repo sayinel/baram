@@ -36,14 +36,16 @@ export async function flush(): Promise<void> {
   });
 }
 
-export async function mountTableWithToolbar(): Promise<{
+export async function mountTableWithToolbar(
+  rects: (el: Element) => DOMRect = rectFor,
+): Promise<{
   editor: Editor;
   more: HTMLElement;
   view: RenderResult;
 }> {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
     function (this: Element) {
-      return rectFor(this);
+      return rects(this);
     },
   );
   const editor = new Editor({ extensions: createBaramExtensions() });
