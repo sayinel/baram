@@ -569,8 +569,11 @@ body.block-dragging * {
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
 
-/* §11.2.3 NodeView AI button — shared by math, code, table */
-.nodeview-ai-btn {
+/* §11.2.3 NodeView AI button — shared by math, code, table.
+   §5.4 The code block's copy button wears the same look: the two sit side by side in
+   the block's header, and one restyled without the other would read as a bug. */
+.nodeview-ai-btn,
+.code-block-copy-btn {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -589,28 +592,39 @@ body.block-dragging * {
     background-color 0.15s;
 }
 
-/* Show on hover of parent block */
+/* Show on hover of parent block — and on keyboard focus, so a tabbed-to button is not invisible */
 .math-block:hover .nodeview-ai-btn,
-.code-block-wrapper:hover .code-block-ai-btn {
+.code-block-wrapper:hover .code-block-ai-btn,
+.code-block-wrapper:hover .code-block-copy-btn,
+.code-block-actions > :focus-visible {
   opacity: 1;
 }
 
-.nodeview-ai-btn:hover {
+.nodeview-ai-btn:hover,
+.code-block-copy-btn:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-elevated);
   border-color: var(--color-border-default);
 }
 
-/* Code block AI button: positioned in header, not absolute */
-.code-block-ai-btn {
+/* Code block buttons: positioned in the header, not absolute */
+.code-block-ai-btn,
+.code-block-copy-btn {
   position: static;
-  margin-left: auto;
   opacity: 0;
 }
 
 .code-block-header {
   display: flex;
   align-items: center;
+}
+
+/* §5.4 ✨ and copy, pushed to the header's right end together */
+.code-block-actions {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  margin-left: auto;
 }
 
 /* Table toolbar AI button styling */

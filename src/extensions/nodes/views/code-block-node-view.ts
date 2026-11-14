@@ -24,6 +24,7 @@ import {
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
 import { registerCodeBlockEditableSync } from "./code-block-cm-registry";
+import { createCodeBlockCopyButton } from "./code-block-copy-button";
 import { createCodeBlockEscape } from "./code-block-escape";
 import { buildCodeBlockExtensions } from "./code-block-extensions";
 import { buildCodeBlockKeymap } from "./code-block-keymap";
@@ -40,6 +41,7 @@ export class CodeBlockNodeView implements NodeView {
   private cmView: CMView | null = null;
   private destroyed = false;
   private detachAiTooltip: (() => void) | null = null;
+  private detachCopyButton: (() => void) | null = null;
   private getPos: () => number | undefined;
   /** §361 / 0088 M3 — the syntax-highlighting slot, so a light/dark change reconfigures
    *  instead of recreating. Owned here because it must outlive every CM this view builds. */
@@ -91,7 +93,7 @@ export class CodeBlockNodeView implements NodeView {
     const wrapper = document.createElement("div");
     wrapper.classList.add("code-block-wrapper");
     // §298 §12-3: wrapper marker covers the CM island AND the header
-    // language select / AI button (design §4 — no contentDOM here, so no
+    // language select / AI and copy buttons (design §4 — no contentDOM here, so no
     // [data-node-view-content] can shadow it).
     wrapper.setAttribute("data-vim-suspend", "");
     const lang = (node.attrs.language as string) || "";
@@ -175,7 +177,15 @@ export class CodeBlockNodeView implements NodeView {
         aiBtn.hidden = !state.aiEnabled;
       }
     });
-    header.appendChild(aiBtn);
+
+    // §5.4 copy button. The two actions share a right-aligned group, so the copy button stays at
+    // the right end when the ✨ gate above hides its neighbour.
+    const copy = createCodeBlockCopyButton(() => this.node.textContent);
+    this.detachCopyButton = copy.destroy;
+    const actions = document.createElement("div");
+    actions.classList.add("code-block-actions");
+    actions.append(aiBtn, copy.button);
+    header.appendChild(actions);
 
     // CodeMirror container
     const cmContainer = document.createElement("div");
@@ -287,6 +297,10 @@ export class CodeBlockNodeView implements NodeView {
     if (this.detachAiTooltip) {
       this.detachAiTooltip();
       this.detachAiTooltip = null;
+    }
+    if (this.detachCopyButton) {
+      this.detachCopyButton();
+      this.detachCopyButton = null;
     }
     if (this.aiUnsub) {
       this.aiUnsub();
