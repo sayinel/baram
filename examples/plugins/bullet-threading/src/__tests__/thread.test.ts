@@ -4,10 +4,11 @@
 import { Schema } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 
-import { ancestorRungs } from "../thread";
+import { ancestorRungs, rungLists } from "../thread";
 
 const schema = new Schema({
   nodes: {
+    blockquote: { content: "block+", group: "block" },
     bulletList: { content: "listItem+", group: "block" },
     doc: { content: "block+" },
     listItem: { content: "paragraph block*" },
@@ -18,7 +19,8 @@ const schema = new Schema({
   },
 });
 
-const { bulletList, doc, listItem, paragraph, taskItem, taskList } = schema.nodes;
+const { blockquote, bulletList, doc, listItem, paragraph, taskItem, taskList } =
+  schema.nodes;
 const p = (t: string) => paragraph.create(null, schema.text(t));
 
 /** Resolve inside the first text node whose content is `text`. */
@@ -70,5 +72,57 @@ describe("ancestorRungs", () => {
     const outer = listItem.create(null, [p("a"), bulletList.create(null, [mid])]);
     const d = doc.create(null, [bulletList.create(null, [outer])]);
     expect(ancestorRungs(resolveIn(d, "b"))).toHaveLength(2);
+  });
+});
+
+describe("rungLists", () => {
+  /** The list each span covers, checked to be the one holding the rung beside it. */
+  function listsOf(d: ReturnType<typeof doc.create>, text: string) {
+    const $pos = resolveIn(d, text);
+    const rungs = ancestorRungs($pos);
+    const lists = rungLists($pos, rungs);
+    expect(lists).toHaveLength(rungs.length);
+    return lists.map((list, i) => {
+      const node = d.nodeAt(list.from);
+      // The span is that node's, end to end — a span one token off would decorate a
+      // different node, or be dropped by DecorationSet.create without a word.
+      expect(list.to).toBe(list.from + (node?.nodeSize ?? 0));
+      // ...and it is the very node the rung's position sits in, not merely a list.
+      expect(node).toBe(d.resolve(rungs[i].from).parent);
+      return node?.type.name;
+    });
+  }
+
+  it("returns the list holding each rung, outermost first", () => {
+    const inner = listItem.create(null, [p("c")]);
+    const mid = listItem.create(null, [p("b"), bulletList.create(null, [inner])]);
+    const outer = listItem.create(null, [p("a"), bulletList.create(null, [mid])]);
+    const d = doc.create(null, [bulletList.create(null, [outer])]);
+    expect(listsOf(d, "c")).toEqual(["bulletList", "bulletList", "bulletList"]);
+  });
+
+  it("returns a task item's list", () => {
+    const child = taskItem.create(null, [p("t")]);
+    const parent = taskItem.create(null, [p("parent"), taskList.create(null, [child])]);
+    const d = doc.create(null, [taskList.create(null, [parent])]);
+    expect(listsOf(d, "t")).toEqual(["taskList", "taskList"]);
+  });
+
+  it("returns a list wherever it sits, leaving the shape to the stylesheet", () => {
+    // `:has(> li.bt-thread)` found this list too, inside a blockquote of the item above. The
+    // selector's two forms, `li > :is(ul, ol)` and `li > div > :is(ul, ol)`, are what left
+    // it out — a `<blockquote>` is not a `div` — and still do.
+    const child = listItem.create(null, [p("quoted")]);
+    const parent = listItem.create(null, [
+      p("parent"),
+      blockquote.create(null, [bulletList.create(null, [child])]),
+    ]);
+    const d = doc.create(null, [bulletList.create(null, [parent])]);
+    expect(listsOf(d, "quoted")).toEqual(["bulletList", "bulletList"]);
+  });
+
+  it("is empty outside a list", () => {
+    const $pos = resolveIn(doc.create(null, [p("plain")]), "plain");
+    expect(rungLists($pos, ancestorRungs($pos))).toEqual([]);
   });
 });

@@ -10,24 +10,32 @@ function ancestorRungs($pos) {
   }
   return rungs;
 }
+function rungLists($pos, rungs) {
+  return rungs.filter((rung) => rung.depth > 1).map((rung) => ({
+    from: $pos.before(rung.depth - 1),
+    to: $pos.after(rung.depth - 1)
+  }));
+}
 
 // src/threading.ts
 var THREAD_CLASS = "bt-thread";
 var CURSOR_CLASS = "bt-thread-cursor";
+var RUNG_LIST_CLASS = "bt-rung-list";
 function threadDecorations(state, pm) {
-  const rungs = ancestorRungs(
-    state.selection.$head
-  );
+  const $head = state.selection.$head;
+  const rungs = ancestorRungs($head);
   if (rungs.length === 0) return pm.DecorationSet.empty;
   const last = rungs.length - 1;
-  return pm.DecorationSet.create(
-    state.doc,
-    rungs.map(
+  return pm.DecorationSet.create(state.doc, [
+    ...rungs.map(
       (rung, i) => pm.Decoration.node(rung.from, rung.to, {
         class: i === last ? `${THREAD_CLASS} ${CURSOR_CLASS}` : THREAD_CLASS
       })
+    ),
+    ...rungLists($head, rungs).map(
+      (list) => pm.Decoration.node(list.from, list.to, { class: RUNG_LIST_CLASS })
     )
-  );
+  ]);
 }
 function createThreadingPlugin(ctx) {
   return new ctx.pm.Plugin({
@@ -48,7 +56,7 @@ var DEFAULT_SETTINGS = {
 };
 var CARET_MARKERS = ["filled", "halo", "none"];
 var SAFE_COLOR = /^[\w#(),.%\s-]{1,64}$/;
-var STYLE_REVISION = "8";
+var STYLE_REVISION = "9";
 var MIN_WIDTH = 0.5;
 var MAX_WIDTH = 8;
 function resolveSettings(raw) {
@@ -131,9 +139,21 @@ function buildCss(settings) {
     // Nor is a whole sub-list that comes after the one holding the next rung — an item can
     // hold two, and the segments above are drawn in every list directly in the item. A
     // list BEFORE the rung's keeps them: the thread runs past it on its way down.
+    //
+    // ‼️ The rung's list is the one the plugin marks (`threading.ts`). 2.1.2 found it here
+    // instead, with a `:has(> li.bt-thread)` on the list — in the middle of the selector,
+    // before the `~` — and in the app's WebKit (debug build, 2026-11-14) that one rule, in
+    // both its forms, made a caret move on a 3000-item text list take 15 ms where 2.1.1 took
+    // 5, and 6 without it; Enter took 26 ms where 2.1.1 took 23. Chromium, measured on a
+    // 3000-item list with 2000 images only, showed no cost from any `:has()` in the sheet.
+    // Every `:has()` in the stylesheet this function builds sits in the selector's last
+    // compound, on the element the rule styles; on the same text list the 26 of them
+    // measured 6 ms against 5 with no `:has()` at all.
+    // `:is(ul, ol)` in front of the class keeps this rule more specific than the sibling
+    // segments it overrides, as the `:has()` form was, so their order does not decide it.
     [
-      `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > :is(ul, ol):has(> li.${THREAD_CLASS}) ~ :is(ul, ol) > li::after`,
-      `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > div > :is(ul, ol):has(> li.${THREAD_CLASS}) ~ :is(ul, ol) > li::after`
+      `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > :is(ul, ol).${RUNG_LIST_CLASS} ~ :is(ul, ol) > li::after`,
+      `${root} li.${THREAD_CLASS}:not(.${CURSOR_CLASS}) > div > :is(ul, ol).${RUNG_LIST_CLASS} ~ :is(ul, ol) > li::after`
     ].join(",\n") + `{border-color:transparent}`,
     // From the PARENT's own marker down to its first child, so the thread leaves a bullet
     // rather than appearing out of the gap below it. Each paragraph draws its own box:

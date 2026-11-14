@@ -103,7 +103,7 @@ would have changed the rendering with nothing reporting it.
 
 | | |
 | --- | --- |
-| `src/thread.ts` | `ancestorRungs($pos)` — the list-item chain, outermost first |
+| `src/thread.ts` | `ancestorRungs($pos)` — the list-item chain, outermost first; `rungLists` — the list holding each |
 | `src/threading.ts` | the ProseMirror plugin: rungs in, decorations out |
 | `src/css.ts` | the stylesheet, derived from the editor's own custom properties |
 | `src/index.ts` | `activate` (injects the style) and the exported factory |

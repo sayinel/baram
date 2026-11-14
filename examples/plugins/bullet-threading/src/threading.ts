@@ -8,12 +8,18 @@
  */
 import type { PluginContext, PluginFactoryContext } from "./types";
 
-import { ancestorRungs } from "./thread";
+import { ancestorRungs, rungLists } from "./thread";
 
 /** Class on every item in the chain. */
 export const THREAD_CLASS = "bt-thread";
 /** Class on the innermost item only — the one holding the caret. */
 export const CURSOR_CLASS = "bt-thread-cursor";
+/**
+ * Class on the list holding each item in the chain. The stylesheet used to find that list
+ * itself, with `:has(> li.bt-thread)`; the rule in `css.ts` that reads this class says what
+ * that cost.
+ */
+export const RUNG_LIST_CLASS = "bt-rung-list";
 
 /**
  * Build the decoration set for one state.
@@ -26,20 +32,21 @@ export function threadDecorations(
   state: { doc: unknown; selection: { $head: unknown } },
   pm: PluginFactoryContext["pm"],
 ) {
-  const rungs = ancestorRungs(
-    state.selection.$head as Parameters<typeof ancestorRungs>[0],
-  );
+  const $head = state.selection.$head as Parameters<typeof ancestorRungs>[0];
+  const rungs = ancestorRungs($head);
   if (rungs.length === 0) return pm.DecorationSet.empty;
 
   const last = rungs.length - 1;
-  return pm.DecorationSet.create(
-    state.doc as never,
-    rungs.map((rung, i) =>
+  return pm.DecorationSet.create(state.doc as never, [
+    ...rungs.map((rung, i) =>
       pm.Decoration.node(rung.from, rung.to, {
         class: i === last ? `${THREAD_CLASS} ${CURSOR_CLASS}` : THREAD_CLASS,
       }),
     ),
-  );
+    ...rungLists($head, rungs).map((list) =>
+      pm.Decoration.node(list.from, list.to, { class: RUNG_LIST_CLASS }),
+    ),
+  ]);
 }
 
 /** The factory the manifest points at. */
