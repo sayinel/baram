@@ -1,0 +1,24 @@
+# Cargo reads this file for any cargo command started in this repository or a
+# directory below it. It sits at the root, not in src-tauri/, because a
+# src-tauri/.cargo/config.toml is not read when cargo starts at the root with
+# `--manifest-path src-tauri/Cargo.toml` — which is how ci.yml runs some of its
+# cargo commands.
+#
+# `[env]` values without `force` only fill variables the environment leaves
+# unset, so exporting one of them yourself still wins for that build.
+
+[env]
+# aws-lc-sys (the C crypto library under rustls -> aws-lc-rs) looks for an
+# AWS-LC already installed on the build machine before compiling the copy it
+# bundles: OPENSSL_DIR, OPENSSL_INCLUDE_DIR/OPENSSL_LIB_DIR, and pkg-config on
+# unix. Adopting one would make the binary's crypto depend on that machine, and
+# the build log would not show it: cargo prints a registry crate's
+# `cargo:warning` lines only when the build fails or runs with -vv, and the
+# probe reports through one. "0" skips the probe and always builds the bundled
+# copy.
+#
+# AWS_LC_SYS_SMALL is left unset on purpose. aws-lc-sys derives it from
+# `opt-level = "s"` in src-tauri/Cargo.toml's [profile.release]: release builds
+# get OPENSSL_SMALL, a smaller binary with slower elliptic-curve operations.
+# The measured trade-off is in the commit that added this file.
+AWS_LC_SYS_USE_SYSTEM = "0"
