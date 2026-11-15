@@ -141,6 +141,55 @@ export async function mountThenEnterTable(
   await flush();
 }
 
+/**
+ * Puts the caret in a table cell first and only then mounts the toolbar, so no
+ * editor event reaches it: what it shows is what its mount places.
+ */
+export async function mountToolbarOverCaret(
+  rects: (el: Element) => DOMRect,
+): Promise<void> {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+    function (this: Element) {
+      return rects(this);
+    },
+  );
+  const editor = new Editor({ extensions: createBaramExtensions() });
+  editors.push(editor);
+  const view = render(
+    <div className="editor-area-scroll">
+      <EditorContent editor={editor} />
+    </div>,
+  );
+  act(() => {
+    editor.commands.setContent(
+      markdownToProsemirror(
+        "| a | b |\n| --- | --- |\n| c | d |\n",
+        editor.schema,
+      ).toJSON(),
+    );
+  });
+  await flush();
+  let cellTextPos = -1;
+  editor.state.doc.descendants((node, pos) => {
+    if (cellTextPos === -1 && node.isText && node.text === "c") {
+      cellTextPos = pos;
+    }
+    return cellTextPos === -1;
+  });
+  if (cellTextPos === -1) throw new Error("table cell text did not mount");
+  act(() => {
+    editor.commands.setTextSelection(cellTextPos + 1);
+  });
+  await flush();
+  view.rerender(
+    <div className="editor-area-scroll">
+      <EditorContent editor={editor} />
+      <TableToolbar editor={editor} />
+    </div>,
+  );
+  await flush();
+}
+
 /** jsdom has no layout; the toolbar shows itself only when the table sits
  *  inside the visible part of `.editor-area-scroll`, so hand it rects. */
 export function rectFor(el: Element): DOMRect {

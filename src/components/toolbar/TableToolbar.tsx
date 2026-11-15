@@ -16,6 +16,7 @@ import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys"
 import { useTranslation } from "../../i18n/useTranslation";
 import { useCommandLabel } from "../../keybindings/use-command-label";
 import { useFeatureFlags } from "../../stores/settings/features";
+import { subscribeEditorStateInstalled } from "../../utils/editor/programmatic-update";
 import {
   canonicalNodeAt,
   serializeDetachedDoc,
@@ -98,11 +99,12 @@ export function TableToolbar({ editor }: TableToolbarProps) {
   // `placed` as last set, for placement to compare against.
   const placedRef = useRef(placed);
 
-  // `relayout`: a change of layout — one the relayout watch reported, or a
-  // scroll — with the editor state as it was. A placement equal to the last
-  // one sets no state, so React does not render; a drawn toolbar's rect is
-  // published again, since the area itself may have moved on screen (a side
-  // panel opening) and the ⊕/grip suppression reads it. Every other call (a
+  // `relayout`: a change of layout with the editor state as it was — a size,
+  // position or scroll the relayout watch reports, or that watch being built.
+  // A placement equal to the last one sets no state, so React does not
+  // render; a drawn toolbar's rect is published again, since the area itself
+  // may have moved on screen (a side panel opening) and the ⊕/grip
+  // suppression reads it. Every other call (a
   // selection or transaction event, the layout effect) renders a shown
   // toolbar regardless — its buttons read the editor state (`editor.can()`)
   // as they render.
@@ -244,14 +246,21 @@ export function TableToolbar({ editor }: TableToolbarProps) {
   useEffect(() => {
     editor.on("selectionUpdate", updatePosition);
     editor.on("transaction", updatePosition);
-    const scrollEl = editor.view.dom.closest(".editor-area-scroll");
-    scrollEl?.addEventListener("scroll", relayout, { passive: true });
+    // A tab switch, a source-mode return or a reload installs a whole state
+    // (`replaceEditorStateWithVim`), which fires neither event and announces
+    // itself instead (programmatic-update.ts). And this effect runs when the
+    // toolbar mounts or is handed another editor (a keep-alive one), whose
+    // state no event has reported to it: place now.
+    const unsubscribeInstalled = subscribeEditorStateInstalled((view) => {
+      if (view === editor.view) updatePosition();
+    });
+    updatePosition();
     return () => {
       editor.off("selectionUpdate", updatePosition);
       editor.off("transaction", updatePosition);
-      scrollEl?.removeEventListener("scroll", relayout);
+      unsubscribeInstalled();
     };
-  }, [editor, updatePosition, relayout]);
+  }, [editor, updatePosition]);
 
   // §5.5 — placing the toolbar needs its size, which only a drawn toolbar has.
   // Measure it here, before paint, and when it differs from the size this
