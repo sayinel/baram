@@ -12,6 +12,8 @@
 //        PM recalculates view.editable and runs PluginView.update before
 //        returning, which also rebroadcasts CM readOnly, §12-4)
 //   3. publishVimSnapshot(editorId)       (S1 — owner-gated status publish)
+//   4. notifyEditorStateInstalled(view)   (§5.5 — UI placed from the
+//        selection, the table toolbar, hears of the install)
 //
 // The `reason` drives the S1 mode matrix (design §8):
 //   fresh-document  → vim re-enable + normal reset
@@ -24,6 +26,7 @@ import {
   abortEditorMutationTasks,
   invalidateEditorMutationTasks,
 } from "../../../utils/editor/mutation-tasks";
+import { notifyEditorStateInstalled } from "../../../utils/editor/programmatic-update";
 import { withoutClosedSearch } from "../find-replace";
 import { activateEditorForDocument } from "./vim-activation";
 
@@ -53,6 +56,9 @@ export function replaceEditorStateWithVim(
   // this file claimed the opposite and blamed source-mode round trips for
   // turning vim off; with the setting genuinely enabled, vim survives.)
   activateEditorForDocument(view);
+  // §5.5 — the install fired no Tiptap event; UI placed from the selection
+  // (the table toolbar) hears about it here.
+  notifyEditorStateInstalled(view);
 }
 
 /**

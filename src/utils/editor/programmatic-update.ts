@@ -13,6 +13,9 @@
  * dirty instead of being absorbed. See its doc comment.
  */
 import type { Node } from "@tiptap/pm/model";
+import type { EditorView } from "@tiptap/pm/view";
+
+import { logger } from "../logger";
 
 const originalDocs = new Map<string, Node>();
 const pendingTabs = new Set<string>();
@@ -55,6 +58,45 @@ const contentLoadedListeners = new Set<(tabId: string) => void>();
  * instead (`editor-ops.ts`). This answers only "does the editor hold the active tab yet?".
  */
 let lastLoadedTabId: null | string = null;
+
+/**
+ * Listeners told that a whole editor state was just installed into a view.
+ * Installs of a new state — another document, a cached one, a reload — go
+ * through `replaceEditorStateWithVim`, which calls
+ * `notifyEditorStateInstalled`. Of the two `view.updateState` calls in `src`
+ * outside tests, the other (open-tab-surface.ts) applies an edit to a tab on
+ * its way out, ahead of the next tab's install. An install fires no Tiptap
+ * event, so UI placed from the selection — the table toolbar — learns of it
+ * here. Unlike the content-loaded signal this carries no tab and touches no
+ * dirty baseline.
+ */
+const stateInstalledListeners = new Set<(view: EditorView) => void>();
+
+/**
+ * Called by `replaceEditorStateWithVim` right after it installs `view`'s state.
+ * A listener that throws is logged and skipped: the install's callers carry on
+ * after this returns — a tab switch still has `installContent` and
+ * `finishLoad` to run.
+ */
+export function notifyEditorStateInstalled(view: EditorView): void {
+  for (const fn of stateInstalledListeners) {
+    try {
+      fn(view);
+    } catch (error) {
+      logger.error("editor state install listener threw", error);
+    }
+  }
+}
+
+/** Subscribe to whole-state installs. Returns an unsubscribe function. */
+export function subscribeEditorStateInstalled(
+  fn: (view: EditorView) => void,
+): () => void {
+  stateInstalledListeners.add(fn);
+  return () => {
+    stateInstalledListeners.delete(fn);
+  };
+}
 
 /** Subscribe to content-loaded notifications. Returns an unsubscribe function. */
 export function subscribeContentLoaded(

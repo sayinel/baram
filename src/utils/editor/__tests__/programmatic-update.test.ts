@@ -1,14 +1,19 @@
-import { Schema } from "@tiptap/pm/model";
-import { describe, expect, it } from "vitest";
+import type { EditorView } from "@tiptap/pm/view";
 
+import { Schema } from "@tiptap/pm/model";
+import { describe, expect, it, vi } from "vitest";
+
+import { logger } from "../../logger";
 import {
   clearOriginalDoc,
   editorHoldsWholeDocument,
   isTabLoading,
   markContentLoaded,
   noteColwidthInit,
+  notifyEditorStateInstalled,
   setTabLoading,
   shouldSkipDirty,
+  subscribeEditorStateInstalled,
 } from "../programmatic-update";
 
 const schema = new Schema({
@@ -178,5 +183,29 @@ describe("colwidth auto-init (noteColwidthInit)", () => {
     expect(shouldSkipDirty("tab-load", docWith("full"))).toBe(true);
     expect(shouldSkipDirty("tab-load", docWith("full"))).toBe(true);
     expect(shouldSkipDirty("tab-load", docWith("fullx"))).toBe(false);
+  });
+});
+
+describe("whole-state install notice", () => {
+  it("reaches every listener even when one throws, and stops after unsubscribe", () => {
+    // It runs inside replaceEditorStateWithVim, whose callers still have work
+    // after it returns; one listener's error must not cut that short.
+    const view = {} as EditorView;
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const heard: EditorView[] = [];
+    const offThrowing = subscribeEditorStateInstalled(() => {
+      throw new Error("listener failed");
+    });
+    const offHearing = subscribeEditorStateInstalled((v) => heard.push(v));
+
+    expect(() => notifyEditorStateInstalled(view)).not.toThrow();
+    expect(heard).toEqual([view]);
+    expect(error).toHaveBeenCalledTimes(1);
+
+    offThrowing();
+    offHearing();
+    notifyEditorStateInstalled(view);
+    expect(heard).toEqual([view]);
+    error.mockRestore();
   });
 });
