@@ -10,14 +10,18 @@
 import type { Editor } from "@tiptap/core";
 
 import { act, cleanup, waitFor } from "@testing-library/react";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { replaceEditorStateWithVim } from "../../../extensions/plugins/vim/replace-editor-state";
+import { TOOLBAR_GAP } from "../table-toolbar-position";
 import { getTableToolbarRect } from "../table-toolbar-rect";
 import {
   cleanupEditors,
   flush,
   mountTableWithToolbar,
+  mountToolbarOverCaret,
 } from "./table-toolbar-test-helpers";
 
 class FakeResizeObserver {
@@ -31,8 +35,12 @@ class FakeResizeObserver {
     this.observed.clear();
     this.disconnected = true;
   }
-  fire(): void {
-    this.callback([], this as unknown as ResizeObserver);
+  /** Reports `targets` as resized — every watched box by default. */
+  fire(targets: Element[] = [...this.observed]): void {
+    const entries = targets.map(
+      (target) => ({ target }) as ResizeObserverEntry,
+    );
+    this.callback(entries, this as unknown as ResizeObserver);
   }
   observe(el: Element): void {
     this.observed.add(el);
@@ -42,9 +50,43 @@ class FakeResizeObserver {
   }
 }
 
+/** Stands in for the IntersectionObserver floating-ui's `autoUpdate` builds to
+ *  watch the table's position: `fire()` is what the browser does when the
+ *  table crosses the observer's threshold. */
+class FakeIntersectionObserver {
+  static instances: FakeIntersectionObserver[] = [];
+  disconnected = false;
+  readonly observed = new Set<Element>();
+  constructor(private readonly callback: IntersectionObserverCallback) {
+    FakeIntersectionObserver.instances.push(this);
+  }
+  disconnect(): void {
+    this.observed.clear();
+    this.disconnected = true;
+  }
+  fire(ratio = 1): void {
+    const entries = [...this.observed].map(
+      (target) =>
+        ({ intersectionRatio: ratio, target }) as IntersectionObserverEntry,
+    );
+    this.callback(entries, this as unknown as IntersectionObserver);
+  }
+  observe(el: Element): void {
+    this.observed.add(el);
+  }
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+  unobserve(el: Element): void {
+    this.observed.delete(el);
+  }
+}
+
 beforeEach(() => {
   FakeResizeObserver.instances = [];
+  FakeIntersectionObserver.instances = [];
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
 
 afterEach(() => {
@@ -73,6 +115,15 @@ function liveObserver(): FakeResizeObserver {
   const area = document.querySelector(".editor-area-scroll");
   const live = FakeResizeObserver.instances.filter(
     (o) => !o.disconnected && area !== null && o.observed.has(area),
+  );
+  expect(live).toHaveLength(1);
+  return live[0];
+}
+
+/** The live IntersectionObserver watching `table`'s position. */
+function moveWatcher(table: Element): FakeIntersectionObserver {
+  const live = FakeIntersectionObserver.instances.filter(
+    (o) => !o.disconnected && o.observed.has(table),
   );
   expect(live).toHaveLength(1);
   return live[0];
@@ -295,6 +346,139 @@ describe("the table toolbar follows layout no transaction reports", () => {
     });
     await flush();
     expect(mergeButton().disabled).toBe(false);
+  });
+
+  it("places itself again when the table moves and no box changes size", async () => {
+    // Content above the table grows by 50 as content below it shrinks by 50:
+    // the area, the document, the table and the toolbar keep their sizes, so
+    // the ResizeObserver reports nothing. The table's position is watched.
+    const place = { tableLeft: 0, tableTop: 200 };
+    sizes({ toolbarWidth: 200 });
+    await mountTableWithToolbar(movableLayout(place));
+    const toolbar = () => document.querySelector<HTMLElement>(".table-toolbar");
+    expect(toolbar()?.style.top).toBe(`${200 - 30 - TOOLBAR_GAP}px`);
+
+    place.tableTop = 250;
+    act(() => moveWatcher(document.querySelector("table")!).fire());
+    expect(toolbar()?.style.top).toBe(`${250 - 30 - TOOLBAR_GAP}px`);
+  });
+
+  it("watches the table's position only while the toolbar shows", async () => {
+    // For a table entirely out of view the position watch re-checks on a
+    // one-second timer. The size watch and the scroll listener bring the
+    // toolbar back in the cases they cover.
+    const place = { tableLeft: 0, tableTop: 200 };
+    sizes({ toolbarWidth: 200 });
+    await mountTableWithToolbar(movableLayout(place));
+    const table = document.querySelector("table")!;
+    const watcher = moveWatcher(table);
+
+    place.tableTop = 900;
+    act(() => liveObserver().fire());
+    expect(document.querySelector(".table-toolbar")).toBeNull();
+    expect(watcher.disconnected).toBe(true);
+    expect(
+      FakeIntersectionObserver.instances.filter(
+        (o) => !o.disconnected && o.observed.has(table),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("rebuilds the position watch on every size report and scroll", async () => {
+    // The watch keeps the rect it was last built for. After a row is deleted,
+    // a move that keeps the shorter table inside that rect goes unreported;
+    // after a table cut off at the bottom moves up, so does a move back down.
+    sizes({ toolbarWidth: 200 });
+    await mountTableWithToolbar(movableLayout({ tableLeft: 0 }));
+    const table = document.querySelector("table")!;
+    const area = document.querySelector(".editor-area-scroll")!;
+    const first = moveWatcher(table);
+
+    act(() => liveObserver().fire([area]));
+    expect(first.disconnected).toBe(true);
+    const second = moveWatcher(table);
+    expect(second).not.toBe(first);
+
+    act(() => {
+      area.dispatchEvent(new Event("scroll"));
+    });
+    expect(second.disconnected).toBe(true);
+    expect(moveWatcher(table)).not.toBe(second);
+  });
+
+  it("places itself when a tab switch installs a whole state", async () => {
+    // A tab switch puts its state in with replaceEditorStateWithVim, which
+    // calls view.updateState — no transaction, no selectionUpdate.
+    sizes({ toolbarWidth: 200 });
+    const { editor } = await mountTableWithToolbar(
+      movableLayout({ tableLeft: 0 }),
+      "above\n\n| a | b |\n| --- | --- |\n| c | d |\n",
+    );
+    act(() => {
+      editor.commands.setTextSelection(posOf(editor, "above") + 1);
+    });
+    await flush();
+    expect(document.querySelector(".table-toolbar")).toBeNull();
+
+    act(() => {
+      const { state } = editor;
+      replaceEditorStateWithVim(
+        editor.view,
+        EditorState.create({
+          doc: state.doc,
+          plugins: state.plugins,
+          selection: TextSelection.create(state.doc, posOf(editor, "c") + 1),
+        }),
+        "cached-restore",
+      );
+    });
+    await flush();
+    expect(toolbarLeft()).toBe("150px");
+  });
+
+  it("places itself when it mounts over a caret already in a table", async () => {
+    // Mounting, or being handed a keep-alive editor, brings no editor event.
+    sizes({ toolbarWidth: 200 });
+    await mountToolbarOverCaret(movableLayout({ tableLeft: 0 }));
+    expect(toolbarLeft()).toBe("150px");
+  });
+
+  it("follows scrolls without a ResizeObserver", async () => {
+    vi.stubGlobal("ResizeObserver", undefined);
+    const place = { tableLeft: 0, tableTop: 200 };
+    sizes({ toolbarWidth: 200 });
+    await mountTableWithToolbar(movableLayout(place));
+    expect(FakeResizeObserver.instances).toHaveLength(0);
+    const area = document.querySelector(".editor-area-scroll")!;
+
+    place.tableTop = 900;
+    act(() => {
+      area.dispatchEvent(new Event("scroll"));
+    });
+    expect(document.querySelector(".table-toolbar")).toBeNull();
+
+    place.tableTop = 200;
+    act(() => {
+      area.dispatchEvent(new Event("scroll"));
+    });
+    expect(toolbarLeft()).toBe("150px");
+  });
+
+  it("comes back on a scroll that brings its table into view", async () => {
+    const place = { tableLeft: 0, tableTop: 200 };
+    sizes({ toolbarWidth: 200 });
+    await mountTableWithToolbar(movableLayout(place));
+    place.tableTop = 900;
+    act(() => liveObserver().fire());
+    expect(document.querySelector(".table-toolbar")).toBeNull();
+
+    place.tableTop = 200;
+    act(() => {
+      document
+        .querySelector(".editor-area-scroll")!
+        .dispatchEvent(new Event("scroll"));
+    });
+    expect(toolbarLeft()).toBe("150px");
   });
 
   it("watches the editor area, the document, the table and itself", async () => {
