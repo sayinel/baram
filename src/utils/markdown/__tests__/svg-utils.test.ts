@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   ensureRootSvgNamespace,
   ensureSvgIntrinsicSize,
+  ensureSvgViewBox,
   getSvgCaption,
   getSvgRootWidthPercent,
   isSvgContent,
@@ -504,5 +505,32 @@ describe("ensureSvgIntrinsicSize — a `>` inside a quoted attribute", () => {
     )?.[0];
     expect(root).toMatch(/\swidth="160"/);
     expect(root).toMatch(/\sheight="60"/);
+  });
+});
+
+// §396 D6 — a size-only root gets the viewBox its px size describes, so the fullscreen view can
+// scale it; render markup only.
+describe("ensureSvgViewBox", () => {
+  it.each([
+    [
+      '<svg width="200" height="100">',
+      '<svg viewBox="0 0 200 100" width="200" height="100">',
+    ],
+    [
+      '<svg width="200px" height="100px">',
+      '<svg viewBox="0 0 200 100" width="200px" height="100px">',
+    ],
+  ])("adds a viewBox from absolute px size: %s", (input, want) => {
+    expect(ensureSvgViewBox(input + "</svg>")).toBe(want + "</svg>");
+  });
+
+  it.each([
+    '<svg viewBox="0 0 1 1" width="200" height="100"></svg>',
+    '<svg width="10em" height="5em"></svg>',
+    '<svg width="50%" height="100"></svg>',
+    '<svg width="200"></svg>',
+    '<svg data-width="200" stroke-width="3" height="100"></svg>',
+  ])("leaves %s unchanged", (s) => {
+    expect(ensureSvgViewBox(s)).toBe(s);
   });
 });

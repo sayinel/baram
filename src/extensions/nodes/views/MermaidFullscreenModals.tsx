@@ -5,12 +5,15 @@
 // holds no state either — it memoises the innerHTML wrapper AT the injection
 // sink (issue 549): a wrapper handed across a component boundary could be
 // spread or copied into a fresh object on the way, which is exactly the
-// per-render re-seed the hook exists to prevent.
+// per-render re-seed the hook exists to prevent. The View modal also owns the
+// §396 zoom scale (useViewerZoom) — view-local state, nothing the parent needs.
 
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { ViewerZoomControls } from "../../../components/editor/ViewerZoomControls";
 import { useFontSurface } from "../../../hooks/use-font-surface";
+import { useViewerZoom } from "../../../hooks/use-viewer-zoom";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
 import { mermaidTypeLabel } from "../../../utils/markdown/mermaid-utils";
@@ -52,6 +55,10 @@ export function MermaidViewFullscreenModal({
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
   const svgMarkup = useInnerHtml(svgHtml);
+  const zoom = useViewerZoom({
+    contentKey: svgHtml,
+    contentSelector: ".mermaid-block-svg svg",
+  });
   return createPortal(
     <div
       className="mermaid-fullscreen-overlay"
@@ -84,6 +91,7 @@ export function MermaidViewFullscreenModal({
               {mermaidTypeLabel(t, detectedType)}
             </span>
           )}
+          <ViewerZoomControls className="mermaid-fullscreen-zoom" zoom={zoom} />
           <button
             className="mermaid-fullscreen-close"
             onClick={onClose}
@@ -92,7 +100,7 @@ export function MermaidViewFullscreenModal({
             {t("common.close")}
           </button>
         </div>
-        <div className="mermaid-view-fullscreen-body">
+        <div className="mermaid-view-fullscreen-body" ref={zoom.scrollRef}>
           {svgHtml ? (
             <div
               className="mermaid-block-svg"

@@ -13,12 +13,15 @@
 // document — this project's typing-latency defect class (§8.4 budgets
 // 16ms/keystroke, cost scales with mounted NodeViews). See
 // svg-block-font-surface-subscription.test.tsx for the property this fixes.
-import React from "react";
+import React, { useMemo } from "react";
 import { createPortal } from "react-dom";
 
+import { ViewerZoomControls } from "../../../components/editor/ViewerZoomControls";
 import { useFontSurface } from "../../../hooks/use-font-surface";
+import { useViewerZoom } from "../../../hooks/use-viewer-zoom";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
+import { ensureSvgViewBox } from "../../../utils/markdown/svg-utils";
 import { useInnerHtml } from "./use-inner-html";
 
 interface SvgEditFullscreenModalProps {
@@ -46,7 +49,13 @@ export function SvgViewFullscreenModal({
   // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
-  const svgMarkup = useInnerHtml(svgHtml);
+  // §396 D6: the viewBox is added to the rendered view only — never the inline block.
+  const viewMarkup = useMemo(() => ensureSvgViewBox(svgHtml), [svgHtml]);
+  const svgMarkup = useInnerHtml(viewMarkup);
+  const zoom = useViewerZoom({
+    contentKey: svgHtml,
+    contentSelector: ".svg-block-render svg",
+  });
   return createPortal(
     <div
       className="svg-fullscreen-overlay"
@@ -73,6 +82,7 @@ export function SvgViewFullscreenModal({
       <div className="svg-view-fullscreen-modal">
         <div className="svg-fullscreen-header">
           <span className="svg-block-label">svg</span>
+          <ViewerZoomControls className="svg-fullscreen-zoom" zoom={zoom} />
           <button
             className="svg-fullscreen-close"
             onClick={onClose}
@@ -81,7 +91,7 @@ export function SvgViewFullscreenModal({
             {t("common.close")}
           </button>
         </div>
-        <div className="svg-view-fullscreen-body">
+        <div className="svg-view-fullscreen-body" ref={zoom.scrollRef}>
           {svgHtml ? (
             <div
               className="svg-block-render"

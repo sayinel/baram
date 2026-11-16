@@ -218,6 +218,39 @@ export function ensureSvgIntrinsicSize(svg: string): string {
   });
 }
 
+/**
+ * Render markup only (§396 D6): a root with an absolute px (or unitless) `width` AND `height` and
+ * no `viewBox` gets the `viewBox` those two describe, so the fullscreen view can scale it with CSS.
+ * Other units (`em`, `%`), a single dimension, or an existing `viewBox` leave the markup unchanged.
+ * Never applied to the inline block or to stored source — a size-only svg is saved as written.
+ * Output shape matches `ensureSvgIntrinsicSize`: the new attribute comes first.
+ */
+export function ensureSvgViewBox(svg: string): string {
+  return svg.replace(ROOT_OPENING_TAG_RE, (full, attrs: string) => {
+    let width: string | undefined;
+    let height: string | undefined;
+    for (const m of attrs.matchAll(ROOT_ATTRIBUTE_RE)) {
+      const name = m[1].toLowerCase();
+      if (name === "viewbox") return full;
+      if (name === "width") width = m[2];
+      if (name === "height") height = m[2];
+    }
+    const w = absolutePx(width);
+    const h = absolutePx(height);
+    if (!(w > 0) || !(h > 0)) return full;
+    return `<svg viewBox="0 0 ${w} ${h}"${attrs}>`;
+  });
+}
+
+/** Unitless or `px` length from a raw (possibly quoted) attribute value; NaN for anything else. */
+function absolutePx(raw: string | undefined): number {
+  if (raw === undefined) return NaN;
+  const m = /^(\d+(?:\.\d*)?|\.\d+)(?:px)?$/i.exec(
+    raw.replace(/^["']|["']$/g, "").trim(),
+  );
+  return m ? Number(m[1]) : NaN;
+}
+
 /** The root `<svg …>` opening tag, quote-aware: a `>` inside a quoted
  *  attribute value (`aria-label="A > B"`, which DOMPurify keeps) does not end
  *  the tag. Group 1 is everything between `<svg` and the closing `>`. */
