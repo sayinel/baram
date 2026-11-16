@@ -10,10 +10,16 @@
 // 빈 모달을 몇 초 보여주는 것보다 낫고, 무엇을 보고 있는지 헤더가 말해 준다("원본
 // 불러오는 중…"). 모달을 닫으면 <img>가 언마운트되어 그 비트맵(RGBA ~800MB)이 곧 풀린다 —
 // 열어 둔 동안만 치르는 비용이다.
+//
+// §396 이 모달은 줌의 주인이다(useViewerZoom) — 배율은 이미지의 맞춤 크기에 곱해지고, 프리뷰가
+// 원본으로 바뀌면 `contentKey` 로 다시 잰다(원본은 로드 전 display: none 이라 폭이 없어 건너뛴다).
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useFontSurface } from "../../hooks/use-font-surface";
+import { useViewerZoom } from "../../hooks/use-viewer-zoom";
+import { useTranslation } from "../../i18n/useTranslation";
+import { ViewerZoomControls } from "./ViewerZoomControls";
 
 export function ImageOriginalView({
   alt,
@@ -32,6 +38,11 @@ export function ImageOriginalView({
   // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
+  const { t } = useTranslation();
+  const zoom = useViewerZoom({
+    contentKey: originalLoaded,
+    contentSelector: ".image-fullscreen-img",
+  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,17 +70,20 @@ export function ImageOriginalView({
       <div className="image-view-fullscreen-modal">
         <div className="image-fullscreen-header">
           <span className="image-fullscreen-label">
-            {originalLoaded ? "Original" : "Loading original…"}
+            {originalLoaded
+              ? t("imageOriginal.title")
+              : t("imageOriginal.loading")}
           </span>
+          <ViewerZoomControls className="image-fullscreen-zoom" zoom={zoom} />
           <button
             className="image-fullscreen-close"
             onClick={onClose}
             onMouseDown={(e) => e.preventDefault()}
           >
-            Close
+            {t("common.close")}
           </button>
         </div>
-        <div className="image-view-fullscreen-body">
+        <div className="image-view-fullscreen-body" ref={zoom.scrollRef}>
           {/*
             둘을 겹쳐 두고 원본이 준비되면 프리뷰를 감춘다. src를 교체하지 않는 이유:
             교체하면 원본을 디코드하는 동안 <img>가 비어 화면이 한 번 깜박인다 — 이 작업

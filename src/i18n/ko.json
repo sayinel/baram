@@ -250,6 +250,8 @@
   "htmlPreview.showPreview": "미리보기",
   "htmlPreview.showSource": "소스",
   "htmlPreview.toggleTitle": "HTML 미리보기 / 소스 전환",
+  "imageOriginal.loading": "원본 불러오는 중…",
+  "imageOriginal.title": "원본",
   "journal.block.empty": "(해당 기간 데이터 없음)",
   "journal.block.list": "목록",
   "journal.block.photos": "사진",

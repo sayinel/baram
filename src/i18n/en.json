@@ -250,6 +250,8 @@
   "htmlPreview.showPreview": "Preview",
   "htmlPreview.showSource": "Source",
   "htmlPreview.toggleTitle": "Toggle HTML preview / source",
+  "imageOriginal.loading": "Loading original…",
+  "imageOriginal.title": "Original",
   "journal.block.empty": "(No entries in this range)",
   "journal.block.list": "List",
   "journal.block.photos": "Photos",

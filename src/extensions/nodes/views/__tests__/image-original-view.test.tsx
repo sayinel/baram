@@ -4,8 +4,15 @@
 // 기능이 이름만 남는다), 원본이 디코드되는 동안 모달이 비어 있지 않아야 한다(199.8 MPix는
 // 초 단위가 걸린다).
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (p: string) => `asset://localhost/${p}`,
@@ -18,6 +25,10 @@ const { ImageOriginalView } =
   await import("../../../../components/editor/ImageOriginalView");
 const { originalImageUrl } = await import("../use-image-preview");
 const { useEditorStore } = await import("../../../../stores/editor/editor");
+const { zoomIn } = await import("../../../../hooks/use-zoom");
+const { useSettingsStore } = await import("../../../../stores/settings/store");
+const { topZoomOwner } = await import("../../../../utils/viewer-zoom");
+const { t } = await import("../../../../i18n");
 
 const ORIGINAL = "asset://localhost//vault/2025/08/assets/20250816-152728.jpg";
 const PREVIEW = "asset://localhost//cache/thumbnails/preview.jpg";
@@ -120,5 +131,96 @@ describe("ImageOriginalView", () => {
 
     fireEvent.click(screen.getByText("Close"));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+});
+
+// §396 — the original view is a zoom owner; jsdom has no layout, so the rect is mocked per element:
+// the blurred preview fits at 400 x 300, the original at 800 x 600.
+describe("ImageOriginalView zoom", () => {
+  const realLocale = useSettingsStore.getState().locale;
+
+  beforeEach(() => {
+    useSettingsStore.setState({ zoomLevel: 1 });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        if (!this.classList.contains("image-fullscreen-img")) {
+          return new DOMRect(0, 0, 0, 0);
+        }
+        return this.classList.contains("image-fullscreen-img-preview")
+          ? new DOMRect(0, 0, 400, 300)
+          : new DOMRect(0, 0, 800, 600);
+      },
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    useSettingsStore.setState({ locale: realLocale });
+  });
+
+  function renderView() {
+    return render(
+      <ImageOriginalView
+        alt="바다"
+        onClose={vi.fn()}
+        originalUrl={ORIGINAL}
+        previewUrl={PREVIEW}
+      />,
+    );
+  }
+
+  const body = () =>
+    document.body.querySelector<HTMLElement>(".image-view-fullscreen-body")!;
+
+  test("is the zoom owner; zoomIn() scales the image, not the editor", () => {
+    expect(topZoomOwner()).toBeNull();
+    renderView();
+    expect(topZoomOwner()).not.toBeNull();
+    expect(screen.getByText("100%")).toBeTruthy();
+    expect(body().hasAttribute("data-viewer-zoomed")).toBe(false);
+    act(() => zoomIn());
+    expect(screen.getByText("125%")).toBeTruthy();
+    expect(body().hasAttribute("data-viewer-zoomed")).toBe(true);
+    expect(useSettingsStore.getState().zoomLevel).toBe(1);
+  });
+
+  test("re-measures when the original replaces the preview", () => {
+    renderView();
+    act(() => zoomIn());
+    // Measured on the preview, because the hidden original has no width.
+    expect(body().style.getPropertyValue("--viewer-zoom-width")).toBe("500px");
+    const original = screen
+      .getAllByRole("img", { hidden: true })
+      .find((el) => el.getAttribute("src") === ORIGINAL)!;
+    fireEvent.load(original);
+    expect(body().style.getPropertyValue("--viewer-zoom-width")).toBe("1000px");
+    expect(body().style.getPropertyValue("--viewer-zoom-height")).toBe("750px");
+    expect(screen.getByText("125%")).toBeTruthy();
+  });
+
+  test("unmount leaves editor zoom untouched", () => {
+    const view = renderView();
+    act(() => zoomIn());
+    view.unmount();
+    expect(topZoomOwner()).toBeNull();
+    expect(useSettingsStore.getState().zoomLevel).toBe(1);
+    act(() => zoomIn());
+    expect(useSettingsStore.getState().zoomLevel).not.toBe(1);
+  });
+
+  test("header labels come from the catalog", () => {
+    useSettingsStore.setState({ locale: "ko" });
+    renderView();
+    expect(t("imageOriginal.loading", "ko")).not.toBe("imageOriginal.loading");
+    expect(screen.getByText(t("imageOriginal.loading", "ko"))).toBeTruthy();
+    expect(screen.getByText(t("common.close", "ko"))).toBeTruthy();
+    expect(screen.queryByText("Loading original…")).toBeNull();
+    const original = screen
+      .getAllByRole("img", { hidden: true })
+      .find((el) => el.getAttribute("src") === ORIGINAL)!;
+    fireEvent.load(original);
+    expect(screen.getByText(t("imageOriginal.title", "ko"))).toBeTruthy();
+    expect(screen.queryByText("Original")).toBeNull();
   });
 });

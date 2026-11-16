@@ -62,6 +62,8 @@ const COVERED_BY: Record<string, string> = {
   ".image-fullscreen-close": "image-fullscreen",
   // components/editor/ImageOriginalView.tsx 의 포털 (document.body).
   ".image-fullscreen-label": "image-fullscreen",
+  // §396 — the header zoom group of ImageOriginalView (same portal as -close).
+  ".image-fullscreen-zoom-btn": "image-fullscreen",
   // extensions/plugins/math-inline-edit.ts 의 플러그인 뷰가
   // `document.body.appendChild` 로 만든다 — React 포털이 아니라서 리뷰의 포털
   // 표에도 없었다.
