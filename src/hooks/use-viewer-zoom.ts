@@ -248,6 +248,12 @@ function intrinsicAspect(el: Element): null | number {
 /**
  * 크기를 바꾼 뒤 — 바꾸기 전 그림 `before` 에서 기준점 아래 있던 지점이 다시 기준점에 오게 스크롤한다.
  * 기준점이 null 이면(키 · 버튼) 스크롤 컨테이너의 가운데.
+ *
+ * 기준점이 스크롤 컨테이너의 사각형 밖이어도 가운데다. 핀치 · ctrl+휠은 포인터가 어디 있든 맨 위 주인에게
+ * 간다(spec D1 — 편집 전체화면은 D4 가 일부러 그렇게 정했다). 그래서 기준점이 편집 모달의 textarea 칸 ·
+ * 머리말 · 라이트박스의 어두운 여백일 수 있다. 그 좌표를 그대로 쓰면 `anchoredScrollDelta` 가 그림의
+ * 가장자리 비율(0 또는 1)로 잘라 그 가장자리를 컨테이너 밖의 포인터 좌표에 붙이고, 확대할 때마다 같은
+ * 자리에 다시 붙여 스크롤이 묶인다. 사각형의 경계 위는 안으로 친다.
  */
 function keepAnchor(
   scroller: HTMLElement,
@@ -256,13 +262,21 @@ function keepAnchor(
   anchor: null | ZoomAnchor,
 ): void {
   const frame = scroller.getBoundingClientRect();
+  const inFrame =
+    anchor !== null &&
+    anchor.clientX >= frame.left &&
+    anchor.clientX <= frame.left + frame.width &&
+    anchor.clientY >= frame.top &&
+    anchor.clientY <= frame.top + frame.height;
   const { dx, dy } = anchoredScrollDelta(
     before,
     drawnRect(content),
-    anchor ?? {
-      clientX: frame.left + frame.width / 2,
-      clientY: frame.top + frame.height / 2,
-    },
+    inFrame
+      ? anchor
+      : {
+          clientX: frame.left + frame.width / 2,
+          clientY: frame.top + frame.height / 2,
+        },
   );
   scroller.scrollLeft += dx;
   scroller.scrollTop += dy;

@@ -255,6 +255,40 @@ describe("useViewerZoom", () => {
     expect(scroller.scrollTop).toBe(1656);
   });
 
+  // 컨테이너가 화면의 (400, 100) 에 있다 — 편집 모달처럼 왼쪽에 textarea 칸, 위에 머리말이 있는 자리.
+  // 확대 전 그림: 1336×736 상자 안 가운데의 736×736 → left 700, top 100. 배율 4 → 2944×2944 가
+  // left 400 · top 100 에 놓인다.
+  //   가운데 (1068, 468) 은 그림의 (0.5, 0.5) → (1872, 1572) → 스크롤 (804, 1104).
+  // 밖의 기준점을 그대로 썼다면 가장자리 비율로 잘려 왼쪽 (200, 500) 은 스크롤 (200, 1200),
+  // 위쪽 (900, 50) 은 (300, 50) 이었다.
+  it.each([
+    ["null (keys, buttons)", null],
+    [
+      "left of the frame (the edit modal's textarea)",
+      { clientX: 200, clientY: 500 },
+    ],
+    ["above the frame (a header)", { clientX: 900, clientY: 50 }],
+  ])(
+    "an anchor outside the scroll container zooms about its centre: %s",
+    (_, anchor) => {
+      box = { height: 736, left: 400, top: 100, width: 1336 };
+      addContent(squareSvg());
+      mount();
+      act(() => owner().setScale(4, anchor));
+      expect([scroller.scrollLeft, scroller.scrollTop]).toEqual([804, 1104]);
+    },
+  );
+
+  it("an anchor inside the moved frame still stays put (pair of the rows above)", () => {
+    // 같은 자리의 컨테이너에서 기준점 (1252, 652) 는 그림의 (0.75, 0.75) → (2608, 2308) →
+    // 스크롤 (1356, 1656). 밖처럼 가운데로 보냈다면 (804, 1104) 였다.
+    box = { height: 736, left: 400, top: 100, width: 1336 };
+    addContent(squareSvg());
+    mount();
+    act(() => owner().setScale(4, { clientX: 1252, clientY: 652 }));
+    expect([scroller.scrollLeft, scroller.scrollTop]).toEqual([1356, 1656]);
+  });
+
   it("a null anchor zooms about the centre of the scroll container", () => {
     // 컨테이너 가운데 (668, 368) 은 그림의 (0.5, 0.5). 배율 1.25 → 920×920 이 left 208 · top 0 에
     // 놓이고 가운데는 (668, 460) → 스크롤 (0, 92). 기준점을 (0, 0) 으로 잡았다면 scrollTop 은 0 이었다.
