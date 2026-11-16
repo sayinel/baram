@@ -420,4 +420,46 @@ describe("PhotoLightbox zoom", () => {
     fireEvent.click(document.body.querySelector(".photo-lightbox-overlay")!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  // ‼️ 맞춤은 디코드된 그림에서만 잰다. 라이트박스 img 의 rect 가 지금 그려진 src 에 따라
+  // 다르게 답하도록 해(320 x 240 자리표시 · 1000 x 800 프리뷰), src 가 바뀐 **직후** 의
+  // 재측정이 일어나면 load 전에 변수가 바뀌어 이 시험이 깨진다.
+  test("keeps the placeholder's fit until the preview has loaded", async () => {
+    photoThumbnail.mockResolvedValue("/cache/thumbnails/small.jpg");
+    await resolveThumbUrl(PHOTO.absolutePath, GALLERY_THUMB_PX, PHOTO.revision);
+    let releasePreview: (path: string) => void = () => {};
+    photoThumbnail.mockImplementation(
+      () => new Promise<string>((resolve) => (releasePreview = resolve)),
+    );
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        if (!this.classList.contains("photo-lightbox-img")) {
+          return new DOMRect(0, 0, 0, 0);
+        }
+        return this.getAttribute("src")?.endsWith("small.jpg")
+          ? new DOMRect(0, 0, 320, 240)
+          : new DOMRect(0, 0, 1000, 800);
+      },
+    );
+    renderLightbox();
+    fireEvent.load(screen.getByRole("img"));
+    act(() => zoomIn());
+    expect(stage().style.getPropertyValue("--viewer-zoom-width")).toBe("400px");
+
+    releasePreview("/cache/thumbnails/big.jpg");
+    await waitFor(() =>
+      expect(screen.getByRole("img").getAttribute("src")).toContain("big.jpg"),
+    );
+    // The preview is drawn but not decoded: nothing was re-measured from it.
+    expect(stage().style.getPropertyValue("--viewer-zoom-width")).toBe("400px");
+
+    fireEvent.load(screen.getByRole("img"));
+    expect(stage().style.getPropertyValue("--viewer-zoom-width")).toBe(
+      "1250px",
+    );
+    expect(stage().style.getPropertyValue("--viewer-zoom-height")).toBe(
+      "1000px",
+    );
+    expect(within(lightboxZoom()!).getByText("125%")).toBeTruthy();
+  });
 });
