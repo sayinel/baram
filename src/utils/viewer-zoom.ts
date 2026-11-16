@@ -34,7 +34,15 @@ export interface ZoomOwner {
   setScale(scale: number, anchor: null | ZoomAnchor): void;
 }
 
-const owners: ZoomOwner[] = [];
+/**
+ * 등록 하나당 항목 하나. 해제는 주인 객체가 아니라 이 항목으로 찾는다 — 같은 객체를 두 번 올렸을 때 낡은
+ * 해제가 새 등록을 지우지 않게.
+ */
+interface OwnerEntry {
+  owner: ZoomOwner;
+}
+
+const entries: OwnerEntry[] = [];
 
 /**
  * 기준점 아래의 내용 지점이 배율 변경 뒤에도 같은 화면 좌표에 남도록 스크롤을 얼마나
@@ -82,17 +90,21 @@ export function nextViewerZoomStop(scale: number, direction: -1 | 1): number {
   return down ?? VIEWER_ZOOM_MIN;
 }
 
-/** 가장 나중에 등록된 주인이 줌 입력을 받는다. 반환값은 자기 항목만 지우는 멱등 해제 함수. */
+/**
+ * 가장 나중에 등록된 주인이 줌 입력을 받는다. 반환값은 **이 등록**의 항목만 지우는 멱등 해제 함수다 —
+ * 같은 객체를 두 번 올려도 각 해제는 자기 등록만 지우고, 두 번째 호출부터는 아무것도 하지 않는다.
+ */
 export function pushZoomOwner(owner: ZoomOwner): () => void {
-  owners.push(owner);
+  const entry: OwnerEntry = { owner };
+  entries.push(entry);
   return () => {
-    const index = owners.lastIndexOf(owner);
-    if (index !== -1) owners.splice(index, 1);
+    const index = entries.indexOf(entry);
+    if (index !== -1) entries.splice(index, 1);
   };
 }
 
 export function topZoomOwner(): null | ZoomOwner {
-  return owners.at(-1) ?? null;
+  return entries.at(-1)?.owner ?? null;
 }
 
 /** 휠 `deltaY` 를 곱셈 배율로. 위로 굴리면(음수) 확대한다. 비유한 입력은 1(변화 없음). */

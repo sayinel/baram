@@ -68,8 +68,12 @@ const ZOOMED_ATTR = "data-viewer-zoomed";
 const WIDTH_VAR = "--viewer-zoom-width";
 const HEIGHT_VAR = "--viewer-zoom-height";
 
-/** 단위 없는 숫자 또는 `px` 길이. 다른 단위(`em` · `%` …)는 고유 크기가 아니다. */
-const ABSOLUTE_LENGTH_RE = /^\s*(\d+(?:\.\d*)?|\.\d+)(?:px)?\s*$/i;
+/**
+ * `viewBox` 없는 svg 의 `width` · `height` 속성에서 이것이 읽는 값: 단위 없는 숫자와 `px` 길이뿐이다.
+ * 다른 절대 단위(`cm` · `mm` · `in` · `pt` · `pc` · `Q`)도 고유 크기를 정하지만 읽지 않는다 — 그런 값과
+ * 상대 단위(`em` · `%` …)는 비율을 모르는 것(null)이 되어 맞춤이 내용 요소의 상자가 된다.
+ */
+const UNITLESS_OR_PX_RE = /^\s*(\d+(?:\.\d*)?|\.\d+)(?:px)?\s*$/i;
 
 /**
  * 클래스가 `hostClass` 인 요소의 **자식** svg 를 고르는 `contentSelector`. svg 는
@@ -109,9 +113,8 @@ export function useViewerZoom({
     if (applyScale(state, next, anchor)) setScale(state.scale);
   }, []);
 
-  // 등록은 첫 입력보다 먼저 끝나야 해서 layout effect 다(spec D1). 주인 객체는 등록마다 새로 만든다 —
-  // `pushZoomOwner` 의 해제는 `lastIndexOf(owner)` 로 찾으므로, 같은 객체를 두 번 올리면 낡은 해제가
-  // 새 항목을 지운다. effect 가 해제 함수를 그대로 돌려주어 정리에서 정확히 한 번 부른다.
+  // 등록은 첫 입력보다 먼저 끝나야 해서 layout effect 다(spec D1). effect 가 `pushZoomOwner` 의 해제
+  // 함수를 그대로 돌려주어 정리에서 그 등록만 내린다.
   useLayoutEffect(
     () =>
       pushZoomOwner({
@@ -165,11 +168,6 @@ export function useViewerZoom({
     zoomIn,
     zoomOut,
   };
-}
-
-function absoluteLength(value: null | string): number {
-  const match = value === null ? null : ABSOLUTE_LENGTH_RE.exec(value);
-  return match ? Number(match[1]) : NaN;
 }
 
 /**
@@ -251,8 +249,8 @@ function intrinsicAspect(el: Element): null | number {
     return (
       fromViewBox ??
       positiveRatio(
-        absoluteLength(el.getAttribute("width")),
-        absoluteLength(el.getAttribute("height")),
+        unitlessOrPxLength(el.getAttribute("width")),
+        unitlessOrPxLength(el.getAttribute("height")),
       )
     );
   }
@@ -306,9 +304,11 @@ function positiveRatio(width: number, height: number): null | number {
  * 상자를 잴 수 없으므로 걷고 → 재고 → 다시 쓴다, 한 동기 블록 안에서(그 사이에 페인트가 끼지 않는다).
  *
  * 걷는 순간 내용이 배율 1 로 줄어 스크롤 범위가 줄고, 그 뒤의 측정이 레이아웃을 돌려 scrollLeft · Top 을
- * 줄어든 범위로 자를 것으로 본다(WKWebView 에서 확인하지 않았다) — 그러면 다시 써도 스크롤은 돌아오지
- * 않는다(편집 전체화면은 내용이 바뀔 때마다 svg 가 새로 온다). 그래서 걷기 전 그림에서 컨테이너 가운데
- * 아래의 지점을 잡아 두고, 다시 쓴 뒤 그 지점을 가운데로 되돌린다. 자르지 않았고 맞춤도 그대로면 이동량은 0 이다.
+ * 줄어든 범위로 자른다 — 그러면 다시 써도 스크롤은 돌아오지 않는다(편집 전체화면은 내용이 바뀔 때마다
+ * svg 가 새로 온다). WKWebView 에서 확인했다(2026-11-16, 화면 밖 WKWebView 프로브, 실제 CSS): 걷고 재기가
+ * 여섯 화면 중 넷에서 스크롤을 (0, 0) 으로 잘랐고, 원본 보기의 세로로 긴 사진은 x 만 잘랐으며, 라이트박스는
+ * 스크롤을 지켰다. 그래서 걷기 전 그림에서 컨테이너 가운데 아래의 지점을 잡아 두고, 다시 쓴 뒤 그 지점을
+ * 가운데로 되돌린다. 자르지 않았고 맞춤도 그대로면 이동량은 0 이다.
  */
 function remeasure(state: ZoomState): void {
   const { scroller } = state;
@@ -324,6 +324,12 @@ function remeasure(state: ZoomState): void {
   state.fit = { height: drawn.height, width: drawn.width };
   writeZoomDom(scroller, state.fit, state.scale);
   if (before) keepAnchor(scroller, before, content, null);
+}
+
+/** `UNITLESS_OR_PX_RE` 가 읽는 값의 숫자. 그 밖의 값은 NaN. */
+function unitlessOrPxLength(value: null | string): number {
+  const match = value === null ? null : UNITLESS_OR_PX_RE.exec(value);
+  return match ? Number(match[1]) : NaN;
 }
 
 function writeZoomDom(scroller: HTMLElement, fit: Size, scale: number): void {

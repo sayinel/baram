@@ -82,4 +82,17 @@ describe("owner stack", () => {
     popB();
     expect(topZoomOwner()).toBeNull();
   });
+
+  it("the same object pushed twice: a stale release removes only its own entry", () => {
+    const a = owner();
+    const popFirst = pushZoomOwner(a);
+    const popSecond = pushZoomOwner(a);
+    // Searching by the object would find the newer entry here and leave the stack empty after
+    // the second call.
+    popFirst();
+    popFirst();
+    expect(topZoomOwner()).toBe(a);
+    popSecond();
+    expect(topZoomOwner()).toBeNull();
+  });
 });

@@ -1,5 +1,7 @@
-// §396 Mermaid · SVG 전체 화면 보기 모달이 줌 주인이 되는지, 그리고 `ensureSvgViewBox` 가 보기
-// 모달에만 걸리는지. 줌 입력 경로는 `use-zoom.ts` 의 공개 `zoomIn()` — 키 경로와 같은 분기다.
+// §396 Mermaid · SVG 전체 화면 모달(보기 · 편집)이 줌 주인이 되는지, 그리고 `ensureSvgViewBox` 가
+// SVG 보기 모달과 SVG 편집 미리보기가 그리는 마크업에만 걸리고 본문 블록에는 걸리지 않는지. 확대 규칙의
+// CSS 모양(mermaid.css · svg-block.css)도 읽어 고정한다. 줌 입력 경로는 `use-zoom.ts` 의 공개
+// `zoomIn()` — 키 경로와 같은 분기다.
 import {
   act,
   cleanup,

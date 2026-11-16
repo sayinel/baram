@@ -64,6 +64,19 @@ const CLIP: PhotoGalleryEntry = {
   revision: "1:1",
 };
 
+/**
+ * Fire `load` the way a browser reports a finished image: `currentSrc` is the URL of the request
+ * that loaded. jsdom (31.0.0) leaves `currentSrc` empty — the lightbox keys on it, so without this
+ * every load would report "" and only the first one would change the key.
+ */
+function fireLoad(img: HTMLElement): void {
+  Object.defineProperty(img, "currentSrc", {
+    configurable: true,
+    value: img.getAttribute("src"),
+  });
+  fireEvent.load(img);
+}
+
 function renderLightbox(
   overrides: Partial<{
     onClose: () => void;
@@ -442,7 +455,7 @@ describe("PhotoLightbox zoom", () => {
       },
     );
     renderLightbox();
-    fireEvent.load(screen.getByRole("img"));
+    fireLoad(screen.getByRole("img"));
     act(() => zoomIn());
     expect(stage().style.getPropertyValue("--viewer-zoom-width")).toBe("400px");
 
@@ -453,7 +466,7 @@ describe("PhotoLightbox zoom", () => {
     // The preview is drawn but not decoded: nothing was re-measured from it.
     expect(stage().style.getPropertyValue("--viewer-zoom-width")).toBe("400px");
 
-    fireEvent.load(screen.getByRole("img"));
+    fireLoad(screen.getByRole("img"));
     expect(stage().style.getPropertyValue("--viewer-zoom-width")).toBe(
       "1250px",
     );

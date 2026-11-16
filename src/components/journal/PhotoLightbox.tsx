@@ -55,7 +55,6 @@ export function PhotoLightbox({
     : cachedThumbUrl(photo.absolutePath, GALLERY_THUMB_PX, photo.revision);
   const [viewingOriginal, setViewingOriginal] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const drawnUrl = (preview ?? placeholder)?.url;
   // 맞춤은 디코드된 그림에서만 잴 수 있다 — src 가 바뀐 직후의 img 는 아직 옛 비트맵이거나 비어
   // 있다. 그래서 키는 그리는 URL 이 아니라 **마지막으로 load 된** URL 이다(ImageOriginalView 의
   // `originalLoaded` 와 같은 이유).
@@ -203,12 +202,10 @@ export function PhotoLightbox({
                     : "photo-lightbox-img photo-lightbox-img-placeholder"
                 }
                 decoding="async"
-                // 옛 사진의 늦은 load 가 지금 그리는 URL 의 키가 되지 않게 속성과 대조한다.
-                onLoad={(e) => {
-                  if (e.currentTarget.getAttribute("src") === drawnUrl) {
-                    setLoadedUrl(drawnUrl);
-                  }
-                }}
+                // 키는 load 가 끝난 그림의 URL — 이 img 의 현재 요청 URL(`currentSrc`)이다. 렌더가 그리는
+                // URL 을 `src` 속성과 대조해서는 아무것도 거를 수 없다: 이벤트 핸들러는 커밋 뒤에 돌아서 그 둘은
+                // 늘 같은 값이다.
+                onLoad={(e) => setLoadedUrl(e.currentTarget.currentSrc)}
                 src={(preview ?? placeholder)!.url}
               />
             )

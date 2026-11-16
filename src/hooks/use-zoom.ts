@@ -12,6 +12,12 @@
 // The HTML preview needs that: its document sits in a sandboxed opaque-origin frame
 // that swallows the keystrokes and wheel events the listeners below are waiting for,
 // and forwards them over postMessage instead (see HtmlPreview.tsx).
+//
+// §396: every zoom input this file takes — its key, ctrl+wheel and pinch listeners, and the
+// exported zoomIn/zoomOut/zoomReset/zoomByWheel that HtmlPreview.tsx calls — goes to the
+// topmost fullscreen viewer on the zoom-owner stack (utils/viewer-zoom.ts) when one is open,
+// and to the editor zoom described above when the stack is empty. A pinch is routed once, at
+// gesturestart; if the top changes mid-gesture the rest of it goes nowhere.
 
 import { useEffect } from "react";
 
@@ -353,7 +359,9 @@ function setZoom(level: number): void {
   if (next !== zoomLevel) setZoomLevel(next);
 }
 
-// §396 주인이 있으면 배율을 곱해 넘긴다 — 자르는 것은 주인의 몫이다(`use-zoom` 은 자르지 않는다).
+// §396 주인이 있으면 배율을 곱해 넘긴다. 이 주인 경로는 여기서 자르지 않는다 — 자르는 것은 주인의
+// 몫이다(유일한 주인 `useViewerZoom` 은 `clampViewerScale` 로 자른다). 주인이 없을 때의 에디터 경로는
+// `setZoom` 이 `clampZoomLevel` 로 자른다.
 function zoomByWheelAt(deltaY: number, anchor: null | ZoomAnchor): void {
   if (!Number.isFinite(deltaY)) return;
   const owner = topZoomOwner();
