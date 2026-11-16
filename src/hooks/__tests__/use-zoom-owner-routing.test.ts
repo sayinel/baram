@@ -48,6 +48,9 @@ function fireGesture(
   return e;
 }
 
+// Like a real owner, it keeps the scale it was given — otherwise a router that re-reads
+// getScale() on every gesturechange would read the same base as one that captured it at
+// gesturestart, and the pinch tests below could not tell the two apart.
 function makeOwner(): FakeOwner {
   const owner: FakeOwner = {
     calls: [],
@@ -55,6 +58,7 @@ function makeOwner(): FakeOwner {
     scale: 1,
     setScale: (scale, anchor) => {
       owner.calls.push([scale, anchor]);
+      owner.scale = scale;
     },
   };
   return owner;
@@ -115,6 +119,8 @@ describe("§396 zoom owner routing", () => {
   it("Mod+- and Mod+0 too", () => {
     press({ key: "-", metaKey: true });
     expect(fake.calls).toEqual([[0.9, null]]);
+    // Away from 1, so Mod+0's setScale(1) cannot pass as setScale(getScale()).
+    fake.scale = 3;
     press({ key: "0", metaKey: true });
     expect(fake.calls).toEqual([
       [0.9, null],
@@ -135,6 +141,10 @@ describe("§396 zoom owner routing", () => {
     fireGesture("gesturestart", 1);
     fireGesture("gesturechange", 1.5, { clientX: 5, clientY: 6 });
     expect(fake.calls.at(-1)).toEqual([3, { clientX: 5, clientY: 6 }]);
+    // e.scale is cumulative from gesturestart: 2 × 1.6. Re-reading the owner's scale on each
+    // change would compound it, 3 × 1.6 = 4.8.
+    fireGesture("gesturechange", 1.6, { clientX: 5, clientY: 6 });
+    expect(fake.calls.at(-1)?.[0]).toBeCloseTo(3.2, 10);
     expect(zoom()).toBe(1);
   });
 
