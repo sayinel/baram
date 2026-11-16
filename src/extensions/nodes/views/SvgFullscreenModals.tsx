@@ -1,11 +1,14 @@
 // §5.1 SVG Block — fullscreen modals (moved out of svg-block-view.tsx for
 // R26/§351: each component owns its own useFontSurface call, so the hook
 // only runs while its overlay is mounted. The parent owns the document state
-// (code, svg) and passes it down as props; each modal owns only its §396 zoom
-// scale (useViewerZoom), view-local state the parent never reads. Each
-// component's own createPortal call stays
-// at the tree position it had inline. Modeled on MermaidFullscreenModals.tsx,
-// which split the same way for the same reason.
+// (code, svg) and passes it down as props; each component's own createPortal
+// call stays at the tree position it had inline. Modeled on
+// MermaidFullscreenModals.tsx, which split the same way for the same reason.
+//
+// §396 adds a zoom scale, kept by useViewerZoom in state local to each modal
+// that the parent never reads. It sits beside the portal-root state that
+// useFontSurface keeps (§349); both modals in this file also call
+// useTranslation, useInnerHtml, and a useMemo for the viewBox markup.
 //
 // Before this split, SvgBlockView called useFontSurface("both") twice,
 // unconditionally, at the top of the component — for every SVG block in the

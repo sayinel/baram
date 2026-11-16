@@ -322,3 +322,19 @@ describe("zoomed rules scope to the root svg", () => {
     },
   );
 });
+
+describe("zoomed mermaid edit preview stays top-aligned", () => {
+  it("the wrapper takes cross-axis auto margins only and the pane keeps its alignment", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync("src/styles/editor/mermaid.css", "utf8");
+    const wrapper =
+      /\.mermaid-fullscreen-preview\[data-viewer-zoomed\] \.mermaid-block-svg \{([^}]*)\}/.exec(
+        css,
+      );
+    expect(wrapper?.[1]).toMatch(/margin:\s*0 auto;/);
+    // The pane rule itself is gone: no zoomed-only align-items override on it.
+    expect(css).not.toMatch(
+      /\.mermaid-fullscreen-preview\[data-viewer-zoomed\]\s*\{/,
+    );
+  });
+});

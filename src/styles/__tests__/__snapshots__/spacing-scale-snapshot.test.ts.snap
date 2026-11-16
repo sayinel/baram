@@ -509,7 +509,7 @@ exports[`간격·모서리 선언의 계산값이 그대로다 1`] = `
   "src/styles/editor/mermaid.css|.mermaid-fullscreen-header|padding|0.75em 1em",
   "src/styles/editor/mermaid.css|.mermaid-fullscreen-modal|border-radius|8px",
   "src/styles/editor/mermaid.css|.mermaid-fullscreen-preview .mermaid-block-svg|padding|1em 0",
-  "src/styles/editor/mermaid.css|.mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg|margin|auto",
+  "src/styles/editor/mermaid.css|.mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg|margin|0 auto",
   "src/styles/editor/mermaid.css|.mermaid-fullscreen-preview|padding|1em",
   "src/styles/editor/mermaid.css|.mermaid-fullscreen-zoom-btn|border-radius|4px",
   "src/styles/editor/mermaid.css|.mermaid-fullscreen-zoom-btn|padding|0.25em 0.5em",

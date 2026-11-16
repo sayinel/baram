@@ -304,15 +304,16 @@
 
 /* The edit preview, zoomed: same contract as the view body above, on the preview pane only (the
    textarea pane keeps its own scroll and size). The direct-child form sizes the root svg the
-   hook measures, not an svg nested in the user's markup. */
-.mermaid-fullscreen-preview[data-viewer-zoomed] {
-  align-items: flex-start;
-}
-
+   hook measures, not an svg nested in the user's markup. This pane differs from the view body
+   and the svg preview: it is a column flex that stays top-aligned (justify-content start), so
+   an auto margin on the main axis would recentre the diagram vertically on the first zoom. The
+   wrapper therefore takes auto margins on the cross axis only; they centre it while it fits and
+   fall back to start alignment when it overflows, so the left edge stays reachable. The base
+   align-items stays centred, which also keeps the error message where it was. */
 .mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg {
   width: auto;
   max-width: none;
-  margin: auto;
+  margin: 0 auto;
 }
 
 .mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg > svg {

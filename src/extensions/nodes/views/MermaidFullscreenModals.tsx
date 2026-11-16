@@ -1,13 +1,16 @@
 // §5.5 Mermaid Block — fullscreen modals (moved out of mermaid-block-view.tsx
 // §perf-large-file file-size split). The parent owns the diagram state (code,
 // svg, error) and passes it down as props; each component's own createPortal
-// call stays at the same tree position it had inline. Each modal owns exactly
-// one piece of state of its own, its §396 zoom scale (useViewerZoom) — it is
-// view-local and nothing the parent needs. The other hook, useInnerHtml,
-// holds no state: it memoises the innerHTML wrapper AT the injection sink
-// (issue 549): a wrapper handed across a component boundary could be spread
-// or copied into a fresh object on the way, which is exactly the per-render
-// re-seed the hook exists to prevent.
+// call stays at the same tree position it had inline.
+//
+// Hooks both modals in this file call (read from the component bodies):
+// useTranslation, useFontSurface (§349 — it keeps the portal-root element in
+// state), useInnerHtml, and useViewerZoom. The last is what §396 adds: it
+// keeps the zoom scale in state local to the modal, which the parent never
+// reads. useInnerHtml holds no state: it memoises the innerHTML wrapper AT the
+// injection sink (issue 549): a wrapper handed across a component boundary
+// could be spread or copied into a fresh object on the way, which is exactly
+// the per-render re-seed the hook exists to prevent.
 
 import React from "react";
 import { createPortal } from "react-dom";
