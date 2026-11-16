@@ -295,7 +295,27 @@
   margin: auto;
 }
 
-.mermaid-view-fullscreen-body[data-viewer-zoomed] .mermaid-block-svg svg {
+.mermaid-view-fullscreen-body[data-viewer-zoomed] .mermaid-block-svg > svg {
+  width: var(--viewer-zoom-width);
+  max-width: none;
+  height: var(--viewer-zoom-height);
+  max-height: none;
+}
+
+/* The edit preview, zoomed: same contract as the view body above, on the preview pane only (the
+   textarea pane keeps its own scroll and size). The direct-child form sizes the root svg the
+   hook measures, not an svg nested in the user's markup. */
+.mermaid-fullscreen-preview[data-viewer-zoomed] {
+  align-items: flex-start;
+}
+
+.mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg {
+  width: auto;
+  max-width: none;
+  margin: auto;
+}
+
+.mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg > svg {
   width: var(--viewer-zoom-width);
   max-width: none;
   height: var(--viewer-zoom-height);

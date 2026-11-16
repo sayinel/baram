@@ -1,12 +1,13 @@
 // §5.5 Mermaid Block — fullscreen modals (moved out of mermaid-block-view.tsx
-// §perf-large-file file-size split). Both own no state: the parent owns it
-// and passes it down as props; each component's own createPortal call stays
-// at the same tree position it had inline. Their one hook, useInnerHtml,
-// holds no state either — it memoises the innerHTML wrapper AT the injection
-// sink (issue 549): a wrapper handed across a component boundary could be
-// spread or copied into a fresh object on the way, which is exactly the
-// per-render re-seed the hook exists to prevent. The View modal also owns the
-// §396 zoom scale (useViewerZoom) — view-local state, nothing the parent needs.
+// §perf-large-file file-size split). The parent owns the diagram state (code,
+// svg, error) and passes it down as props; each component's own createPortal
+// call stays at the same tree position it had inline. Each modal owns exactly
+// one piece of state of its own, its §396 zoom scale (useViewerZoom) — it is
+// view-local and nothing the parent needs. The other hook, useInnerHtml,
+// holds no state: it memoises the innerHTML wrapper AT the injection sink
+// (issue 549): a wrapper handed across a component boundary could be spread
+// or copied into a fresh object on the way, which is exactly the per-render
+// re-seed the hook exists to prevent.
 
 import React from "react";
 import { createPortal } from "react-dom";
@@ -57,7 +58,7 @@ export function MermaidViewFullscreenModal({
   const svgMarkup = useInnerHtml(svgHtml);
   const zoom = useViewerZoom({
     contentKey: svgHtml,
-    contentSelector: ".mermaid-block-svg svg",
+    contentSelector: ".mermaid-block-svg > svg",
   });
   return createPortal(
     <div
@@ -138,6 +139,11 @@ export function MermaidEditFullscreenModal({
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
   const fullscreenMarkup = useInnerHtml(fullscreenSvg);
+  // §396: zoom the preview pane only; the textarea pane is not the hook's scroller.
+  const zoom = useViewerZoom({
+    contentKey: fullscreenSvg,
+    contentSelector: ".mermaid-block-svg > svg",
+  });
   return createPortal(
     <div
       className="mermaid-fullscreen-overlay"
@@ -167,6 +173,7 @@ export function MermaidEditFullscreenModal({
               {mermaidTypeLabel(t, detectedType)}
             </span>
           )}
+          <ViewerZoomControls className="mermaid-fullscreen-zoom" zoom={zoom} />
           <button
             className="mermaid-fullscreen-close"
             onClick={onDiscard}
@@ -196,7 +203,7 @@ export function MermaidEditFullscreenModal({
               value={fullscreenCode}
             />
           </div>
-          <div className="mermaid-fullscreen-preview">
+          <div className="mermaid-fullscreen-preview" ref={zoom.scrollRef}>
             {fullscreenSvg ? (
               <div
                 className={[

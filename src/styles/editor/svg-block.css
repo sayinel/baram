@@ -270,7 +270,31 @@
   margin: auto;
 }
 
-.svg-view-fullscreen-body[data-viewer-zoomed] .svg-block-render svg {
+.svg-view-fullscreen-body[data-viewer-zoomed] .svg-block-render > svg {
+  display: block;
+  width: var(--viewer-zoom-width);
+  max-width: none;
+  height: var(--viewer-zoom-height);
+  max-height: none;
+}
+
+/* The edit preview, zoomed: same contract as the view body above, on the preview pane only (the
+   textarea pane keeps its own scroll and size). The direct-child form sizes the root svg the
+   hook measures, not an svg nested in the user's markup; block display keeps the inline
+   descender gap out of the scroll extent. */
+.svg-fullscreen-preview[data-viewer-zoomed] {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.svg-fullscreen-preview[data-viewer-zoomed] .svg-block-render {
+  width: auto;
+  max-width: none;
+  margin: auto;
+}
+
+.svg-fullscreen-preview[data-viewer-zoomed] .svg-block-render > svg {
+  display: block;
   width: var(--viewer-zoom-width);
   max-width: none;
   height: var(--viewer-zoom-height);

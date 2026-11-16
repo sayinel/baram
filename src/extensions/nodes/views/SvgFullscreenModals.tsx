@@ -1,7 +1,9 @@
 // §5.1 SVG Block — fullscreen modals (moved out of svg-block-view.tsx for
 // R26/§351: each component owns its own useFontSurface call, so the hook
-// only runs while its overlay is mounted. The parent still owns all state
-// and passes it down as props; each component's own createPortal call stays
+// only runs while its overlay is mounted. The parent owns the document state
+// (code, svg) and passes it down as props; each modal owns only its §396 zoom
+// scale (useViewerZoom), view-local state the parent never reads. Each
+// component's own createPortal call stays
 // at the tree position it had inline. Modeled on MermaidFullscreenModals.tsx,
 // which split the same way for the same reason.
 //
@@ -54,7 +56,7 @@ export function SvgViewFullscreenModal({
   const svgMarkup = useInnerHtml(viewMarkup);
   const zoom = useViewerZoom({
     contentKey: svgHtml,
-    contentSelector: ".svg-block-render svg",
+    contentSelector: ".svg-block-render > svg",
   });
   return createPortal(
     <div
@@ -120,7 +122,17 @@ export function SvgEditFullscreenModal({
   // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
-  const fullscreenMarkup = useInnerHtml(fullscreenSvg);
+  // §396 D6: the viewBox is added to the rendered preview only — never to the textarea's source.
+  const previewMarkup = useMemo(
+    () => ensureSvgViewBox(fullscreenSvg),
+    [fullscreenSvg],
+  );
+  const fullscreenMarkup = useInnerHtml(previewMarkup);
+  // §396: zoom the preview pane only; the textarea pane is not the hook's scroller.
+  const zoom = useViewerZoom({
+    contentKey: fullscreenSvg,
+    contentSelector: ".svg-block-render > svg",
+  });
   return createPortal(
     <div
       className="svg-fullscreen-overlay"
@@ -146,6 +158,7 @@ export function SvgEditFullscreenModal({
       <div className="svg-fullscreen-modal">
         <div className="svg-fullscreen-header">
           <span className="svg-block-label">svg</span>
+          <ViewerZoomControls className="svg-fullscreen-zoom" zoom={zoom} />
           <button
             className="svg-fullscreen-close"
             onClick={onDiscard}
@@ -175,7 +188,7 @@ export function SvgEditFullscreenModal({
               value={fullscreenCode}
             />
           </div>
-          <div className="svg-fullscreen-preview">
+          <div className="svg-fullscreen-preview" ref={zoom.scrollRef}>
             {fullscreenSvg ? (
               <div
                 className="svg-block-render"
