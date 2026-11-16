@@ -104,7 +104,9 @@ const ALLOWED = new Set([
   "(prefers-color-scheme: dark)", // media query
   ")\\s$", // input-rule regex tail
   "* var(--space-4))", // calc() fragment after the `${entry.level - 1}` interpolation (0101 Task 6)
+  ".mermaid-block-svg > svg", // CSS selector — useViewerZoom contentSelector (the root svg the [data-viewer-zoomed] … > svg rules size)
   ".qb-builder select, .qb-builder input", // CSS selector
+  ".svg-block-render > svg", // CSS selector — useViewerZoom contentSelector (the root svg the [data-viewer-zoomed] … > svg rules size)
   "[data-vim-suspend]", // attribute selector
   "[lazy-visible] deferred mount failed", // logger, not UI
   "]: xnn", // footnote stub html-block-read-back.ts reads, newlines stripped

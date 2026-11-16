@@ -75,20 +75,6 @@ const HEIGHT_VAR = "--viewer-zoom-height";
  */
 const UNITLESS_OR_PX_RE = /^\s*(\d+(?:\.\d*)?|\.\d+)(?:px)?\s*$/i;
 
-/**
- * 클래스가 `hostClass` 인 요소의 **자식** svg 를 고르는 `contentSelector`. svg 는
- * `dangerouslySetInnerHTML` 로 들어와 클래스를 달 수 없으므로 그 부모로 찾는다. 자식 결합자는 확대
- * 규칙(mermaid.css · svg-block.css 의 `[data-viewer-zoomed] … > svg`)과 같은 요소를 가리키려는 것이다 —
- * 마크업 안에 중첩된 svg 는 고르지 않는다.
- *
- * 함수인 이유: 뷰 파일(`MermaidFullscreenModals.tsx` · `SvgFullscreenModals.tsx`)에는 클래스 이름만
- * 남는다. 그 파일들을 훑는 `block-chrome-i18n.test.tsx` 의 문장 검사는 클래스 이름을 문장이 아닌 꼴로
- * 거르지만, 결합자가 든 선택자 문자열은 문장 후보로 올린다.
- */
-export function svgChildOf(hostClass: string): string {
-  return `.${hostClass} > svg`;
-}
-
 export function useViewerZoom({
   contentKey,
   contentSelector,
@@ -304,10 +290,10 @@ function positiveRatio(width: number, height: number): null | number {
  * 상자를 잴 수 없으므로 걷고 → 재고 → 다시 쓴다, 한 동기 블록 안에서(그 사이에 페인트가 끼지 않는다).
  *
  * 걷는 순간 내용이 배율 1 로 줄어 스크롤 범위가 줄고, 그 뒤의 측정이 레이아웃을 돌려 scrollLeft · Top 을
- * 줄어든 범위로 자른다 — 그러면 다시 써도 스크롤은 돌아오지 않는다(편집 전체화면은 내용이 바뀔 때마다
+ * 줄어든 범위로 자를 수 있다 — 자르면 다시 써도 스크롤은 돌아오지 않는다(편집 전체화면은 내용이 바뀔 때마다
  * svg 가 새로 온다). WKWebView 에서 확인했다(2026-11-16, 화면 밖 WKWebView 프로브, 실제 CSS): 걷고 재기가
- * 여섯 화면 중 넷에서 스크롤을 (0, 0) 으로 잘랐고, 원본 보기의 세로로 긴 사진은 x 만 잘랐으며, 라이트박스는
- * 스크롤을 지켰다. 그래서 걷기 전 그림에서 컨테이너 가운데 아래의 지점을 잡아 두고, 다시 쓴 뒤 그 지점을
+ * 여섯 화면 중 넷에서 스크롤을 (0, 0) 으로 잘랐고(원본 보기의 세로로 긴 사진만 x 만), 라이트박스는
+ * 스크롤을 지켰다 — 원인은 밝히지 못했다. 그래서 걷기 전 그림에서 컨테이너 가운데 아래의 지점을 잡아 두고, 다시 쓴 뒤 그 지점을
  * 가운데로 되돌린다. 자르지 않았고 맞춤도 그대로면 이동량은 0 이다.
  */
 function remeasure(state: ZoomState): void {

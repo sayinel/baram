@@ -23,7 +23,7 @@ import { createPortal } from "react-dom";
 
 import { ViewerZoomControls } from "../../../components/editor/ViewerZoomControls";
 import { useFontSurface } from "../../../hooks/use-font-surface";
-import { svgChildOf, useViewerZoom } from "../../../hooks/use-viewer-zoom";
+import { useViewerZoom } from "../../../hooks/use-viewer-zoom";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
 import { ensureSvgViewBox } from "../../../utils/markdown/svg-utils";
@@ -59,7 +59,7 @@ export function SvgViewFullscreenModal({
   const svgMarkup = useInnerHtml(viewMarkup);
   const zoom = useViewerZoom({
     contentKey: svgHtml,
-    contentSelector: svgChildOf("svg-block-render"),
+    contentSelector: ".svg-block-render > svg",
   });
   return createPortal(
     <div
@@ -134,7 +134,7 @@ export function SvgEditFullscreenModal({
   // §396: zoom the preview pane only; the textarea pane is not the hook's scroller.
   const zoom = useViewerZoom({
     contentKey: fullscreenSvg,
-    contentSelector: svgChildOf("svg-block-render"),
+    contentSelector: ".svg-block-render > svg",
   });
   return createPortal(
     <div
