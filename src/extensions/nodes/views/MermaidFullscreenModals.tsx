@@ -17,7 +17,7 @@ import { createPortal } from "react-dom";
 
 import { ViewerZoomControls } from "../../../components/editor/ViewerZoomControls";
 import { useFontSurface } from "../../../hooks/use-font-surface";
-import { useViewerZoom } from "../../../hooks/use-viewer-zoom";
+import { svgChildOf, useViewerZoom } from "../../../hooks/use-viewer-zoom";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
 import { mermaidTypeLabel } from "../../../utils/markdown/mermaid-utils";
@@ -61,7 +61,7 @@ export function MermaidViewFullscreenModal({
   const svgMarkup = useInnerHtml(svgHtml);
   const zoom = useViewerZoom({
     contentKey: svgHtml,
-    contentSelector: ".mermaid-block-svg > svg",
+    contentSelector: svgChildOf("mermaid-block-svg"),
   });
   return createPortal(
     <div
@@ -145,7 +145,7 @@ export function MermaidEditFullscreenModal({
   // §396: zoom the preview pane only; the textarea pane is not the hook's scroller.
   const zoom = useViewerZoom({
     contentKey: fullscreenSvg,
-    contentSelector: ".mermaid-block-svg > svg",
+    contentSelector: svgChildOf("mermaid-block-svg"),
   });
   return createPortal(
     <div

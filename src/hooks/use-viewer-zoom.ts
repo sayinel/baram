@@ -71,6 +71,20 @@ const HEIGHT_VAR = "--viewer-zoom-height";
 /** 단위 없는 숫자 또는 `px` 길이. 다른 단위(`em` · `%` …)는 고유 크기가 아니다. */
 const ABSOLUTE_LENGTH_RE = /^\s*(\d+(?:\.\d*)?|\.\d+)(?:px)?\s*$/i;
 
+/**
+ * 클래스가 `hostClass` 인 요소의 **자식** svg 를 고르는 `contentSelector`. svg 는
+ * `dangerouslySetInnerHTML` 로 들어와 클래스를 달 수 없으므로 그 부모로 찾는다. 자식 결합자는 확대
+ * 규칙(mermaid.css · svg-block.css 의 `[data-viewer-zoomed] … > svg`)과 같은 요소를 가리키려는 것이다 —
+ * 마크업 안에 중첩된 svg 는 고르지 않는다.
+ *
+ * 함수인 이유: 뷰 파일(`MermaidFullscreenModals.tsx` · `SvgFullscreenModals.tsx`)에는 클래스 이름만
+ * 남는다. 그 파일들을 훑는 `block-chrome-i18n.test.tsx` 의 문장 검사는 클래스 이름을 문장이 아닌 꼴로
+ * 거르지만, 결합자가 든 선택자 문자열은 문장 후보로 올린다.
+ */
+export function svgChildOf(hostClass: string): string {
+  return `.${hostClass} > svg`;
+}
+
 export function useViewerZoom({
   contentKey,
   contentSelector,
