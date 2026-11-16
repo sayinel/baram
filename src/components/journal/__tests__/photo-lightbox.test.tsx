@@ -3,8 +3,16 @@
 
 import type { PhotoGalleryEntry } from "../../../utils/journal/journal-photo";
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 const photoThumbnail = vi.fn();
 
@@ -19,6 +27,8 @@ vi.mock("../../../ipc/thumbnail", () => ({
 const { PhotoLightbox } = await import("../PhotoLightbox");
 const { t } = await import("../../../i18n");
 const { useSettingsStore } = await import("../../../stores/settings/store");
+const { zoomIn } = await import("../../../hooks/use-zoom");
+const { topZoomOwner } = await import("../../../utils/viewer-zoom");
 
 // The labels are looked up, not spelled: asserting on "원본 보기" would pin the Korean copy to
 // an English default install and would have to be edited every time the wording changes. The
@@ -247,6 +257,167 @@ describe("PhotoLightbox — video clip", () => {
 
     fireEvent.keyDown(container.querySelector("video")!, { key: "Escape" });
 
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+// §396 — the lightbox is a zoom owner. jsdom has no layout, so the rect is mocked per element:
+// the lightbox photo fits at 600 x 400, the original view's blurred preview at 400 x 300 and its
+// original at 800 x 600.
+describe("PhotoLightbox zoom", () => {
+  const PHOTO_B: PhotoGalleryEntry = {
+    ...PHOTO,
+    absolutePath: "/vault/journal/daily/2026/08/assets/20260805-111500-b.jpg",
+    filename: "20260805-111500-b.jpg",
+    relativePath: "assets/20260805-111500-b.jpg",
+  };
+
+  beforeEach(() => {
+    _resetThumbCache();
+    photoThumbnail.mockReset();
+    photoThumbnail.mockResolvedValue("/cache/thumbnails/big.jpg");
+    useSettingsStore.setState({ locale: LOCALE, zoomLevel: 1 });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        if (this.classList.contains("photo-lightbox-img")) {
+          return new DOMRect(0, 0, 600, 400);
+        }
+        if (this.classList.contains("image-fullscreen-img-preview")) {
+          return new DOMRect(0, 0, 400, 300);
+        }
+        if (this.classList.contains("image-fullscreen-img")) {
+          return new DOMRect(0, 0, 800, 600);
+        }
+        return new DOMRect(0, 0, 0, 0);
+      },
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  const lightboxZoom = () =>
+    document.body.querySelector<HTMLElement>(".photo-lightbox-zoom");
+  const stage = () =>
+    document.body.querySelector<HTMLElement>(".photo-lightbox-stage")!;
+
+  test("zoomIn() scales the photo and shows the controls", async () => {
+    renderLightbox();
+    await waitFor(() => screen.getByRole("img"));
+
+    expect(within(lightboxZoom()!).getByText("100%")).toBeTruthy();
+    expect(stage().hasAttribute("data-viewer-zoomed")).toBe(false);
+    act(() => zoomIn());
+
+    expect(within(lightboxZoom()!).getByText("125%")).toBeTruthy();
+    expect(stage().hasAttribute("data-viewer-zoomed")).toBe(true);
+    expect(stage().style.getPropertyValue("--viewer-zoom-width")).toBe("750px");
+    expect(stage().style.getPropertyValue("--viewer-zoom-height")).toBe(
+      "500px",
+    );
+    expect(useSettingsStore.getState().zoomLevel).toBe(1);
+  });
+
+  test("navigating resets the scale to 100%", async () => {
+    const view = renderLightbox();
+    await waitFor(() => screen.getByRole("img"));
+    act(() => zoomIn());
+    expect(within(lightboxZoom()!).getByText("125%")).toBeTruthy();
+
+    view.rerender(
+      <PhotoLightbox
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        onOpenJournal={vi.fn()}
+        photo={PHOTO_B}
+      />,
+    );
+    await waitFor(() => screen.getByRole("img"));
+
+    expect(within(lightboxZoom()!).getByText("100%")).toBeTruthy();
+    expect(stage().hasAttribute("data-viewer-zoomed")).toBe(false);
+  });
+
+  test("a video swallows zoom: no controls, editor zoom unchanged", () => {
+    renderLightbox({ photo: CLIP });
+
+    expect(topZoomOwner()).not.toBeNull();
+    act(() => zoomIn());
+
+    expect(lightboxZoom()).toBeNull();
+    expect(screen.queryByText("100%")).toBeNull();
+    expect(screen.queryByText("125%")).toBeNull();
+    expect(stage().hasAttribute("data-viewer-zoomed")).toBe(false);
+    expect(useSettingsStore.getState().zoomLevel).toBe(1);
+  });
+
+  test("original view stacks on top and hands back on close", async () => {
+    renderLightbox();
+    await waitFor(() => screen.getByRole("img"));
+    act(() => zoomIn());
+    expect(within(lightboxZoom()!).getByText("125%")).toBeTruthy();
+
+    fireEvent.click(screen.getByText(viewOriginal));
+    const originalZoom = () =>
+      document.body.querySelector<HTMLElement>(".image-fullscreen-zoom")!;
+    expect(within(originalZoom()).getByText("100%")).toBeTruthy();
+
+    // The input goes to the original view; the lightbox keeps its own 125%.
+    act(() => zoomIn());
+    expect(within(originalZoom()).getByText("125%")).toBeTruthy();
+    expect(within(lightboxZoom()!).getByText("125%")).toBeTruthy();
+
+    // Escape closes only the original view; the next input reaches the lightbox again.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.body.querySelector(".image-fullscreen-zoom")).toBeNull();
+    act(() => zoomIn());
+    expect(within(lightboxZoom()!).getByText("150%")).toBeTruthy();
+    expect(useSettingsStore.getState().zoomLevel).toBe(1);
+  });
+
+  test("unmount leaves editor zoom untouched", async () => {
+    const view = renderLightbox();
+    await waitFor(() => screen.getByRole("img"));
+    act(() => zoomIn());
+    view.unmount();
+
+    expect(topZoomOwner()).toBeNull();
+    expect(useSettingsStore.getState().zoomLevel).toBe(1);
+    act(() => zoomIn());
+    expect(useSettingsStore.getState().zoomLevel).not.toBe(1);
+  });
+
+  test("clicking the controls does not close the lightbox", async () => {
+    const onClose = vi.fn();
+    renderLightbox({ onClose });
+    await waitFor(() => screen.getByRole("img"));
+    const buttons = within(lightboxZoom()!).getAllByRole("button");
+
+    // Zoom in, then back out: both enabled buttons, neither may reach the overlay.
+    fireEvent.click(buttons[2]!);
+    expect(within(lightboxZoom()!).getByText("125%")).toBeTruthy();
+    fireEvent.click(buttons[1]!);
+    expect(within(lightboxZoom()!).getByText("100%")).toBeTruthy();
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test("clicking a disabled control does not close the lightbox, while the overlay still does", async () => {
+    const onClose = vi.fn();
+    renderLightbox({ onClose });
+    await waitFor(() => screen.getByRole("img"));
+    for (let i = 0; i < 30; i++) act(() => zoomIn());
+    const plus = within(lightboxZoom()!).getByRole("button", {
+      name: t("viewerZoom.in", LOCALE),
+    });
+    expect((plus as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(plus);
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(document.body.querySelector(".photo-lightbox-overlay")!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
