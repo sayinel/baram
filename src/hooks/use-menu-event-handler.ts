@@ -28,7 +28,7 @@ export interface MenuEventHandlerDeps {
   handleCloseTab: () => void;
   handleGoBack: () => void;
   handleGoForward: () => void;
-  handleNewFile: (name?: string) => void;
+  handleNewFile: () => void;
   handleOpenFile: () => Promise<void>;
   handleOpenFilePath: (filePath: string) => Promise<void>;
   handleOpenFolder: () => Promise<void>;

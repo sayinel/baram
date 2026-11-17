@@ -238,30 +238,32 @@ export function useFileOperations({
   const markDirty = useEditorStore((s) => s.markDirty);
   const setFileContent = useFileStore((s) => s.setFileContent);
 
-  const handleNewFile = useCallback(
-    (name?: string) => {
+  // §35 The quick switcher's create row: an untitled tab under the name typed there.
+  const handleNewNamedFile = useCallback(
+    (name: string) => {
       const id = crypto.randomUUID();
-      let title: string;
-      if (name) {
-        title = name;
-      } else {
-        const { tabs: currentTabs } = useEditorStore.getState();
-        const tabNumber =
-          currentTabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
-        title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
-      }
       useFileStore.getState().setFileContent(id, "");
       openTab({
         contextId: "",
         id,
         filePath: "",
-        title,
+        title: name,
         isDirty: false,
         isPinned: false,
       });
     },
     [openTab],
   );
+
+  // "Untitled", "Untitled 2", … Takes no argument, and must not: the home screen's New File
+  // passes it to `onClick` as it is, so React calls it with the click event. When this took the
+  // create row's name as an optional parameter, that event became the tab's title.
+  const handleNewFile = useCallback(() => {
+    const { tabs: currentTabs } = useEditorStore.getState();
+    const tabNumber =
+      currentTabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
+    handleNewNamedFile(tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`);
+  }, [handleNewNamedFile]);
 
   const handleOpenFile = useCallback(async () => {
     const selected = await pickApprovedFile();
@@ -613,6 +615,7 @@ export function useFileOperations({
     handleCloseFolder,
     handleCloseTab,
     handleNewFile,
+    handleNewNamedFile,
     handleOpenFile,
     handleOpenFilePath,
     handleOpenFolder,

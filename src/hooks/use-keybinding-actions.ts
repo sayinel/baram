@@ -50,7 +50,7 @@ interface UseKeybindingActionsParams {
   editor: Editor | null;
   handleCloseFolder: () => void;
   handleCloseTab: () => void;
-  handleNewFile: (name?: string) => void;
+  handleNewFile: () => void;
   handleOpenFile: () => Promise<void>;
   handleOpenFolder: () => Promise<void>;
   handleSave: () => Promise<void>;

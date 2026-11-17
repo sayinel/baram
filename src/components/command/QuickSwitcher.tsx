@@ -47,18 +47,24 @@ const PREFIX_BADGE_LABELS: Record<NonNullable<JournalPrefix>, string> = {
 
 interface QuickSwitcherProps {
   editor: Editor | null;
-  onNewFile: (name?: string) => void;
+  onNewFile: (name: string) => void;
 }
 
-interface ResultItem {
-  /** 생성 행이 만들 이름 — 라벨은 번역되므로 거기서 되읽지 않는다 */
-  createName?: string;
+interface ResultBase {
   detail?: string;
   file?: FlatFile;
   heading?: HeadingResult;
   label: string;
-  type: "create" | "file" | "heading";
 }
+
+// The create row always carries its name, so `type === "create"` narrows `createName` to a string.
+type ResultItem =
+  | ({
+      /** 생성 행이 만들 이름 — 라벨은 번역되므로 거기서 되읽지 않는다 */
+      createName: string;
+      type: "create";
+    } & ResultBase)
+  | (ResultBase & { type: "file" | "heading" });
 
 export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
   const { t } = useTranslation();
