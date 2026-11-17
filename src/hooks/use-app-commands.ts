@@ -19,7 +19,7 @@ import { useMenuEventHandler } from "./use-menu-event-handler";
 interface UseAppCommandsFileOps {
   handleCloseFolder: () => void;
   handleCloseTab: () => void;
-  handleNewFile: (name?: string) => void;
+  handleNewFile: () => void;
   handleOpenFile: () => Promise<void>;
   handleOpenFilePath: (filePath: string) => Promise<void>;
   handleOpenFolder: () => Promise<void>;

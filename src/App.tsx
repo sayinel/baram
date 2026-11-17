@@ -239,6 +239,7 @@ function App() {
     handleCloseFolder,
     handleCloseTab,
     handleNewFile,
+    handleNewNamedFile,
     handleOpenFile,
     handleOpenFilePath,
     handleOpenFolder,
@@ -447,6 +448,7 @@ function App() {
         activeEditor={activeEditor}
         handleCloseFolder={handleCloseFolder}
         handleNewFile={handleNewFile}
+        handleNewNamedFile={handleNewNamedFile}
         handleOpenFile={handleOpenFile}
         handleOpenFolder={handleOpenFolder}
         handleSave={handleSave}

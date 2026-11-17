@@ -105,6 +105,7 @@ interface AppDialogsProps {
   activeEditor: Editor | null;
   handleCloseFolder: () => void;
   handleNewFile: () => void;
+  handleNewNamedFile: (name: string) => void;
   handleOpenFile: () => void;
   handleOpenFolder: () => void;
   handleSave: () => Promise<void>;
@@ -150,6 +151,7 @@ export function AppDialogs({
   activeEditor,
   handleCloseFolder,
   handleNewFile,
+  handleNewNamedFile,
   handleOpenFile,
   handleOpenFolder,
   handleSave,
@@ -176,7 +178,7 @@ export function AppDialogs({
         onToggleSourceMode={handleToggleSourceMode}
       />
       <ExportDialog editor={activeEditor} />
-      <QuickSwitcher editor={activeEditor} onNewFile={handleNewFile} />
+      <QuickSwitcher editor={activeEditor} onNewFile={handleNewNamedFile} />
       <SettingsModal />
       <AboutModal />
       <UpdateDialog />
