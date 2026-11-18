@@ -32,9 +32,10 @@
  * real one being respelled past the pattern while a decoy comment keeps the count at 1. What
  * closes that is a CROSS-LANGUAGE ANCHOR — an assertion on the compiled value that goes red when
  * the scraped value drifts from it. Other exported scrapes in this file (inline media, approval
- * error codes, dev mode, `pick_approved_dir` params, plugin capabilities, the two theme byte caps,
- * the §385 sandbox report cap) serve other checks — they are not part of either publish gate and
- * are not counted here.
+ * error codes, the thumbnail refusal code, dev mode, `pick_approved_dir` params,
+ * `replace_search_matches` params, plugin capabilities, the two theme byte caps, the §385 sandbox
+ * report cap) serve other checks — they are not part of either publish gate and are not counted
+ * here.
  *
  * - the key has one: vitest binds the scraped key to the frozen at-arming pair and
  *   `mod.rs`'s own test binds the compiled key to the same two files, so a divergence is
@@ -195,6 +196,33 @@ export function approvalErrorCodes(rustSource: string): {
       rustSource,
       /PATH_UNRESOLVABLE\s*:\s*&(?:'static\s+)?str\s*=\s*"([^"]*)"/gu,
       "PATH_UNRESOLVABLE",
+    ),
+  };
+}
+
+/**
+ * §56d/§329.2 The code `thumbnail_cmd` returns when no context open now lets the thumbnailer
+ * read a path, read out of the Rust that produces it.
+ *
+ * ‼️ The drift is silent, as for the approval codes above: `photo-thumbnail.ts` does not
+ * remember a refusal carrying this code, because the answer is about the contexts open now and
+ * changes when the user opens the folder. A drifted code makes the refusal look like any other
+ * failure, which IS remembered — the image then keeps its full original after the folder opens,
+ * until the entry is evicted from that cache, and no type error or same-literal test notices.
+ *
+ * The pattern requires the DECLARATION form, and the count is asserted: the identifier also
+ * appears at its `.to_string()` call site and in the crate's own tests.
+ *
+ * The consumer is `src/ipc/__tests__/thumbnail-error-codes.test.ts`.
+ */
+export function thumbnailErrorCodes(rustSource: string): {
+  notAuthorized: string;
+} {
+  return {
+    notAuthorized: soleDeclaration(
+      rustSource,
+      /THUMBNAIL_NOT_AUTHORIZED\s*:\s*&(?:'static\s+)?str\s*=\s*"([^"]*)"/gu,
+      "THUMBNAIL_NOT_AUTHORIZED",
     ),
   };
 }

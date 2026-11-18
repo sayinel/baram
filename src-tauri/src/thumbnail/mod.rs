@@ -43,6 +43,8 @@ pub enum ThumbnailError {
     Decode(#[from] image::ImageError),
     #[error("이미지가 너무 큽니다: {width}x{height}")]
     TooLarge { height: u32, width: u32 },
+    #[error("썸네일 원본이 일반 파일이 아닙니다")]
+    NotAFile,
 }
 
 /// 캐시 레이아웃의 세대. **크기 상수나 인코딩 방식을 바꾸면 이 값을 올린다.**
@@ -146,6 +148,12 @@ pub fn ensure_thumbnail(
     let max_px = max_px.clamp(MIN_THUMB_PX, MAX_THUMB_PX);
 
     let metadata = std::fs::metadata(src)?;
+    // 일반 파일만 연다. FIFO 는 읽으려고 여는 순간 쓰는 쪽을 기다리므로, 그대로 두면 이 호출이
+    // 돌아오지 않고 `thumbnail_cmd` 의 디코드 허가 둘 중 하나를 세션 끝까지 쥔다. `metadata` 는
+    // symlink 를 따라가므로 FIFO 를 가리키는 링크도 여기서 걸린다.
+    if !metadata.is_file() {
+        return Err(ThumbnailError::NotAFile);
+    }
     let mtime_nanos = metadata
         .modified()
         .ok()
@@ -597,5 +605,35 @@ mod tests {
         std::fs::write(&src, b"this is not a jpeg").unwrap();
 
         assert!(ensure_thumbnail(&src, &cache, 64).is_err());
+    }
+
+    /// Opening a FIFO for reading waits for a writer, so without the regular-file check the
+    /// call never returns and holds one of the two decode permits (`thumbnail_cmd`) for the rest
+    /// of the session. Run on a thread with a deadline so the unfixed code fails here instead of
+    /// hanging the suite.
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_is_refused_without_opening_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let fifo = dir.path().join("photo.jpg");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo must run");
+        assert!(made.success());
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(ensure_thumbnail(&fifo, &cache, 64).map_err(|e| e.to_string()));
+        });
+        let result = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("ensure_thumbnail blocked on a FIFO");
+
+        assert!(
+            matches!(result, Err(ref e) if e.contains("일반 파일")),
+            "{result:?}"
+        );
     }
 }

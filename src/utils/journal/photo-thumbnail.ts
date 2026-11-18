@@ -11,6 +11,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { photoThumbnail } from "../../ipc/thumbnail";
+import { isThumbnailNotAuthorizedError } from "../../ipc/thumbnail-errors";
 
 /** 그리드 칸은 패널 폭에 따라 ~90~160px. 2배 밀도 화면까지 덮는 값. */
 export const GALLERY_THUMB_PX = 320;
@@ -89,7 +90,8 @@ export const MAX_RESOLVED_THUMBS = 2048;
 export const MAX_THUMB_FAILURES = 100;
 
 /**
- * absolutePath|maxPx|revision → 결과. 세션 내 재요청은 IPC를 타지 않는다. revision 이 key 의
+ * absolutePath|maxPx|revision → 결과. 세션 내 재요청은 IPC를 타지 않는다 — 단 권한 거절은 여기
+ * 담지 않는다(`resolveThumbUrl` 의 `keep`). revision 이 key 의
  * 일부라, revision 을 아는 호출자(갤러리 · 라이트박스 · `journal-photos` 블록)와 모르는
  * 호출자(에디터 이미지 프리뷰, revision "")가 같은 경로·계층에서 서로의 항목을 밀어내지 않는다.
  * 같은 파일의 새 revision 이 오면 그 경로·계층의 옛 revision 항목은 지운다(`latestRevision`).
@@ -189,8 +191,8 @@ export async function resolveThumbUrl(
 
   const request = photoThumbnail(absolutePath, maxPx)
     .then((cachePath) => ({
-      url: convertFileSrc(cachePath),
-      isOriginal: false,
+      keep: true,
+      result: { url: convertFileSrc(cachePath), isOriginal: false },
     }))
     .catch((e: unknown) => {
       // ‼️ 반드시 시끄럽게 남긴다. 이 폴백은 **수정 전과 똑같은 화면**을 만든다(원본을 그대로
@@ -202,10 +204,18 @@ export async function resolveThumbUrl(
         `[§56d] 썸네일 생성 실패 — 원본으로 폴백합니다(느립니다): ${absolutePath}`,
         e,
       );
-      return { url: convertFileSrc(absolutePath), isOriginal: true };
+      return {
+        // 권한 거절은 기억하지 않는다. 파일에 대한 답이 아니라 지금 열린 context 에 대한 답이라
+        // 사용자가 그 폴더를 열면 바뀌는데, 캐시 key 에는 context 가 없다 — 기억하면 폴더를 연 뒤에도
+        // 다시 그린 이미지가 여기서 원본을 꺼낸다. 나머지 실패(디코드 실패 · 원본을 읽지 못함 · 캐시
+        // 쓰기 실패 등)는 이전처럼 기억한다 — 그래서 디스크가 찬 경우처럼 파일과 무관한 실패도 캐시에서
+        // 밀려나기 전까지 원본으로 남는다.
+        keep: !isThumbnailNotAuthorizedError(e),
+        result: { url: convertFileSrc(absolutePath), isOriginal: true },
+      };
     })
-    .then((result) => {
-      remember(absolutePath, maxPx, revision, result);
+    .then(({ keep, result }) => {
+      if (keep) remember(absolutePath, maxPx, revision, result);
       inFlight.delete(flightKey);
       return result;
     });

@@ -82,6 +82,26 @@ describe("resolveThumbUrl", () => {
     expect(photoThumbnail).toHaveBeenCalledTimes(1);
   });
 
+  /** 위 시험과 짝이다. 거절의 이유가 **권한**이면 기억하지 않는다 — 지금 열린 context 에 대한 답이라
+   *  사용자가 그 폴더를 열면 바뀐다. 이것을 실패시키는 것: 권한 거절도 `remember` 하는 것(폴더를 연
+   *  뒤에도 다시 그린 이미지가 캐시에서 원본을 꺼낸다). */
+  test("asks again after a refusal no open context covers", async () => {
+    photoThumbnail.mockRejectedValueOnce("THUMBNAIL_NOT_AUTHORIZED");
+    photoThumbnail.mockResolvedValueOnce("/cache/thumbnails/abc.jpg");
+
+    expect(await resolveThumbUrl("/notes/photo.jpg", 2048)).toEqual({
+      url: "asset://localhost//notes/photo.jpg",
+      isOriginal: true,
+    });
+    expect(cachedThumbUrl("/notes/photo.jpg", 2048)).toBeNull();
+
+    expect(await resolveThumbUrl("/notes/photo.jpg", 2048)).toEqual({
+      url: "asset://localhost//cache/thumbnails/abc.jpg",
+      isOriginal: false,
+    });
+    expect(photoThumbnail).toHaveBeenCalledTimes(2);
+  });
+
   test("cachedThumbUrl is empty until resolved, then synchronous", async () => {
     photoThumbnail.mockResolvedValue("/cache/thumbnails/abc.jpg");
 
