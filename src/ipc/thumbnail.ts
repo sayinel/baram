@@ -6,6 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
  * path (feed it to `convertFileSrc`). Rejects for anything the Rust decoder
  * cannot handle — svg, a file whose contents do not match its extension, an
  * image above the pixel ceiling — so callers must have an original fallback.
+ * Also rejects with the code `isThumbnailNotAuthorizedError` recognises
+ * (`thumbnail-errors.ts`) when no context open now lets it read the path.
  */
 export async function photoThumbnail(
   path: string,

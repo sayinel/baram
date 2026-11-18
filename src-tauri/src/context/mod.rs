@@ -1,5 +1,6 @@
 // §80 Context module — vault/folder/file context management
 
+pub mod asset_grant;
 pub mod manager;
 pub mod types;
 pub mod vault_config;
