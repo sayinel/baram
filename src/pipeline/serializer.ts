@@ -4,7 +4,12 @@
 // without circular dependency (pm-to-md → transformers → pm-to-md).
 //
 // §7.1 Serialization Rules:
-// - Bold: ** (never __), Italic: * (never _)
+// - Bold: ** and Italic: * are preferred, not the only markers. Where a `*`
+//   run would touch a sibling or enclosing run with the same marker,
+//   mdast-util-to-markdown (2.2.3) writes `__` or `_` instead (`**a**_b_`,
+//   `*__a__ b*`), and inside a word it keeps that `_` by writing the letters
+//   beside it as references (`x**a**_&#x62;_&#x79;`). The cases in
+//   roundtrip-touching-attention.test.ts read back as written
 // - List marker: - (never * or +)
 // - Horizontal rule: ---
 // - Code block: fenced (```)
@@ -577,8 +582,8 @@ function atLineStart(value: string, index: number, before: string): boolean {
 const serializer = unified()
   .use(remarkStringify, {
     bullet: "-", // §7.1: 항상 -
-    strong: "*", // §7.1: 항상 ** (remark uses strong char doubled)
-    emphasis: "*", // §7.1: 항상 *
+    strong: "*", // §7.1: ** 우선 — 같은 표식에 맞붙으면 __ (파일 머리 주석)
+    emphasis: "*", // §7.1: * 우선 — 같은 표식에 맞붙으면 _
     rule: "-", // §7.1: 항상 ---
     fences: true, // §7.1: fenced code block
     listItemIndent: "one", // compact indent
