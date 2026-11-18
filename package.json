@@ -150,7 +150,7 @@
     "eslint-plugin-react-refresh": "^0.5.7",
     "husky": "^9.1.7",
     "jsdom": "^31.0.1",
-    "knip": "^6.36.0",
+    "knip": "^6.45.1",
     "lint-staged": "^17.6.0",
     "prettier": "^3.10.1",
     "prettier-plugin-tailwindcss": "^0.8.1",
