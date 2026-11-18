@@ -1,16 +1,23 @@
 // §5.5 Mermaid Block — fullscreen modals (moved out of mermaid-block-view.tsx
-// §perf-large-file file-size split). Both own no state: the parent owns it
-// and passes it down as props; each component's own createPortal call stays
-// at the same tree position it had inline. Their one hook, useInnerHtml,
-// holds no state either — it memoises the innerHTML wrapper AT the injection
-// sink (issue 549): a wrapper handed across a component boundary could be
-// spread or copied into a fresh object on the way, which is exactly the
-// per-render re-seed the hook exists to prevent.
+// §perf-large-file file-size split). The parent owns the diagram state (code,
+// svg, error) and passes it down as props; each component's own createPortal
+// call stays at the same tree position it had inline.
+//
+// Hooks both modals in this file call (read from the component bodies):
+// useTranslation, useFontSurface (§349 — it keeps the portal-root element in
+// state), useInnerHtml, and useViewerZoom. The last is what §396 adds: it
+// keeps the zoom scale in state local to the modal, which the parent never
+// reads. useInnerHtml holds no state: it memoises the innerHTML wrapper AT the
+// injection sink (issue 549): a wrapper handed across a component boundary
+// could be spread or copied into a fresh object on the way, which is exactly
+// the per-render re-seed the hook exists to prevent.
 
 import React from "react";
 import { createPortal } from "react-dom";
 
+import { ViewerZoomControls } from "../../../components/editor/ViewerZoomControls";
 import { useFontSurface } from "../../../hooks/use-font-surface";
+import { useViewerZoom } from "../../../hooks/use-viewer-zoom";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
 import { mermaidTypeLabel } from "../../../utils/markdown/mermaid-utils";
@@ -52,6 +59,10 @@ export function MermaidViewFullscreenModal({
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
   const svgMarkup = useInnerHtml(svgHtml);
+  const zoom = useViewerZoom({
+    contentKey: svgHtml,
+    contentSelector: ".mermaid-block-svg > svg",
+  });
   return createPortal(
     <div
       className="mermaid-fullscreen-overlay"
@@ -84,6 +95,7 @@ export function MermaidViewFullscreenModal({
               {mermaidTypeLabel(t, detectedType)}
             </span>
           )}
+          <ViewerZoomControls className="mermaid-fullscreen-zoom" zoom={zoom} />
           <button
             className="mermaid-fullscreen-close"
             onClick={onClose}
@@ -92,7 +104,7 @@ export function MermaidViewFullscreenModal({
             {t("common.close")}
           </button>
         </div>
-        <div className="mermaid-view-fullscreen-body">
+        <div className="mermaid-view-fullscreen-body" ref={zoom.scrollRef}>
           {svgHtml ? (
             <div
               className="mermaid-block-svg"
@@ -130,6 +142,11 @@ export function MermaidEditFullscreenModal({
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
   const fullscreenMarkup = useInnerHtml(fullscreenSvg);
+  // §396: zoom the preview pane only; the textarea pane is not the hook's scroller.
+  const zoom = useViewerZoom({
+    contentKey: fullscreenSvg,
+    contentSelector: ".mermaid-block-svg > svg",
+  });
   return createPortal(
     <div
       className="mermaid-fullscreen-overlay"
@@ -159,6 +176,7 @@ export function MermaidEditFullscreenModal({
               {mermaidTypeLabel(t, detectedType)}
             </span>
           )}
+          <ViewerZoomControls className="mermaid-fullscreen-zoom" zoom={zoom} />
           <button
             className="mermaid-fullscreen-close"
             onClick={onDiscard}
@@ -188,7 +206,7 @@ export function MermaidEditFullscreenModal({
               value={fullscreenCode}
             />
           </div>
-          <div className="mermaid-fullscreen-preview">
+          <div className="mermaid-fullscreen-preview" ref={zoom.scrollRef}>
             {fullscreenSvg ? (
               <div
                 className={[

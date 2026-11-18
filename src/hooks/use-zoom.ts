@@ -12,17 +12,35 @@
 // The HTML preview needs that: its document sits in a sandboxed opaque-origin frame
 // that swallows the keystrokes and wheel events the listeners below are waiting for,
 // and forwards them over postMessage instead (see HtmlPreview.tsx).
+//
+// §396: every zoom input this file takes — its key, ctrl+wheel and pinch listeners, and the
+// exported zoomIn/zoomOut/zoomReset/zoomByWheel that HtmlPreview.tsx calls — goes to the
+// topmost fullscreen viewer on the zoom-owner stack (utils/viewer-zoom.ts) when one is open,
+// and to the editor zoom described above when the stack is empty. A pinch is routed once, at
+// gesturestart; if the top changes mid-gesture the rest of it goes nowhere.
 
 import { useEffect } from "react";
 
+import type { ZoomAnchor, ZoomOwner } from "../utils/viewer-zoom";
 import type { Editor } from "@tiptap/react";
 
 import { useSettingsStore } from "../stores/settings/store";
+import {
+  nextViewerZoomStop,
+  topZoomOwner,
+  viewerWheelFactor,
+} from "../utils/viewer-zoom";
 import { clampZoomLevel } from "../utils/zoom";
 
 // §281 WKWebView 트랙패드 핀치 — Safari GestureEvent 경로. 표준이 아니라
 // lib.dom에 타입이 없다. 우리가 읽는 필드만 좁게 선언한다.
 interface SafariGestureEvent extends Event {
+  /**
+   * 포인터 위치. WKWebView 의 GestureEvent 가 macOS 에서 이 좌표를 싣는지는
+   * 미확인이다(spec 0077 §6.3) — 없으면 기준점 없이(null) 주인에게 넘긴다.
+   */
+  readonly clientX?: number;
+  readonly clientY?: number;
   /** 제스처 시작 대비 **누적** 배율. 시작 시 1.0, 벌리면 > 1. */
   readonly scale: number;
 }
@@ -80,7 +98,7 @@ export function useZoom(editor: Editor | null): void {
       // 관측됨). 둘 다 적용하면 한 번의 핀치가 두 번 반영된다.
       if (gestureActive) return;
       e.preventDefault();
-      zoomByWheel(e.deltaY);
+      zoomByWheelAt(e.deltaY, { clientX: e.clientX, clientY: e.clientY });
     };
 
     const handleKeydown = (e: KeyboardEvent) => {
@@ -134,6 +152,7 @@ export function useZoom(editor: Editor | null): void {
       // ‼️ setGestureActive로 끈다 — 구독자에게 알리지 않고 플래그만 내리면
       // 정착을 기다리던 소비자가 영원히 깨어나지 않는다.
       setGestureActive(false);
+      gestureOwner = null;
     };
   }, [editor]);
 }
@@ -158,6 +177,10 @@ export function useZoom(editor: Editor | null): void {
  */
 let gestureActive = false;
 let gestureBaseZoom = 1;
+// §396 제스처가 시작될 때의 줌 주인(없으면 에디터). 주인이 바뀌면 그 제스처의 나머지는
+// 어디로도 가지 않는다 — 에디터로 새면 뒤에 깔린 문서가 줌된다.
+let gestureOwner: null | ZoomOwner = null;
+let gestureRouted = false;
 
 // §281.3 "핀치가 진행 중인가"를 밖에서 볼 수 있게 한다.
 //
@@ -191,7 +214,19 @@ export function subscribeZoomGesture(
 function handleGestureChange(e: SafariGestureEvent): void {
   if (!gestureActive) return;
   e.preventDefault();
-  setZoom(gestureBaseZoom * e.scale);
+  // 시작한 뒤 주인이 바뀌었다면 이 제스처는 끝날 때까지(다음 gesturestart 전까지) 버린다.
+  if (topZoomOwner() !== gestureOwner) gestureRouted = false;
+  if (!gestureRouted) return;
+  const next = gestureBaseZoom * e.scale;
+  if (gestureOwner) {
+    const anchor =
+      Number.isFinite(e.clientX) && Number.isFinite(e.clientY)
+        ? { clientX: e.clientX as number, clientY: e.clientY as number }
+        : null;
+    gestureOwner.setScale(next, anchor);
+    return;
+  }
+  setZoom(next);
 }
 
 function handleGestureEnd(e: SafariGestureEvent): void {
@@ -206,7 +241,10 @@ function handleGestureStart(e: SafariGestureEvent): void {
   // 스트림이 온전해진다.
   e.preventDefault();
   setGestureActive(true);
-  gestureBaseZoom = useSettingsStore.getState().zoomLevel;
+  gestureOwner = topZoomOwner();
+  gestureRouted = true;
+  gestureBaseZoom =
+    gestureOwner?.getScale() ?? useSettingsStore.getState().zoomLevel;
 }
 
 function setGestureActive(active: boolean): void {
@@ -222,24 +260,41 @@ const GESTURE_HANDLERS: [string, (e: SafariGestureEvent) => void][] = [
   ["gestureend", handleGestureEnd],
 ];
 
-/** Continuous zoom from a wheel/pinch delta (`WheelEvent.deltaY`). */
+/**
+ * Continuous zoom from a wheel/pinch delta (`WheelEvent.deltaY`). The HTML
+ * preview's bridge calls this without a pointer, so a zoom owner gets no anchor.
+ */
 export function zoomByWheel(deltaY: number): void {
-  if (!Number.isFinite(deltaY)) return;
-  setZoom(useSettingsStore.getState().zoomLevel - deltaY * PINCH_SENSITIVITY);
+  zoomByWheelAt(deltaY, null);
 }
 
 /** One keyboard step in. */
 export function zoomIn(): void {
+  const owner = topZoomOwner();
+  if (owner) {
+    owner.setScale(nextViewerZoomStop(owner.getScale(), 1), null);
+    return;
+  }
   setZoom(useSettingsStore.getState().zoomLevel + KEYBOARD_STEP);
 }
 
 /** One keyboard step out. */
 export function zoomOut(): void {
+  const owner = topZoomOwner();
+  if (owner) {
+    owner.setScale(nextViewerZoomStop(owner.getScale(), -1), null);
+    return;
+  }
   setZoom(useSettingsStore.getState().zoomLevel - KEYBOARD_STEP);
 }
 
 /** Back to 100%. */
 export function zoomReset(): void {
+  const owner = topZoomOwner();
+  if (owner) {
+    owner.setScale(1, null);
+    return;
+  }
   setZoom(1);
 }
 
@@ -302,4 +357,17 @@ function setZoom(level: number): void {
   // 달라지는 변경이 여기서 "같다"고 버려진다.
   const next = clampZoomLevel(level);
   if (next !== zoomLevel) setZoomLevel(next);
+}
+
+// §396 주인이 있으면 배율을 곱해 넘긴다. 이 주인 경로는 여기서 자르지 않는다 — 자르는 것은 주인의
+// 몫이다(유일한 주인 `useViewerZoom` 은 `clampViewerScale` 로 자른다). 주인이 없을 때의 에디터 경로는
+// `setZoom` 이 `clampZoomLevel` 로 자른다.
+function zoomByWheelAt(deltaY: number, anchor: null | ZoomAnchor): void {
+  if (!Number.isFinite(deltaY)) return;
+  const owner = topZoomOwner();
+  if (owner) {
+    owner.setScale(owner.getScale() * viewerWheelFactor(deltaY), anchor);
+    return;
+  }
+  setZoom(useSettingsStore.getState().zoomLevel - deltaY * PINCH_SENSITIVITY);
 }

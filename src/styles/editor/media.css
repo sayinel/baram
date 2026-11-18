@@ -211,12 +211,52 @@
   border-color: var(--color-accent-default);
 }
 
-/* 원본은 스크롤해서 볼 수 있어야 한다 — 축소해 맞추면 "원본 보기"가 프리뷰와 다를 바 없다. */
+.image-fullscreen-zoom {
+  display: flex;
+  gap: 0.25em;
+  align-items: center;
+}
+
+.image-fullscreen-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25em 0.5em;
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-default);
+}
+
+.image-fullscreen-zoom-btn:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+.image-fullscreen-zoom-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.image-fullscreen-zoom-level {
+  min-width: 3.5em;
+}
+
+/* 원본은 스크롤해서 볼 수 있어야 한다 — 축소해 맞추면 "원본 보기"가 프리뷰와 다를 바 없다.
+   본문은 배율과 무관하게 시작 쪽에 정렬하고 이미지가 auto 여백으로 스스로 가운데에 선다: row flex 에서
+   auto 여백은 이미지가 들어갈 때 두 축 모두 가운데로 놓는다. 넘칠 때 교차축(세로)은 시작 쪽(위) auto
+   여백만 0 이 되고 끝 쪽(아래) 여백은 줄의 높이에 맞추느라 음수가 된다(CSS Flexbox 의 교차축 auto 여백
+   규칙). auto 여백이 있으면 `align-self` 도 무시되므로 긴 사진의 위쪽이 스크롤로 닿는다. 가로는 넘치면
+   두 auto 여백이 0 이 되고 시작 정렬이 왼쪽 끝을 지킨다. 가운데 정렬 flex 는 넘친 위·왼쪽을 스크롤로
+   닿을 수 없게 만든다. */
 .image-view-fullscreen-body {
   display: flex;
   flex: 1;
-  align-items: center;
-  justify-content: center;
+  align-items: flex-start;
+  justify-content: flex-start;
   padding: 2em;
   overflow: auto;
 }
@@ -224,7 +264,15 @@
 .image-fullscreen-img {
   max-width: 100%;
   height: auto;
+  margin: auto;
   object-fit: contain;
+}
+
+/* Zoomed: the zoom hook sets the two size variables on the body (px, fit size times the scale). */
+.image-view-fullscreen-body[data-viewer-zoomed] .image-fullscreen-img {
+  width: var(--viewer-zoom-width);
+  max-width: none;
+  height: var(--viewer-zoom-height);
 }
 
 /* 원본을 기다리는 동안 깔아 두는 프리뷰. 늘린 것임을 감추지 않는다(라이트박스와 같은 이유). */

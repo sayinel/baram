@@ -62,6 +62,8 @@ const COVERED_BY: Record<string, string> = {
   ".image-fullscreen-close": "image-fullscreen",
   // components/editor/ImageOriginalView.tsx 의 포털 (document.body).
   ".image-fullscreen-label": "image-fullscreen",
+  // §396 — the header zoom group of ImageOriginalView (same portal as -close).
+  ".image-fullscreen-zoom-btn": "image-fullscreen",
   // extensions/plugins/math-inline-edit.ts 의 플러그인 뷰가
   // `document.body.appendChild` 로 만든다 — React 포털이 아니라서 리뷰의 포털
   // 표에도 없었다.
@@ -71,12 +73,16 @@ const COVERED_BY: Record<string, string> = {
   // extensions/nodes/views/MermaidFullscreenModals.tsx 의 두 포털.
   ".mermaid-fullscreen-editor .mermaid-block-textarea": "mermaid-fullscreen",
   ".mermaid-fullscreen-type": "mermaid-fullscreen",
+  // §396 — the header zoom group of MermaidViewFullscreenModal (same portal as -close).
+  ".mermaid-fullscreen-zoom-btn": "mermaid-fullscreen",
   // PreviewToggleButton.tsx — App.tsx 툴바. 파일은 styles/editor/ 지만 크롬이다.
   ".mode-toggle-btn": CHROME,
   ".svg-fullscreen-close": "svg-fullscreen",
   // extensions/nodes/views/SvgFullscreenModals.tsx 의 두 포털 — 한때 이 주석이
   // svg-block-view.tsx 를 댔고, 포털은 그 파일에 더 이상 없다.
   ".svg-fullscreen-editor .svg-block-textarea": "svg-fullscreen",
+  // §396 — the header zoom group of SvgViewFullscreenModal (same portal as -close).
+  ".svg-fullscreen-zoom-btn": "svg-fullscreen",
 };
 
 /** `styles/editor/**` 규칙 중 폰트 변수를 읽는 선택자들 — `.tiptap` 계열 제외. */

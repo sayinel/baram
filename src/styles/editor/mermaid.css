@@ -247,6 +247,82 @@
   border-color: var(--color-accent-default);
 }
 
+.mermaid-fullscreen-zoom {
+  display: flex;
+  gap: 0.25em;
+  align-items: center;
+}
+
+.mermaid-fullscreen-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25em 0.5em;
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-default);
+}
+
+.mermaid-fullscreen-zoom-btn:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+.mermaid-fullscreen-zoom-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.mermaid-fullscreen-zoom-level {
+  min-width: 3.5em;
+}
+
+/* Zoomed (the zoom hook sets the data attribute and the two size variables on the body). The
+   flex centring that suits the fitted view would make the left and top overflow unreachable by
+   scroll, so the body aligns to the start and the wrapper centres itself with auto margins. */
+.mermaid-view-fullscreen-body[data-viewer-zoomed] {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.mermaid-view-fullscreen-body[data-viewer-zoomed] .mermaid-block-svg {
+  width: auto;
+  height: auto;
+  margin: auto;
+}
+
+.mermaid-view-fullscreen-body[data-viewer-zoomed] .mermaid-block-svg > svg {
+  width: var(--viewer-zoom-width);
+  max-width: none;
+  height: var(--viewer-zoom-height);
+  max-height: none;
+}
+
+/* The edit preview, zoomed: same contract as the view body above, on the preview pane only (the
+   textarea pane keeps its own scroll and size). The direct-child form sizes the root svg the
+   hook measures, not an svg nested in the user's markup. This pane differs from the view body
+   and the svg preview: it is a column flex that stays top-aligned (justify-content start), so
+   an auto margin on the main axis would recentre the diagram vertically on the first zoom. The
+   wrapper therefore takes auto margins on the cross axis only; they centre it while it fits and
+   fall back to start alignment when it overflows, so the left edge stays reachable. The base
+   align-items stays centred, which also keeps the error message where it was. */
+.mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg {
+  width: auto;
+  max-width: none;
+  margin: 0 auto;
+}
+
+.mermaid-fullscreen-preview[data-viewer-zoomed] .mermaid-block-svg > svg {
+  width: var(--viewer-zoom-width);
+  max-width: none;
+  height: var(--viewer-zoom-height);
+  max-height: none;
+}
+
 .mermaid-fullscreen-body {
   display: flex;
   flex: 1;

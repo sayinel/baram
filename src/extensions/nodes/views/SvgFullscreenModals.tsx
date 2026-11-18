@@ -1,9 +1,14 @@
 // §5.1 SVG Block — fullscreen modals (moved out of svg-block-view.tsx for
 // R26/§351: each component owns its own useFontSurface call, so the hook
-// only runs while its overlay is mounted. The parent still owns all state
-// and passes it down as props; each component's own createPortal call stays
-// at the tree position it had inline. Modeled on MermaidFullscreenModals.tsx,
-// which split the same way for the same reason.
+// only runs while its overlay is mounted. The parent owns the document state
+// (code, svg) and passes it down as props; each component's own createPortal
+// call stays at the tree position it had inline. Modeled on
+// MermaidFullscreenModals.tsx, which split the same way for the same reason.
+//
+// §396 adds a zoom scale, kept by useViewerZoom in state local to each modal
+// that the parent never reads. It sits beside the portal-root state that
+// useFontSurface keeps (§349); both modals in this file also call
+// useTranslation, useInnerHtml, and a useMemo for the viewBox markup.
 //
 // Before this split, SvgBlockView called useFontSurface("both") twice,
 // unconditionally, at the top of the component — for every SVG block in the
@@ -13,12 +18,15 @@
 // document — this project's typing-latency defect class (§8.4 budgets
 // 16ms/keystroke, cost scales with mounted NodeViews). See
 // svg-block-font-surface-subscription.test.tsx for the property this fixes.
-import React from "react";
+import React, { useMemo } from "react";
 import { createPortal } from "react-dom";
 
+import { ViewerZoomControls } from "../../../components/editor/ViewerZoomControls";
 import { useFontSurface } from "../../../hooks/use-font-surface";
+import { useViewerZoom } from "../../../hooks/use-viewer-zoom";
 import { useTranslation } from "../../../i18n/useTranslation";
 import { isInNativeTextControl } from "../../../utils/editor/native-text-control";
+import { ensureSvgViewBox } from "../../../utils/markdown/svg-utils";
 import { useInnerHtml } from "./use-inner-html";
 
 interface SvgEditFullscreenModalProps {
@@ -46,7 +54,13 @@ export function SvgViewFullscreenModal({
   // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
-  const svgMarkup = useInnerHtml(svgHtml);
+  // §396 D6: the viewBox is added to the rendered view only — never the inline block.
+  const viewMarkup = useMemo(() => ensureSvgViewBox(svgHtml), [svgHtml]);
+  const svgMarkup = useInnerHtml(viewMarkup);
+  const zoom = useViewerZoom({
+    contentKey: svgHtml,
+    contentSelector: ".svg-block-render > svg",
+  });
   return createPortal(
     <div
       className="svg-fullscreen-overlay"
@@ -73,6 +87,7 @@ export function SvgViewFullscreenModal({
       <div className="svg-view-fullscreen-modal">
         <div className="svg-fullscreen-header">
           <span className="svg-block-label">svg</span>
+          <ViewerZoomControls className="svg-fullscreen-zoom" zoom={zoom} />
           <button
             className="svg-fullscreen-close"
             onClick={onClose}
@@ -81,7 +96,7 @@ export function SvgViewFullscreenModal({
             {t("common.close")}
           </button>
         </div>
-        <div className="svg-view-fullscreen-body">
+        <div className="svg-view-fullscreen-body" ref={zoom.scrollRef}>
           {svgHtml ? (
             <div
               className="svg-block-render"
@@ -110,7 +125,17 @@ export function SvgEditFullscreenModal({
   // §349 이 오버레이는 document.body 로 포털된다 — 문서 표면의 변수를
   // 상속받지 못하므로 루트에 직접 덮는다.
   const fontSurface = useFontSurface("both");
-  const fullscreenMarkup = useInnerHtml(fullscreenSvg);
+  // §396 D6: the viewBox is added to the rendered preview only — never to the textarea's source.
+  const previewMarkup = useMemo(
+    () => ensureSvgViewBox(fullscreenSvg),
+    [fullscreenSvg],
+  );
+  const fullscreenMarkup = useInnerHtml(previewMarkup);
+  // §396: zoom the preview pane only; the textarea pane is not the hook's scroller.
+  const zoom = useViewerZoom({
+    contentKey: fullscreenSvg,
+    contentSelector: ".svg-block-render > svg",
+  });
   return createPortal(
     <div
       className="svg-fullscreen-overlay"
@@ -136,6 +161,7 @@ export function SvgEditFullscreenModal({
       <div className="svg-fullscreen-modal">
         <div className="svg-fullscreen-header">
           <span className="svg-block-label">svg</span>
+          <ViewerZoomControls className="svg-fullscreen-zoom" zoom={zoom} />
           <button
             className="svg-fullscreen-close"
             onClick={onDiscard}
@@ -165,7 +191,7 @@ export function SvgEditFullscreenModal({
               value={fullscreenCode}
             />
           </div>
-          <div className="svg-fullscreen-preview">
+          <div className="svg-fullscreen-preview" ref={zoom.scrollRef}>
             {fullscreenSvg ? (
               <div
                 className="svg-block-render"

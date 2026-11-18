@@ -150,6 +150,7 @@ describe("hardcoded light foregrounds anywhere in CSS", () => {
     ".photo-lightbox-nav",
     ".photo-lightbox-open-journal",
     ".photo-lightbox-view-original",
+    ".photo-lightbox-zoom",
   ]);
 
   // ‼️ 판정은 **셀렉터 부분별로** 한다 — 예전에는 `rule.selector` 전체를 이름과 비교했다.

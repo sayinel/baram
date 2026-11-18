@@ -257,6 +257,58 @@
   opacity: 1;
 }
 
+/* §396 확대 묶음 — 닫기 버튼 왼쪽. 묶음 밖의 bar 는 클릭을 막을 뿐 상자를 만들지 않는다. */
+.photo-lightbox-zoom-bar {
+  display: contents;
+}
+
+.photo-lightbox-zoom {
+  position: fixed;
+  top: 16px;
+  right: 64px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  color: #fff;
+  background: rgb(255 255 255 / 10%);
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: var(--radius-md);
+}
+
+.photo-lightbox-zoom-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 var(--space-1);
+  font-size: 0.75rem;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  opacity: 0.7;
+  transition:
+    background-color 0.2s,
+    opacity 0.2s;
+}
+
+.photo-lightbox-zoom-btn:hover:not(:disabled) {
+  background: rgb(255 255 255 / 20%);
+  opacity: 1;
+}
+
+.photo-lightbox-zoom-btn:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
+.photo-lightbox-zoom-level {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+}
+
 .photo-lightbox-nav {
   position: fixed;
   top: 50%;
@@ -299,6 +351,28 @@
   max-height: 78vh;
   object-fit: contain;
   border-radius: var(--radius-md);
+}
+
+/* §396 그림을 감싼 스크롤 컨테이너. 100% 에서는 오늘의 모양 그대로(img 의 max-* 가 정한다),
+   확대되면 상자를 고정하고 img 를 맞춤 × 배율 크기로 키워 스크롤한다. */
+.photo-lightbox-stage {
+  display: flex;
+}
+
+.photo-lightbox-stage[data-viewer-zoomed] {
+  width: 80vw;
+  height: 78vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.photo-lightbox-stage[data-viewer-zoomed] .photo-lightbox-img {
+  flex: none;
+  width: var(--viewer-zoom-width);
+  max-width: none;
+  height: var(--viewer-zoom-height);
+  max-height: none;
+  margin: auto;
 }
 
 /* §56d 큰 프리뷰가 만들어지기 전에 그리드 썸네일(320px)을 늘려 놓은 상태. 늘린 것을

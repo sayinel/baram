@@ -235,6 +235,13 @@ const ALLOWLIST = new Set([
   // style.setProperty, like --editor-zoom above.
   "--vbot",
   "--vtop",
+  // §396 fullscreen viewer zoom — the fit size times the scale, in px, written with
+  // style.setProperty on the viewer's scroll container by useViewerZoom
+  // (use-viewer-zoom.ts) only while the scale is not 1. Every rule in src/styles that
+  // reads them is scoped to `[data-viewer-zoomed]`, which the same writer sets and
+  // clears together with them.
+  "--viewer-zoom-height",
+  "--viewer-zoom-width",
 ]);
 
 const undefinedVars: [string, string[]][] = [];

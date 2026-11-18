@@ -10,12 +10,18 @@
 // §293 동영상은 이 전제가 통째로 다르다. 중간 크기라는 것이 없어 프리뷰 단계가 없고
 // (Rust 썸네일러는 mp4를 디코드할 수 없다), 이 화면이 이미 원본 파일 자체다 — 그래서
 // "원본 보기"도 없다. 껍데기(오버레이·좌우·닫기·일기 보기)만 사진과 공유한다.
+//
+// §396 확대: 이 화면은 줌의 주인이다(useViewerZoom). 그림을 감싼 stage 가 스크롤 컨테이너이고,
+// 배율은 거기에 속성 · CSS 변수로 쓰인다(journal-extras.css). 동영상은 주인으로 등록은 하되
+// 입력을 버린다 — ⌘+ 가 에디터로 새지 않고, 컨트롤도 그리지 않는다. "원본 보기"는 나중에
+// 마운트되어 이 주인 위에 쌓인다.
 import { useEffect, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import type { PhotoGalleryEntry } from "../../utils/journal/journal-photo";
 
+import { useViewerZoom } from "../../hooks/use-viewer-zoom";
 import { INTL_LOCALES } from "../../i18n";
 import { useTranslation } from "../../i18n/useTranslation";
 import {
@@ -23,6 +29,7 @@ import {
   GALLERY_THUMB_PX,
 } from "../../utils/journal/photo-thumbnail";
 import { ImageOriginalView } from "../editor/ImageOriginalView";
+import { ViewerZoomControls } from "../editor/ViewerZoomControls";
 import { usePhotoPreview } from "./use-photo-thumb";
 
 export function PhotoLightbox({
@@ -48,6 +55,16 @@ export function PhotoLightbox({
     : cachedThumbUrl(photo.absolutePath, GALLERY_THUMB_PX, photo.revision);
   const [viewingOriginal, setViewingOriginal] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // 맞춤은 디코드된 그림에서만 잴 수 있다 — src 가 바뀐 직후의 img 는 아직 옛 비트맵이거나 비어
+  // 있다. 그래서 키는 그리는 URL 이 아니라 **마지막으로 load 된** URL 이다(ImageOriginalView 의
+  // `originalLoaded` 와 같은 이유).
+  const [loadedUrl, setLoadedUrl] = useState<string | undefined>(undefined);
+  const zoom = useViewerZoom({
+    contentKey: loadedUrl,
+    contentSelector: ".photo-lightbox-img",
+    resetKey: photo.absolutePath,
+    zoomable: !isVideo,
+  });
 
   /**
    * ‼️ 라이트박스의 키보드는 **여기서** 처리한다 — 예전에는 PhotoGalleryPanel의 effect가
@@ -146,6 +163,17 @@ export function PhotoLightbox({
         </svg>
       </button>
 
+      {/* 비활성 −/+ 의 클릭은 그 버튼의 stopPropagation 에 닿지 않아(React 는 disabled 요소의
+          핸들러를 건너뛴다) 오버레이의 onClose 로 올라간다 — 묶음 밖에서 막는다. */}
+      {!isVideo && (
+        <div
+          className="photo-lightbox-zoom-bar"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ViewerZoomControls className="photo-lightbox-zoom" zoom={zoom} />
+        </div>
+      )}
+
       <div
         className="photo-lightbox-content"
         onClick={(e) => e.stopPropagation()}
@@ -155,28 +183,34 @@ export function PhotoLightbox({
           320px 썸네일은 이미 캐시에 있으므로 즉시 뜨고, 큰 프리뷰가 만들어지는 동안 화면이
           비지 않는다. 늘린 것임을 감추지 않으려고 살짝 흐리게 둔다.
         */}
-        {isVideo ? (
-          <video
-            autoPlay
-            className="photo-lightbox-video"
-            controls
-            ref={videoRef}
-            src={convertFileSrc(photo.absolutePath)}
-          />
-        ) : (
-          (preview ?? placeholder) && (
-            <img
-              alt={photo.caption || photo.filename}
-              className={
-                preview
-                  ? "photo-lightbox-img"
-                  : "photo-lightbox-img photo-lightbox-img-placeholder"
-              }
-              decoding="async"
-              src={(preview ?? placeholder)!.url}
+        <div className="photo-lightbox-stage" ref={zoom.scrollRef}>
+          {isVideo ? (
+            <video
+              autoPlay
+              className="photo-lightbox-video"
+              controls
+              ref={videoRef}
+              src={convertFileSrc(photo.absolutePath)}
             />
-          )
-        )}
+          ) : (
+            (preview ?? placeholder) && (
+              <img
+                alt={photo.caption || photo.filename}
+                className={
+                  preview
+                    ? "photo-lightbox-img"
+                    : "photo-lightbox-img photo-lightbox-img-placeholder"
+                }
+                decoding="async"
+                // 키는 load 가 끝난 그림의 URL — 이 img 의 현재 요청 URL(`currentSrc`)이다. 렌더가 그리는
+                // URL 을 `src` 속성과 대조해서는 아무것도 거를 수 없다: 이벤트 핸들러는 커밋 뒤에 돌아서 그 둘은
+                // 늘 같은 값이다.
+                onLoad={(e) => setLoadedUrl(e.currentTarget.currentSrc)}
+                src={(preview ?? placeholder)!.url}
+              />
+            )
+          )}
+        </div>
         <div className="photo-lightbox-info">
           <span className="photo-lightbox-caption">
             {photo.caption || photo.filename}
