@@ -46,6 +46,15 @@ updates:
       # (see issues 202/207)
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # stylelint-config-recess-order 7.10.0 peers stylelint ^16.18.0 || ^17.0.0,
+      # and stylelint-config-standard 41 peers stylelint ^18.0.0 — offering
+      # either major makes `npm ci` fail with ERESOLVE (PRs 970, 989). Remove
+      # both once recess-order accepts stylelint 18
+      # (stormwarning/stylelint-config-recess-order#504)
+      - dependency-name: "stylelint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "stylelint-config-standard"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
