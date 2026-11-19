@@ -26,12 +26,9 @@ import {
 
 /**
  * 한 레벨에서 끝난(load · error) 타일 `<img>` — 키마다 그 요소와 로드됐는지. 기록은 그 요소가 문서에 붙어
- * 있는 동안만 산다(`mountedOutcome`). 배치를 떠난 타일의 요소는 떼어지고, 돌아오면 새 요소라 다시 받는다.
+ * 있는 동안만 뜻이 있다(`mountedOutcome`). 배치를 떠난 타일의 요소는 떼어지고, 돌아오면 새 요소라 다시 받는다.
  */
-interface LevelOutcomes {
-  level: number;
-  outcomes: Map<string, { el: HTMLImageElement; loaded: boolean }>;
-}
+type LevelOutcomes = Map<string, { el: HTMLImageElement; loaded: boolean }>;
 
 /** 렌더하는 것. 같은 값이면 `setPlacement` 를 부르지 않는다(`samePlacement`). */
 interface Placement {
@@ -48,12 +45,17 @@ interface Placement {
 interface Track {
   /** 지금 레벨의 마지막 배치. */
   layout: { level: number; tiles: PlacedTile[] };
-  /** 지금 레벨이 `settled` 와 다를 때 그 레벨에서 끝난 타일. 같으면 null 이고 `settled` 에 쌓는다. */
-  pending: LevelOutcomes | null;
+  /**
+   * 레벨마다의 기록. 레벨이 바뀌어도 버리지 않고, 떼어진 요소의 기록만 `place` 가 걷는다 — 스크롤 · 크기 관찰 ·
+   * 타일 결과가 부르는 배치는 커밋 하나 사이에 여러 번 올 수 있다. 레벨이 떠났다가 커밋 전에 돌아오면 React 는 그
+   * 레벨의 요소를 그대로 두고, 이미 로드된 요소는 load 를 다시 쏘지 않는다. 그 기록을 버렸다면 그 요소가 붙어
+   * 있는 동안 그 레벨은 끝나지 못한다.
+   */
+  outcomes: Map<number, LevelOutcomes>;
   ready: boolean;
   set: TileSetTiles;
-  /** 마지막으로 다 끝난 레벨 — 그 레벨이 지금 레벨인 동안 끝나는 타일도 여기에 기록한다. */
-  settled: LevelOutcomes | null;
+  /** 마지막으로 다 끝난 레벨. 아직 없으면 null. 지금 레벨과 다르면 지금 레벨이 끝날 때까지 밑 레이어다. */
+  settled: null | number;
   shown: null | Placement;
 }
 
@@ -84,7 +86,7 @@ export function ImageTileLayer({
     if (!base || !body) return;
     const track: Track = {
       layout: { level: -1, tiles: [] },
-      pending: null,
+      outcomes: new Map(),
       ready: false,
       set,
       settled: null,
@@ -118,8 +120,11 @@ export function ImageTileLayer({
       el: HTMLImageElement,
       loaded: boolean,
     ) => {
-      // 커밋이 요소를 뗀 뒤, React 가 그 요소에서 인스턴스를 걷기(passive 단계의 `detachDeletedInstance`,
-      // react-dom 19.3.1) 전에 온 load · error — 같은 키의 새 요소의 기록을 떼어진 요소로 덮지 않게 버린다
+      // 붙어 있는 요소의 결과만 기록한다. react-dom 19.3.1 에서는 이 검사에 걸리는 이벤트가 없다 — 커밋의 mutation
+      // 단계가 지운 fiber 의 `return` 을 끊어 `getNearestMountedFiber` 가 null 을 내므로, 지운 요소의 load · error 는
+      // 인스턴스의 키가 아직 남은 passive 단계 전에도 이 핸들러에 오지 않는다(2026-11-19 jsdom 프로브). 그 보장은
+      // React 내부라 우리 코드로 확인할 수 없어 여기서도 거른다: 떼어진 요소의 기록이 같은 키로 붙은 새 요소의 기록을
+      // 덮으면 그 레벨은 끝나지 못한다
       if (!el.isConnected) return;
       if (!loaded && !warnedRef.current) {
         warnedRef.current = true;
@@ -131,16 +136,17 @@ export function ImageTileLayer({
       const track = trackRef.current;
       // 다른 피라미드의 타일은 키가 같아도 남의 것이다
       if (!track || track.set !== from) return;
-      const record =
-        track.settled?.level === tile.level
-          ? track.settled
-          : track.pending?.level === tile.level
-            ? track.pending
-            : null;
-      if (!record) return;
-      record.outcomes.set(tile.key, { el, loaded });
+      // 지금 레벨도 끝난 레벨도 아닌 레벨의 결과도 남긴다 — 커밋 전에 그 레벨로 돌아오면 React 가 이 요소를 그대로 둔다
+      let record = track.outcomes.get(tile.level);
+      if (!record) {
+        record = new Map();
+        track.outcomes.set(tile.level, record);
+      }
+      record.set(tile.key, { el, loaded });
       // 새 레벨이 방금 다 끝났다 — 다시 재서 밑 레이어를 걷고 처음이면 `onReady`
-      if (track.pending && layoutSettled(track)) syncRef.current();
+      if (track.layout.level !== track.settled && layoutSettled(track)) {
+        syncRef.current();
+      }
     },
     [],
   );
@@ -187,17 +193,17 @@ export function ImageTileLayer({
 /** 지금 레벨의 배치가 비어 있지 않고 그 타일이 모두 붙어서 끝났다(load 든 error 든). */
 function layoutSettled(track: Track): boolean {
   const { level, tiles } = track.layout;
-  const record = track.settled?.level === level ? track.settled : track.pending;
+  const record = track.outcomes.get(level);
   return (
     tiles.length > 0 &&
-    record !== null &&
+    record !== undefined &&
     tiles.every((tile) => mountedOutcome(record, tile.key) !== null)
   );
 }
 
 /** 지금 붙어 있는 그 키의 요소가 끝났으면 로드됐는지, 아니면(떼어졌거나 아직) null. */
 function mountedOutcome(record: LevelOutcomes, key: string): boolean | null {
-  const entry = record.outcomes.get(key);
+  const entry = record.get(key);
   return entry?.el.isConnected ? entry.loaded : null;
 }
 
@@ -218,30 +224,28 @@ function place(
   const { level, tiles } = layoutTiles(set, baseRect, view, dpr);
   track.layout = { level, tiles };
   // 떼어진 요소의 기록은 다시 살지 않는다(React 는 지운 요소를 다시 붙이지 않고, 돌아온 키는 새 요소다).
-  // 판정은 `mountedOutcome` 이 하고, 여기서 지우는 것은 떼어진 `<img>` 를 쥐고 있지 않으려는 것이다
-  for (const record of [track.settled, track.pending]) {
-    for (const [key, entry] of record?.outcomes ?? []) {
-      if (!entry.el.isConnected) record?.outcomes.delete(key);
+  // 판정은 `mountedOutcome` 이 하고, 여기서 지우는 것은 떼어진 `<img>` 를 쥐고 있지 않으려는 것이다. 붙어 있는
+  // 요소의 기록은 레벨이 바뀌어도 남긴다 — `Track.outcomes` 의 주석
+  for (const [recordLevel, record] of track.outcomes) {
+    for (const [key, entry] of record) {
+      if (!entry.el.isConnected) record.delete(key);
     }
+    if (record.size === 0) track.outcomes.delete(recordLevel);
   }
-  if (track.settled?.level === level) track.pending = null;
-  else if (track.pending?.level !== level) {
-    // 다른 레벨로 — 끝나지 못한 중간 레벨의 기록은 버린다. 밑 레이어는 여전히 `settled` 다
-    track.pending = { level, outcomes: new Map() };
-  }
-  if (track.pending && layoutSettled(track)) {
-    track.settled = track.pending;
-    track.pending = null;
+  if (level !== track.settled && layoutSettled(track)) {
+    track.settled = level;
     if (!track.ready) {
       track.ready = true;
       onReady();
     }
   }
   const { settled } = track;
+  const settledRecord =
+    settled === null ? undefined : track.outcomes.get(settled);
   const under =
-    settled && settled.level !== level
-      ? layoutTilesAtLevel(set, settled.level, baseRect, view, dpr).filter(
-          (tile) => mountedOutcome(settled, tile.key) === true,
+    settled !== null && settled !== level && settledRecord
+      ? layoutTilesAtLevel(set, settled, baseRect, view, dpr).filter(
+          (tile) => mountedOutcome(settledRecord, tile.key) === true,
         )
       : [];
   const next: Placement = {

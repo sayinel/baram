@@ -396,6 +396,84 @@ describe("ImageTileLayer", () => {
     expect(levelDivs()).toEqual(["0"]);
   });
 
+  // 아래 셋은 레벨을 바꾸는 배치 둘이 커밋 하나 사이에 든다 — 스크롤 · 크기 관찰은 React 가 커밋하기 전에 몇 번이든
+  // 올 수 있다. 시험은 act 하나 안에서 관찰 콜백을 두 번 불러 커밋을 붙잡는다(act 를 나갈 때 한 번 커밋한다).
+  // React 는 마지막 배치만 커밋하므로 돌아온 레벨의 요소는 그대로 남고, 이미 로드된 요소는 load 를 다시 쏘지 않는다.
+  test("a first layer that flips to another level and back before one commit still settles", () => {
+    const onReady = vi.fn();
+    const commits = vi.fn();
+    render(
+      <Profiler id="layer" onRender={commits}>
+        <Harness onReady={onReady} />
+      </Profiler>,
+    );
+    const first = tiles(2);
+    for (const img of first.slice(0, -1)) fireEvent.load(img);
+    const committed = commits.mock.calls.length;
+
+    act(() => {
+      baseRect = centered(4408);
+      for (const o of observers) o.callback();
+      baseRect = centered(1102);
+      for (const o of observers) o.callback();
+    });
+    // 두 배치에 커밋은 하나이고, 레벨 0 은 한 번도 붙지 않았다 — 레벨 2 의 요소는 같은 요소다
+    expect(commits.mock.calls.length - committed).toBe(1);
+    expect(levelDivs()).toEqual(["2"]);
+    expect(tiles(2).filter((img, i) => img !== first[i])).toEqual([]);
+
+    fireEvent.load(first[first.length - 1]);
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
+  test("a pending level that returns after the settled level, before one commit, still settles", () => {
+    render(<Harness onReady={vi.fn()} />);
+    loadAll(2);
+    relayout(centered(4408));
+    expect(levelDivs()).toEqual(["2", "0"]);
+    const pending = tiles(0);
+    for (const img of pending.slice(0, -1)) fireEvent.load(img);
+
+    act(() => {
+      baseRect = centered(1102);
+      for (const o of observers) o.callback();
+      baseRect = centered(4408);
+      for (const o of observers) o.callback();
+    });
+    expect(levelDivs()).toEqual(["2", "0"]);
+    expect(tiles(0).filter((img, i) => img !== pending[i])).toEqual([]);
+
+    fireEvent.load(pending[pending.length - 1]);
+    expect(levelDivs()).toEqual(["0"]);
+  });
+
+  test("the old settled level returning right after a new level settles, before one commit, still settles", () => {
+    render(<Harness onReady={vi.fn()} />);
+    loadAll(2);
+    relayout(centered(4408));
+    // 밑 레이어로 남은 레벨 2 의 요소 — 로드된 채 붙어 있다
+    const kept = tiles(2);
+    expect(kept.length).toBeGreaterThan(0);
+    const fresh = tiles(0);
+    for (const img of fresh.slice(0, -1)) fireEvent.load(img);
+
+    act(() => {
+      // 레벨 0 이 다 끝나 지금 끝난 레벨이 되고, 같은 커밋 전에 레벨 2 로 돌아간다
+      fireEvent.load(fresh[fresh.length - 1]);
+      baseRect = centered(1102);
+      for (const o of observers) o.callback();
+    });
+    expect(levelDivs()).toEqual(["0", "2"]);
+    const back = tiles(2);
+    expect(kept.every((img) => back.includes(img))).toBe(true);
+
+    // 밑에 남았던 요소는 load 를 다시 쏘지 않는다 — 새로 붙은 것만 로드한다
+    for (const img of back) {
+      if (!kept.includes(img)) fireEvent.load(img);
+    }
+    expect(levelDivs()).toEqual(["2"]);
+  });
+
   test("a body resize re-lays the tiles out", () => {
     render(<Harness onReady={vi.fn()} />);
     const body = document.querySelector(".body")!;
