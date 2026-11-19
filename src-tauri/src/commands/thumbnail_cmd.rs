@@ -47,6 +47,28 @@ impl Default for ThumbnailSemaphore {
     }
 }
 
+/// 타일 피라미드 생성 허가 — 썸네일과 따로 하나다(§397). 한 건이 원본을 통째로 디코드하고(파노라마면
+/// ~600MB) 모든 레벨을 인코딩하므로, 둘을 한꺼번에 돌리지 않는다. 썸네일 허가와 나눈 이유는 큰 사진 하나의
+/// 생성(1~5초)이 갤러리의 썸네일 스캔을 막지 않게 하려는 것이다.
+pub struct TileSemaphore(pub tokio::sync::Semaphore);
+
+impl TileSemaphore {
+    pub fn new() -> Self {
+        Self(tokio::sync::Semaphore::new(1))
+    }
+}
+
+impl Default for TileSemaphore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// 타일 생성이 느렸다는 로그를 이 세션에서 이미 남겼는가 — `SLOW_REPORTED` 와 같은 이유로 따로 둔다
+/// (썸네일의 한 줄이 타일의 한 줄을 가리면 안 된다).
+static SLOW_TILES_REPORTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 /// 캐시 디렉터리. `setup`이 여기에 asset 프로토콜 읽기 권한을 준다(lib.rs).
 pub fn cache_dir<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
@@ -163,6 +185,78 @@ pub async fn photo_thumbnail<R: tauri::Runtime>(
     }
 }
 
+/// 원본 보기용 타일 피라미드(§397, spec D2). 타일을 받는 사진(가로나 세로가 2048 초과인 로컬 래스터)이면
+/// 피라미드를 보장해 그 위치와 manifest 를, 아니면 `Original` 을 돌려준다.
+///
+/// 순서는 **허가 앞에서 가릴 수 있는 것을 전부 가린다**:
+/// 1. `probe_tiles`(디코드 없음) — 히트 · 애니메이션 · 2048 이하는 허가 없이 바로 답하고, 큰 사진이면
+///    크기를 `on_size` 로 알린 뒤 `None`(만들어야 한다)을 준다. 다른 사진의 생성(1~5초)을 기다리는 것은
+///    만들어야 하는 사진뿐이고, 크기도 그 기다림 앞에서 간다(뷰어가 프리뷰를 크기대로 그린다).
+/// 2. 생성 허가를 얻은 뒤 `ensure_tiles` — 허가를 기다리는 사이 같은 사진을 다른 호출이 끝냈으면 이 재확인이
+///    히트로 답한다. 크기는 이미 보냈으므로 여기서는 보내지 않는다.
+///
+/// 뷰어를 닫아도 생성은 끝까지 간다 — `spawn_blocking` 은 이 future 가 떨어져도 멈추지 않는다(spec D2).
+#[tauri::command]
+pub async fn image_tiles<R: tauri::Runtime>(
+    path: String,
+    on_size: tauri::ipc::Channel<crate::thumbnail::tiles::TileSize>,
+    app: tauri::AppHandle<R>,
+    semaphore: tauri::State<'_, TileSemaphore>,
+) -> Result<crate::thumbnail::tiles::TileSet, String> {
+    use crate::thumbnail::tiles::{ensure_tiles, probe_tiles};
+
+    crate::fs::validate_path(&path).map_err(|e| e.to_string())?;
+    authorize_source(&app, &path).await?;
+
+    let cache = cache_dir(&app)?;
+    let logged_path = path.clone();
+    let probe_path = path.clone();
+    let probe_cache = cache.clone();
+    let probed = tokio::task::spawn_blocking(move || {
+        probe_tiles(std::path::Path::new(&probe_path), &probe_cache, |size| {
+            let _ = on_size.send(size);
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    match probed {
+        Ok(Some(set)) => return Ok(set),
+        Ok(None) => {}
+        Err(e) => {
+            log::warn!("§397 tiles FAILED for {logged_path}: {e}");
+            return Err(e.to_string());
+        }
+    }
+
+    let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
+    let started = std::time::Instant::now();
+    let result = tokio::task::spawn_blocking(move || {
+        ensure_tiles(std::path::Path::new(&path), &cache, |_| {})
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // ‼️ 실패를 로그에 남긴다 — 프런트는 실패하면 원본 `<img>` 로 폴백하는데(spec D7) 그 화면은 타일이
+    // 없던 때와 같아, 로그가 없으면 "만들기에 실패했다"와 "경로를 못 탔다"가 구별되지 않는다.
+    match result {
+        Ok(set) => {
+            let ms = started.elapsed().as_millis();
+            let first_slow_of_the_session = ms >= SLOW_THUMBNAIL_MS
+                && !SLOW_TILES_REPORTED.swap(true, std::sync::atomic::Ordering::Relaxed);
+            if first_slow_of_the_session {
+                log::info!("§397 slow tiles: {ms}ms for {logged_path}");
+            } else {
+                log::debug!("§397 tiles in {ms}ms: {logged_path}");
+            }
+            Ok(set)
+        }
+        Err(e) => {
+            log::warn!("§397 tiles FAILED for {logged_path}: {e}");
+            Err(e.to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
@@ -170,8 +264,11 @@ mod tests {
     use tauri::Manager;
     use tempfile::TempDir;
 
-    use super::{photo_thumbnail, ThumbnailSemaphore, THUMBNAIL_NOT_AUTHORIZED};
+    use super::{
+        image_tiles, photo_thumbnail, ThumbnailSemaphore, TileSemaphore, THUMBNAIL_NOT_AUTHORIZED,
+    };
     use crate::context::{ContextInfo, ContextManager, ContextType};
+    use crate::thumbnail::tiles::{TileSet, TileSize};
 
     /// A mock-runtime app carrying the states `photo_thumbnail` reads.
     fn app_with_states() -> tauri::App<tauri::test::MockRuntime> {
@@ -179,6 +276,7 @@ mod tests {
         app.manage(crate::VaultRootState(tokio::sync::RwLock::new(None)));
         app.manage(ContextManager::new());
         app.manage(ThumbnailSemaphore::new());
+        app.manage(TileSemaphore::new());
         app
     }
 
@@ -426,6 +524,165 @@ mod tests {
                         "/definitely/not/in/a/context/photo.png"
                     },
                     "maxPx": 2048,
+                })),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        );
+
+        let err = res.expect_err("a path no context covers must be refused");
+        assert_eq!(err, serde_json::json!(THUMBNAIL_NOT_AUTHORIZED));
+    }
+
+    /// 채널은 받은 크기를 `sizes` 에 모은다. 명령은 `Channel<TileSize>` 로 보내므로 JSON 으로 온다.
+    fn size_channel() -> (
+        tauri::ipc::Channel<TileSize>,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        let sizes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = sizes.clone();
+        let channel = tauri::ipc::Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                sink.lock().unwrap().push(json);
+            }
+            Ok(())
+        });
+        (channel, sizes)
+    }
+
+    async fn tiles(
+        app: &tauri::App<tauri::test::MockRuntime>,
+        path: &Path,
+        on_size: tauri::ipc::Channel<TileSize>,
+    ) -> Result<TileSet, String> {
+        image_tiles(
+            path.to_string_lossy().to_string(),
+            on_size,
+            app.handle().clone(),
+            app.state::<TileSemaphore>(),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn image_tiles_refuses_a_path_no_context_covers() {
+        let app = app_with_states();
+        let dir = TempDir::new().unwrap();
+        let photo = tiny_png(&dir.path().join("photo.png"));
+
+        let result = tiles(&app, &photo, size_channel().0).await;
+
+        assert_eq!(result, Err(THUMBNAIL_NOT_AUTHORIZED.to_string()));
+    }
+
+    #[tokio::test]
+    async fn image_tiles_answers_original_for_a_small_image_in_a_folder_context() {
+        let app = app_with_states();
+        let dir = TempDir::new().unwrap();
+        app.state::<ContextManager>()
+            .add(context(ContextType::Folder, dir.path()))
+            .await
+            .unwrap();
+        let photo = tiny_png(&dir.path().join("photo.png"));
+        let (channel, sizes) = size_channel();
+
+        assert_eq!(tiles(&app, &photo, channel).await, Ok(TileSet::Original));
+        assert!(sizes.lock().unwrap().is_empty());
+    }
+
+    /// 허가를 다른 사진의 생성이 쥐고 있어도 타일을 받지 않을 사진은 기다리지 않는다(R4). 회귀하면
+    /// 허가를 기다리며 멈추므로 시간 제한으로 실패시킨다.
+    #[tokio::test]
+    async fn a_small_image_does_not_wait_for_the_build_permit() {
+        let app = app_with_states();
+        let dir = TempDir::new().unwrap();
+        app.state::<ContextManager>()
+            .add(context(ContextType::Folder, dir.path()))
+            .await
+            .unwrap();
+        let photo = tiny_png(&dir.path().join("photo.png"));
+        let held = app.state::<TileSemaphore>();
+        let _permit = held.0.acquire().await.unwrap();
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tiles(&app, &photo, size_channel().0),
+        )
+        .await;
+
+        assert_eq!(
+            result.expect("must not wait for the permit"),
+            Ok(TileSet::Original)
+        );
+    }
+
+    /// 큰 사진의 크기는 허가를 기다리기 전에 간다(spec D2). 허가를 쥔 채 명령을 시간 제한으로 떨어뜨리므로
+    /// 아무것도 만들거나 쓰지 않는다 — 앱 캐시를 건드리지 않는 경로다.
+    #[tokio::test]
+    async fn a_big_images_size_arrives_before_the_build_permit() {
+        let app = app_with_states();
+        let dir = TempDir::new().unwrap();
+        app.state::<ContextManager>()
+            .add(context(ContextType::Folder, dir.path()))
+            .await
+            .unwrap();
+        let big = dir.path().join("big.png");
+        image::RgbImage::new(2049, 10).save(&big).unwrap();
+        let held = app.state::<TileSemaphore>();
+        let _permit = held.0.acquire().await.unwrap();
+        let (channel, sizes) = size_channel();
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(1500),
+            tiles(&app, &big, channel),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "the build must still be waiting for the permit"
+        );
+        assert_eq!(
+            *sizes.lock().unwrap(),
+            vec![r#"{"width":2049,"height":10}"#.to_string()]
+        );
+    }
+
+    /// 디스패치 시험 — 채널 인자는 `"__CHANNEL__:ID"` 문자열이다(tauri `ipc/channel.rs` 의
+    /// `CommandArg for Channel`).
+    #[test]
+    fn image_tiles_is_dispatchable_by_name_through_generate_handler() {
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![super::image_tiles])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app must build");
+        app.manage(crate::VaultRootState(tokio::sync::RwLock::new(None)));
+        app.manage(ContextManager::new());
+        app.manage(TileSemaphore::new());
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview must build");
+
+        let res = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "image_tiles".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(any(windows, target_os = "android")) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::Json(serde_json::json!({
+                    "path": if cfg!(windows) {
+                        r"C:\definitely\not\in\a\context\photo.png"
+                    } else {
+                        "/definitely/not/in/a/context/photo.png"
+                    },
+                    "onSize": "__CHANNEL__:7",
                 })),
                 headers: Default::default(),
                 invoke_key: tauri::test::INVOKE_KEY.to_string(),

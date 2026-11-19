@@ -73,44 +73,58 @@ pub struct TileSize {
     pub height: u32,
 }
 
-/// 이 원본의 피라미드가 캐시에 있으면 돌려준다. 원본은 메타데이터만 읽고 디코드하지 않는다.
-/// 히트면 manifest 의 mtime 을 지금으로 갱신한다(마지막 사용 — `cache::evict_over_cap` 이 읽는다).
-#[allow(dead_code)] // 명령 `image_tiles`(다음 태스크)가 부르기 전까지 크레이트 안에 호출자가 없다 — 그때 뗀다
-pub fn cached_tiles(src: &Path, cache_dir: &Path) -> Result<Option<TileSet>, ThumbnailError> {
-    let key = source_identity(src)?.digest(&[]);
-    Ok(hit(&cache::tiles_root(cache_dir), &key))
-}
-
-/// 원본 한 장의 타일 피라미드를 보장한다. 이미 있으면 디코드하지 않는다. 블로킹 함수다.
+/// 디코드 없이 이 원본의 답을 가려 본다 — 만들어야 하면 `None`. 아무것도 쓰지 않는다(히트의 마지막 사용
+/// 갱신은 제외). 블로킹 함수이고 헤더만 읽는다.
 ///
-/// 순서 — 시험이 이 순서에 기댄다:
-/// 1. 키를 짓고 캐시 히트면 그것. 형식 판정보다 먼저다 — 히트는 원본을 열지 않는다.
+/// 순서 — 시험이 이 순서에 기댄다(`ensure_tiles` 가 같은 판정을 그대로 쓴다):
+/// 1. 키를 짓고 캐시 히트면 그것. 형식 판정보다 먼저다 — 히트는 원본을 열지 않는다. 히트면 manifest 의
+///    mtime 을 지금으로 갱신한다(마지막 사용 — `cache::evict_over_cap` 이 읽는다).
 /// 2. 애니메이션(GIF 전부 · APNG · 애니메이션 WebP)이면 `Original` — 첫 프레임만 타일이 되면 움직임이
 ///    사라진다(spec D1).
 /// 3. 헤더 크기가 `MAX_SOURCE_PIXELS` 를 넘으면 `TooLarge`, 두 변 모두 `TILE_THRESHOLD_PX` 이하면 `Original`.
-/// 4. 방향을 적용한 크기를 `on_size` 로 알린다 — 디코드 · 인코딩 **전에**. 뷰어는 피라미드를 기다리는 동안
-///    그 크기로 프리뷰를 그린다(spec D6).
-/// 5. ICC 프로필을 읽고 디코드 · 방향 적용. 방향과 ICC 는 `from_decoder` 가 디코더를 소비하기 전에 읽는다.
-/// 6. 임시 디렉터리에 피라미드와 manifest 를 쓰고 `{key}` 로 rename(`cache::commit_pyramid`), 상한 정리.
-#[allow(dead_code)] // 명령 `image_tiles`(다음 태스크)가 부르기 전까지 크레이트 안에 호출자가 없다 — 그때 뗀다
-pub fn ensure_tiles(
+/// 4. 그 밖에는 방향을 적용한 크기를 `on_size` 로 알리고 `None` 을 돌려준다 — 뷰어는 피라미드를 기다리는
+///    동안 그 크기로 프리뷰를 그린다(spec D6).
+///
+/// 명령(`image_tiles`)이 이것을 생성 허가 **앞에서** 부른다: 타일을 받지 않을 사진의 답과 큰 사진의 크기
+/// 알림이 다른 사진의 생성을 기다리지 않게 한다(spec D2).
+pub fn probe_tiles(
     src: &Path,
     cache_dir: &Path,
     on_size: impl FnOnce(TileSize),
-) -> Result<TileSet, ThumbnailError> {
+) -> Result<Option<TileSet>, ThumbnailError> {
+    probe(src, &cache::tiles_root(cache_dir), on_size).map(|probed| match probed {
+        Probed::Answer(set) => Some(set),
+        Probed::Build { .. } => None,
+    })
+}
+
+/// `probe_tiles` 가 가른 결과. `Build` 는 디코더를 쥔 채 돌려줘 `ensure_tiles` 가 같은 파일을 다시 열지 않는다.
+enum Probed {
+    Answer(TileSet),
+    Build {
+        key: String,
+        decoder: Box<dyn ImageDecoder>,
+        orientation: Orientation,
+    },
+}
+
+fn probe(
+    src: &Path,
+    root: &Path,
+    on_size: impl FnOnce(TileSize),
+) -> Result<Probed, ThumbnailError> {
     let key = source_identity(src)?.digest(&[]);
-    let root = cache::tiles_root(cache_dir);
-    if let Some(cached) = hit(&root, &key) {
-        return Ok(cached);
+    if let Some(cached) = hit(root, &key) {
+        return Ok(Probed::Answer(cached));
     }
     if is_animated(src)? {
-        return Ok(TileSet::Original);
+        return Ok(Probed::Answer(TileSet::Original));
     }
 
     let mut decoder = open_decoder(src)?;
     let (width, height) = checked_dimensions(decoder.as_ref())?;
     if width <= TILE_THRESHOLD_PX && height <= TILE_THRESHOLD_PX {
-        return Ok(TileSet::Original);
+        return Ok(Probed::Answer(TileSet::Original));
     }
 
     let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
@@ -122,6 +136,32 @@ pub fn ensure_tiles(
     } else {
         TileSize { width, height }
     });
+    Ok(Probed::Build {
+        key,
+        decoder,
+        orientation,
+    })
+}
+
+/// 원본 한 장의 타일 피라미드를 보장한다. 이미 있으면 디코드하지 않는다. 블로킹 함수다.
+///
+/// 판정은 `probe_tiles` 와 같은 `probe` 다(순서는 그 doc). 만들어야 하면 이어서:
+/// 5. ICC 프로필을 읽고 디코드 · 방향 적용. 방향과 ICC 는 `from_decoder` 가 디코더를 소비하기 전에 읽는다.
+/// 6. 임시 디렉터리에 피라미드와 manifest 를 쓰고 `{key}` 로 rename(`cache::commit_pyramid`), 상한 정리.
+pub fn ensure_tiles(
+    src: &Path,
+    cache_dir: &Path,
+    on_size: impl FnOnce(TileSize),
+) -> Result<TileSet, ThumbnailError> {
+    let root = cache::tiles_root(cache_dir);
+    let (key, mut decoder, orientation) = match probe(src, &root, on_size)? {
+        Probed::Answer(set) => return Ok(set),
+        Probed::Build {
+            key,
+            decoder,
+            orientation,
+        } => (key, decoder, orientation),
+    };
     let icc = decoder.icc_profile()?;
     let mut img = DynamicImage::from_decoder(decoder)?;
     img.apply_orientation(orientation);
@@ -226,6 +266,12 @@ mod tests {
     /// 크기를 알리면 안 되는 호출에 넘긴다 — 불리면 시험이 그 자리에서 실패한다.
     fn no_size(size: TileSize) {
         panic!("on_size must not be called here, got {size:?}");
+    }
+
+    /// 캐시에 있는 피라미드만 본다 — 히트면 `Some(Tiles)`, 만들어야 하는 큰 원본이면 `None`.
+    /// 크기 알림은 이 시험들이 묻는 것이 아니다.
+    fn cached(src: &Path, cache: &Path) -> Option<TileSet> {
+        probe_tiles(src, cache, |_| {}).unwrap()
     }
 
     fn names_in(dir: &Path) -> Vec<String> {
@@ -574,6 +620,66 @@ mod tests {
         assert!(names_in(&cache::tiles_root(&cache)).is_empty());
     }
 
+    #[test]
+    fn the_probe_answers_original_for_a_small_source_and_writes_nothing() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("small.png");
+        write_png(&src, 2048, 100, 1);
+
+        assert_eq!(
+            probe_tiles(&src, &cache, no_size).unwrap(),
+            Some(TileSet::Original)
+        );
+        assert!(!cache.exists());
+    }
+
+    #[test]
+    fn the_probe_announces_the_size_of_a_big_source_and_asks_for_a_build() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("big.png");
+        write_png(&src, 2049, 10, 1);
+
+        let seen = Cell::new(None);
+        let answer = probe_tiles(&src, &cache, |size| seen.set(Some(size))).unwrap();
+
+        assert_eq!(answer, None);
+        assert_eq!(
+            seen.get(),
+            Some(TileSize {
+                width: 2049,
+                height: 10
+            })
+        );
+        assert!(names_in(&cache::tiles_root(&cache)).is_empty());
+    }
+
+    #[test]
+    fn the_probe_hands_back_what_ensure_tiles_built() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("big.png");
+        write_png(&src, 2049, 10, 1);
+        let built = ensure_tiles(&src, &cache, |_| {}).unwrap();
+        assert!(matches!(built, TileSet::Tiles { .. }));
+
+        assert_eq!(probe_tiles(&src, &cache, no_size).unwrap(), Some(built));
+    }
+
+    #[test]
+    fn the_probe_leaves_an_animated_source_to_the_original_view() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("anim.png");
+        write_png(&src, 3000, 10, 2);
+
+        assert_eq!(
+            probe_tiles(&src, &cache, no_size).unwrap(),
+            Some(TileSet::Original)
+        );
+    }
+
     /// 원본은 PNG 다 — 0 으로 덮은 `.png` 는 형식 판정(`is_animated` 의 `PngDecoder`)에서부터 실패하므로,
     /// 히트가 디코드뿐 아니라 형식 판정보다도 먼저인지 가른다. JPEG 이면 내용으로 형식을 못 가린 판정이
     /// 확장자로 넘어가 `false` 로 통과해, 그 순서를 가르지 못한다.
@@ -592,7 +698,7 @@ mod tests {
         std::fs::write(&src, vec![0u8; meta.len() as usize]).unwrap();
         set_mtime(&src, mtime);
 
-        assert_eq!(cached_tiles(&src, &cache).unwrap(), Some(first.clone()));
+        assert_eq!(cached(&src, &cache), Some(first.clone()));
         assert_eq!(ensure_tiles(&src, &cache, no_size).unwrap(), first);
     }
 
@@ -610,10 +716,7 @@ mod tests {
 
         assert_ne!(old_dir, new_dir);
         assert_eq!((manifest.width, manifest.height), (2100, 12));
-        assert_eq!(
-            cached_tiles(&src, &cache).unwrap().map(|set| tiles(set).0),
-            Some(new_dir)
-        );
+        assert_eq!(cached(&src, &cache).map(|set| tiles(set).0), Some(new_dir));
     }
 
     #[test]
@@ -626,7 +729,7 @@ mod tests {
         let long_ago = UNIX_EPOCH + Duration::from_secs(86_400);
         set_mtime(&manifest, long_ago);
 
-        assert!(cached_tiles(&src, &cache).unwrap().is_some());
+        assert!(cached(&src, &cache).is_some());
 
         assert!(std::fs::metadata(&manifest).unwrap().modified().unwrap() > long_ago);
     }
@@ -644,7 +747,7 @@ mod tests {
         std::fs::remove_file(pyramid.join("manifest.json")).unwrap();
         std::fs::remove_dir_all(pyramid.join("3")).unwrap();
 
-        assert_eq!(cached_tiles(&src, &cache).unwrap(), None);
+        assert_eq!(cached(&src, &cache), None);
         assert_eq!(ensure_tiles(&src, &cache, |_| {}).unwrap(), first);
 
         assert!(pyramid.join("manifest.json").is_file());
@@ -663,10 +766,10 @@ mod tests {
         let manifest = Path::new(&pyramid).join("manifest.json");
         std::fs::write(&manifest, b"").unwrap();
 
-        assert_eq!(cached_tiles(&src, &cache).unwrap(), None);
+        assert_eq!(cached(&src, &cache), None);
         assert_eq!(ensure_tiles(&src, &cache, |_| {}).unwrap(), first);
 
-        assert_eq!(cached_tiles(&src, &cache).unwrap(), Some(first));
+        assert_eq!(cached(&src, &cache), Some(first));
     }
 
     #[test]

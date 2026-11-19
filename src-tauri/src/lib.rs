@@ -431,6 +431,7 @@ pub fn run() {
         .manage(plugin::PluginRateLimiter::new())
         .manage(plugin::StagedPayloads::new())
         .manage(thumbnail_cmd::ThumbnailSemaphore::new())
+        .manage(thumbnail_cmd::TileSemaphore::new())
         .manage(font::FontCache::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::set_vault_root,
@@ -451,6 +452,7 @@ pub fn run() {
             fs_cmd::export_binary_file,
             fs_cmd::read_media_data_url,
             thumbnail_cmd::photo_thumbnail,
+            thumbnail_cmd::image_tiles,
             config_cmd::get_config,
             config_cmd::set_config,
             config_cmd::remove_config,
