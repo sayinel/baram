@@ -66,6 +66,12 @@ fn normalise(img: &DynamicImage) -> std::borrow::Cow<'_, DynamicImage> {
     }
 }
 
+/// 타일 한 장을 메모리에서 인코딩한 뒤 `fs::write` 한 번으로 쓰고 그 바이트 수를 돌려준다.
+///
+/// 파일에 바로 인코딩하지 않는 이유: 마지막 쓰기의 오류가 사라진다. image 0.25.10 의 `JpegEncoder` 는 쓰기
+/// 대상을 flush 하지 않아 `BufWriter` 의 마지막 flush 가 drop 에서 일어나고, `PngEncoder::write_image` 는 png
+/// 0.18.1 의 `Writer` 를 `finish` 없이 버려 IEND 청크를 그 `Drop` 이 쓴다 — 둘 다 오류를 버린다. 그러면 잘린
+/// 타일이 manifest 를 얻고 캐시에 남는다. `Vec` 에 쓰기는 실패하지 않고, 파일 쓰기의 오류는 `fs::write` 가 돌려준다.
 fn write_tile(
     level_img: &DynamicImage,
     icc: Option<&[u8]>,
@@ -81,9 +87,9 @@ fn write_tile(
     let tile = level_img.crop_imm(x, y, w, h);
     let color = ExtendedColorType::from(tile.color());
 
-    let file = std::io::BufWriter::new(std::fs::File::create(path)?);
+    let mut encoded = Vec::new();
     if has_alpha {
-        let mut enc = PngEncoder::new(file);
+        let mut enc = PngEncoder::new(&mut encoded);
         if let Some(icc) = icc {
             // 이 인코더는 프로필을 항상 받는다(Err 를 내지 않는다) — 무시해도 되는 결과가 아니라
             // 인코더가 거절하면 타일에 프로필이 빠지는 것이므로 오류로 올린다.
@@ -92,14 +98,15 @@ fn write_tile(
         }
         enc.write_image(tile.as_bytes(), w, h, color)?;
     } else {
-        let mut enc = JpegEncoder::new_with_quality(file, JPEG_QUALITY);
+        let mut enc = JpegEncoder::new_with_quality(&mut encoded, JPEG_QUALITY);
         if let Some(icc) = icc {
             enc.set_icc_profile(icc.to_vec())
                 .map_err(image::ImageError::Unsupported)?;
         }
         enc.write_image(tile.as_bytes(), w, h, color)?;
     }
-    Ok(std::fs::metadata(path)?.len())
+    std::fs::write(path, &encoded)?;
+    Ok(encoded.len() as u64)
 }
 
 /// `img` 를 `out/{level}/{col}_{row}.{ext}` 로 쓴다. 알파가 있으면 PNG, 없으면 JPEG q85.
