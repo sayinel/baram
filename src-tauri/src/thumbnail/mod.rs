@@ -16,6 +16,8 @@ use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub mod tiles;
+
 /// 디코더에 허용하는 최대 할당. `Limits`의 기본값 512MiB는 **실제 사진을 거른다** —
 /// 199 MPix 파노라마 하나가 RGB8로 ~600MB다. 그 사진이야말로 썸네일이 가장 필요한 사진이므로
 /// 기본값을 그대로 쓰면 정확히 최악의 경우에만 실패한다.
