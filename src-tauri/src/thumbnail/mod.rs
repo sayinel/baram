@@ -67,28 +67,70 @@ fn tier_dir(cache_dir: &Path, max_px: u32) -> PathBuf {
     cache_dir.join(CACHE_GENERATION).join(max_px.to_string())
 }
 
-/// 캐시 파일 경로 두 개(불투명→jpg, 알파→png)를 만든다.
+/// 캐시 키의 입력 — 원본 파일 하나를 가리키는 값. 썸네일(`cache_paths`)과 타일 피라미드(§397,
+/// `tiles::ensure_tiles`)가 같은 입력으로 키를 짓는다.
 ///
 /// 키에 mtime과 파일 크기가 들어가는 이유: 사용자가 사진을 교체하면(같은 이름, 다른 내용)
-/// 낡은 썸네일이 영원히 남는다. 두 값이 같이 바뀌지 않는 교체는 사실상 없다.
+/// 낡은 캐시 항목이 영원히 남는다. 두 값이 같이 바뀌지 않는 교체는 사실상 없다.
+struct SourceIdentity {
+    /// 키에만 쓰는 정규화된 경로 — 이유는 `source_identity` 의 주석.
+    key_path: PathBuf,
+    mtime_nanos: u128,
+    len: u64,
+}
+
+impl SourceIdentity {
+    /// (경로, `\0`, mtime 나노초 LE, 크기 LE, `tail`) 의 SHA-256 앞 16바이트를 16진수 32자로.
+    fn digest(&self, tail: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.key_path.to_string_lossy().as_bytes());
+        hasher.update(b"\0");
+        hasher.update(self.mtime_nanos.to_le_bytes());
+        hasher.update(self.len.to_le_bytes());
+        hasher.update(tail);
+        hex32(&hasher.finalize())
+    }
+}
+
+/// 원본의 키 입력을 읽는다. 일반 파일이 아니면 `NotAFile` — 원본을 열기 **전에** 거른다.
+fn source_identity(src: &Path) -> Result<SourceIdentity, ThumbnailError> {
+    let metadata = std::fs::metadata(src)?;
+    // 일반 파일만 연다. FIFO 는 읽으려고 여는 순간 쓰는 쪽을 기다리므로, 그대로 두면 이 호출이
+    // 돌아오지 않고 호출자(`thumbnail_cmd`)가 쥔 생성 허가를 세션 끝까지 쥔다. `metadata` 는
+    // symlink 를 따라가므로 FIFO 를 가리키는 링크도 여기서 걸린다.
+    if !metadata.is_file() {
+        return Err(ThumbnailError::NotAFile);
+    }
+    let mtime_nanos = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    // ‼️ 키는 **파일**을 가리켜야 하고, 그 파일을 어떻게 적었는지를 가리켜서는 안 된다.
+    // 실앱 로그가 이걸 드러냈다: 에디터는 `![](./assets/x.jpg)`를 활성 파일 디렉터리에 붙여
+    // `/…/baram-test/./assets/x.jpg`를 보내고, 갤러리는 같은 파일을 `/…/assets/x.jpg`로 보낸다.
+    // 문자열을 그대로 해시하면 한 사진이 항목 두 개를 갖는다 — 2048px 계층을 에디터와
+    // 라이트박스가 **공유하도록** 만들어 둔 설계가 그 지점에서 조용히 무력화된다.
+    //
+    // 정규화는 키에만 쓴다. 돌려주는 경로와 디코드 대상은 호출자가 준 것을 그대로 유지한다:
+    // vault 루트 자체가 symlink 뒤에 있으면 canonical 경로가 asset 스코프 밖으로 나가
+    // 이미지가 아예 안 뜬다(스코프는 set_vault_root가 받은 경로로 등록된다).
+    let key_path = std::fs::canonicalize(src).unwrap_or_else(|_| src.to_path_buf());
+    Ok(SourceIdentity {
+        key_path,
+        mtime_nanos,
+        len: metadata.len(),
+    })
+}
+
+/// 캐시 파일 경로 두 개(불투명→jpg, 알파→png)를 만든다.
 ///
 /// ‼️ `max_px`는 경로가 이미 가르지만 해시에도 남긴다. 중복이지만 inert한 중복이고, 나중에
 /// 누가 계층 디렉터리를 없애 평평하게 되돌리면 크기만 다른 두 항목이 같은 파일명을 갖는다 —
 /// 320px 썸네일이 2048px 프리뷰 자리에 조용히 서는 쪽이, 해시 입력 하나보다 훨씬 나쁘다.
-fn cache_paths(
-    cache_dir: &Path,
-    src: &Path,
-    mtime_nanos: u128,
-    size: u64,
-    max_px: u32,
-) -> [PathBuf; 2] {
-    let mut hasher = Sha256::new();
-    hasher.update(src.to_string_lossy().as_bytes());
-    hasher.update(b"\0");
-    hasher.update(mtime_nanos.to_le_bytes());
-    hasher.update(size.to_le_bytes());
-    hasher.update(max_px.to_le_bytes());
-    let key = hex32(&hasher.finalize());
+fn cache_paths(cache_dir: &Path, source: &SourceIdentity, max_px: u32) -> [PathBuf; 2] {
+    let key = source.digest(&max_px.to_le_bytes());
     let tier = tier_dir(cache_dir, max_px);
     [
         tier.join(format!("{key}.jpg")),
@@ -96,7 +138,9 @@ fn cache_paths(
     ]
 }
 
-/// 현재 세대가 아닌 것을 지운다 — 낡은 세대 디렉터리와, 세대 도입 전의 평평한 파일들.
+/// 현재 세대가 아닌 것을 지운다 — 낡은 세대 디렉터리와, 세대 도입 전의 평평한 파일들. 현재 세대
+/// 안의 타일 층(`v2/tiles/`)은 `tiles::cache::purge_stale` 이 정리하고(낡은 타일 세대와 남은 임시
+/// 디렉터리), 그 수를 더한다.
 ///
 /// 세대 접두사가 사는 이유가 이 함수다. 값을 올리는 것만으로 낡은 항목이 사라지므로,
 /// 레이아웃을 바꿀 때 "구분할 수 없는 파일이 남는다"를 고민하지 않아도 된다.
@@ -128,7 +172,7 @@ pub fn purge_stale_generations(cache_dir: &Path) -> usize {
             removed += 1;
         }
     }
-    removed
+    removed + tiles::cache::purge_stale(cache_dir)
 }
 
 fn hex32(digest: &[u8]) -> String {
@@ -149,30 +193,8 @@ pub fn ensure_thumbnail(
 ) -> Result<PathBuf, ThumbnailError> {
     let max_px = max_px.clamp(MIN_THUMB_PX, MAX_THUMB_PX);
 
-    let metadata = std::fs::metadata(src)?;
-    // 일반 파일만 연다. FIFO 는 읽으려고 여는 순간 쓰는 쪽을 기다리므로, 그대로 두면 이 호출이
-    // 돌아오지 않고 `thumbnail_cmd` 의 디코드 허가 둘 중 하나를 세션 끝까지 쥔다. `metadata` 는
-    // symlink 를 따라가므로 FIFO 를 가리키는 링크도 여기서 걸린다.
-    if !metadata.is_file() {
-        return Err(ThumbnailError::NotAFile);
-    }
-    let mtime_nanos = metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    // ‼️ 키는 **파일**을 가리켜야 하고, 그 파일을 어떻게 적었는지를 가리켜서는 안 된다.
-    // 실앱 로그가 이걸 드러냈다: 에디터는 `![](./assets/x.jpg)`를 활성 파일 디렉터리에 붙여
-    // `/…/baram-test/./assets/x.jpg`를 보내고, 갤러리는 같은 파일을 `/…/assets/x.jpg`로 보낸다.
-    // 문자열을 그대로 해시하면 한 사진이 항목 두 개를 갖는다 — 2048px 계층을 에디터와
-    // 라이트박스가 **공유하도록** 만들어 둔 설계가 그 지점에서 조용히 무력화된다.
-    //
-    // 정규화는 키에만 쓴다. 돌려주는 경로와 디코드 대상은 호출자가 준 것을 그대로 유지한다:
-    // vault 루트 자체가 symlink 뒤에 있으면 canonical 경로가 asset 스코프 밖으로 나가
-    // 이미지가 아예 안 뜬다(스코프는 set_vault_root가 받은 경로로 등록된다).
-    let key_path = std::fs::canonicalize(src).unwrap_or_else(|_| src.to_path_buf());
-    let [jpg, png] = cache_paths(cache_dir, &key_path, mtime_nanos, metadata.len(), max_px);
+    let source = source_identity(src)?;
+    let [jpg, png] = cache_paths(cache_dir, &source, max_px);
 
     // 캐시 히트. 두 경로를 다 보는 이유: 출력 포맷은 알파 유무로 갈리고, 그건 디코드해야
     // 알 수 있다 — 히트 판정에 디코드를 끼우면 캐시의 의미가 없다.
@@ -220,18 +242,8 @@ pub fn ensure_thumbnail(
 /// 판정을 여기서 하는 이유: 크기는 헤더만 읽으면 알 수 있고(`dimensions()`), 그 판정을 위해
 /// 파일을 두 번 열지 않으려면 디코더를 이미 손에 든 이 자리가 유일하게 맞다.
 fn scale_if_needed(src: &Path, max_px: u32) -> Result<Option<DynamicImage>, ThumbnailError> {
-    let mut limits = Limits::default();
-    limits.max_alloc = Some(MAX_DECODE_ALLOC);
-
-    let mut reader = ImageReader::open(src)?.with_guessed_format()?;
-    reader.limits(limits.clone());
-    let mut decoder = reader.into_decoder()?;
-    decoder.set_limits(limits)?;
-
-    let (width, height) = decoder.dimensions();
-    if u64::from(width) * u64::from(height) > MAX_SOURCE_PIXELS {
-        return Err(ThumbnailError::TooLarge { width, height });
-    }
+    let mut decoder = open_decoder(src)?;
+    let (width, height) = checked_dimensions(decoder.as_ref())?;
 
     // ‼️ 여기서 빠져나간다 — 디코드 **전에**. 작은 이미지는 디코드도, 인코딩도, 캐시 항목도
     // 필요 없다. `thumbnail`은 이 경우 확대하므로, 그냥 넘기면 원본보다 크고 흐린 파일이 된다.
@@ -251,6 +263,32 @@ fn scale_if_needed(src: &Path, max_px: u32) -> Result<Option<DynamicImage>, Thum
     // `thumbnail`은 소스 픽셀 하나가 타깃 픽셀 하나에 기여하는 정수 알고리즘이다 — 20배
     // 축소에서는 필터 품질 차이가 보이지 않고, `resize`의 Lanczos보다 훨씬 싸다.
     Ok(Some(img.thumbnail(max_px, max_px)))
+}
+
+/// 디코더 한도 — 할당 상한만 `MAX_DECODE_ALLOC` 로 올린다(나머지는 `Limits` 기본값).
+fn decode_limits() -> Limits {
+    let mut limits = Limits::default();
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+    limits
+}
+
+/// 원본을 연다 — 형식은 내용으로 가리고(못 가리면 확장자로, `with_guessed_format`), 디코더에
+/// `decode_limits` 를 건다. 픽셀은 아직 디코드하지 않았다(헤더 판정 뒤 `DynamicImage::from_decoder` 가 한다).
+fn open_decoder(src: &Path) -> Result<Box<dyn ImageDecoder>, ThumbnailError> {
+    let mut reader = ImageReader::open(src)?.with_guessed_format()?;
+    reader.limits(decode_limits());
+    let mut decoder = reader.into_decoder()?;
+    decoder.set_limits(decode_limits())?;
+    Ok(Box::new(decoder))
+}
+
+/// 헤더의 가로 · 세로. 픽셀 수가 `MAX_SOURCE_PIXELS` 를 넘으면 디코드 전에 `TooLarge` 로 거절한다.
+fn checked_dimensions(decoder: &dyn ImageDecoder) -> Result<(u32, u32), ThumbnailError> {
+    let (width, height) = decoder.dimensions();
+    if u64::from(width) * u64::from(height) > MAX_SOURCE_PIXELS {
+        return Err(ThumbnailError::TooLarge { width, height });
+    }
+    Ok((width, height))
 }
 
 /// 임시 파일에 쓰고 rename한다. 같은 사진을 두 곳(그리드와 라이트박스)에서 동시에 요청할 수
@@ -493,6 +531,43 @@ mod tests {
             .flatten()
             .collect();
         assert_eq!(entries.len(), 1, "항목이 하나여야 한다");
+    }
+
+    /// 캐시 파일 이름은 (canonical 경로, `\0`, mtime 나노초 LE, 크기 LE, max_px LE) 의 SHA-256 앞
+    /// 16바이트다. 무엇이 이것을 실패시키는가: 해시 입력의 바이트나 순서를 바꾸는 것 — 그러면 이미 만든
+    /// 썸네일이 모두 이름을 잃고, 이름을 잃은 옛 파일을 지우는 코드가 없다(`purge_stale_generations` 는
+    /// `v2` 안의 크기 디렉터리를 열지 않는다).
+    #[test]
+    fn the_cache_file_name_hashes_the_canonical_path_mtime_size_and_max_px() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "photo.jpg", 900, 900);
+
+        let out = ensure_thumbnail(&src, &cache, 320).unwrap();
+
+        let meta = std::fs::metadata(&src).unwrap();
+        let mtime = meta
+            .modified()
+            .unwrap()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let mut hasher = Sha256::new();
+        hasher.update(
+            std::fs::canonicalize(&src)
+                .unwrap()
+                .to_string_lossy()
+                .as_bytes(),
+        );
+        hasher.update(b"\0");
+        hasher.update(mtime.to_le_bytes());
+        hasher.update(meta.len().to_le_bytes());
+        hasher.update(320u32.to_le_bytes());
+        let expected: String = hasher.finalize()[..16]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(out.file_stem().unwrap().to_str().unwrap(), expected);
     }
 
     #[test]
