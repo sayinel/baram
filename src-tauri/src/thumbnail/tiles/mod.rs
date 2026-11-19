@@ -78,7 +78,7 @@ pub struct TileSize {
 #[allow(dead_code)] // 명령 `image_tiles`(다음 태스크)가 부르기 전까지 크레이트 안에 호출자가 없다 — 그때 뗀다
 pub fn cached_tiles(src: &Path, cache_dir: &Path) -> Result<Option<TileSet>, ThumbnailError> {
     let key = source_identity(src)?.digest(&[]);
-    hit(&cache::tiles_root(cache_dir), &key)
+    Ok(hit(&cache::tiles_root(cache_dir), &key))
 }
 
 /// 원본 한 장의 타일 피라미드를 보장한다. 이미 있으면 디코드하지 않는다. 블로킹 함수다.
@@ -100,7 +100,7 @@ pub fn ensure_tiles(
 ) -> Result<TileSet, ThumbnailError> {
     let key = source_identity(src)?.digest(&[]);
     let root = cache::tiles_root(cache_dir);
-    if let Some(cached) = hit(&root, &key)? {
+    if let Some(cached) = hit(&root, &key) {
         return Ok(cached);
     }
     if is_animated(src)? {
@@ -145,16 +145,16 @@ pub fn ensure_tiles(
     Ok(tiles_at(&dir, manifest))
 }
 
-/// `root/{key}` 의 피라미드. manifest 가 없으면(`NotFound`) 캐시에 없는 것이고, 히트면 마지막 사용을 갱신한다.
-fn hit(root: &Path, key: &str) -> Result<Option<TileSet>, ThumbnailError> {
+/// `root/{key}` 의 피라미드. 히트면 마지막 사용을 갱신한다.
+///
+/// manifest 를 읽지 못하면 — 없든 깨졌든 — 캐시에 없는 것이다. 그런 `{key}` 는 잔해이고(`commit_pyramid` 는
+/// manifest 를 쓴 뒤에만 `{key}` 를 놓는다), 다시 지으면 `commit_pyramid` 가 그것을 비키고 새 피라미드를 놓는다.
+/// 오류로 올리면 그 사진은 잔해가 다른 사진의 축출로 지워질 때까지 원본 폴백에 머문다.
+fn hit(root: &Path, key: &str) -> Option<TileSet> {
     let dir = root.join(key);
-    let manifest = match cache::read_manifest(&dir) {
-        Ok(manifest) => manifest,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e.into()),
-    };
+    let manifest = cache::read_manifest(&dir).ok()?;
     cache::mark_used(&dir);
-    Ok(Some(tiles_at(&dir, manifest)))
+    Some(tiles_at(&dir, manifest))
 }
 
 fn tiles_at(dir: &Path, manifest: TileManifest) -> TileSet {
@@ -629,6 +629,44 @@ mod tests {
         assert!(cached_tiles(&src, &cache).unwrap().is_some());
 
         assert!(std::fs::metadata(&manifest).unwrap().modified().unwrap() > long_ago);
+    }
+
+    /// 지우다 멈춘 디렉터리처럼 manifest 없이 레벨만 남은 `{key}` — 히트가 아니고, 다시 지은 피라미드가
+    /// 그 자리를 대신한다.
+    #[test]
+    fn a_leftover_pyramid_without_a_manifest_is_rebuilt() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "photo.jpg", 2049, 10);
+        let first = ensure_tiles(&src, &cache, |_| {}).unwrap();
+        let (pyramid, _) = tiles(first.clone());
+        let pyramid = Path::new(&pyramid);
+        std::fs::remove_file(pyramid.join("manifest.json")).unwrap();
+        std::fs::remove_dir_all(pyramid.join("3")).unwrap();
+
+        assert_eq!(cached_tiles(&src, &cache).unwrap(), None);
+        assert_eq!(ensure_tiles(&src, &cache, |_| {}).unwrap(), first);
+
+        assert!(pyramid.join("manifest.json").is_file());
+        assert!(pyramid.join("3").join("0_0.jpg").is_file());
+    }
+
+    /// 빈 manifest(fsync 하지 않은 쓰기가 전원 차단 뒤 남길 수 있는 모양)는 오류가 아니라 캐시 없음이고,
+    /// 다시 지어 고친다.
+    #[test]
+    fn a_zero_length_manifest_is_a_miss_and_is_rebuilt() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "photo.jpg", 2049, 10);
+        let first = ensure_tiles(&src, &cache, |_| {}).unwrap();
+        let (pyramid, _) = tiles(first.clone());
+        let manifest = Path::new(&pyramid).join("manifest.json");
+        std::fs::write(&manifest, b"").unwrap();
+
+        assert_eq!(cached_tiles(&src, &cache).unwrap(), None);
+        assert_eq!(ensure_tiles(&src, &cache, |_| {}).unwrap(), first);
+
+        assert_eq!(cached_tiles(&src, &cache).unwrap(), Some(first));
     }
 
     #[test]
