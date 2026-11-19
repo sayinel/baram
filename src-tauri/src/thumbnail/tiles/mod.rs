@@ -238,15 +238,18 @@ fn swaps_axes(orientation: Orientation) -> bool {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
+    use std::collections::BTreeMap;
     use std::fs::File;
-    use std::io::BufWriter;
+    use std::io::{BufWriter, Cursor};
     use std::path::PathBuf;
     use std::time::{Duration, Instant, UNIX_EPOCH};
 
     use image::codecs::gif::GifEncoder;
-    use image::codecs::jpeg::JpegEncoder;
+    use image::codecs::jpeg::{JpegDecoder, JpegEncoder};
     use image::codecs::webp::WebPEncoder;
-    use image::{DynamicImage, ExtendedColorType, ImageEncoder, Rgb, RgbImage, Rgba, RgbaImage};
+    use image::{
+        DynamicImage, ExtendedColorType, ImageDecoder, ImageEncoder, Rgb, RgbImage, Rgba, RgbaImage,
+    };
     use tempfile::TempDir;
 
     use super::*;
@@ -304,6 +307,28 @@ mod tests {
             }
         }
         sum
+    }
+
+    /// manifest 의 레벨마다 격자의 모든 타일 `{level}/{col}_{row}.{ext}` → 바이트. 하나라도 없으면 그 자리에서 실패한다.
+    fn tile_files(dir: &Path, manifest: &TileManifest) -> BTreeMap<String, Vec<u8>> {
+        let mut files = BTreeMap::new();
+        for (level, size) in manifest.levels.iter().enumerate() {
+            let (cols, rows) = pyramid::tile_grid(size.w, size.h, manifest.tile);
+            for row in 0..rows {
+                for col in 0..cols {
+                    let name = format!("{level}/{col}_{row}.{}", manifest.ext);
+                    let bytes =
+                        std::fs::read(dir.join(&name)).unwrap_or_else(|e| panic!("{name}: {e}"));
+                    files.insert(name, bytes);
+                }
+            }
+        }
+        files
+    }
+
+    /// ICC 자리에 싣는 바이트 — 내용은 보지 않으니 유효한 프로필일 필요가 없고, 되읽은 바이트가 같은지만 본다.
+    fn profile_bytes() -> Vec<u8> {
+        (0..560u32).map(|i| (i * 7 % 256) as u8).collect()
     }
 
     fn set_mtime(path: &Path, when: std::time::SystemTime) {
@@ -441,13 +466,16 @@ mod tests {
         assert!(names_in(&cache::tiles_root(&cache)).is_empty());
     }
 
+    /// 넘는 변이 가로인 사진과 세로인 사진(세로로 긴 휴대폰 스크린숏 — 1170x2532 같은 것 — 은 세로 쪽 조건에
+    /// 걸린다). 무엇이 이것을 실패시키는가: `probe` 의 2048 판정에서 한 변의 조건을 빼는 것.
     #[test]
     fn a_source_over_2048_on_one_side_gets_tiles() {
         let dir = TempDir::new().unwrap();
         let cache = dir.path().join("cache");
-        let src = write_jpeg(dir.path(), "wide.jpg", 2049, 10);
+        let wide = write_jpeg(dir.path(), "wide.jpg", 2049, 10);
+        let tall = write_jpeg(dir.path(), "tall.jpg", 10, 2049);
 
-        let (pyramid, manifest) = tiles(ensure_tiles(&src, &cache, |_| {}).unwrap());
+        let (pyramid, manifest) = tiles(ensure_tiles(&wide, &cache, |_| {}).unwrap());
 
         let pyramid = Path::new(&pyramid);
         assert_eq!(
@@ -470,6 +498,96 @@ mod tests {
         assert!(pyramid.join("manifest.json").is_file());
         assert!(pyramid.join("0").join("4_0.jpg").is_file());
         assert!(pyramid.join("3").join("0_0.jpg").is_file());
+
+        let (pyramid, manifest) = tiles(ensure_tiles(&tall, &cache, |_| {}).unwrap());
+
+        let pyramid = Path::new(&pyramid);
+        assert_eq!(
+            manifest,
+            TileManifest {
+                width: 10,
+                height: 2049,
+                tile: 512,
+                ext: "jpg".to_string(),
+                levels: vec![
+                    LevelSize { w: 10, h: 2049 },
+                    LevelSize { w: 5, h: 1025 },
+                    LevelSize { w: 3, h: 513 },
+                    LevelSize { w: 2, h: 257 },
+                ],
+                bytes: tile_bytes(pyramid),
+            }
+        );
+        assert!(pyramid.join("0").join("0_4.jpg").is_file());
+        assert!(pyramid.join("3").join("0_0.jpg").is_file());
+    }
+
+    /// 원본에 실린 ICC 가 피라미드의 모든 레벨 · 모든 타일에 같은 바이트로 실린다(spec D3 · §7.1). 원본은 알파가
+    /// 없는 JPEG 라 타일도 JPEG 다. 무엇이 이것을 실패시키는가: `ensure_tiles` 가 원본 디코더의 `icc_profile()` 을
+    /// 버리고 `write_pyramid` 에 `None` 을 넘기는 것.
+    #[test]
+    fn a_jpeg_source_profile_rides_on_every_tile_of_every_level() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("profiled.jpg");
+        let icc = profile_bytes();
+        let mut bytes = Vec::new();
+        let mut enc = JpegEncoder::new_with_quality(&mut bytes, 90);
+        enc.set_icc_profile(icc.clone()).unwrap();
+        enc.write_image(gradient(3000, 2).as_raw(), 3000, 2, ExtendedColorType::Rgb8)
+            .unwrap();
+        std::fs::write(&src, bytes).unwrap();
+
+        let (pyramid, manifest) = tiles(ensure_tiles(&src, &cache, |_| {}).unwrap());
+
+        assert_eq!(manifest.ext, "jpg");
+        let found = tile_files(Path::new(&pyramid), &manifest);
+        assert_eq!(found.len(), 12, "6 + 3 + 2 + 1 tiles over four levels");
+        for (name, tile) in &found {
+            let mut decoder = JpegDecoder::new(Cursor::new(tile)).unwrap();
+            assert_eq!(
+                decoder.icc_profile().unwrap().as_deref(),
+                Some(icc.as_slice()),
+                "{name}"
+            );
+        }
+    }
+
+    /// 알파가 있는 원본은 PNG 타일이 되고, 원본의 `iCCP` 가 그 모든 타일에 실린다(spec D3 · §7.1). 무엇이 이것을
+    /// 실패시키는가: 위 시험과 같은 것, 그리고 `write_pyramid` 의 PNG 쪽이 프로필을 인코더에 넘기지 않는 것.
+    #[test]
+    fn a_png_source_profile_rides_on_every_png_tile() {
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("profiled.png");
+        let icc = profile_bytes();
+        let mut info = png::Info::with_size(3000, 2);
+        info.icc_profile = Some(icc.as_slice().into());
+        let mut bytes = Vec::new();
+        let mut enc = png::Encoder::with_info(&mut bytes, info).unwrap();
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut writer = enc.write_header().unwrap();
+        let pixels = RgbaImage::from_fn(3000, 2, |x, y| {
+            Rgba([(x % 251) as u8, (y % 241) as u8, 30, 200])
+        });
+        writer.write_image_data(pixels.as_raw()).unwrap();
+        writer.finish().unwrap();
+        std::fs::write(&src, bytes).unwrap();
+
+        let (pyramid, manifest) = tiles(ensure_tiles(&src, &cache, |_| {}).unwrap());
+
+        assert_eq!(manifest.ext, "png");
+        let found = tile_files(Path::new(&pyramid), &manifest);
+        assert_eq!(found.len(), 12, "6 + 3 + 2 + 1 tiles over four levels");
+        for (name, tile) in &found {
+            let mut decoder = PngDecoder::new(Cursor::new(tile)).unwrap();
+            assert_eq!(
+                decoder.icc_profile().unwrap().as_deref(),
+                Some(icc.as_slice()),
+                "{name}"
+            );
+        }
     }
 
     #[test]
