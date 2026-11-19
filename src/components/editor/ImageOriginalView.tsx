@@ -18,9 +18,11 @@
 //
 // §397 타일(spec 0078): 원본의 경로(`originalPath`)가 있으면 Rust `image_tiles` 에 묻는다(useImageTiles). 답이
 // 피라미드면 원본 `<img>` 를 붙이지 않는다 — 원본 크기로 깐 바닥 요소 하나 위에 ImageTileLayer 가 지금 배율에
-// 맞는 레벨의 보이는 512px 타일만 겹친다. 피라미드는 처음 열 때 디스크에 만들고(그동안은 흐린 프리뷰만 — D6),
-// 캐시에 남아 있으면 다시 만들지 않는다. 오늘의 경로(프리뷰 → 숨긴 원본 `<img>` → 교체, D7)는 `useImageTiles` 가
-// `original` 을 내는 세 경우의 것이다: 경로가 null(원격 · data URI · 열린 노트가 없는 상대 경로), 답이
+// 맞는 레벨의 보이는 512px 타일만 겹친다. 피라미드는 처음 열 때 디스크에 만들고(그동안은 흐린 프리뷰만 — D6.
+// 프리뷰가 원본 자신이면 크기가 온 뒤로는 그것도 없다 — `preview` 주석), 캐시에 남아 있으면 다시 만들지 않는다.
+// 오늘의 경로(프리뷰 → 숨긴 원본 `<img>` → 교체, D7)는 `useImageTiles` 가 `original` 을 내는 세 경우의 것이다:
+// 경로가 null(본문 이미지의 src 가 비었거나 원격 `http(s)` URL · data URI 이거나, 열린 노트가 없을 때의 상대
+// 경로 — `originalImagePath`. 라이트박스는 늘 사진의 경로를 넘긴다), 답이
 // `original`(Rust `probe` 의 판정 둘 — GIF 전부 · APNG · 애니메이션 WebP, 가로 · 세로가 모두 2048 이하), 그리고
 // 거절(인가 밖 · `MAX_SOURCE_PIXELS` 초과 · `image` 크레이트가 열지 못하는 형식 · 디코드나 IO 실패 등). 그 경로의
 // 큰 사진에는 §396 의 한계 — 줌이 어떤 배율을 넘을 때 멈춘다(dev/impl-notes/0103) — 가 그대로 남는다.
@@ -89,10 +91,18 @@ export function ImageOriginalView({
     },
     [scrollRef],
   );
+  // 바닥 요소에 쓸 프리뷰. 썸네일을 만들지 못하면 opener 의 프리뷰는 원본 자신이다(`resolveThumbUrl` 의 폴백). 두
+  // opener 는 그 폴백과 `originalUrl` 을 같은 규칙으로 짓는다 — 본문은 같은 src 를 활성 노트의 폴더에 붙여
+  // (`absolutePathOf` · `resolveMediaSrc`), 라이트박스는 둘 다 `convertFileSrc(photo.absolutePath)`. 크기를 알면
+  // (2048 을 넘는 사진에만 온다 — `useImageTiles`) 그것을 프리뷰로 치지 않는다: 바닥 요소가 원본이면 피라미드를
+  // 짓는 동안 원본을 디코드하고(spec 0078 D6), 다 된 뒤에도 줌마다 원본을 다시 그린다. 크기를 모를 때는 그대로
+  // 둔다 — 두 변이 2048 이하인 사진은 프리뷰가 원래 원본이고, 그 사진에는 크기가 오지 않는다.
+  const preview =
+    size !== null && previewUrl === originalUrl ? null : previewUrl;
   const baseSrc =
-    set && (previewUrl === null || previewUrl === brokenPreview)
+    set && (preview === null || preview === brokenPreview)
       ? tileUrl(set, set.levels.length - 1, 0, 0)
-      : previewUrl;
+      : preview;
   const ready = tiles.status === "original" ? originalLoaded : tilesReady;
 
   useEffect(() => {
@@ -178,7 +188,7 @@ export function ImageOriginalView({
                       : "image-fullscreen-img image-fullscreen-img-preview"
                   }
                   height={size?.height}
-                  onError={() => setBrokenPreview(previewUrl)}
+                  onError={() => setBrokenPreview(preview)}
                   ref={baseRef}
                   src={baseSrc}
                   width={size?.width}

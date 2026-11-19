@@ -399,6 +399,53 @@ describe("ImageOriginalView with tiles", () => {
     expect(tileImgs()).toHaveLength(4);
   });
 
+  // 썸네일을 만들지 못하면 프리뷰 자리에 원본이 온다(`resolveThumbUrl` 의 폴백) — 두 opener 모두 원본 URL 과 같은
+  // 글자다. 큰 사진임을 알면(크기나 피라미드가 오면) 그것을 프리뷰로 치지 않는다: 바닥 요소가 원본이면 피라미드를
+  // 짓는 동안 그 원본을 디코드하고(spec 0078 D6), 다 된 뒤에도 줌마다 원본을 다시 그린다.
+  test("a preview that is the original itself is dropped once the photo is known to be big", async () => {
+    renderTiled(ORIGINAL);
+    // 크기를 모를 때는 그대로 둔다 — 두 변이 2048 이하인 사진의 프리뷰는 원래 원본이다
+    expect(sources()).toEqual([ORIGINAL]);
+
+    act(() => calls[0].onSize({ height: 12240, width: 16320 }));
+    expect(sources()).toEqual([]);
+
+    await act(async () => calls[0].resolve(SET));
+    expect(base()!.getAttribute("src")).toBe(SMALLEST_TILE);
+    expect(tileImgs()).toHaveLength(4);
+    expect(sources()).not.toContain(ORIGINAL);
+    for (const img of tileImgs()) fireEvent.load(img);
+    expect(header()).toBe("Original");
+    expect(sources()).not.toContain(ORIGINAL);
+  });
+
+  test("on a cache hit, a preview that is the original gives way to the smallest tile on the same element", async () => {
+    renderTiled(ORIGINAL);
+    const shown = base()!;
+    expect(shown.getAttribute("src")).toBe(ORIGINAL);
+
+    await act(async () => calls[0].resolve(SET));
+    expect(base()).toBe(shown);
+    expect(shown.getAttribute("src")).toBe(SMALLEST_TILE);
+    expect(sources()).not.toContain(ORIGINAL);
+  });
+
+  test("an original answer keeps a preview that is the original, as before", async () => {
+    renderTiled(ORIGINAL);
+    await act(async () => calls[0].resolve({ kind: "original" }));
+    // 오늘의 경로 그대로 — 흐린 프리뷰(원본 URL)와 숨긴 원본 <img>
+    const imgs = screen.getAllByRole("img", { hidden: true });
+    expect(imgs.map((img) => [img.getAttribute("src"), img.className])).toEqual(
+      [
+        [ORIGINAL, "image-fullscreen-img image-fullscreen-img-preview"],
+        [ORIGINAL, "image-fullscreen-img"],
+      ],
+    );
+    fireEvent.load(imgs[1]);
+    expect(header()).toBe("Original");
+    expect(sources()).toEqual([ORIGINAL]);
+  });
+
   test("falls back to the original <img> when image_tiles rejects", async () => {
     renderTiled();
     // 크기를 알린 뒤 생성이 실패한다(디코드 실패 · 쓰기 실패) — spec 0078 §3 실패 조건 · D7

@@ -182,6 +182,36 @@ describe("PhotoLightbox", () => {
     });
   });
 
+  // §397 썸네일을 만들지 못한 사진 — 라이트박스의 프리뷰는 원본 자신이다(`resolveThumbUrl` 의 폴백). 원본 보기는
+  // 크기가 와 큰 사진임을 안 뒤로 그것을 바닥 요소로 쓰지 않는다(ImageOriginalView 의 `preview`). 무엇이 이것을
+  // 실패시키는가: 라이트박스가 프리뷰와 `originalUrl` 을 다른 글자로 짓는 것.
+  test("the original view stops drawing a preview that fell back to the original once the size is known", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    photoThumbnail.mockRejectedValue("썸네일을 만들 수 없는 이미지입니다");
+    let announce: (size: TileSize) => void = () => {};
+    imageTiles.mockImplementationOnce((_path, onSize) => {
+      announce = onSize;
+      return new Promise<TileSet>(() => {});
+    });
+    const original = `asset://localhost/${PHOTO.absolutePath}`;
+    renderLightbox();
+    await waitFor(() =>
+      expect(screen.getByRole("img").getAttribute("src")).toBe(original),
+    );
+
+    fireEvent.click(screen.getByText(viewOriginal));
+    const overlay = document.body.querySelector(".image-fullscreen-overlay")!;
+    const drawn = () =>
+      Array.from(overlay.querySelectorAll("img")).map((img) =>
+        img.getAttribute("src"),
+      );
+    expect(drawn()).toEqual([original]);
+
+    act(() => announce({ height: 12240, width: 16320 }));
+    expect(drawn()).toEqual([]);
+    warn.mockRestore();
+  });
+
   test("Escape closes only the top layer — the lightbox stays open under it", async () => {
     const onClose = vi.fn();
     photoThumbnail.mockResolvedValue("/cache/thumbnails/big.jpg");
