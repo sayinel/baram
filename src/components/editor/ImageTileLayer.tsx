@@ -1,15 +1,17 @@
 // §397 원본 보기의 타일 레이어 — 바닥 요소(프리뷰 `<img>`) 위에, 지금 배율에 맞는 레벨의 보이는 타일만
 // 겹쳐 그린다. 설계: spec 0078 D5(레이어 · 레벨 · 이전 레벨 남기기) · D7(타일 한 장의 실패).
 //
-// DOM 계약(원본 보기의 CSS 와 앱 측정 하니스가 기대는 것): 루트 `div.image-tile-layer`(`aria-hidden`)는 바닥 요소의
-// `offsetLeft` · `offsetTop` 에 놓이고, 그 안에 레벨마다 `div[data-tile-level]`, 그 안에 타일 `<img>` 가
-// 인라인 스타일의 좌표(바닥 요소 기준 CSS px)로 놓인다. 레벨 div 가 둘이면 앞이 밑 레이어다 — 나중 형제가
-// 위에 그려진다.
+// DOM 계약(원본 보기의 CSS 와 앱 측정 하니스가 기대는 것): 루트 `div.image-tile-layer`(`aria-hidden`)는 본문
+// (스크롤 영역)의 패딩 상자 안에서 바닥 요소가 놓인 자리를 기기 픽셀에 맞춘 곳에 놓이고(`rootOffset`), 그 안에
+// 레벨마다 `div[data-tile-level]`, 그 안에 타일 `<img>` 가 인라인 스타일의 좌표(바닥 요소 기준 CSS px)로
+// 놓인다. 레벨 div 가 둘이면 앞이 밑 레이어다 — 나중 형제가 위에 그려진다.
 //
 // 밑 레이어(spec D5 "레벨이 바뀌면 이전 레벨을 그 밑에 남긴다"): 마지막으로 **다 끝난** 레벨을, 새 레벨의
-// 지금 배치가 다 끝날 때까지 지금 사각형에 다시 배치해 남긴다. 그 레벨에서 **로드된** 키만 붙인다 —
-// 800% 에서 맞춤으로 줄이면 레벨 0 을 맞춤 크기로 배치한 768 장(16320x12240 사진)이 다 보이는 범위에 들고,
-// 그것을 다 붙이면 원본 전체를 디코드한다. 같은 레벨 안의 스크롤은 밑 레이어를 두지 않는다.
+// 지금 배치가 다 끝날 때까지 지금 사각형에 다시 배치해 남긴다. 남기는 것은 그 레벨의 `<img>` 중 **지금
+// 붙어 있고 로드된** 것뿐이다 — 밑 레이어는 새 요소를 만들지 않으므로, 그 수는 그 레벨이 지금 레벨이던
+// 마지막 배치(보이는 범위 + 사방 1 타일)를 넘지 않고 다시 배치해도 늘지 않는다. 800% 에서 맞춤으로 줄이면
+// 레벨 0 을 맞춤 크기로 배치한 768 장(16320x12240 사진)이 다 범위에 드는데, 그중 800% 에서 붙어 있던
+// 로드된 것만 남는다. 같은 레벨 안의 스크롤은 밑 레이어를 두지 않는다.
 import type { JSX, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -22,10 +24,13 @@ import {
   layoutTilesAtLevel,
 } from "../../utils/image-tiles/tile-layout";
 
-/** 한 레벨에서 끝난(load · error) 타일 — 키마다 로드됐으면 true, 실패했으면 false. */
+/**
+ * 한 레벨에서 끝난(load · error) 타일 `<img>` — 키마다 그 요소와 로드됐는지. 기록은 그 요소가 문서에 붙어
+ * 있는 동안만 산다(`mountedOutcome`). 배치를 떠난 타일의 요소는 떼어지고, 돌아오면 새 요소라 다시 받는다.
+ */
 interface LevelOutcomes {
   level: number;
-  outcomes: Map<string, boolean>;
+  outcomes: Map<string, { el: HTMLImageElement; loaded: boolean }>;
 }
 
 /** 렌더하는 것. 같은 값이면 `setPlacement` 를 부르지 않는다(`samePlacement`). */
@@ -35,7 +40,7 @@ interface Placement {
   set: TileSetTiles;
   tiles: PlacedTile[];
   top: number;
-  /** 밑 레이어 — 마지막으로 다 끝난 레벨에서 로드된 타일. 없으면 빈 배열. */
+  /** 밑 레이어 — 마지막으로 다 끝난 레벨에서 지금 붙어 있고 로드된 타일. 없으면 빈 배열. */
   under: PlacedTile[];
 }
 
@@ -47,7 +52,7 @@ interface Track {
   pending: LevelOutcomes | null;
   ready: boolean;
   set: TileSetTiles;
-  /** 마지막으로 다 끝난 레벨 — 그 레벨이 지금 레벨인 동안 끝난 타일이 계속 쌓인다. */
+  /** 마지막으로 다 끝난 레벨 — 그 레벨이 지금 레벨인 동안 끝나는 타일도 여기에 기록한다. */
   settled: LevelOutcomes | null;
   shown: null | Placement;
 }
@@ -107,7 +112,15 @@ export function ImageTileLayer({
   }, [baseRef, bodyRef, set]);
 
   const settle = useCallback(
-    (from: TileSetTiles, tile: PlacedTile, loaded: boolean) => {
+    (
+      from: TileSetTiles,
+      tile: PlacedTile,
+      el: HTMLImageElement,
+      loaded: boolean,
+    ) => {
+      // 커밋이 요소를 뗀 뒤, React 가 그 요소에서 인스턴스를 걷기(passive 단계의 `detachDeletedInstance`,
+      // react-dom 19.3.1) 전에 온 load · error — 같은 키의 새 요소의 기록을 떼어진 요소로 덮지 않게 버린다
+      if (!el.isConnected) return;
       if (!loaded && !warnedRef.current) {
         warnedRef.current = true;
         console.warn(
@@ -125,7 +138,7 @@ export function ImageTileLayer({
             ? track.pending
             : null;
       if (!record) return;
-      record.outcomes.set(tile.key, loaded);
+      record.outcomes.set(tile.key, { el, loaded });
       // 새 레벨이 방금 다 끝났다 — 다시 재서 밑 레이어를 걷고 처음이면 `onReady`
       if (track.pending && layoutSettled(track)) syncRef.current();
     },
@@ -154,8 +167,8 @@ export function ImageTileLayer({
               decoding="async"
               draggable={false}
               key={tile.key}
-              onError={() => settle(set, tile, false)}
-              onLoad={() => settle(set, tile, true)}
+              onError={(e) => settle(set, tile, e.currentTarget, false)}
+              onLoad={(e) => settle(set, tile, e.currentTarget, true)}
               src={tileUrl(set, tile.level, tile.col, tile.row)}
               style={{
                 height: tile.h,
@@ -171,15 +184,21 @@ export function ImageTileLayer({
   );
 }
 
-/** 지금 레벨의 배치가 비어 있지 않고 그 타일이 모두 끝났다(load 든 error 든). */
+/** 지금 레벨의 배치가 비어 있지 않고 그 타일이 모두 붙어서 끝났다(load 든 error 든). */
 function layoutSettled(track: Track): boolean {
   const { level, tiles } = track.layout;
   const record = track.settled?.level === level ? track.settled : track.pending;
   return (
     tiles.length > 0 &&
     record !== null &&
-    tiles.every((tile) => record.outcomes.has(tile.key))
+    tiles.every((tile) => mountedOutcome(record, tile.key) !== null)
   );
+}
+
+/** 지금 붙어 있는 그 키의 요소가 끝났으면 로드됐는지, 아니면(떼어졌거나 아직) null. */
+function mountedOutcome(record: LevelOutcomes, key: string): boolean | null {
+  const entry = record.outcomes.get(key);
+  return entry?.el.isConnected ? entry.loaded : null;
 }
 
 /**
@@ -198,6 +217,13 @@ function place(
   const { set } = track;
   const { level, tiles } = layoutTiles(set, baseRect, view, dpr);
   track.layout = { level, tiles };
+  // 떼어진 요소의 기록은 다시 살지 않는다(React 는 지운 요소를 다시 붙이지 않고, 돌아온 키는 새 요소다).
+  // 판정은 `mountedOutcome` 이 하고, 여기서 지우는 것은 떼어진 `<img>` 를 쥐고 있지 않으려는 것이다
+  for (const record of [track.settled, track.pending]) {
+    for (const [key, entry] of record?.outcomes ?? []) {
+      if (!entry.el.isConnected) record?.outcomes.delete(key);
+    }
+  }
   if (track.settled?.level === level) track.pending = null;
   else if (track.pending?.level !== level) {
     // 다른 레벨로 — 끝나지 못한 중간 레벨의 기록은 버린다. 밑 레이어는 여전히 `settled` 다
@@ -215,20 +241,39 @@ function place(
   const under =
     settled && settled.level !== level
       ? layoutTilesAtLevel(set, settled.level, baseRect, view, dpr).filter(
-          (tile) => settled.outcomes.get(tile.key) === true,
+          (tile) => mountedOutcome(settled, tile.key) === true,
         )
       : [];
   const next: Placement = {
-    left: base.offsetLeft,
+    ...rootOffset(baseRect, view, body, dpr),
     level,
     set,
     tiles,
-    top: base.offsetTop,
     under,
   };
   if (track.shown && samePlacement(track.shown, next)) return null;
   track.shown = next;
   return next;
+}
+
+/**
+ * 루트의 자리 — 본문의 패딩 상자 원점(스크롤된 내용 기준)에서 바닥 요소까지를 타일 좌표와 같은 식
+ * `Math.round(v * dpr) / dpr` 로 기기 픽셀에 맞춘다. 스크롤하면 바닥 요소의 사각형과 `scrollLeft` ·
+ * `scrollTop` 이 같은 양만큼 반대로 움직여 값이 그대로다. `offsetLeft` · `offsetTop` 을 쓰지 않는 이유:
+ * 정수로 반올림되어, 소수 자리에 놓인 바닥 요소(`margin: auto` 가운데 맞춤)와 dpr 2 에서 기기 픽셀 하나만큼
+ * 어긋난다.
+ */
+function rootOffset(
+  baseRect: DOMRect,
+  view: DOMRect,
+  body: HTMLElement,
+  dpr: number,
+): { left: number; top: number } {
+  const snap = (v: number) => Math.round(v * dpr) / dpr;
+  return {
+    left: snap(baseRect.left - view.left - body.clientLeft + body.scrollLeft),
+    top: snap(baseRect.top - view.top - body.clientTop + body.scrollTop),
+  };
 }
 
 function samePlacement(a: Placement, b: Placement): boolean {

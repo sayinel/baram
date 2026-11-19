@@ -166,20 +166,11 @@ afterEach(() => {
 
 describe("ImageTileLayer", () => {
   test("mounts the 48 tiles of level 2 for a 1102px-wide base at dpr 2", () => {
-    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(
-      function (this: HTMLElement) {
-        return this.classList.contains("base") ? 49 : 0;
-      },
-    );
-    vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockImplementation(
-      function (this: HTMLElement) {
-        return this.classList.contains("base") ? 37 : 0;
-      },
-    );
     render(<Harness onReady={vi.fn()} />);
 
     const root = document.querySelector<HTMLElement>(".image-tile-layer")!;
     expect(root.getAttribute("aria-hidden")).toBe("true");
+    // 바닥 요소의 자리(49, 36.75)를 기기 픽셀(dpr 2 → 0.5px)에 맞춘 것
     expect([root.style.left, root.style.top]).toEqual(["49px", "37px"]);
     expect(levelDivs()).toEqual(["2"]);
     const imgs = tiles(2);
@@ -211,6 +202,30 @@ describe("ImageTileLayer", () => {
         `${t.h}px`,
       ]),
     );
+  });
+
+  test("puts the root on the device pixel nearest the base, and scrolling does not move it", () => {
+    // `offsetLeft` · `offsetTop` 은 정수로 반올림된다 — 100.3 이면 100 이고, dpr 2 에서 기기 픽셀 하나만큼
+    // 그려진 바닥 요소에서 어긋난다. 루트는 사각형에서 잰 자리를 기기 픽셀에 맞춘다.
+    baseRect = { ...centered(1102), left: 100.3, top: 50.2 };
+    const commits = vi.fn();
+    render(
+      <Profiler id="layer" onRender={commits}>
+        <Harness onReady={vi.fn()} />
+      </Profiler>,
+    );
+    const root = document.querySelector<HTMLElement>(".image-tile-layer")!;
+    expect([root.style.left, root.style.top]).toEqual(["100.5px", "50px"]);
+
+    // 본문이 스크롤되면 바닥 요소의 사각형이 그만큼 움직인다 — 루트의 자리는 그대로고 커밋도 없다
+    const body = document.querySelector<HTMLElement>(".body")!;
+    const committed = commits.mock.calls.length;
+    body.scrollLeft = 300;
+    body.scrollTop = 120;
+    baseRect = { ...baseRect, left: 100.3 - 300, top: 50.2 - 120 };
+    fireEvent.scroll(body);
+    expect([root.style.left, root.style.top]).toEqual(["100.5px", "50px"]);
+    expect(commits.mock.calls.length).toBe(committed);
   });
 
   test("calls onReady once, only after every first-layer tile has loaded", () => {
@@ -322,6 +337,63 @@ describe("ImageTileLayer", () => {
 
     loadAll(3);
     expect(levelDivs()).toEqual(["3"]);
+  });
+
+  test("a zoom-out after a pan keeps only the tiles mounted just before it, as the same elements", () => {
+    // 팬으로 배치를 떠난 타일의 `<img>` 는 떼어졌다 — 밑에 다시 붙이면 새 요소라 다시 받고 디코드한다
+    baseRect = centered(4408);
+    render(<Harness onReady={vi.fn()} />);
+    loadAll(0);
+    const before = new Set(tiles(0).map(tileKey));
+
+    baseRect = { ...baseRect, left: baseRect.left - 1500 };
+    fireEvent.scroll(document.querySelector(".body")!);
+    expect(levelDivs()).toEqual(["0"]);
+    loadAll(0);
+    const mounted = tiles(0);
+    // 팬이 실제로 로드된 타일을 배치 밖으로 보냈다
+    expect([...before].some((key) => !mounted.map(tileKey).includes(key))).toBe(
+      true,
+    );
+
+    relayout(centered(800));
+    expect(levelDivs()).toEqual(["0", "3"]);
+    const under = tiles(0);
+    expect(under.length).toBeGreaterThan(0);
+    expect(under.every((img) => mounted.includes(img))).toBe(true);
+  });
+
+  test("at a pending level, a tile that leaves and comes back must load again before the level settles", () => {
+    render(<Harness onReady={vi.fn()} />);
+    loadAll(2);
+    relayout(centered(4408));
+    expect(levelDivs()).toEqual(["2", "0"]);
+    const body = document.querySelector(".body")!;
+    // 17 열은 아래 팬 내내 배치에 남고, 10 열은 팬으로 떠났다가 돌아온다
+    const held = "0/17_11";
+    const leaver = "0/10_11";
+    for (const img of tiles(0)) {
+      if (tileKey(img) !== held) fireEvent.load(img);
+    }
+    const first = tiles(0).find((img) => tileKey(img) === leaver)!;
+
+    const home = baseRect;
+    baseRect = { ...home, left: home.left - 600 };
+    fireEvent.scroll(body);
+    expect(tiles(0).map(tileKey)).not.toContain(leaver);
+    expect(tiles(0).map(tileKey)).toContain(held);
+    baseRect = home;
+    fireEvent.scroll(body);
+
+    const back = tiles(0).find((img) => tileKey(img) === leaver)!;
+    expect(back).not.toBe(first);
+    for (const img of tiles(0)) {
+      if (img !== back) fireEvent.load(img);
+    }
+    // 돌아온 타일은 새 요소이고 아직 로드되지 않았다 — 레벨 2 가 밑에 남는다
+    expect(levelDivs()).toEqual(["2", "0"]);
+    fireEvent.load(back);
+    expect(levelDivs()).toEqual(["0"]);
   });
 
   test("a body resize re-lays the tiles out", () => {
