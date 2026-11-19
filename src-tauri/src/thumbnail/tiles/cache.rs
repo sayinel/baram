@@ -61,8 +61,13 @@ pub(super) fn mark_used(dir: &Path) {
 /// 낡은 타일 세대와, 현재 세대에 남은 다른 프로세스의 임시 디렉터리를 지우고 그 수를 돌려준다. 실패는
 /// 무시한다(`purge_stale_generations` 와 같은 이유 — 캐시는 지워도 다시 만들어진다).
 ///
-/// ‼️ 이 프로세스의 임시는 남긴다 — 짓는 중일 수 있다. 짓는 중에 지우면 `write_pyramid` 가 다음 레벨의
-/// `create_dir_all` 로 그 디렉터리를 다시 만들어, 앞 레벨이 빠진 피라미드가 manifest 를 얻고 rename 된다.
+/// ‼️ 이 프로세스의 임시는 남긴다. 지금 호출자는 앱 시작의 정리 하나(lib.rs 의 `setup` →
+/// `purge_stale_generations`)이고, 그때는 이 프로세스의 임시가 아직 없어 이 제외가 지키는 것이 없다 — 임시
+/// 이름을 만드는 `commit_pyramid` · `evict_over_cap` 을 부르는 것은 `ensure_tiles` 뿐이고 그것을 부르는 것은
+/// `image_tiles` 명령뿐인데, tauri 2.12.2 는 `setup` 을 이벤트 루프의 `Ready` 에서 동기로 부르고 웹뷰의 명령도
+/// 그 루프로 온다.
+/// 이 제외는 실행 중에 이 함수를 부르는 호출자가 생길 때를 위한 것이다: 짓는 중에 지우면 `write_pyramid` 가 다음
+/// 레벨의 `create_dir_all` 로 그 디렉터리를 다시 만들어, 앞 레벨이 빠진 피라미드가 manifest 를 얻고 rename 된다.
 /// 대가: 앞선 실행이 지금과 같은 pid 였다면 그 임시는 다음 시작까지 남는다.
 pub(crate) fn purge_stale(cache_dir: &Path) -> usize {
     let mut removed = 0;
