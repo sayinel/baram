@@ -1,6 +1,7 @@
 // §56d 라이트박스는 원본을 걸지 않고 2048px 프리뷰를 그린다. 프리뷰가 오기 전에는 이미
 // 캐시된 그리드 썸네일을 늘려 채우므로 화면이 비지 않는다.
 
+import type { TileSet, TileSize } from "../../../ipc/image-tiles";
 import type { PhotoGalleryEntry } from "../../../utils/journal/journal-photo";
 
 import {
@@ -22,6 +23,15 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("../../../ipc/thumbnail", () => ({
   photoThumbnail: (path: string, maxPx: number) =>
     photoThumbnail(path, maxPx) as Promise<string>,
+}));
+// §397 원본 보기는 사진의 경로로 `image_tiles` 를 묻는다. 기본은 답이 오지 않는 것(피라미드를 만드는 중)이다.
+const imageTiles = vi.fn<
+  (path: string, onSize: (size: TileSize) => void) => Promise<TileSet>
+>(() => new Promise<TileSet>(() => {}));
+vi.mock("../../../ipc/image-tiles", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../ipc/image-tiles")>()),
+  imageTiles: (path: string, onSize: (size: TileSize) => void) =>
+    imageTiles(path, onSize),
 }));
 
 const { PhotoLightbox } = await import("../PhotoLightbox");
@@ -98,6 +108,7 @@ describe("PhotoLightbox", () => {
   beforeEach(() => {
     _resetThumbCache();
     photoThumbnail.mockReset();
+    imageTiles.mockClear();
     useSettingsStore.setState({ locale: LOCALE });
   });
 
@@ -147,19 +158,28 @@ describe("PhotoLightbox", () => {
 
   test("keeps a way to the original — the preview is not the only thing on offer", async () => {
     photoThumbnail.mockResolvedValue("/cache/thumbnails/big.jpg");
+    // §397 타일을 받지 않는 사진 — 원본 보기가 오늘의 원본 <img> 로 간다(spec 0078 D7)
+    imageTiles.mockResolvedValueOnce({ kind: "original" });
     renderLightbox();
     await waitFor(() => screen.getByRole("img"));
 
     fireEvent.click(screen.getByText(viewOriginal));
 
-    // 원본 보기는 프리뷰 캐시가 아니라 사진 파일 자체를 가리켜야 한다.
-    const original = screen
-      .getAllByRole("img", { hidden: true })
-      .find(
-        (el) =>
-          el.getAttribute("src") === `asset://localhost/${PHOTO.absolutePath}`,
-      );
-    expect(original).toBeTruthy();
+    // 원본 보기는 프리뷰 캐시가 아니라 사진 파일 자체를 가리켜야 한다 — 타일을 묻는 경로도, 원본 <img> 도.
+    expect(imageTiles).toHaveBeenCalledWith(
+      PHOTO.absolutePath,
+      expect.any(Function),
+    );
+    await waitFor(() => {
+      const original = screen
+        .getAllByRole("img", { hidden: true })
+        .find(
+          (el) =>
+            el.getAttribute("src") ===
+            `asset://localhost/${PHOTO.absolutePath}`,
+        );
+      expect(original).toBeTruthy();
+    });
   });
 
   test("Escape closes only the top layer — the lightbox stays open under it", async () => {

@@ -42,6 +42,16 @@ export function originalImageUrl(rawSrc: string): string {
 }
 
 /**
+ * §397 **원본**의 절대 경로 — "원본 보기"가 타일 피라미드를 물을 때 쓴다(spec 0078 D5). 상대 경로는
+ * 프리뷰와 같은 `absolutePathOf` 로 푼다. 원격 · data URI · 빈 src, 그리고 열린 노트가 없는 상대 경로는
+ * null 이고, 원본 보기는 그때 오늘의 원본 `<img>` 로 간다.
+ */
+export function originalImagePath(rawSrc: string): null | string {
+  if (!rawSrc || isRemoteOrData(rawSrc)) return null;
+  return absolutePathOf(rawSrc);
+}
+
+/**
  * 표시할 URL. **준비되기 전에는 null**이다 — 그동안 원본을 걸어 두면 피하려던 디코드를
  * 그대로 치른다("일단 원본, 준비되면 교체"가 완화가 아닌 이유).
  *
