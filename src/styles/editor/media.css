@@ -303,3 +303,11 @@
   position: absolute;
   max-width: none;
 }
+
+/* §397 알파가 있는 원본의 타일 — 로드를 마치고 디코드된 타일은 밑(바닥 프리뷰, 밑 레이어)을 가려, 반투명 픽셀이
+   한 번만 합성된다. 배경색은 .image-view-fullscreen-modal 의 배경과 같은 토큰이어야 한다: 원본을 그 모달 위에
+   한 번 합성하는 메인의 결과와 같은 색이 나온다. 둘 중 하나만 바꾸면 그 일치가 조용히 깨진다
+   (image-tile-layer.test.tsx 가 짝을 고정한다). */
+.image-tile-layer[data-tile-alpha] img[data-tile-painted] {
+  background: var(--color-bg-default);
+}

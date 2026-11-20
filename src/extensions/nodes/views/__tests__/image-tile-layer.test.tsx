@@ -11,6 +11,8 @@ import type { TileSetTiles } from "../../../../ipc/image-tiles";
 import type { Rect } from "../../../../utils/image-tiles/tile-layout";
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -549,5 +551,110 @@ describe("ImageTileLayer", () => {
     baseRect = centered(4408);
     fireEvent.scroll(document.querySelector(".body")!);
     expect(levelDivs()).toEqual(["0"]);
+  });
+});
+
+// 알파 세트 — 로드·디코드를 마친 타일만 `data-tile-painted`(media.css 가 그 타일에 배경을 깔아 반투명 픽셀이 한 번만
+// 합성된다). jsdom 에는 `decode` 가 없어 시험마다 목으로 단다.
+describe("ImageTileLayer alpha sets", () => {
+  const ALPHA: TileSetTiles = { ...SET, ext: "png" };
+  const proto = HTMLImageElement.prototype as { decode?: () => Promise<void> };
+  const hadDecode = "decode" in proto;
+  const savedDecode = proto.decode;
+
+  afterEach(() => {
+    if (hadDecode) proto.decode = savedDecode;
+    else delete proto.decode;
+  });
+
+  const root = () => document.querySelector<HTMLElement>(".image-tile-layer")!;
+  const painted = (img: HTMLImageElement) =>
+    img.hasAttribute("data-tile-painted");
+  const flush = () => act(async () => {});
+
+  test("an alpha tile gets data-tile-painted after load and decode, an opaque one never does", async () => {
+    proto.decode = () => Promise.resolve();
+    render(<Harness onReady={vi.fn()} set={ALPHA} />);
+    expect(root().hasAttribute("data-tile-alpha")).toBe(true);
+    const [img] = tiles(2);
+    expect(painted(img)).toBe(false);
+    fireEvent.load(img);
+    await flush();
+    expect(painted(img)).toBe(true);
+    // 로드되지 않은 형제는 표시가 없다
+    expect(painted(tiles(2)[1])).toBe(false);
+
+    cleanup();
+    render(<Harness onReady={vi.fn()} set={SET} />);
+    expect(root().hasAttribute("data-tile-alpha")).toBe(false);
+    const [opaque] = tiles(2);
+    fireEvent.load(opaque);
+    await flush();
+    expect(painted(opaque)).toBe(false);
+  });
+
+  test("a rejected decode leaves the tile unpainted", async () => {
+    proto.decode = () => Promise.reject(new Error("broken"));
+    render(<Harness onReady={vi.fn()} set={ALPHA} />);
+    const [img] = tiles(2);
+    fireEvent.load(img);
+    await flush();
+    expect(painted(img)).toBe(false);
+  });
+
+  test("an error event leaves the tile unpainted", async () => {
+    proto.decode = () => Promise.resolve();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<Harness onReady={vi.fn()} set={ALPHA} />);
+    const [img] = tiles(2);
+    fireEvent.error(img);
+    await flush();
+    expect(painted(img)).toBe(false);
+  });
+
+  test("a tile detached before decode resolves is not marked", async () => {
+    let resolve!: () => void;
+    proto.decode = () =>
+      new Promise<void>((r) => {
+        resolve = r;
+      });
+    render(<Harness onReady={vi.fn()} set={ALPHA} />);
+    const [img] = tiles(2);
+    fireEvent.load(img);
+    img.remove();
+    resolve();
+    await flush();
+    expect(painted(img)).toBe(false);
+  });
+
+  test("without decode (jsdom) the tile is marked right on load", () => {
+    delete proto.decode;
+    render(<Harness onReady={vi.fn()} set={ALPHA} />);
+    const [img] = tiles(2);
+    expect(painted(img)).toBe(false);
+    fireEvent.load(img);
+    expect(painted(img)).toBe(true);
+  });
+});
+
+describe("media.css alpha tile background", () => {
+  const css = readFileSync(
+    resolve(process.cwd(), "src/styles/editor/media.css"),
+    "utf8",
+  );
+  const backgroundOf = (selector: string): null | string => {
+    const start = css.indexOf(`\n${selector} {`);
+    if (start < 0) return null;
+    const body = css.slice(start, css.indexOf("}", start));
+    return /background:\s*([^;]+);/.exec(body)?.[1].trim() ?? null;
+  };
+
+  test("the painted alpha tile paints the same background as the modal", () => {
+    const tile = backgroundOf(
+      ".image-tile-layer[data-tile-alpha] img[data-tile-painted]",
+    );
+    // 선택자가 없으면 아래 비교가 공허하게 통과하지 못한다
+    expect(tile).not.toBeNull();
+    expect(tile).toBe(backgroundOf(".image-view-fullscreen-modal"));
   });
 });

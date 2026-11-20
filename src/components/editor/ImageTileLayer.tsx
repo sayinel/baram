@@ -6,6 +6,11 @@
 // 레벨마다 `div[data-tile-level]`, 그 안에 타일 `<img>` 가 인라인 스타일의 좌표(바닥 요소 기준 CSS px)로
 // 놓인다. 레벨 div 가 둘이면 앞이 밑 레이어다 — 나중 형제가 위에 그려진다.
 //
+// 알파가 있는 원본(`set.ext === "png"`)의 속성 둘: 루트의 `data-tile-alpha`, 그리고 그 루트 안에서 로드를 마치고
+// 디코드된 타일 `<img>` 의 `data-tile-painted`(`markPainted`). media.css 의 규칙이 이 둘이 함께 있는 타일에만
+// 배경색을 깔아, 그 타일의 반투명 픽셀이 밑(바닥 프리뷰 · 밑 레이어)과 겹쳐 두 번 합성되지 않게 한다. 불투명
+// 세트에는 어느 속성도 붙지 않는다.
+//
 // 밑 레이어(spec D5 "레벨이 바뀌면 이전 레벨을 그 밑에 남긴다"): 마지막으로 **다 끝난** 레벨을, 새 레벨의
 // 지금 배치가 다 끝날 때까지 지금 사각형에 다시 배치해 남긴다. 남기는 것은 그 레벨의 `<img>` 중 **지금
 // 붙어 있고 로드된** 것뿐이다 — 밑 레이어는 새 요소를 만들지 않으므로, 그 수는 그 레벨이 지금 레벨이던
@@ -159,10 +164,12 @@ export function ImageTileLayer({
           { level: placement.level, tiles: placement.tiles },
         ]
       : [{ level: placement.level, tiles: placement.tiles }];
+  const alpha = set.ext === "png";
   return (
     <div
       aria-hidden
       className="image-tile-layer"
+      data-tile-alpha={alpha ? "" : undefined}
       style={{ left: placement.left, top: placement.top }}
     >
       {layers.map((layer) => (
@@ -174,7 +181,10 @@ export function ImageTileLayer({
               draggable={false}
               key={tile.key}
               onError={(e) => settle(set, tile, e.currentTarget, false)}
-              onLoad={(e) => settle(set, tile, e.currentTarget, true)}
+              onLoad={(e) => {
+                settle(set, tile, e.currentTarget, true);
+                if (alpha) markPainted(e.currentTarget);
+              }}
               src={tileUrl(set, tile.level, tile.col, tile.row)}
               style={{
                 height: tile.h,
@@ -187,6 +197,26 @@ export function ImageTileLayer({
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * 알파가 있는 세트의 타일이 그려질 준비가 됐다는 표시(`data-tile-painted`)를 단다. `load` 가 아니라 `decode()` 가
+ * 끝난 뒤에 다는 이유: 타일은 `decoding="async"` 라 `load` 시점에 배경을 깔면 이미지보다 배경만 먼저 한 프레임
+ * 그려질 수 있다. 이 속성은 React 가 관리하지 않아 다시 렌더해도 그대로 남는다 — 한 요소의 `key` 와 `src` 는
+ * 바뀌지 않으므로 React 가 그 요소의 속성을 되돌릴 일이 없다. `decode()` 가 거부되면(깨진 이미지) 달지 않고,
+ * 기다리는 사이 떼어진 요소에도 달지 않는다. `decode` 가 없는 환경(jsdom)은 load 즉시 단다.
+ */
+function markPainted(el: HTMLImageElement): void {
+  if (typeof el.decode !== "function") {
+    el.setAttribute("data-tile-painted", "");
+    return;
+  }
+  el.decode().then(
+    () => {
+      if (el.isConnected) el.setAttribute("data-tile-painted", "");
+    },
+    () => {},
   );
 }
 
