@@ -1757,6 +1757,20 @@
       "description": "사진 썸네일을 앱 캐시에 만들고 그 절대 경로 반환 (convertFileSrc로 로드). 실패 시 호출자가 원본으로 폴백. 형식이 틀린 경로(상대 경로 · NUL · `..`)는 그 오류로 거절하고, 그 밖의 경로는 FS 가드(read_file 과 같은 규칙)를 통과하거나 지금 등록된 context 의 asset 부여 범위 안이면서 asset 프로토콜도 내주는 파일일 때만 받는다(§329.2 — File context 면 그 폴더). 이 판정에 걸리면 Err(\"THUMBNAIL_NOT_AUTHORIZED\"). 일반 파일이 아니면 거절"
     },
     {
+      "name": "image_tiles",
+      "input": {
+        "path": "string",
+        "onSize": "Channel<TileSize>"
+      },
+      "output": "TileSet",
+      "module": "thumbnail",
+      "spec": "§397",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "원본 보기용 타일 피라미드를 앱 캐시에 보장하고 그 위치와 manifest 를 반환한다. 가로나 세로가 2048 을 넘는 로컬 래스터만 타일을 받고, GIF · APNG · 애니메이션 WebP · 2048 이하는 {kind: original}. 큰 사진이면 피라미드를 만들기 전에(생성 허가를 기다리기 전에) 방향을 적용한 원본 크기를 onSize 채널로 알린다. 경로 형식 검사와 인가는 photo_thumbnail 과 같다(거절은 Err(\"THUMBNAIL_NOT_AUTHORIZED\")). 디코드 실패 · 픽셀 상한 초과 · IO 오류는 Err — 호출자가 원본 <img> 로 폴백한다"
+    },
+    {
       "name": "resolve_settings",
       "input": {
         "contextId": "string"

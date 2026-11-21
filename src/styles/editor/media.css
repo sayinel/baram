@@ -251,8 +251,11 @@
    여백만 0 이 되고 끝 쪽(아래) 여백은 줄의 높이에 맞추느라 음수가 된다(CSS Flexbox 의 교차축 auto 여백
    규칙). auto 여백이 있으면 `align-self` 도 무시되므로 긴 사진의 위쪽이 스크롤로 닿는다. 가로는 넘치면
    두 auto 여백이 0 이 되고 시작 정렬이 왼쪽 끝을 지킨다. 가운데 정렬 flex 는 넘친 위·왼쪽을 스크롤로
-   닿을 수 없게 만든다. */
+   닿을 수 없게 만든다.
+   §397 position: relative — 타일 레이어(.image-tile-layer)의 컨테이닝 블록. 레이어는 본문의 패딩 상자에서 잰
+   자리에 놓이고 내용과 함께 스크롤된다(ImageTileLayer 의 rootOffset). */
 .image-view-fullscreen-body {
+  position: relative;
   display: flex;
   flex: 1;
   align-items: flex-start;
@@ -278,4 +281,33 @@
 /* 원본을 기다리는 동안 깔아 두는 프리뷰. 늘린 것임을 감추지 않는다(라이트박스와 같은 이유). */
 .image-fullscreen-img-preview {
   filter: blur(4px);
+}
+
+/* §397 바닥 요소 위의 타일 레이어. 좌표는 ImageTileLayer 가 인라인 스타일로 준다 — 루트는 left · top,
+   타일은 left · top · width · height(바닥 요소 기준 CSS px). 포인터는 바닥 요소와 본문으로 지나간다. */
+.image-tile-layer {
+  position: absolute;
+  pointer-events: none;
+}
+
+.image-tile-layer > [data-tile-level] {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* max-width: none — Tailwind preflight 의 img 규칙(max-width: 100%)은 타일의 컨테이닝 블록인 레벨 div 의
+   폭에 대해 풀린다. 레벨 div 는 자식이 모두 절대 위치라 폭이 0 이고, 그대로 두면 타일 폭이 0 이 된다
+   (2026-11-19 시스템 WKWebView 프로브: 이 규칙 없이 타일 폭 0, 있으면 인라인 폭 그대로). */
+.image-tile-layer img {
+  position: absolute;
+  max-width: none;
+}
+
+/* §397 알파가 있는 원본의 타일 — 로드를 마치고 디코드된 타일은 밑(바닥 프리뷰, 밑 레이어)을 가려, 반투명 픽셀이
+   한 번만 합성된다. 배경색은 .image-view-fullscreen-modal 의 배경과 같은 토큰이어야 한다: 원본을 그 모달 위에
+   한 번 합성하는 메인의 결과와 같은 색이 나온다. 둘 중 하나만 바꾸면 그 일치가 조용히 깨진다
+   (image-tile-layer.test.tsx 가 짝을 고정한다). */
+.image-tile-layer[data-tile-alpha] img[data-tile-painted] {
+  background: var(--color-bg-default);
 }

@@ -383,8 +383,13 @@ pub fn run() {
                     } else if let Err(e) = app.asset_protocol_scope().allow_directory(&dir, true) {
                         log::warn!("§56d thumbnail asset scope registration failed: {e}");
                     } else {
-                        // 낡은 세대 정리. 세션당 한 번, 디렉터리 목록만 보는 일이므로 여기서
-                        // 해도 시작을 지연시키지 않는다(사진도 vault도 읽지 않는다).
+                        // 낡은 캐시 정리 — 세션당 한 번, 이 `setup` 안에서 동기로 돈다. 사진도 vault 도
+                        // 읽지 않는다. 디렉터리 셋(캐시 루트 · `v2/tiles/` · `v2/tiles/t1/`)의 목록을 읽고,
+                        // 지울 것이 있으면 그 자리에서 지운다: 캐시 루트에서 `v2` 가 아닌 것(낡은 썸네일
+                        // 세대와 세대 도입 전 파일), `v2/tiles/` 에서 `t1` 이 아닌 것(낡은 타일 세대, §397),
+                        // `t1/` 에서 이 프로세스가 아닌 실행이 남긴 임시 디렉터리(`purge_stale_generations` ·
+                        // `tiles::cache::purge_stale`). 지우는 만큼 시작이 늦어진다 — 세대를 올린 뒤의 첫
+                        // 시작에서는 옛 세대 전체다.
                         let removed = thumbnail::purge_stale_generations(&dir);
                         if removed > 0 {
                             log::info!("§56d purged {removed} stale thumbnail cache entries");
@@ -431,6 +436,7 @@ pub fn run() {
         .manage(plugin::PluginRateLimiter::new())
         .manage(plugin::StagedPayloads::new())
         .manage(thumbnail_cmd::ThumbnailSemaphore::new())
+        .manage(thumbnail_cmd::TileSemaphore::new())
         .manage(font::FontCache::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::set_vault_root,
@@ -451,6 +457,7 @@ pub fn run() {
             fs_cmd::export_binary_file,
             fs_cmd::read_media_data_url,
             thumbnail_cmd::photo_thumbnail,
+            thumbnail_cmd::image_tiles,
             config_cmd::get_config,
             config_cmd::set_config,
             config_cmd::remove_config,

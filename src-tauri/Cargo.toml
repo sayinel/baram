@@ -208,3 +208,7 @@ panic = "abort"
 # [dependencies], or setting `resolver = "1"`, ships the mock runtime in the release
 # binary, and nothing in the build would say so.
 tauri = { version = "2", features = ["test"] }
+# §397 타일 시험의 APNG 픽스처(`thumbnail/tiles/mod.rs` 시험). `image` 0.25.10 의 `PngEncoder` 에는
+# 애니메이션을 쓰는 API 가 없어(그 크레이트 소스에 `set_animated` 0건) png 크레이트를 직접 부른다.
+# 버전은 `image` 0.25.10 이 쓰는 0.18 과 같다 — 다르면 lock 에 png 가 한 벌 더 생긴다.
+png = "0.18"

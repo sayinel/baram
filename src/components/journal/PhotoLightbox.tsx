@@ -246,6 +246,7 @@ export function PhotoLightbox({
         <ImageOriginalView
           alt={photo.caption || photo.filename}
           onClose={() => setViewingOriginal(false)}
+          originalPath={photo.absolutePath}
           originalUrl={convertFileSrc(photo.absolutePath)}
           previewUrl={preview?.url ?? placeholder?.url ?? null}
         />

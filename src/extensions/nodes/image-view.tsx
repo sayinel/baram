@@ -12,7 +12,11 @@ import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { MediaResizeHandle } from "./views/MediaResizeHandle";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
-import { originalImageUrl, useImagePreview } from "./views/use-image-preview";
+import {
+  originalImagePath,
+  originalImageUrl,
+  useImagePreview,
+} from "./views/use-image-preview";
 import { useMediaResize } from "./views/use-media-resize";
 
 export function ImageView({
@@ -220,6 +224,7 @@ export function ImageView({
         <ImageOriginalView
           alt={alt}
           onClose={() => setViewingOriginal(false)}
+          originalPath={originalImagePath(rawSrc)}
           originalUrl={originalImageUrl(rawSrc)}
           previewUrl={src}
         />

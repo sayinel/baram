@@ -66,6 +66,7 @@ fn main() {
         "git_status",
         "git_switch_branch",
         "git_unstage",
+        "image_tiles",
         "import_dir",
         "import_file",
         "index_file",

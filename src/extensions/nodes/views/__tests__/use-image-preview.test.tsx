@@ -18,7 +18,8 @@ vi.mock("../../../../ipc/thumbnail", () => ({
     photoThumbnail(path, maxPx) as Promise<string>,
 }));
 
-const { useImagePreview } = await import("../use-image-preview");
+const { originalImageUrl, useImagePreview } =
+  await import("../use-image-preview");
 const { _resetThumbCache, PREVIEW_MAX_PX } =
   await import("../../../../utils/journal/photo-thumbnail");
 const { useEditorStore } = await import("../../../../stores/editor/editor");
@@ -73,6 +74,18 @@ describe("useImagePreview", () => {
         "asset://localhost//vault/journal/daily/2025/08/assets/diagram.svg",
       ),
     );
+  });
+
+  // §397 원본 보기는 프리뷰가 `originalImageUrl` 과 같은 글자인지로 "프리뷰가 곧 원본" 을 가린다
+  // (ImageOriginalView 의 `preview`). 무엇이 이것을 실패시키는가: 두 함수가 상대 경로를 다른 규칙으로 푸는 것.
+  test("its fallback is the same string as originalImageUrl, relative or absolute", async () => {
+    photoThumbnail.mockRejectedValue("썸네일을 만들 수 없는 이미지입니다");
+    for (const raw of ["assets/20250816-152728.jpg", "/abs/photo.jpg"]) {
+      const { result, unmount } = renderHook(() => useImagePreview(raw));
+      await waitFor(() => expect(result.current).not.toBeNull());
+      expect(result.current).toBe(originalImageUrl(raw));
+      unmount();
+    }
   });
 
   test("passes a remote URL or data URI straight through, with no IPC and no wait", () => {
