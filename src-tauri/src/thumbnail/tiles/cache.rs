@@ -64,16 +64,20 @@ pub(super) fn mark_used(dir: &Path) {
 /// 무시한다(`purge_stale_generations` 와 같은 이유 — 캐시는 지워도 다시 만들어진다).
 ///
 /// ‼️ 이 프로세스의 임시는 남긴다. 지금 호출자는 앱 시작의 정리 하나(lib.rs 의 `setup` →
-/// `purge_stale_generations`)이고, 그때는 이 프로세스의 임시가 아직 없어 이 제외가 지키는 것이 없다 — 임시
-/// 이름을 만드는 `commit_pyramid` · `evict_over_cap` 을 부르는 것은 `ensure_tiles` 뿐이고 그것을 부르는 것은
-/// `image_tiles` 명령뿐인데, tauri 2.12.2 는 `setup` 을 이벤트 루프의 `Ready` 에서 동기로 부르고 웹뷰의 명령도
-/// 그 루프로 온다.
-/// 이 제외는 실행 중에 이 함수를 부르는 호출자가 생길 때를 위한 것이다: 짓는 중에 임시가 지워지면 그 빌드는 **실패한다** —
+/// `purge_stale_generations`)이고, 이 제외가 앱에서 지키는 것은 없다 — 임시 이름을 만드는 `commit_pyramid` ·
+/// `evict_over_cap` 을 부르는 것은 `ensure_tiles` 뿐이고, 앱에서 그것을 부르는 것은 `image_tiles` 명령이 띄우는 자식
+/// 프로세스뿐이다(`child`). 그래서 앱의 피라미드 임시 이름에는 앱이 아니라 그 자식의 pid 가 들어간다. 시작의 정리가 그
+/// 실행의 자식이 짓는 임시를 지우지도 않는다: tauri 2.12.2 는 `setup` 을 이벤트 루프의 `Ready` 에서 동기로 부르고
+/// 웹뷰의 명령도 그 루프로 오므로, 정리가 끝나기 전에 자식이 생기지 않는다.
+/// 다른 인스턴스의 정리는 지금도 짓는 중인 임시를 지울 수 있다 — 앱을 둘 띄우면 둘째의 시작 정리에게 첫째의 자식이 짓는
+/// 임시는 다른 pid 다. 앱을 끝내면 그 자식도 끝나므로(`child` 모듈 doc 의 수명) 끝낸 뒤 다시 띄운 앱은 보통 이 경우가 아니다.
+/// 실행 중에 이 함수를 부르는 호출자를 더해도 같다(자식의 pid 는 이 제외에 걸리지 않는다). 짓는 중에 임시가 지워지면 그
+/// 빌드는 **실패한다** —
 /// 레벨을 쓰는 사이면 `write_pyramid` 의 다음 `create_dir` 이, 마지막 레벨 뒤면 manifest 를 쓰기 전의 `verify_complete` 가
 /// `Err` 를 낸다. 그러면 뷰어는 원본 `<img>` 로 돌아간다. 남는 틈은 `verify_complete` 가 끝난 뒤 rename 전에 지우기가
 /// 시작되어 일부 레벨만 사라지는 경우다 — `remove_dir_all` 은 한 번에 사라지게 하지 않으므로, 그 사이에 rename 이 성공하면
 /// 빠진 레벨이 있는 피라미드가 놓인다. 없다고 할 수 없고 막지도 않는다.
-/// 대가: 앞선 실행이 지금과 같은 pid 였다면 그 임시는 다음 시작까지 남는다.
+/// 대가: 앞선 실행(앱이나 그 자식)이 남긴 임시의 pid 가 지금 앱의 pid 와 같으면 그 임시는 다음 시작까지 남는다.
 pub(crate) fn purge_stale(cache_dir: &Path) -> usize {
     let mut removed = 0;
     for entry in entries_of(&generations_dir(cache_dir)) {
@@ -90,6 +94,19 @@ pub(crate) fn purge_stale(cache_dir: &Path) -> usize {
         }
     }
     removed
+}
+
+/// `root` 에서 pid 가 `pid` 인 프로세스가 지은 임시(`{key}.tmp-{pid}-{n}`)를 지우고 그 수를 돌려준다. 실패는 무시한다.
+/// 비정상 종료한 타일 자식이 남긴 임시를 부모가 지울 때 부른다(`child::build_in_child`) — 그 자식은 이미 끝나 짓는
+/// 중일 수 없고, 같은 앱의 다음 자식은 생성 허가 때문에 아직 없다. 끝난 자식의 pid 를 운영체제가 그새 다른 프로세스에
+/// 다시 주었고 그 프로세스가 이 디렉터리에 임시를 짓고 있다면(같은 캐시를 쓰는 다른 앱 인스턴스의 생성), 그 임시도
+/// 지운다. 그 빌드는 대개 실패해 원본으로 돌아가고, `purge_stale` 의 doc 이 적은 틈이면 빠진 레벨이 있는 피라미드가
+/// 놓일 수 있다.
+pub(crate) fn discard_temps_of(root: &Path, pid: u32) -> usize {
+    let theirs = format!("{TEMP_MARK}{pid}-");
+    entries_of(root)
+        .filter(|entry| entry.file_name().to_string_lossy().contains(&theirs) && remove(entry))
+        .count()
 }
 
 /// 피라미드 합계(manifest 의 `bytes`)가 `cap` 을 넘으면 마지막 사용(manifest 의 mtime)이 오래된 것부터
@@ -343,6 +360,22 @@ mod tests {
         UNIX_EPOCH + Duration::from_secs(86_400 * n)
     }
 
+    /// 그 pid 의 임시만 지운다 — pid 의 자릿수가 겹치는 다른 임시(`-12-` 와 `-123-`)와 피라미드는 남긴다.
+    #[test]
+    fn discarding_a_childs_temps_leaves_other_temps_and_pyramids() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("t1");
+        let live = put(&root, "k", &manifest(10), SystemTime::now());
+        for name in ["a.tmp-12-0", "b.tmp-12-3", "c.tmp-123-0", "d.tmp-1-0"] {
+            fs::create_dir_all(root.join(name).join("0")).unwrap();
+        }
+
+        assert_eq!(discard_temps_of(&root, 12), 2);
+
+        assert_eq!(names_in(&root), ["c.tmp-123-0", "d.tmp-1-0", "k"]);
+        assert!(live.join(MANIFEST).is_file());
+    }
+
     #[test]
     fn purging_keeps_the_current_tile_generation_and_drops_old_ones_and_temp_dirs() {
         let dir = TempDir::new().unwrap();
@@ -352,7 +385,7 @@ mod tests {
         fs::create_dir_all(tiles.join("t0").join("a")).unwrap();
         let live = put(&tiles.join("t1"), "k", &manifest(10), SystemTime::now());
         fs::create_dir_all(tiles.join("t1").join("k.tmp-1-0")).unwrap();
-        // 이 프로세스가 짓는 중인 임시 — 지우면 다음 레벨의 `create_dir_all` 이 되살려 반쪽 피라미드가 된다.
+        // 이 프로세스의 임시 — 남긴다. 짓는 중에 지워질 때 무슨 일이 생기는지는 `purge_stale` 의 doc.
         let building = tiles.join("t1").join(format!("j{}0", own_temp_mark()));
         fs::create_dir_all(&building).unwrap();
         let thumb = cache.join("v2").join("2048").join("x.jpg");
