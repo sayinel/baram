@@ -11,12 +11,14 @@
 //! 지우기는 `{key}` 를 반쯤 쓰거나 반쯤 지운 채로 남기지 않는다(spec D3 의 7). 그래도 생긴 잔해(예: fsync 하지
 //! 않은 manifest 가 전원 차단 뒤 비어 있다)는 `hit` 이 캐시 없음으로 읽고, 다시 지은 피라미드가 대신한다.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::pyramid::tile_grid;
 use super::{TileManifest, TILE_GENERATION};
 use crate::thumbnail::{ThumbnailError, CACHE_GENERATION};
 
@@ -66,8 +68,11 @@ pub(super) fn mark_used(dir: &Path) {
 /// 이름을 만드는 `commit_pyramid` · `evict_over_cap` 을 부르는 것은 `ensure_tiles` 뿐이고 그것을 부르는 것은
 /// `image_tiles` 명령뿐인데, tauri 2.12.2 는 `setup` 을 이벤트 루프의 `Ready` 에서 동기로 부르고 웹뷰의 명령도
 /// 그 루프로 온다.
-/// 이 제외는 실행 중에 이 함수를 부르는 호출자가 생길 때를 위한 것이다: 짓는 중에 지우면 `write_pyramid` 가 다음
-/// 레벨의 `create_dir_all` 로 그 디렉터리를 다시 만들어, 앞 레벨이 빠진 피라미드가 manifest 를 얻고 rename 된다.
+/// 이 제외는 실행 중에 이 함수를 부르는 호출자가 생길 때를 위한 것이다: 짓는 중에 임시가 지워지면 그 빌드는 **실패한다** —
+/// 레벨을 쓰는 사이면 `write_pyramid` 의 다음 `create_dir` 이, 마지막 레벨 뒤면 manifest 를 쓰기 전의 `verify_complete` 가
+/// `Err` 를 낸다. 그러면 뷰어는 원본 `<img>` 로 돌아간다. 남는 틈은 `verify_complete` 가 끝난 뒤 rename 전에 지우기가
+/// 시작되어 일부 레벨만 사라지는 경우다 — `remove_dir_all` 은 한 번에 사라지게 하지 않으므로, 그 사이에 rename 이 성공하면
+/// 빠진 레벨이 있는 피라미드가 놓인다. 없다고 할 수 없고 막지도 않는다.
 /// 대가: 앞선 실행이 지금과 같은 pid 였다면 그 임시는 다음 시작까지 남는다.
 pub(crate) fn purge_stale(cache_dir: &Path) -> usize {
     let mut removed = 0;
@@ -130,7 +135,9 @@ pub(crate) fn evict_over_cap(root: &Path, cap: u64, keep: &Path) -> usize {
 /// 피라미드 하나를 짓는다 — `root/{key}.tmp-{pid}-{n}` 을 만들어 `build` 에 넘기고, `build` 가 돌려준
 /// manifest 를 그 안에 마지막으로 쓴 뒤 `root/{key}` 로 rename 한다.
 ///
-/// - `build` 나 manifest 쓰기가 실패하면 임시를 지우고 `Err`. `write_pyramid` 는 실패해도 이미 쓴 타일을
+/// - `build` 가 돌려준 manifest 와 디스크의 피라미드가 맞는지(`verify_complete`) manifest 를 쓰기 전에 본다.
+///   - 아니면 아래 실패와 같다.
+/// - `build`, 그 검사, manifest 쓰기 중 하나가 실패하면 임시를 지우고 `Err`. `write_pyramid` 는 실패해도 이미 쓴 타일을
 ///   남기므로 그 정리가 여기 몫이다.
 /// - rename 이 먼저 놓인 `{key}` 에 막히면, 그 manifest 를 읽을 수 있을 때 임시를 지우고 그쪽 manifest 를
 ///   돌려준다 — 키가 같으니 같은 원본(경로 · mtime · 크기)의 같은 세대 피라미드다.
@@ -150,6 +157,7 @@ pub(crate) fn commit_pyramid(
     fs::create_dir(&tmp)?;
 
     let manifest = match build(&tmp).and_then(|manifest| {
+        verify_complete(&tmp, &manifest)?;
         let json = serde_json::to_vec(&manifest).map_err(io::Error::from)?;
         fs::write(tmp.join(MANIFEST), json)?;
         Ok(manifest)
@@ -174,6 +182,32 @@ pub(crate) fn commit_pyramid(
         }
     }
     Ok((dest, manifest))
+}
+
+/// `tmp` 의 피라미드가 `manifest` 가 적은 그대로인지 본다 — 레벨마다 디렉터리 `tmp/{i}` 가 있고, 그 안의
+/// 파일 이름이 격자(`tile_grid`)의 `{c}_{r}.{ext}` 와 **정확히** 같아야 한다(모자라도 남아도 `Err`).
+/// 이름만 세고 파일은 열지 않는다. 레벨 디렉터리를 읽지 못해도 `Err`.
+fn verify_complete(tmp: &Path, manifest: &TileManifest) -> io::Result<()> {
+    for (level, size) in manifest.levels.iter().enumerate() {
+        let (cols, rows) = tile_grid(size.w, size.h, manifest.tile);
+        let expected: BTreeSet<String> = (0..rows)
+            .flat_map(|r| (0..cols).map(move |c| format!("{c}_{r}.{}", manifest.ext)))
+            .collect();
+        let found = fs::read_dir(tmp.join(level.to_string()))?
+            .map(|entry| entry.map(|e| e.file_name().to_string_lossy().into_owned()))
+            .collect::<io::Result<BTreeSet<String>>>()?;
+        if found != expected {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "level {level} is incomplete: {} of {} tiles, or unexpected names",
+                    found.intersection(&expected).count(),
+                    expected.len()
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// `dir` 옆의 새 임시 이름 — `{dir 의 이름}.tmp-{pid}-{n}`.
@@ -237,6 +271,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::thumbnail::tiles::pyramid::tile_grid;
     use crate::thumbnail::tiles::LevelSize;
 
     fn manifest(bytes: u64) -> TileManifest {
@@ -262,6 +297,34 @@ mod tests {
             .set_modified(used)
             .unwrap();
         dir
+    }
+
+    /// manifest 가 적은 타일을 `tmp` 에 그대로 쓴다 — 빈 파일이면 `verify_complete` 에는 충분하다(이름만 센다).
+    fn write_described(tmp: &Path, m: &TileManifest) {
+        for (level, size) in m.levels.iter().enumerate() {
+            let dir = tmp.join(level.to_string());
+            fs::create_dir(&dir).unwrap();
+            let (cols, rows) = tile_grid(size.w, size.h, m.tile);
+            for r in 0..rows {
+                for c in 0..cols {
+                    fs::write(dir.join(format!("{c}_{r}.{}", m.ext)), b"t").unwrap();
+                }
+            }
+        }
+    }
+
+    /// 실제 `write_pyramid` 로 지은 피라미드와 그것을 적은 manifest — `ensure_tiles` 의 짓기와 같다.
+    fn build_real(tmp: &Path) -> Result<TileManifest, ThumbnailError> {
+        let img = image::DynamicImage::ImageRgb8(image::RgbImage::new(1100, 600));
+        let info = crate::thumbnail::tiles::pyramid::write_pyramid(&img, None, tmp, 2)?;
+        Ok(TileManifest {
+            width: 1100,
+            height: 600,
+            tile: 512,
+            ext: info.ext.to_string(),
+            levels: info.levels,
+            bytes: info.bytes,
+        })
     }
 
     fn names_in(dir: &Path) -> Vec<String> {
@@ -362,8 +425,7 @@ mod tests {
         let root = dir.path().join("root");
 
         let (pyramid, built) = commit_pyramid(&root, "k", |tmp| {
-            fs::create_dir_all(tmp.join("0"))?;
-            fs::write(tmp.join("0").join("0_0.jpg"), b"tile")?;
+            write_described(tmp, &manifest(4));
             Ok(manifest(4))
         })
         .unwrap();
@@ -375,6 +437,67 @@ mod tests {
         assert!(pyramid.join("0").join("0_0.jpg").is_file());
     }
 
+    /// 짝: 아래 세 시험이 `Err` 를 보이려면 이 시험처럼 완전한 피라미드는 commit 되어야 한다.
+    #[test]
+    fn a_complete_pyramid_from_write_pyramid_commits() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("root");
+
+        let (pyramid, built) = commit_pyramid(&root, "k", build_real).unwrap();
+
+        assert_eq!(built.levels.len(), 3);
+        assert_eq!(read_manifest(&pyramid).unwrap(), built);
+        assert_eq!(names_in(&root), ["k"]);
+    }
+
+    /// 무엇이 이것을 실패시키는가: `verify_complete` 를 빼면 타일 하나가 없는 피라미드가 manifest 를 얻는다.
+    #[test]
+    fn a_pyramid_missing_a_tile_is_not_committed() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("root");
+
+        let result = commit_pyramid(&root, "k", |tmp| {
+            let m = build_real(tmp)?;
+            fs::remove_file(tmp.join("0").join("1_0.jpg"))?;
+            Ok(m)
+        });
+
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(names_in(&root), Vec::<String>::new());
+    }
+
+    /// 레벨 사이에 임시가 지워져 앞 레벨 디렉터리가 사라진 경우.
+    #[test]
+    fn a_pyramid_missing_a_whole_level_is_not_committed() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("root");
+
+        let result = commit_pyramid(&root, "k", |tmp| {
+            let m = build_real(tmp)?;
+            fs::remove_dir_all(tmp.join("0"))?;
+            Ok(m)
+        });
+
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(names_in(&root), Vec::<String>::new());
+    }
+
+    /// 규칙은 "기대한 이름과 정확히 같다" 이므로 남는 파일도 `Err` 다.
+    #[test]
+    fn a_pyramid_with_an_unexpected_file_is_not_committed() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path().join("root");
+
+        let result = commit_pyramid(&root, "k", |tmp| {
+            let m = build_real(tmp)?;
+            fs::write(tmp.join("1").join("stray.jpg"), b"x")?;
+            Ok(m)
+        });
+
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(names_in(&root), Vec::<String>::new());
+    }
+
     #[test]
     fn a_build_that_loses_the_race_keeps_the_existing_pyramid() {
         let dir = TempDir::new().unwrap();
@@ -382,7 +505,11 @@ mod tests {
         let existing = put(&root, "k", &manifest(5), SystemTime::now());
         fs::write(existing.join("first"), b"").unwrap();
 
-        let (pyramid, got) = commit_pyramid(&root, "k", |_| Ok(manifest(9))).unwrap();
+        let (pyramid, got) = commit_pyramid(&root, "k", |tmp| {
+            write_described(tmp, &manifest(9));
+            Ok(manifest(9))
+        })
+        .unwrap();
 
         assert_eq!(pyramid, existing);
         assert_eq!(got, manifest(5));
@@ -405,8 +532,7 @@ mod tests {
             }
 
             let (pyramid, built) = commit_pyramid(&root, "k", |tmp| {
-                fs::create_dir_all(tmp.join("0"))?;
-                fs::write(tmp.join("0").join("0_0.jpg"), b"tile")?;
+                write_described(tmp, &manifest(4));
                 Ok(manifest(4))
             })
             .unwrap_or_else(|e| panic!("{case}: {e}"));

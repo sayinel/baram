@@ -111,6 +111,7 @@ fn write_tile(
 
 /// `img` 를 `out/{level}/{col}_{row}.{ext}` 로 쓴다. 알파가 있으면 PNG, 없으면 JPEG q85.
 /// `icc` 가 있으면 모든 타일에 싣는다. 레벨 안의 타일은 `threads` 개 스레드가 나눠 쓴다.
+/// `out` 은 이미 있어야 한다 — 없으면 아무것도 만들지 않고 `Err`.
 pub(crate) fn write_pyramid(
     img: &DynamicImage,
     icc: Option<&[u8]>,
@@ -135,7 +136,10 @@ pub(crate) fn write_pyramid(
         }
         let current: &DynamicImage = owned.as_ref().unwrap_or(&base);
         let dir = out.join(level.to_string());
-        std::fs::create_dir_all(&dir)?;
+        // `create_dir` 이지 `create_dir_all` 이 아니다 — `out` 은 호출자가 만들어 둔 것이다. 짓는 도중
+        // `out` 이 지워졌다면(다른 프로세스의 `purge_stale`) 다시 만들지 않고 실패해야, 앞 레벨이 빠진
+        // 피라미드가 완성품처럼 남지 않는다.
+        std::fs::create_dir(&dir)?;
 
         let (cols, rows) = tile_grid(w, h, TILE_PX);
         let coords: Vec<(u32, u32)> = (0..rows)
@@ -285,6 +289,22 @@ mod tests {
             info.bytes,
             snap.values().map(|v| v.len() as u64).sum::<u64>()
         );
+    }
+
+    /// 짝: `writes_every_tile_with_its_edge_size` 등은 있는 `TempDir` 에 써서 성공한다. 이 시험은 `out` 이
+    /// 없을 때 실패하고 아무것도 만들지 않음을 보인다.
+    #[test]
+    fn writing_into_a_missing_directory_fails_and_creates_nothing() {
+        let dir = TempDir::new().unwrap();
+        let out = dir.path().join("gone");
+
+        let result = write_pyramid(&rgb(600, 40), None, &out, 1);
+
+        assert!(matches!(result, Err(ThumbnailError::Io(_))));
+        assert!(!out.exists());
+
+        std::fs::create_dir(&out).unwrap();
+        assert!(write_pyramid(&rgb(600, 40), None, &out, 1).is_ok());
     }
 
     #[test]
