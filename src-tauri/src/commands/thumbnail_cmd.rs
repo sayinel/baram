@@ -50,11 +50,14 @@ impl Default for ThumbnailSemaphore {
 /// 타일 피라미드 생성 허가 — 썸네일과 따로 하나다(§397). 한 건이 원본을 통째로 디코드하고(파노라마면
 /// ~600MB) 모든 레벨을 인코딩하므로, 둘을 한꺼번에 돌리지 않는다. 썸네일 허가와 나눈 이유는 큰 사진 하나의
 /// 생성(1~5초)이 갤러리의 썸네일 스캔을 막지 않게 하려는 것이다.
-pub struct TileSemaphore(pub tokio::sync::Semaphore);
+///
+/// 생성은 자식 프로세스가 하므로(`tile_child`) 허가는 그 자식이 끝날 때까지 쥔다 — `Arc` 인 이유는 `image_tiles`
+/// 가 허가(`acquire_owned`)를 자식을 기다리는 블로킹 클로저로 옮기기 때문이다.
+pub struct TileSemaphore(pub std::sync::Arc<tokio::sync::Semaphore>);
 
 impl TileSemaphore {
     pub fn new() -> Self {
-        Self(tokio::sync::Semaphore::new(1))
+        Self(std::sync::Arc::new(tokio::sync::Semaphore::new(1)))
     }
 }
 
@@ -192,10 +195,18 @@ pub async fn photo_thumbnail<R: tauri::Runtime>(
 /// 1. `probe_tiles`(디코드 없음) — 히트 · 애니메이션 · 2048 이하는 허가 없이 바로 답하고, 큰 사진이면
 ///    크기를 `on_size` 로 알린 뒤 `None`(만들어야 한다)을 준다. 다른 사진의 생성(1~5초)을 기다리는 것은
 ///    만들어야 하는 사진뿐이고, 크기도 그 기다림 앞에서 간다(뷰어가 프리뷰를 크기대로 그린다).
-/// 2. 생성 허가를 얻은 뒤 `ensure_tiles` — 허가를 기다리는 사이 같은 사진을 다른 호출이 끝냈으면 이 재확인이
-///    히트로 답한다. 크기는 이미 보냈으므로 여기서는 보내지 않는다.
+/// 2. 생성 허가를 얻은 뒤 이 실행 파일의 자식 프로세스가 `ensure_tiles` 를 돈다(`tile_child`) — 허가를 기다리는
+///    사이 같은 사진을 다른 호출이 끝냈으면 그 안의 재확인이 히트로 답한다. 크기는 이미 보냈으므로 자식은 보내지
+///    않는다. 생성이 해제한 큰 버퍼를 macOS malloc 이 쥐어도 그것은 끝난 자식의 몫이라, 이 프로세스의 메모리에
+///    남지 않는다(이유와 측정은 `tile_child` 의 모듈 doc).
 ///
-/// 뷰어를 닫아도 생성은 끝까지 간다 — `spawn_blocking` 은 이 future 가 떨어져도 멈추지 않는다(spec D2).
+/// 뷰어를 닫아도 생성은 끝까지 간다 — `spawn_blocking` 은 이 future 가 떨어져도 멈추지 않고, 허가와 자식을 함께 쥔
+/// 그 클로저는 자식이 끝나야 끝난다(spec D2). 앱이 끝나면 자식도 생성을 멈추고 끝난다 — 자식의 stdin 이 닫힌다(조건은
+/// `tile_child` 의 모듈 doc). `tests/tile_child.rs` 는 stdin 이 처음부터 EOF 인 자식이 피라미드 없이 끝나는 것과, 부모가
+/// stdin 을 쥔 동안에는 같은 원본을 끝까지 짓는 것을 확인한다. 앱 프로세스의 종료가 EOF 를 만드는지는 시험하지 않는다.
+///
+/// ‼️ 단위 시험에서 이 명령을 생성까지 몰면 `current_exe()` 가 이 바이너리가 아니라 libtest 하네스라, 하네스가 모르는
+/// 플래그로 끝나 `Crashed` 가 된다. 부모 쪽은 진짜 실행 파일(`CARGO_BIN_EXE_baram`)로 `tests/tile_child.rs` 가 돈다.
 #[tauri::command]
 pub async fn image_tiles<R: tauri::Runtime>(
     path: String,
@@ -203,7 +214,8 @@ pub async fn image_tiles<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     semaphore: tauri::State<'_, TileSemaphore>,
 ) -> Result<crate::thumbnail::tiles::TileSet, String> {
-    use crate::thumbnail::tiles::{ensure_tiles, probe_tiles};
+    use crate::thumbnail::tiles::child::{build_in_child, ChildError};
+    use crate::thumbnail::tiles::probe_tiles;
 
     crate::fs::validate_path(&path).map_err(|e| e.to_string())?;
     authorize_source(&app, &path).await?;
@@ -228,10 +240,19 @@ pub async fn image_tiles<R: tauri::Runtime>(
         }
     }
 
-    let _permit = semaphore.0.acquire().await.map_err(|e| e.to_string())?;
+    let permit = semaphore
+        .0
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|e| e.to_string())?;
     let started = std::time::Instant::now();
     let result = tokio::task::spawn_blocking(move || {
-        ensure_tiles(std::path::Path::new(&path), &cache, |_| {})
+        // 자식이 끝날 때까지 쥔다 — 둘째 생성이 첫 자식과 겹치지 않게(`TileSemaphore`).
+        let _permit = permit;
+        std::env::current_exe()
+            .map_err(ChildError::Spawn)
+            .and_then(|exe| build_in_child(&exe, std::path::Path::new(&path), &cache))
     })
     .await
     .map_err(|e| e.to_string())?;
