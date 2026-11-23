@@ -56,6 +56,13 @@ export type SettingsState = AppearanceSettingsSlice &
   ZettelkastenSettingsSlice;
 
 /**
+ * §377 One code point that is shown as emoji by default, then VS16 (U+FE0F),
+ * which asks for the presentation the code point already has. emojibase-data
+ * 18 calls that FE0F redundant and leaves it out. See the v29 → v30 migration.
+ */
+const REDUNDANT_VS16 = /^\p{Emoji_Presentation}️$/u;
+
+/**
  * Backfills any activity-bar id present in DEFAULT_ACTIVITY_BAR_CONFIG but
  * missing from a persisted config, in place. Originally the body of the v16
  * → v17 migration (see the comment there); extracted so a later version gate
@@ -224,7 +231,7 @@ export const useSettingsStore = create<SettingsState>()(
         // would silently drop the setting on every restart.
         vimMode: state.vimMode,
       }),
-      version: 29,
+      version: 30,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -707,6 +714,28 @@ export const useSettingsStore = create<SettingsState>()(
               entries.push([name, color]);
             }
             state.tagColors = Object.fromEntries(entries);
+          }
+        }
+
+        // v29 → v30: §377 The symbol picker finds a recent symbol by its exact spelling
+        // (`buildSymbolSections`). emojibase-data 18 spells the emoji that default to emoji
+        // presentation without FE0F (`⛔` where 17 had `⛔️`), so a recent emoji picked under 17
+        // would find no row and drop out of the "recent" section. The 152 rows 18 respelled are
+        // exactly the 17 rows of the `REDUNDANT_VS16` shape, and no row of the 18 table has that
+        // shape (the migration test checks the table). The FE0F is removed; when that makes a
+        // duplicate, the first — most recent — place is kept.
+        if (version < 30) {
+          const recent = state.recentSymbols;
+          if (Array.isArray(recent)) {
+            state.recentSymbols = [
+              ...new Set(
+                recent.map((char: unknown) =>
+                  typeof char === "string" && REDUNDANT_VS16.test(char)
+                    ? char.slice(0, -1)
+                    : char,
+                ),
+              ),
+            ];
           }
         }
 
