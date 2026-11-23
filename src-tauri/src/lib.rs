@@ -27,6 +27,16 @@ mod snapshot;
 mod tag;
 mod task;
 mod thumbnail;
+/// §397 The tile pyramid build's child mode. Public for two callers outside the library
+/// crate: `main.rs` hands it argv before `cli::mode_for`, and `tests/tile_child.rs` runs
+/// the parent side against the real binary — cargo sets `CARGO_BIN_EXE_baram` for
+/// integration tests and benches, which link the library as an external crate.
+pub mod tile_child {
+    pub use crate::thumbnail::tiles::child::{
+        build_in_child, run_if_requested, ChildError, CHILD_FLAG,
+    };
+    pub use crate::thumbnail::tiles::TileSet;
+}
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};

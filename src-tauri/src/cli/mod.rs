@@ -51,6 +51,9 @@ const MACOS_LAUNCH_PREFIXES: &[&str] = &["-psn_", "-NS", "-Apple"];
 /// ‼️ A plugin that relaunches the app with a `-flag` of its own (autostart,
 /// single-instance) must have that flag added to the GUI side here, or its launch ends
 /// as a usage error.
+///
+/// `main` asks `tile_child::run_if_requested` (§397) before this function: the tile
+/// build's child flag never reaches it.
 pub fn mode_for(args: &[OsString]) -> Mode {
     let Some(first) = args.get(1) else {
         return Mode::Gui;

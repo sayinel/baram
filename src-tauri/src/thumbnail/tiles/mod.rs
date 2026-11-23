@@ -2,9 +2,11 @@
 //! 캐시의 현재 세대 아래(`{cache}/v2/tiles/t1/{key}/`)에 두고, 뷰어는 보이는 타일만 그린다.
 //!
 //! `pyramid` 가 레벨을 계산하고 타일을 쓰며, `cache` 가 임시 디렉터리 · rename · 세대 정리 · 상한을
-//! 맡는다. 이 모듈은 어떤 사진이 타일을 받는지(spec D1)와 그 순서를 정한다.
+//! 맡는다. 이 모듈은 어떤 사진이 타일을 받는지(spec D1)와 그 순서를 정한다. 앱에서 생성(`ensure_tiles`)은
+//! `child` 의 자식 프로세스가 한다 — 부모(`image_tiles`)에 남는 것은 디코드 없는 `probe_tiles` 다.
 
 pub(super) mod cache;
+pub(crate) mod child;
 mod pyramid;
 
 use std::path::Path;
@@ -53,8 +55,9 @@ pub struct TileManifest {
 }
 
 /// 원본 보기가 받는 답 — 타일 피라미드, 또는 오늘의 원본 `<img>`(spec D1 밖).
-/// JSON 은 `{"kind":"tiles","dir":…,"width":…,…}` · `{"kind":"original"}` 이다.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// JSON 은 `{"kind":"tiles","dir":…,"width":…,…}` · `{"kind":"original"}` 이다. 자식 프로세스가 이 JSON 으로
+/// 부모에게 답하므로(`child`) 읽기도 한다.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum TileSet {
     Tiles {

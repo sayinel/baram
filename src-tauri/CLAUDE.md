@@ -51,7 +51,9 @@ PR이 Rust 경로를 건드리지 않으면 rust 잡 skip이 정상이고, 그 �
 
 `cli/` 는 IPC 커맨드가 아니다 — `main()` 이 `cli::mode_for(argv)` 로 갈라 `cli::run` 을 부르고, tauri 는 시작하지 않는다.
 설계는 `dev/design/specs/0066-cli-read-only-design.md`. `cli::run` 은 `mcp` 를 stdout 을 잡기 전에 `cli::mcp::run`(stdio MCP 서버, §389,
-`dev/design/specs/0068-mcp-server-design.md`)으로 보낸다 — 실행 파일의 모드는 셋이다: GUI · CLI 명령 · MCP 서버.
+`dev/design/specs/0068-mcp-server-design.md`)으로 보낸다 — 사용자가 부르는 실행 파일의 모드는 셋이다: GUI · CLI 명령 · MCP 서버.
+넷째는 내부용 타일 피라미드 자식(§397, `thumbnail/tiles/child.rs`)이다 — 앱의 `image_tiles` 가 같은 실행 파일을 띄우고, `main` 이
+`cli::mode_for` 보다 **먼저** 그 플래그(`CHILD_FLAG`)를 가른다. 그 뒤에서 보면 CLI 의 사용법 오류로 끝난다.
 
 - **읽기 전용이다.** 명령을 더할 때 vault · 앱의 `config.json` · 앱 로그에 쓰는 것을 넣지 않는다 — `tests/cli.rs` 의
   `no_command_writes_into_the_vault_the_config_or_the_logs` 가 아홉 명령(텍스트 · `--json`) 전후로 vault 와 `HOME` · `XDG_DATA_HOME`
