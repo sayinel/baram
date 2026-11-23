@@ -158,8 +158,8 @@ pub async fn photo_thumbnail<R: tauri::Runtime>(
     let logged_path = path.clone();
     // 판정은 이 프로세스에서, 만들기는 이 실행 파일의 자식 프로세스에서(`thumbnail_child`) — 디코드가 해제한 큰
     // 버퍼를 macOS malloc 이 쥐어도 끝난 자식의 몫이라 이 프로세스의 메모리에 남지 않는다(이유와 측정은 그 모듈 doc).
-    // 허가는 판정 앞에서 얻는다: 판정도 원본을 연다(JPEG 은 압축 파일 전체를 읽는다) — 허가 없이 두면 갤러리의
-    // 첫 스캔이 사진 수만큼 동시에 읽는다.
+    // 허가는 판정 앞에서 얻는다: 판정도 원본을 열어 헤더를 읽는다(`thumbnail::header`) — 허가 없이 두면 갤러리의
+    // 첫 스캔이 사진 수만큼 동시에 연다.
     let result = tokio::task::spawn_blocking(move || {
         crate::thumbnail::child::ensure_thumbnail_via_child(
             std::path::Path::new(&path),

@@ -123,6 +123,13 @@ image = { version = "0.25", default-features = false, features = [
     "bmp",
     "webp",
 ] }
+# §397 The app process reads a JPEG's header without `image` (thumbnail/header.rs):
+# `image`'s `JpegDecoder::new` reads the whole compressed file into memory first, and
+# macOS malloc kept that freed buffer in the app's footprint for over a minute. This is
+# the decoder `image` itself calls, at the version the lock already holds for it — a
+# direct dependency, not a new crate. `header.rs` pins one copy in the lock: if `image`
+# moves to another zune-jpeg, bump this line with it.
+zune-jpeg = "0.5"
 tauri-plugin-clipboard-manager = "2"
 trash = "5"
 tauri-plugin-log = "2.9.0"

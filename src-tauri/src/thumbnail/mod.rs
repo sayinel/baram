@@ -9,6 +9,8 @@
 //
 // 축소를 웹뷰에서 하면 그 12GB를 웹뷰가 한 번은 만져야 한다. 여기서 하면 웹뷰는 ~0.06 MPix
 // 썸네일만 본다.
+use std::fs::File;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -18,7 +20,10 @@ use thiserror::Error;
 
 pub mod child;
 pub(crate) mod child_process;
+mod header;
 pub mod tiles;
+
+use header::{read_header, Header};
 
 /// 디코더에 허용하는 최대 할당. `Limits`의 기본값 512MiB는 **실제 사진을 거른다** —
 /// 199 MPix 파노라마 하나가 RGB8로 ~600MB다. 그 사진이야말로 썸네일이 가장 필요한 사진이므로
@@ -186,7 +191,7 @@ fn hex32(digest: &[u8]) -> String {
 }
 
 /// 픽셀을 디코드하지 않고 이 원본의 답을 가려 본다 — 만들어야 하면 `None`. 아무것도 쓰지 않는다. 블로킹 함수이고
-/// 원본은 헤더만 디코드한다(JPEG 이면 압축 파일 전체를 읽는다 — image 0.25 의 `JpegDecoder::new`).
+/// 원본은 헤더만 읽는다(`read_header` — JPEG 은 SOS 마커까지).
 ///
 /// 답은 둘이다(순서는 `probe` 의 doc): 캐시 히트면 그 캐시 경로, 원본이 이미 `max_px` 안이면 원본 경로.
 /// `photo_thumbnail` 명령이 이것을 앱 프로세스에서 부르고, `None` 인 사진만 자식 프로세스에 맡긴다(`child`).
@@ -196,28 +201,34 @@ pub fn probe_thumbnail(
     max_px: u32,
 ) -> Result<Option<PathBuf>, ThumbnailError> {
     let max_px = max_px.clamp(MIN_THUMB_PX, MAX_THUMB_PX);
-    probe(src, cache_dir, max_px).map(|probed| match probed {
+    probe(src, cache_dir, max_px, read_header).map(|probed| match probed {
         Probed::Answer(path) => Some(path),
         Probed::Build { .. } => None,
     })
 }
 
-/// `probe` 가 가른 결과. `Build` 는 디코더를 쥔 채 돌려줘 `ensure_thumbnail` 이 같은 파일을 다시 열지 않는다.
-enum Probed {
+/// `probe` 가 가른 결과. `Build` 는 `open` 이 연 것을 쥔 채 돌려준다 — `ensure_thumbnail` 에서는 그 디코더로 디코드한다.
+enum Probed<S> {
     Answer(PathBuf),
     Build {
         jpg: PathBuf,
         png: PathBuf,
-        decoder: Box<dyn ImageDecoder>,
+        source: S,
     },
 }
 
-/// `probe_thumbnail` 과 `ensure_thumbnail` 이 함께 쓰는 판정. `max_px` 는 이미 범위 안으로 묶인 값이다.
+/// `probe_thumbnail` 과 `ensure_thumbnail` 이 함께 쓰는 판정. `max_px` 는 이미 범위 안으로 묶인 값이다. 원본을 여는 방법만
+/// 호출자가 정한다(`open` — 판정만 하는 쪽은 `read_header`, 만드는 쪽은 `open_decoder`, 이유는 `header` 의 모듈 doc).
 ///
 /// 1. 키를 짓고 캐시 히트면 그 경로. 원본을 열지 않는다.
 /// 2. 헤더 크기가 `MAX_SOURCE_PIXELS` 를 넘으면 `TooLarge`, 두 변 모두 `max_px` 이하면 원본 경로.
 /// 3. 그 밖에는 `Build`.
-fn probe(src: &Path, cache_dir: &Path, max_px: u32) -> Result<Probed, ThumbnailError> {
+fn probe<S: Header>(
+    src: &Path,
+    cache_dir: &Path,
+    max_px: u32,
+    open: impl FnOnce(&Path) -> Result<S, ThumbnailError>,
+) -> Result<Probed<S>, ThumbnailError> {
     let source = source_identity(src)?;
     let [jpg, png] = cache_paths(cache_dir, &source, max_px);
 
@@ -229,10 +240,10 @@ fn probe(src: &Path, cache_dir: &Path, max_px: u32) -> Result<Probed, ThumbnailE
         }
     }
 
-    // 판정을 디코더로 하는 이유: 크기는 헤더만 읽으면 알 수 있고(`dimensions()`), 만들어야 하면
-    // 같은 디코더가 그대로 픽셀을 디코드한다(`Build` 가 쥐고 간다) — 파일을 두 번 열지 않는다.
-    let decoder = open_decoder(src)?;
-    let (width, height) = checked_dimensions(decoder.as_ref())?;
+    // 크기는 헤더만 읽으면 알 수 있다. 만드는 쪽에서는 `open` 이 연 디코더가 그대로 픽셀을 디코드한다(`Build` 가 쥐고
+    // 간다) — 파일을 두 번 열지 않고, 상한을 잰 그 디코더로 디코드한다.
+    let opened = open(src)?;
+    let (width, height) = checked_dimensions(&opened)?;
 
     // ‼️ 여기서 빠져나간다 — 디코드 **전에**. 이미 충분히 작다 — 줄일 것이 없으므로 **원본 경로를
     // 그대로 돌려준다.** 작은 이미지는 디코드도, 인코딩도, 캐시 항목도 필요 없다.
@@ -246,7 +257,11 @@ fn probe(src: &Path, cache_dir: &Path, max_px: u32) -> Result<Probed, ThumbnailE
     if width <= max_px && height <= max_px {
         return Ok(Probed::Answer(src.to_path_buf()));
     }
-    Ok(Probed::Build { jpg, png, decoder })
+    Ok(Probed::Build {
+        jpg,
+        png,
+        source: opened,
+    })
 }
 
 /// 원본 한 장의 썸네일을 보장하고 그 경로를 돌려준다. 판정은 `probe_thumbnail` 과 같은 `probe` 다 — 이미 있으면
@@ -259,9 +274,9 @@ pub fn ensure_thumbnail(
     max_px: u32,
 ) -> Result<PathBuf, ThumbnailError> {
     let max_px = max_px.clamp(MIN_THUMB_PX, MAX_THUMB_PX);
-    let (jpg, png, decoder) = match probe(src, cache_dir, max_px)? {
+    let (jpg, png, decoder) = match probe(src, cache_dir, max_px, open_decoder)? {
         Probed::Answer(path) => return Ok(path),
-        Probed::Build { jpg, png, decoder } => (jpg, png, decoder),
+        Probed::Build { jpg, png, source } => (jpg, png, source),
     };
     let thumb = scale(decoder, max_px)?;
 
@@ -310,10 +325,22 @@ fn decode_limits() -> Limits {
     limits
 }
 
-/// 원본을 연다 — 형식은 내용으로 가리고(못 가리면 확장자로, `with_guessed_format`), 디코더에
-/// `decode_limits` 를 건다. 픽셀은 아직 디코드하지 않았다(헤더 판정 뒤 `DynamicImage::from_decoder` 가 한다).
+/// 원본을 디코드할 디코더로 연다 — 만드는 쪽의 `probe` 가 쓴다. 형식 판정은 `guessed_reader`, 한도는 `decoder_with_limits`.
+/// 픽셀은 아직 디코드하지 않았다(헤더 판정 뒤 `DynamicImage::from_decoder` 가 한다). JPEG 이면 압축 파일 전체를 읽는다 —
+/// image 0.25.10 의 `JpegDecoder::new` 가 디코드에 쓸 버퍼를 먼저 채운다. 앱 프로세스의 판정은 이것 대신 `read_header` 를 쓴다.
 fn open_decoder(src: &Path) -> Result<Box<dyn ImageDecoder>, ThumbnailError> {
-    let mut reader = ImageReader::open(src)?.with_guessed_format()?;
+    decoder_with_limits(guessed_reader(src)?)
+}
+
+/// 원본을 열고 형식을 가린다 — 내용으로, 못 가리면 확장자로(`with_guessed_format` — 앞 16바이트를 보고 처음으로 되돌린다).
+fn guessed_reader(src: &Path) -> std::io::Result<ImageReader<BufReader<File>>> {
+    ImageReader::open(src)?.with_guessed_format()
+}
+
+/// 가린 형식의 디코더를 만들고 `decode_limits` 를 건다.
+fn decoder_with_limits(
+    mut reader: ImageReader<BufReader<File>>,
+) -> Result<Box<dyn ImageDecoder>, ThumbnailError> {
     reader.limits(decode_limits());
     let mut decoder = reader.into_decoder()?;
     decoder.set_limits(decode_limits())?;
@@ -321,8 +348,8 @@ fn open_decoder(src: &Path) -> Result<Box<dyn ImageDecoder>, ThumbnailError> {
 }
 
 /// 헤더의 가로 · 세로. 픽셀 수가 `MAX_SOURCE_PIXELS` 를 넘으면 디코드 전에 `TooLarge` 로 거절한다.
-fn checked_dimensions(decoder: &dyn ImageDecoder) -> Result<(u32, u32), ThumbnailError> {
-    let (width, height) = decoder.dimensions();
+fn checked_dimensions(header: &impl Header) -> Result<(u32, u32), ThumbnailError> {
+    let (width, height) = header.size();
     if u64::from(width) * u64::from(height) > MAX_SOURCE_PIXELS {
         return Err(ThumbnailError::TooLarge { width, height });
     }
@@ -743,6 +770,31 @@ mod tests {
         let src = write_jpeg(dir.path(), "screenshot.jpg", 297, 413);
 
         assert_eq!(probe_thumbnail(&src, &cache, 2048).unwrap(), Some(src));
+        assert!(!cache.exists());
+    }
+
+    /// 픽셀 수 상한을 넘는 JPEG 은 판정이 헤더만 읽고 거절한다 — 헤더는 30000x20000 을 말하고 스캔 데이터는 16x16 이다.
+    /// 무엇이 이것을 실패시키는가: 헤더만 읽는 판정의 크기가 SOF 의 것이 아닌 것, 그 크기에 상한을 재지 않는 것.
+    #[test]
+    fn probing_a_jpeg_over_the_pixel_cap_is_refused() {
+        use header::fixtures::{jpeg, with_sof_size};
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("huge.jpg");
+        std::fs::write(&src, with_sof_size(jpeg(16, 16, None), 30_000, 20_000)).unwrap();
+
+        let result = probe_thumbnail(&src, &cache, 320);
+
+        assert!(
+            matches!(
+                result,
+                Err(ThumbnailError::TooLarge {
+                    width: 30_000,
+                    height: 20_000
+                })
+            ),
+            "{result:?}"
+        );
         assert!(!cache.exists());
     }
 

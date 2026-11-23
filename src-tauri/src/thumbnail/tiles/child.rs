@@ -7,8 +7,10 @@
 //! 프로세스에서 16320x12240 JPEG 의 생성 직후 phys_footprint 는 783 MB, malloc 의 사용 중 메모리는 0.1 MB 였고, 그
 //! 783 MB 가 1초 간격 표본에서 17 · 26 · 43 초 동안 그대로였다(세 회차, macOS 26.6.2). 자식이 끝나면 그 메모리는 자식의
 //! 것이라 부모의 footprint 에 남지 않는다. 전역 `MallocLargeCache=0` 은 앱 전체의 큰 할당에 걸리므로 쓰지 않는다.
-//! Linux · Windows 는 재지 않았다. 부모에 남는 것은 픽셀 디코드 없는 판정(`probe_tiles`)이다 — JPEG 이면 압축 파일 전체를
-//! 읽는다(image 0.25 의 `JpegDecoder::new`).
+//! Linux · Windows 는 재지 않았다. 부모에 남는 것은 헤더만 읽는 판정(`probe_tiles` — `thumbnail::header`)이다. 판정이 image 의
+//! 디코더를 열던 때는 JPEG 이면 압축 파일 전체를 읽어(image 0.25.10 의 `JpegDecoder::new`), 위 사진을 판정하고 자식에 맡긴 뒤
+//! 부모의 phys_footprint 가 42.0–42.1 MB(`MALLOC_LARGE (empty)` 39.7 MB)로 90 초 창 끝까지 그대로였다. 헤더만 읽게 한 뒤에는
+//! 2.3 MB 다(두 코드를 번갈아 잰 두 회차씩).
 //!
 //! argv 는 `{exe} --internal-build-tile-pyramid {원본} {캐시 디렉터리}`, 답(종료 코드 0 의 stdout)은 `TileSet` 의 JSON.
 //! 생성 중 비정상 종료한 자식이 남긴 임시 디렉터리는 부모가 지운다(`build_in_child`). 부모가 끝나 멈춘 자식(종료 코드 3)의
