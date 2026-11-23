@@ -52,8 +52,8 @@ const MACOS_LAUNCH_PREFIXES: &[&str] = &["-psn_", "-NS", "-Apple"];
 /// single-instance) must have that flag added to the GUI side here, or its launch ends
 /// as a usage error.
 ///
-/// `main` asks `tile_child::run_if_requested` (§397) before this function: the tile
-/// build's child flag never reaches it.
+/// `main` asks `tile_child::run_if_requested` and `thumbnail_child::run_if_requested`
+/// (§397) before this function: the two child flags never reach it.
 pub fn mode_for(args: &[OsString]) -> Mode {
     let Some(first) = args.get(1) else {
         return Mode::Gui;

@@ -16,6 +16,8 @@ use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader, Limits};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub mod child;
+pub(crate) mod child_process;
 pub mod tiles;
 
 /// 디코더에 허용하는 최대 할당. `Limits`의 기본값 512MiB는 **실제 사진을 거른다** —
@@ -183,16 +185,39 @@ fn hex32(digest: &[u8]) -> String {
     })
 }
 
-/// 원본 한 장의 썸네일을 보장하고 그 캐시 경로를 돌려준다. 이미 있으면 디코드하지 않는다.
+/// 픽셀을 디코드하지 않고 이 원본의 답을 가려 본다 — 만들어야 하면 `None`. 아무것도 쓰지 않는다. 블로킹 함수이고
+/// 원본은 헤더만 디코드한다(JPEG 이면 압축 파일 전체를 읽는다 — image 0.25 의 `JpegDecoder::new`).
 ///
-/// 블로킹 함수다 — 호출자가 `spawn_blocking`으로 감싼다(thumbnail_cmd.rs).
-pub fn ensure_thumbnail(
+/// 답은 둘이다(순서는 `probe` 의 doc): 캐시 히트면 그 캐시 경로, 원본이 이미 `max_px` 안이면 원본 경로.
+/// `photo_thumbnail` 명령이 이것을 앱 프로세스에서 부르고, `None` 인 사진만 자식 프로세스에 맡긴다(`child`).
+pub fn probe_thumbnail(
     src: &Path,
     cache_dir: &Path,
     max_px: u32,
-) -> Result<PathBuf, ThumbnailError> {
+) -> Result<Option<PathBuf>, ThumbnailError> {
     let max_px = max_px.clamp(MIN_THUMB_PX, MAX_THUMB_PX);
+    probe(src, cache_dir, max_px).map(|probed| match probed {
+        Probed::Answer(path) => Some(path),
+        Probed::Build { .. } => None,
+    })
+}
 
+/// `probe` 가 가른 결과. `Build` 는 디코더를 쥔 채 돌려줘 `ensure_thumbnail` 이 같은 파일을 다시 열지 않는다.
+enum Probed {
+    Answer(PathBuf),
+    Build {
+        jpg: PathBuf,
+        png: PathBuf,
+        decoder: Box<dyn ImageDecoder>,
+    },
+}
+
+/// `probe_thumbnail` 과 `ensure_thumbnail` 이 함께 쓰는 판정. `max_px` 는 이미 범위 안으로 묶인 값이다.
+///
+/// 1. 키를 짓고 캐시 히트면 그 경로. 원본을 열지 않는다.
+/// 2. 헤더 크기가 `MAX_SOURCE_PIXELS` 를 넘으면 `TooLarge`, 두 변 모두 `max_px` 이하면 원본 경로.
+/// 3. 그 밖에는 `Build`.
+fn probe(src: &Path, cache_dir: &Path, max_px: u32) -> Result<Probed, ThumbnailError> {
     let source = source_identity(src)?;
     let [jpg, png] = cache_paths(cache_dir, &source, max_px);
 
@@ -200,21 +225,45 @@ pub fn ensure_thumbnail(
     // 알 수 있다 — 히트 판정에 디코드를 끼우면 캐시의 의미가 없다.
     for hit in [&jpg, &png] {
         if hit.is_file() {
-            return Ok(hit.clone());
+            return Ok(Probed::Answer(hit.clone()));
         }
     }
 
-    let Some(thumb) = scale_if_needed(src, max_px)? else {
-        // 이미 충분히 작다 — 줄일 것이 없으므로 **원본 경로를 그대로 돌려준다.**
-        //
-        // 이 분기가 없으면 `thumbnail`이 경계에 맞춰 **확대한다**: 297x413 / 10KB
-        // 스크린샷이 1473x2048 / 113KB로 캐시됐다. 원본보다 11배 크고 더 흐린 파일을
-        // 만들어 두는 셈이라, 문서에 스크린샷 몇 장만 있어도 캐시가 원본 총량을 넘는다.
-        //
-        // 호출자에게는 투명하다: 프론트엔드는 받은 경로를 asset URL로 바꿀 뿐이고, 작은
-        // 이미지에 대해서는 원본이 곧 올바른 프리뷰다.
-        return Ok(src.to_path_buf());
+    // 판정을 디코더로 하는 이유: 크기는 헤더만 읽으면 알 수 있고(`dimensions()`), 만들어야 하면
+    // 같은 디코더가 그대로 픽셀을 디코드한다(`Build` 가 쥐고 간다) — 파일을 두 번 열지 않는다.
+    let decoder = open_decoder(src)?;
+    let (width, height) = checked_dimensions(decoder.as_ref())?;
+
+    // ‼️ 여기서 빠져나간다 — 디코드 **전에**. 이미 충분히 작다 — 줄일 것이 없으므로 **원본 경로를
+    // 그대로 돌려준다.** 작은 이미지는 디코드도, 인코딩도, 캐시 항목도 필요 없다.
+    //
+    // 이 분기가 없으면 `thumbnail`이 경계에 맞춰 **확대한다**: 297x413 / 10KB
+    // 스크린샷이 1473x2048 / 113KB로 캐시됐다. 원본보다 11배 크고 더 흐린 파일을
+    // 만들어 두는 셈이라, 문서에 스크린샷 몇 장만 있어도 캐시가 원본 총량을 넘는다.
+    //
+    // 호출자에게는 투명하다: 프론트엔드는 받은 경로를 asset URL로 바꿀 뿐이고, 작은
+    // 이미지에 대해서는 원본이 곧 올바른 프리뷰다.
+    if width <= max_px && height <= max_px {
+        return Ok(Probed::Answer(src.to_path_buf()));
+    }
+    Ok(Probed::Build { jpg, png, decoder })
+}
+
+/// 원본 한 장의 썸네일을 보장하고 그 경로를 돌려준다. 판정은 `probe_thumbnail` 과 같은 `probe` 다 — 이미 있으면
+/// 디코드하지 않고, 원본이 이미 작으면 원본 경로다.
+///
+/// 블로킹 함수다. 앱에서는 썸네일 자식 프로세스(`child`)가 부른다 — 원본을 통째로 디코드하는 자리라서다.
+pub fn ensure_thumbnail(
+    src: &Path,
+    cache_dir: &Path,
+    max_px: u32,
+) -> Result<PathBuf, ThumbnailError> {
+    let max_px = max_px.clamp(MIN_THUMB_PX, MAX_THUMB_PX);
+    let (jpg, png, decoder) = match probe(src, cache_dir, max_px)? {
+        Probed::Answer(path) => return Ok(path),
+        Probed::Build { jpg, png, decoder } => (jpg, png, decoder),
     };
+    let thumb = scale(decoder, max_px)?;
 
     // 계층 디렉터리까지 만든다 — 캐시 루트가 아니다(경로가 `{cache}/{세대}/{max_px}/`).
     std::fs::create_dir_all(tier_dir(cache_dir, max_px))?;
@@ -237,20 +286,9 @@ pub fn ensure_thumbnail(
     Ok(out)
 }
 
-/// 축소가 필요하면 축소한 이미지를, 원본이 이미 `max_px` 안에 들면 `None`을 준다.
-///
-/// 판정을 여기서 하는 이유: 크기는 헤더만 읽으면 알 수 있고(`dimensions()`), 그 판정을 위해
-/// 파일을 두 번 열지 않으려면 디코더를 이미 손에 든 이 자리가 유일하게 맞다.
-fn scale_if_needed(src: &Path, max_px: u32) -> Result<Option<DynamicImage>, ThumbnailError> {
-    let mut decoder = open_decoder(src)?;
-    let (width, height) = checked_dimensions(decoder.as_ref())?;
-
-    // ‼️ 여기서 빠져나간다 — 디코드 **전에**. 작은 이미지는 디코드도, 인코딩도, 캐시 항목도
-    // 필요 없다. `thumbnail`은 이 경우 확대하므로, 그냥 넘기면 원본보다 크고 흐린 파일이 된다.
-    if width <= max_px && height <= max_px {
-        return Ok(None);
-    }
-
+/// 디코드하고 방향을 적용해 `max_px` 안으로 줄인다. `probe` 가 줄여야 한다고 가른 디코더만 받는다 — `thumbnail`은
+/// 경계보다 작은 이미지를 확대하므로, 그 판정 없이 부르면 원본보다 크고 흐린 파일이 된다.
+fn scale(mut decoder: Box<dyn ImageDecoder>, max_px: u32) -> Result<DynamicImage, ThumbnailError> {
     // ‼️ 방향은 디코더에서 **먼저** 읽는다. `from_decoder`가 디코더를 소비하므로 그 뒤엔
     // 물어볼 대상이 없다. 이걸 빼먹으면 세로로 찍은 사진의 썸네일만 눕는다 — 에디터의
     // `<img>`는 WKWebView가 EXIF를 적용해 바로 세워 주므로 같은 사진이 두 방향으로 보인다.
@@ -262,7 +300,7 @@ fn scale_if_needed(src: &Path, max_px: u32) -> Result<Option<DynamicImage>, Thum
 
     // `thumbnail`은 소스 픽셀 하나가 타깃 픽셀 하나에 기여하는 정수 알고리즘이다 — 20배
     // 축소에서는 필터 품질 차이가 보이지 않고, `resize`의 Lanczos보다 훨씬 싸다.
-    Ok(Some(img.thumbnail(max_px, max_px)))
+    Ok(img.thumbnail(max_px, max_px))
 }
 
 /// 디코더 한도 — 할당 상한만 `MAX_DECODE_ALLOC` 로 올린다(나머지는 `Limits` 기본값).
@@ -672,6 +710,40 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         assert_eq!(purge_stale_generations(&dir.path().join("nope")), 0);
+    }
+
+    /// 판정은 만들어야 하는 사진에 `None` 을 주고 아무것도 쓰지 않는다 — 만들기는 자식의 몫이다. 만든 뒤의 판정은
+    /// `ensure_thumbnail` 이 돌려준 그 경로이고, 범위 밖의 크기는 둘이 같은 값으로 묶는다. 무엇이 이것을 실패시키는가:
+    /// 판정이 만들기까지 하는 것, 판정과 만들기가 다른 키나 다른 계층을 보는 것(히트를 놓쳐 매번 자식을 띄운다).
+    #[test]
+    fn probing_answers_none_for_a_build_and_the_built_path_after_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "photo.jpg", 4000, 3000);
+
+        assert_eq!(probe_thumbnail(&src, &cache, 320).unwrap(), None);
+        assert_eq!(probe_thumbnail(&src, &cache, u32::MAX).unwrap(), None);
+        assert!(!cache.exists(), "a probe writes nothing");
+
+        let small = ensure_thumbnail(&src, &cache, 320).unwrap();
+        let clamped = ensure_thumbnail(&src, &cache, u32::MAX).unwrap();
+
+        assert_eq!(probe_thumbnail(&src, &cache, 320).unwrap(), Some(small));
+        assert_eq!(
+            probe_thumbnail(&src, &cache, u32::MAX).unwrap(),
+            Some(clamped)
+        );
+    }
+
+    /// 이미 작은 원본은 판정이 원본 경로로 답하고, 캐시에 아무것도 쓰지 않는다.
+    #[test]
+    fn probing_a_source_within_the_bound_answers_the_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = dir.path().join("cache");
+        let src = write_jpeg(dir.path(), "screenshot.jpg", 297, 413);
+
+        assert_eq!(probe_thumbnail(&src, &cache, 2048).unwrap(), Some(src));
+        assert!(!cache.exists());
     }
 
     #[test]

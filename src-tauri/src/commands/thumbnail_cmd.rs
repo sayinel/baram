@@ -3,7 +3,8 @@
 use tauri::Manager;
 
 /// 동시에 도는 썸네일 생성 수. 생성 한 건이 원본 하나를 통째로 디코드하므로(파노라마면
-/// ~600MB) 이 숫자가 곧 순간 최대 메모리다. 첫 스캔은 사진 수만큼 한 번만 돌고 그 뒤로는
+/// ~600MB) 이 숫자가 곧 순간 최대 메모리다 — 디코드는 자식 프로세스가 하므로(`thumbnail_child`) 그
+/// 메모리는 앱이 아니라 동시에 도는 자식들의 것이다. 첫 스캔은 사진 수만큼 한 번만 돌고 그 뒤로는
 /// 캐시 히트라 처리량보다 최대치를 눌러 두는 편이 맞다.
 const MAX_CONCURRENT_THUMBNAILS: usize = 2;
 
@@ -102,7 +103,7 @@ pub fn cache_dir<R: tauri::Runtime>(
 /// 2가 새로 드러내는 내용은 없다: 그 둘째 조건은 프런트엔드가 원본을 `convertFileSrc(같은 경로)` 로
 /// 요청할 때 asset 프로토콜이 묻는 질문 그대로다(tauri `protocol/asset.rs`). 받아들이는 파일은 웹뷰가
 /// 이미 바이트 전체를 읽을 수 있는 파일이다. 늘어나는 것은 사용자가 직접 고르지 않은 그 폴더의
-/// 일반 파일을 Rust 디코더가 연다는 것(`thumbnail::ensure_thumbnail` 이 일반 파일만 받고,
+/// 일반 파일을 Rust 디코더가 연다는 것(`thumbnail::probe_thumbnail` · `ensure_thumbnail` 이 일반 파일만 받고,
 /// `MAX_SOURCE_PIXELS` · `MAX_DECODE_ALLOC` 와 동시 `MAX_CONCURRENT_THUMBNAILS` 상한 아래)과 앱 캐시에
 /// 쓰는 썸네일 파일이다.
 ///
@@ -136,6 +137,10 @@ async fn authorize_source<R: tauri::Runtime>(
 ///
 /// 실패는 프론트엔드에서 원본 폴백으로 처리한다(photo-thumbnail.ts) — svg처럼 래스터가
 /// 아닌 것, 확장자와 내용이 다른 것, 상한을 넘는 것이 모두 여기로 떨어진다.
+///
+/// ‼️ 단위 시험에서 이 명령을 만들기까지 몰면 `own_executable()` 이 이 바이너리가 아니라 libtest 하네스라 `Crashed` 가
+/// 된다 — 아래 시험은 이미 작은 원본만 쓴다. 자식으로 가는 길은 `thumbnail::child` 의 시험과
+/// `tests/thumbnail_child.rs`(진짜 실행 파일 `CARGO_BIN_EXE_baram`)가 돈다.
 #[tauri::command]
 pub async fn photo_thumbnail<R: tauri::Runtime>(
     path: String,
@@ -151,8 +156,17 @@ pub async fn photo_thumbnail<R: tauri::Runtime>(
 
     let started = std::time::Instant::now();
     let logged_path = path.clone();
+    // 판정은 이 프로세스에서, 만들기는 이 실행 파일의 자식 프로세스에서(`thumbnail_child`) — 디코드가 해제한 큰
+    // 버퍼를 macOS malloc 이 쥐어도 끝난 자식의 몫이라 이 프로세스의 메모리에 남지 않는다(이유와 측정은 그 모듈 doc).
+    // 허가는 판정 앞에서 얻는다: 판정도 원본을 연다(JPEG 은 압축 파일 전체를 읽는다) — 허가 없이 두면 갤러리의
+    // 첫 스캔이 사진 수만큼 동시에 읽는다.
     let result = tokio::task::spawn_blocking(move || {
-        crate::thumbnail::ensure_thumbnail(std::path::Path::new(&path), &cache, max_px)
+        crate::thumbnail::child::ensure_thumbnail_via_child(
+            std::path::Path::new(&path),
+            &cache,
+            max_px,
+            crate::thumbnail::child_process::own_executable,
+        )
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -205,7 +219,7 @@ pub async fn photo_thumbnail<R: tauri::Runtime>(
 /// `tile_child` 의 모듈 doc). `tests/tile_child.rs` 는 stdin 이 처음부터 EOF 인 자식이 피라미드 없이 끝나는 것과, 부모가
 /// stdin 을 쥔 동안에는 같은 원본을 끝까지 짓는 것을 확인한다. 앱 프로세스의 종료가 EOF 를 만드는지는 시험하지 않는다.
 ///
-/// ‼️ 단위 시험에서 이 명령을 생성까지 몰면 `current_exe()` 가 이 바이너리가 아니라 libtest 하네스라, 하네스가 모르는
+/// ‼️ 단위 시험에서 이 명령을 생성까지 몰면 `own_executable()` 이 이 바이너리가 아니라 libtest 하네스라, 하네스가 모르는
 /// 플래그로 끝나 `Crashed` 가 된다. 부모 쪽은 진짜 실행 파일(`CARGO_BIN_EXE_baram`)로 `tests/tile_child.rs` 가 돈다.
 #[tauri::command]
 pub async fn image_tiles<R: tauri::Runtime>(
@@ -250,7 +264,7 @@ pub async fn image_tiles<R: tauri::Runtime>(
     let result = tokio::task::spawn_blocking(move || {
         // 자식이 끝날 때까지 쥔다 — 둘째 생성이 첫 자식과 겹치지 않게(`TileSemaphore`).
         let _permit = permit;
-        std::env::current_exe()
+        crate::thumbnail::child_process::own_executable()
             .map_err(ChildError::Spawn)
             .and_then(|exe| build_in_child(&exe, std::path::Path::new(&path), &cache))
     })
@@ -314,9 +328,9 @@ mod tests {
         }
     }
 
-    /// A 4x4 PNG. It already fits the requested size, so `ensure_thumbnail` hands back the
-    /// source path (`scale_if_needed` → `None`) and writes nothing — the mock app's cache
-    /// directory is never created.
+    /// A 4x4 PNG. It already fits the requested size, so `probe_thumbnail` hands back the
+    /// source path in this process without spawning a child and writes nothing: the mock
+    /// app's cache directory is never created.
     fn tiny_png(path: &Path) -> PathBuf {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         image::RgbImage::new(4, 4).save(path).unwrap();
