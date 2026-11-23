@@ -68,7 +68,7 @@ icu_normalizer = { version = "2.1", default-features = false, features = ["compi
 # same grammar has a version sentinel (`literal-measured-stack.test.ts`); this
 # is Rust's. Moving it means re-running `scripts/literal-parity.sh` and the
 # `md::literal` corpus, then updating this line deliberately.
-pulldown-cmark = { version = "=0.13.4", default-features = false }
+pulldown-cmark = { version = "=0.13.6", default-features = false }
 keyring = { version = "3", features = ["apple-native"] }
 # vendored-openssl builds OpenSSL from source so the x86_64 slice of the
 # macOS Universal Binary cross-compiles without a host-arch system OpenSSL.
