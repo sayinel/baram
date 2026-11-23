@@ -85,8 +85,8 @@ describe("searchSymbols with the real emoji table", () => {
   it.each([
     ["heart", "❤️"],
     ["smile", "😄"],
-    ["+1", "\u{1F44D}\u{FE0F}"], // 👍 as the table spells it, with VS16
-    ["thumbsup", "\u{1F44D}\u{FE0F}"],
+    ["+1", "\u{1F44D}"], // 👍 as the table spells it: no VS16 since emojibase-data 18
+    ["thumbsup", "\u{1F44D}"],
   ])(
     "puts the emoji whose GitHub shortcode is %j first",
     async (query, char) => {
@@ -96,7 +96,7 @@ describe("searchSymbols with the real emoji table", () => {
 
   it("finds an emoji by the start of a shortcode no keyword or label has", async () => {
     // `thumbsu` starts only `thumbsup`: 👍's label words are "thumbs" and "up".
-    expect(chars("thumbsu", await emoji())[0]).toBe("\u{1F44D}\u{FE0F}");
+    expect(chars("thumbsu", await emoji())[0]).toBe("\u{1F44D}");
   });
 
   it("still finds 🇰🇷 by its name in either language", async () => {
