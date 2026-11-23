@@ -37,6 +37,15 @@ pub mod tile_child {
     };
     pub use crate::thumbnail::tiles::TileSet;
 }
+/// §397 The thumbnail build's child mode — public for the same two callers as `tile_child`
+/// (`main.rs`, and `tests/thumbnail_child.rs`).
+pub mod thumbnail_child {
+    pub use crate::thumbnail::child::{
+        build_thumbnail_in_child, ensure_thumbnail_via_child, run_if_requested, ViaChildError,
+        THUMBNAIL_FLAG,
+    };
+    pub use crate::thumbnail::tiles::child::ChildError;
+}
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};

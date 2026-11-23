@@ -3,10 +3,13 @@
 
 fn main() {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    // §397 The app runs each tile pyramid build in a short-lived child of this binary
-    // (`tile_child`). Checked before `cli::mode_for`, which would send the child's flag
-    // to the CLI as an unknown argument.
+    // §397 The app runs each tile pyramid build and each thumbnail build in a short-lived
+    // child of this binary (`tile_child`, `thumbnail_child`). Checked before `cli::mode_for`,
+    // which would send a child's flag to the CLI as an unknown argument.
     if let Some(code) = baram_lib::tile_child::run_if_requested(&args) {
+        std::process::exit(code);
+    }
+    if let Some(code) = baram_lib::thumbnail_child::run_if_requested(&args) {
         std::process::exit(code);
     }
     // §387 GUI or CLI. `cli::mode_for` holds the rule and why it is written from the

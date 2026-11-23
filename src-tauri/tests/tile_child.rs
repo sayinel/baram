@@ -206,7 +206,8 @@ fn a_missing_executable_is_a_spawn_error() {
 }
 
 /// `main` routes the child's flag to the child mode before the CLI sees it: the usage
-/// error is the child's own (exit 2, its usage line), not clap's "unexpected argument".
+/// error is the child's own (exit 2, its usage line), not clap's "unexpected argument" and
+/// not the thumbnail mode's, whose usage line also has `<source> <cache dir>` but not this flag.
 #[test]
 fn the_child_flag_reaches_the_child_mode_and_not_the_cli() {
     let out = Command::new(exe())
@@ -218,5 +219,6 @@ fn the_child_flag_reaches_the_child_mode_and_not_the_cli() {
     assert!(out.stdout.is_empty());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("<source> <cache dir>"), "{stderr}");
+    assert!(stderr.contains(CHILD_FLAG), "{stderr}");
     assert!(!stderr.contains("unexpected argument"), "{stderr}");
 }
