@@ -145,8 +145,8 @@ mod tests {
     fn the_measured_pulldown_version_is_the_one_in_the_lock_file() {
         let lock = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
         assert!(
-            lock.contains("name = \"pulldown-cmark\"\nversion = \"0.13.4\""),
-            "pulldown-cmark moved from 0.13.4: re-measure md::literal against remark (issue 669), then update this sentinel"
+            lock.contains("name = \"pulldown-cmark\"\nversion = \"0.13.6\""),
+            "pulldown-cmark moved from 0.13.6: re-measure md::literal against remark (issue 669), then update this sentinel"
         );
     }
 
