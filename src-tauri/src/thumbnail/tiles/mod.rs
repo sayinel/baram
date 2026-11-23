@@ -17,6 +17,7 @@ use image::metadata::Orientation;
 use image::{DynamicImage, ImageDecoder, ImageFormat, ImageReader};
 use serde::{Deserialize, Serialize};
 
+use super::header::{read_header, Header};
 use super::{checked_dimensions, decode_limits, open_decoder, source_identity, ThumbnailError};
 use pyramid::{write_pyramid, TILE_PX};
 
@@ -77,7 +78,7 @@ pub struct TileSize {
 }
 
 /// 디코드 없이 이 원본의 답을 가려 본다 — 만들어야 하면 `None`. 아무것도 쓰지 않는다(히트의 마지막 사용
-/// 갱신은 제외). 블로킹 함수이고 헤더만 읽는다.
+/// 갱신은 제외). 블로킹 함수이고 헤더만 읽는다(`read_header` — JPEG 은 SOS 마커까지).
 ///
 /// 순서 — 시험이 이 순서에 기댄다(`ensure_tiles` 가 같은 판정을 그대로 쓴다):
 /// 1. 키를 짓고 캐시 히트면 그것. 형식 판정보다 먼저다 — 히트는 원본을 열지 않는다. 히트면 manifest 의
@@ -95,27 +96,30 @@ pub fn probe_tiles(
     cache_dir: &Path,
     on_size: impl FnOnce(TileSize),
 ) -> Result<Option<TileSet>, ThumbnailError> {
-    probe(src, &cache::tiles_root(cache_dir), on_size).map(|probed| match probed {
+    probe(src, &cache::tiles_root(cache_dir), on_size, read_header).map(|probed| match probed {
         Probed::Answer(set) => Some(set),
         Probed::Build { .. } => None,
     })
 }
 
-/// `probe_tiles` 가 가른 결과. `Build` 는 디코더를 쥔 채 돌려줘 `ensure_tiles` 가 같은 파일을 다시 열지 않는다.
-enum Probed {
+/// `probe` 가 가른 결과. `Build` 는 `open` 이 연 것을 쥔 채 돌려준다 — `ensure_tiles` 에서는 그 디코더로 디코드한다.
+enum Probed<S> {
     Answer(TileSet),
     Build {
         key: String,
-        decoder: Box<dyn ImageDecoder>,
+        source: S,
         orientation: Orientation,
     },
 }
 
-fn probe(
+/// `probe_tiles` 와 `ensure_tiles` 가 함께 쓰는 판정(순서는 `probe_tiles` 의 doc). 원본을 여는 방법만 호출자가 정한다 —
+/// 썸네일의 `probe` 와 같다(`open`).
+fn probe<S: Header>(
     src: &Path,
     root: &Path,
     on_size: impl FnOnce(TileSize),
-) -> Result<Probed, ThumbnailError> {
+    open: impl FnOnce(&Path) -> Result<S, ThumbnailError>,
+) -> Result<Probed<S>, ThumbnailError> {
     let key = source_identity(src)?.digest(&[]);
     if let Some(cached) = hit(root, &key) {
         return Ok(Probed::Answer(cached));
@@ -124,13 +128,13 @@ fn probe(
         return Ok(Probed::Answer(TileSet::Original));
     }
 
-    let mut decoder = open_decoder(src)?;
-    let (width, height) = checked_dimensions(decoder.as_ref())?;
+    let mut opened = open(src)?;
+    let (width, height) = checked_dimensions(&opened)?;
     if width <= TILE_THRESHOLD_PX && height <= TILE_THRESHOLD_PX {
         return Ok(Probed::Answer(TileSet::Original));
     }
 
-    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let orientation = opened.exif_orientation();
     on_size(if swaps_axes(orientation) {
         TileSize {
             width: height,
@@ -141,7 +145,7 @@ fn probe(
     });
     Ok(Probed::Build {
         key,
-        decoder,
+        source: opened,
         orientation,
     })
 }
@@ -157,13 +161,13 @@ pub fn ensure_tiles(
     on_size: impl FnOnce(TileSize),
 ) -> Result<TileSet, ThumbnailError> {
     let root = cache::tiles_root(cache_dir);
-    let (key, mut decoder, orientation) = match probe(src, &root, on_size)? {
+    let (key, mut decoder, orientation) = match probe(src, &root, on_size, open_decoder)? {
         Probed::Answer(set) => return Ok(set),
         Probed::Build {
             key,
-            decoder,
+            source,
             orientation,
-        } => (key, decoder, orientation),
+        } => (key, source, orientation),
     };
     let icc = decoder.icc_profile()?;
     let mut img = DynamicImage::from_decoder(decoder)?;
@@ -774,6 +778,52 @@ mod tests {
             })
         );
         assert!(names_in(&cache::tiles_root(&cache)).is_empty());
+    }
+
+    /// 앱의 판정은 JPEG 의 헤더만 읽고 EXIF 방향을 적용한 크기를 알린다 — 원본은 2100x16 에 90° 시계 방향. 무엇이 이것을
+    /// 실패시키는가: 헤더만 읽는 판정이 EXIF 를 읽지 않는 것(2100x16 이 간다).
+    #[test]
+    fn the_probe_announces_the_oriented_size_of_a_jpeg() {
+        use crate::thumbnail::header::fixtures::{exif_orientation, jpeg};
+        let dir = TempDir::new().unwrap();
+        let cache = dir.path().join("cache");
+        let src = dir.path().join("portrait.jpg");
+        std::fs::write(&src, jpeg(2100, 16, Some(exif_orientation(6)))).unwrap();
+
+        let seen = Cell::new(None);
+        let answer = probe_tiles(&src, &cache, |size| seen.set(Some(size))).unwrap();
+
+        assert_eq!(answer, None);
+        assert_eq!(
+            seen.get(),
+            Some(TileSize {
+                width: 16,
+                height: 2100
+            })
+        );
+        assert!(!cache.exists());
+    }
+
+    /// 픽셀 수 상한을 넘는 JPEG 은 앱의 판정이 헤더만 읽고 거절한다(헤더 30000x20000, 스캔 데이터 16x16).
+    #[test]
+    fn the_probe_refuses_a_jpeg_over_the_pixel_cap() {
+        use crate::thumbnail::header::fixtures::{jpeg, with_sof_size};
+        let dir = TempDir::new().unwrap();
+        let src = dir.path().join("huge.jpg");
+        std::fs::write(&src, with_sof_size(jpeg(16, 16, None), 30_000, 20_000)).unwrap();
+
+        let result = probe_tiles(&src, &dir.path().join("cache"), no_size);
+
+        assert!(
+            matches!(
+                result,
+                Err(ThumbnailError::TooLarge {
+                    width: 30_000,
+                    height: 20_000
+                })
+            ),
+            "{result:?}"
+        );
     }
 
     #[test]

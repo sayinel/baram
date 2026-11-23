@@ -31,11 +31,13 @@ mod thumbnail;
 /// crate: `main.rs` hands it argv before `cli::mode_for`, and `tests/tile_child.rs` runs
 /// the parent side against the real binary — cargo sets `CARGO_BIN_EXE_baram` for
 /// integration tests and benches, which link the library as an external crate.
+/// `probe_tiles` (the parent's decision before the child) is public for
+/// `tests/probe_allocations.rs`, which needs its own global allocator and so its own binary.
 pub mod tile_child {
     pub use crate::thumbnail::tiles::child::{
         build_in_child, run_if_requested, ChildError, CHILD_FLAG,
     };
-    pub use crate::thumbnail::tiles::TileSet;
+    pub use crate::thumbnail::tiles::{probe_tiles, TileSet, TileSize};
 }
 /// §397 The thumbnail build's child mode — public for the same two callers as `tile_child`
 /// (`main.rs`, and `tests/thumbnail_child.rs`).
