@@ -76,8 +76,8 @@ export function applyToDocumentSurface(
       // The tab is on its way OUT — the active tab has moved on, the install of
       // the next has not happened. The document is still here, but a dispatched
       // transaction would be attributed by the auto-save to the incoming tab (it
-      // reads the active tab at event time) and could write this document to
-      // that tab's file. So the state is updated WITHOUT an event:
+      // reads the active tab at event time), marking that tab dirty for an edit
+      // it never got, and not this one. So the state is updated WITHOUT an event:
       // `saveOutgoingTab` then caches and serializes the new state, and the
       // cache entry and text that may already exist are refreshed here as well.
       view.updateState(view.state.apply(tr));
@@ -165,9 +165,10 @@ function isKeepaliveView(view: EditorView): boolean {
 
 /**
  * A background tab's `openFiles` snapshot and dirty flag follow its document.
- * The auto-save only watches the active tab (use-auto-save.ts), so a change
- * made to a background document must announce itself: the close/quit guard
- * writes dirty background tabs from `openFiles`.
+ * The auto-save hears only edits made in the active editor (use-auto-save.ts):
+ * a save it armed before the tab was left still runs, but a change made here to
+ * a background document arms none. So the change must announce itself: the
+ * close/quit guard writes dirty background tabs from `openFiles`.
  */
 function publishBackgroundChange(
   tab: { tabId: string; textKey: string },

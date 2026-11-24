@@ -2,7 +2,7 @@
 //
 // 초판은 "탭이 열려 있으면 openFiles에 쓴다"였지만 openFiles는 라이브 문서의
 // **거울이 아니라 스냅샷**이다. 마크다운 자동 저장이 저장할 때마다 그 스냅샷을
-// 갱신하지만(use-auto-save.ts:97-104의 writeFile → setFileContent), 그것은
+// 갱신하지만(use-auto-save.ts 의 `saveTab`: writeFile → setFileContent), 그것은
 // 마지막 타이핑에서 `autoSaveDelay`(기본 2초, general-settings.ts:70)가 지난
 // **뒤**다. 즉 타이핑을 시작한 순간부터 그 디바운스가 끝날 때까지 openFiles는
 // 화면보다 낡아 있고, 자동 저장이 꺼져 있으면 저장할 때까지 계속 낡아 있다.

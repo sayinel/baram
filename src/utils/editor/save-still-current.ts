@@ -9,7 +9,13 @@ import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 import { useEditorStore } from "../../stores/editor/editor";
-import { loadedTabId } from "./programmatic-update";
+import { useFileStore } from "../../stores/file/file";
+import { liveViewOf, locateOpenTabSurface } from "./open-tab-surface";
+import {
+  editorHoldsWholeDocument,
+  isTabLoading,
+  loadedTabId,
+} from "./programmatic-update";
 import { serializeEditorState, serializeLiveDoc } from "./serialize-live-doc";
 
 /** What a save finds once its write has ended. */
@@ -37,6 +43,16 @@ export interface SaveOutcome {
 }
 
 /**
+ * Where a save of a tab reads its text now (`saveSource`): its document, with the editor to pass
+ * `documentSaveOutcome` once the write has ended — the editor holding the document, or the shared
+ * editor for a cached state, where a returning tab is installed — or its text in `openFiles`, when
+ * no document of the tab may be trusted.
+ */
+export type SaveSource =
+  | { doc: PMNode; judge: Editor; kind: "document"; serialize: () => string }
+  | { kind: "text"; text: string };
+
+/**
  * For a save that read the buffer: `holdsNow` is the buffer read again after the write. Buffers are
  * kept per tab, so the buffer is the tab's text whether or not the tab is active; what the tab
  * being active decides is only what the cache entry stands for (see `SaveOutcome.cacheIsDisk`).
@@ -55,7 +71,8 @@ export function bufferSaveOutcome(
 
 /**
  * For a save of `tabId`'s document from `editor`. `docAtWrite` is the document the written text came
- * from, and `written` is that text as the serializer puts it — a save that serialized the document
+ * from (`null` when it came from no document — `textSaveOutcome`), and `written` is that text as the
+ * serializer puts it — a save that serialized the document
  * passes what it wrote; the save on the way back from source mode wrote the buffer as typed, so it
  * passes the serialization of the document it installed, computed only if it is needed.
  *
@@ -77,20 +94,111 @@ export function bufferSaveOutcome(
 export function documentSaveOutcome(
   editor: Editor,
   tabId: string,
-  docAtWrite: PMNode,
+  docAtWrite: null | PMNode,
   written: (() => string) | string,
 ): SaveOutcome {
   const held = heldDocument(editor, tabId);
   if (held === null) return { cacheIsDisk: false, unchanged: false };
   const unchanged =
-    held.doc === docAtWrite ||
-    held.doc.eq(docAtWrite) ||
+    (docAtWrite !== null &&
+      (held.doc === docAtWrite || held.doc.eq(docAtWrite))) ||
     held.serialize() === (typeof written === "string" ? written : written());
   return {
     baseline: unchanged ? held.doc : undefined,
     cacheIsDisk: unchanged || held.live,
     unchanged,
   };
+}
+
+/**
+ * Where a save of `tabId` reads the tab's text now, or `null` when it may write none. `textKey` is
+ * the key of the tab's text in `openFiles`.
+ *
+ * The answer follows `locateOpenTabSurface`, which is where a tab's document is whether or not the
+ * tab is active (§3.6): the editor that holds it (the shared editor while the tab is installed in it,
+ * or its keep-alive editor), else the tab-switch cache, else — for a document not to be trusted
+ * (flagged stale, an incomplete keep-alive entry) or none left (a keep-alive editor evicted for
+ * another large tab puts its text there) — the `openFiles` text, which is also what the close guard's
+ * background save writes for such a tab (`backgroundText`). The shared editor is read only for the tab
+ * `loadedTabId` names, so a tab left during its save never writes the next tab's document.
+ *
+ * `null` for a tab in source mode, whose text is the source buffer; for a tab still loading, whose
+ * editor holds only the first blocks — what is typed into them before the load ends marks nothing
+ * dirty (`shouldSkipDirty`), so writing the text and recording it saved would drop that typing
+ * without a prompt; for a cached document whose `openFiles` text says something else (see the
+ * `cache` case); and with no text at all.
+ *
+ * With no surface access registered (a file window, a test), only `editor` holding the tab counts.
+ */
+export function saveSource(
+  editor: Editor,
+  tabId: string,
+  textKey: string,
+): null | SaveSource {
+  const access = useEditorStore.getState().documentSurfaceAccess;
+  if (access === null) {
+    return editorHoldsWholeDocument(tabId) ? fromEditor(editor) : null;
+  }
+  if (isTabLoading(tabId)) return null;
+  const surface = locateOpenTabSurface(tabId, liveViewOf(tabId));
+  switch (surface.kind) {
+    case "cache": {
+      const text = serializeEditorState(surface.state);
+      // The tab switch caches a tab's state with the same text in `openFiles` (`saveOutgoingTab`), and
+      // so does a change landed in the cache (`applyToDocumentSurface`). The way back from source
+      // mode caches the active tab's state alone (`use-source-mode.ts`), but that tab's document is
+      // read from the editor holding it, and leaving it rewrites both. So text that differs from the
+      // cache was written by something else, and the disk has that change. A task toggled from the
+      // task panel in a dirty background tab splices its line into the text only
+      // (`syncOpenSurfacesAfterDiskWrite`). A capture appended on disk, an archive and an auto-reload
+      // replace the whole text (`syncOpenSurfacesAfterFileRewrite`, `triggerAutoReload`), but each
+      // checks first that the tab is not dirty (`assertNoUnsavedTab`, `findBlockingTab`, the
+      // watcher's and the keep-alive resume's `isDirty` before they call the reload; a forced reload
+      // marks the tab stale, which `locateOpenTabSurface` answers with "text"), so they reach a
+      // dirty tab here only when it went dirty between that check and the write. Writing the cache
+      // would take the change back off the disk without a word, so the tab stays dirty and the close
+      // guard asks about it.
+      if (useFileStore.getState().openFiles.get(textKey) !== text) return null;
+      return {
+        doc: surface.state.doc,
+        judge: access.editor,
+        kind: "document",
+        serialize: () => text,
+      };
+    }
+    case "keepalive":
+      return fromEditor(surface.editor);
+    case "source":
+      return null;
+    case "text": {
+      const text = useFileStore.getState().openFiles.get(textKey);
+      return text === undefined ? null : { kind: "text", text };
+    }
+    case "view":
+      // `liveViewOf` gave the keep-alive editor's view if there is one, else the shared editor's.
+      return fromEditor(access.keepaliveEditor(tabId) ?? access.editor);
+  }
+}
+
+/**
+ * For a save that wrote a tab's `openFiles` text (`saveSource` answered `text`): judged by where the
+ * tab's text is now. A document installed from that text while the write ran is what the tab holds
+ * then, and is judged as a document save is; otherwise the text is compared, and is the disk only if
+ * it did not move on — a newer text is the tab's, and replacing it would lose it.
+ */
+export function textSaveOutcome(
+  editor: Editor,
+  tabId: string,
+  textKey: string,
+  written: string,
+): SaveOutcome {
+  const now = saveSource(editor, tabId, textKey);
+  if (now === null) return { cacheIsDisk: false, unchanged: false };
+  if (now.kind === "document") {
+    return documentSaveOutcome(now.judge, tabId, null, written);
+  }
+  const unchanged = now.text === written;
+  return { cacheIsDisk: unchanged, unchanged };
 }
 
 /**
@@ -103,6 +211,15 @@ export function tabStillShows(tabId: string, filePath: string): boolean {
   return useEditorStore
     .getState()
     .tabs.some((t) => t.id === tabId && t.filePath === filePath);
+}
+
+function fromEditor(editor: Editor): SaveSource {
+  return {
+    doc: editor.state.doc,
+    judge: editor,
+    kind: "document",
+    serialize: () => serializeLiveDoc(editor),
+  };
 }
 
 /** Where `tabId`'s document is, seen from `editor` (see `documentSaveOutcome`), or `null`. */

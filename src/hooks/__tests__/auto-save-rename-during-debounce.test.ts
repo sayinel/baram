@@ -109,7 +109,7 @@ describe("code auto-save after a rename during the debounce", () => {
   });
 });
 
-// 이것을 실패시키는 것: use-auto-save.ts 의 save() 가 지금의 탭 대신 `pending.filePath` 에 쓰게
+// 이것을 실패시키는 것: use-auto-save.ts 의 `saveTab` 이 지금의 탭 대신 예약할 때 잡은 경로에 쓰게
 // 되돌리면 옛 경로에 쓴다.
 describe("markdown auto-save after a rename during the debounce", () => {
   it("writes the document under its new name", async () => {

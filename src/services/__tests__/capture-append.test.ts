@@ -177,8 +177,9 @@ describe("appendCaptureToNotes — disk branch", () => {
     );
   });
 
-  // ‼️ 모든 저장 경로가 하는 일이다(`use-auto-save.ts:115` 등). 빠뜨리면 워처가 우리
-  // 쓰기를 **외부 변경**으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다.
+  // ‼️ 탭의 저장이 하는 일이다(자동 저장 `use-auto-save.ts` 의 `saveTab`, 닫기 가드 `use-close-guard.ts`
+  // 의 `saveDirtyTab` 등이 `updateLastSaveMtime` 을 부른다). 빠뜨리면 워처가 우리 쓰기를 **외부
+  // 변경**으로 읽어 토스트를 띄우고 실행 취소 스택을 버린다.
   it("seeds the self-write baseline so the watcher does not call it external", async () => {
     openTab({ id: "bg", isDirty: false });
 
