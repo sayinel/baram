@@ -39,8 +39,10 @@ export function saveOutgoingTab(
 
   // §perf-large-file C3.5: keep-alive tabs — hide their DOM, skip cache write
   // and skip outgoing serialize. The live editor IS the state, and `saveDirtyTab` reads it there
-  // (`backgroundText`). The auto-save hook follows the active editor, so it does not run on this
-  // one while it is hidden.
+  // (`backgroundText`), as does an auto-save this tab armed before it was left (`saveSource`).
+  // The auto-save hears edits only in the active editor. A block ID rename or a table width clear
+  // landed in this one while it is hidden goes through `applyToDocumentSurface`, which marks the
+  // tab dirty (`open-tab-surface.ts`).
   if (prevKeepaliveEditor) {
     // Visibility is controlled by React state (activeKeepaliveEditor) —
     // no manual DOM style toggle needed. onActiveEditorChange(null) in the

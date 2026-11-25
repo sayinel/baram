@@ -380,8 +380,8 @@ describe("installAppUpdate — unsaved work", () => {
     expect(useAppUpdateStore.getState().status).toBe("available");
   });
 
-  // A dirty BACKGROUND tab is the case auto-save does not reach while it stays there:
-  // `use-auto-save.ts` returns from `save()` once the tab that scheduled it is no longer active.
+  // A dirty BACKGROUND tab may have no auto-save coming: auto-save off, or a change made to its
+  // document while it was in the background (a block ID rename landing), which arms no save.
   it("asks about a background tab, not only the active one", async () => {
     const { install } = await findUpdate();
     useEditorStore.setState({

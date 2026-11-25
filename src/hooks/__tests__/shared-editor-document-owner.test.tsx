@@ -485,7 +485,7 @@ describe("leaving a tab takes its name away", () => {
 
   // What fails these: dropping `forgetLoadedTab` from the tab switch. The first would write the
   // document from before the reload, which undoes a global replace on disk.
-  it("a keystroke while a returning tab parses writes nothing", async () => {
+  it("a keystroke while a returning tab parses writes nothing from the document before it", async () => {
     mountApp();
     await installed("t1");
     show("t2");
@@ -496,10 +496,16 @@ describe("leaving a tab takes its name away", () => {
     await settle(10);
 
     expect(loadedTabId()).toBeNull();
+    const reloaded = useFileStore.getState().openFiles.get(NOTE);
     type();
     await settle(AUTO_SAVE_PASSED);
 
-    expect(written).toEqual([]);
+    // The keystroke lands in the document the editor still shows, and arms the returning tab's
+    // save. That save may write the tab's text — what the reload left, and what the parse is
+    // installing (§3.6, `saveSource`) — but never the shown document with the keystroke in it.
+    expect(
+      written.filter(([path, text]) => path !== NOTE || text !== reloaded),
+    ).toEqual([]);
     open();
     await installed("t1");
     expect(editor.state.doc.textContent).toContain("NOTE");
