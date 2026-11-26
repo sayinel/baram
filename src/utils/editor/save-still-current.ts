@@ -148,16 +148,17 @@ export function saveSource(
       // so does a change landed in the cache (`applyToDocumentSurface`). The way back from source
       // mode caches the active tab's state alone (`use-source-mode.ts`), but that tab's document is
       // read from the editor holding it, and leaving it rewrites both. So text that differs from the
-      // cache was written by something else, and the disk has that change. A task toggled from the
-      // task panel in a dirty background tab splices its line into the text only
-      // (`syncOpenSurfacesAfterDiskWrite`). A capture appended on disk, an archive and an auto-reload
-      // replace the whole text (`syncOpenSurfacesAfterFileRewrite`, `triggerAutoReload`), but each
-      // checks first that the tab is not dirty (`assertNoUnsavedTab`, `findBlockingTab`, the
-      // watcher's and the keep-alive resume's `isDirty` before they call the reload; a forced reload
-      // marks the tab stale, which `locateOpenTabSurface` answers with "text"), so they reach a
-      // dirty tab here only when it went dirty between that check and the write. Writing the cache
-      // would take the change back off the disk without a word, so the tab stays dirty and the close
-      // guard asks about it.
+      // cache was written by something else, and the disk has that change. Each such writer checks
+      // first that the tab is not dirty, so it reaches a dirty tab here only when the tab went dirty
+      // between that check and the write. For a task written from the task panel the check is the
+      // router, which sends a dirty tab's write to that tab's own document (`resolveTaskWriteTarget`,
+      // §313); a write it sends to the disk splices its line into the text
+      // (`syncOpenSurfacesAfterDiskWrite`). A capture appended on disk, an archive and an
+      // auto-reload replace the whole text (`syncOpenSurfacesAfterFileRewrite`, `triggerAutoReload`)
+      // after `assertNoUnsavedTab`, `findBlockingTab`, and the watcher's and the keep-alive resume's
+      // `isDirty`; a forced reload marks the tab stale, which `locateOpenTabSurface` answers with
+      // "text". Writing the cache would take the change back off the disk without a word, so the tab
+      // stays dirty and the close guard asks about it.
       if (useFileStore.getState().openFiles.get(textKey) !== text) return null;
       return {
         doc: surface.state.doc,

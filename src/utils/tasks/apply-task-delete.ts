@@ -1,8 +1,10 @@
-// §312 줄 삭제의 라우팅 — 디스크·라이브 ProseMirror 문서·소스 버퍼 세 경로 전부.
+// §312 줄 삭제의 라우팅 — 디스크·라이브 ProseMirror 문서·소스 버퍼, 그리고 §313 저장하지 않았고
+// 활성 편집기에 설치되지 않은 탭의 글(`background` — 그 탭의 다음 저장이 읽는 자리)까지 네 경로 전부.
 //
-// 어디에 쓸지는 `resolveTaskWriteTarget`이 정한다(규칙의 유일한 정의). 그 세 경로 중
-// 하나라도 빠뜨리면 조용히 사라지는 삭제가 된다 — 소스 모드로 열어 둔 파일에서 지운 줄이
-// 화면에서만 사라지고 저장하면 되살아나는 식이다.
+// 어디에 쓸지는 `resolveTaskWriteTarget`이 정한다(규칙의 유일한 정의). 그 경로 중
+// 하나라도 빠뜨리면 조용히 되살아나는 삭제가 된다 — 소스 모드로 열어 둔 파일에서 지운 줄이
+// 화면에서만 사라지고 저장하면 되살아나는 식이다. 저장하지 않은 배경 탭의 파일에서 디스크로
+// 지운 줄도 그 탭의 다음 저장이 되살렸다.
 //
 // 편집 쓰기(`applyTaskWrite`)와 나란한 함수를 따로 두는 이유가 둘 있다:
 //
@@ -20,6 +22,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
+import { unsavedTabText } from "../editor/unsaved-tab-text";
 import { markSourceTabDirty, resolveTaskWriteTarget } from "./apply-task-write";
 import { isSameLine, lineAt, removeLine } from "./line-splice";
 
@@ -49,6 +52,9 @@ export async function applyTaskDelete(
   } else if (target.kind === "document" && editor) {
     // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다.
     return deleteFromDocument(task, editor, target.tabId);
+  } else if (target.kind === "background") {
+    // 디스크로 흘리지 않는다 — 닿을 자리가 없으면 stale이다.
+    return deleteFromUnsavedTab(task, target.tabId);
   }
 
   // §312 편집 쓰기와 같은 관문이다(`applyTaskWrite`의 주석에 이유가 있다). 여기서
@@ -116,4 +122,21 @@ function deleteFromSourceBuffer(
   access.setSourceBuffer(tabId, next);
   markSourceTabDirty(tabId);
   return { kind: "source" };
+}
+
+/**
+ * §313 저장하지 않은 탭이 활성 편집기에 설치돼 있지 않을 때 — 그 탭의 다음 저장이 읽는 자리에서
+ * 지운다(`unsavedTabText`, `writeToUnsavedTab`과 같은 이유). 동기라 읽기와 내려놓기 사이에 틈이 없다.
+ */
+function deleteFromUnsavedTab(
+  task: TaskEntry,
+  tabId: string,
+): TaskDeleteResult {
+  const now = unsavedTabText(tabId, task.path);
+  if (now === null) return { kind: "stale", target: "document" };
+  const next = contentWithoutLine(now.text, task);
+  if (next === null || !now.land(next)) {
+    return { kind: "stale", target: "document" };
+  }
+  return { kind: "document" };
 }

@@ -438,7 +438,9 @@ describe("a panel's write to the active tab while its document is on the way", (
 
   // What fails this: routing on "active and dirty" alone. The task write would read the tab before
   // it from the editor as this tab's text, and the re-read would then put that in the document.
-  it("a task write on a dirty active tab goes to disk until the tab is installed", async () => {
+  // §313 Until the install the router answers `background`. Here the tab installs from its text,
+  // so `unsavedTabText` refuses the write (stale) rather than put it in text the install has read.
+  it("a task write on a dirty active tab reads the editor only once the tab is installed", async () => {
     mountApp();
     await installed("t1");
     const open = holdParse();
@@ -446,7 +448,10 @@ describe("a panel's write to the active tab while its document is on the way", (
     await settle(10);
     act(() => useEditorStore.getState().markDirty("t3", true));
 
-    expect(resolveTaskWriteTarget(OTHER, editor)).toEqual({ kind: "disk" });
+    expect(resolveTaskWriteTarget(OTHER, editor)).toEqual({
+      kind: "background",
+      tabId: "t3",
+    });
 
     open();
     await installed("t3");
