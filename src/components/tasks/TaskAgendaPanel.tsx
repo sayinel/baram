@@ -65,7 +65,7 @@ export function TaskAgendaPanel() {
 
   const byId = useZettelIndexStore((s) => s.byId);
   // §305 문서 경로 판정에 필요한 라이브 Editor — 활성 탭이 없으면 null이고,
-  // 라우터는 그 경우 디스크로 폴백한다.
+  // 라우터는 그 경우 라이브 문서 경로를 쓰지 않는다(dirty 탭은 §313 `background`로).
   const editor = useEditorContext();
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
 

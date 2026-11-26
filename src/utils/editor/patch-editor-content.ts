@@ -13,8 +13,13 @@
 // 반영하는 것이다. 히스토리에 넣으면 되돌리기가 디스크에 이미 쓰인 변경을 화면에서만
 // 되돌려 놓고, 다음 저장이 그 되돌린 내용을 파일에 써서 디스크와 화면이 갈라진다.
 // 넣지 않으면 기존 항목들이 이 스텝을 통과해 재배치될 뿐 그대로 살아남는다.
+//
+// 위의 "이미 디스크에 있는" 과 `addToHistory` 의 이유는 `patchEditorContent` 의 것이다. 같은
+// 트랜잭션을 메타 없이 짓는 `contentPatch` 는 §313 아직 저장되지 않은 변경에도 쓰인다
+// (`unsaved-tab-text.ts`) — 그 메타와 이유는 그쪽이 단다.
 
 import type { Node } from "@tiptap/pm/model";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { markdownToProsemirror } from "../../pipeline";
@@ -28,6 +33,29 @@ interface TopLevelDiff {
 }
 
 /**
+ * `state`의 문서를 `markdown`으로 맞추는 트랜잭션 — 바뀐 최상위 블록 구간만 갈아끼운다.
+ * 이미 같으면 `null`. 메타는 달지 않는다: 이 변경이 무엇인지(디스크에 이미 있는 것인지,
+ * 아직 저장되지 않은 것인지)는 호출자가 안다.
+ */
+export function contentPatch(
+  state: EditorState,
+  markdown: string,
+): null | Transaction {
+  const next = markdownToProsemirror(markdown, state.schema);
+  const range = topLevelDiff(state.doc, next);
+  if (!range) return null;
+
+  const replacement: Node[] = [];
+  for (let i = range.fromIndex; i < range.toIndexNew; i++) {
+    replacement.push(next.child(i));
+  }
+
+  // 선택은 손대지 않는다 — Transaction이 스텝을 통과시켜 알아서 옮긴다. 여기서
+  // 다시 세우면 바뀐 구간 **밖에** 있던 커서까지 근처로 끌어당긴다.
+  return state.tr.replaceWith(range.fromPos, range.toPosOld, replacement);
+}
+
+/**
  * `markdown`이 이미 문서와 같으면 **아무것도 보내지 않고** `false`.
  *
  * 이 `false`가 중요하다: 앱 자신의 쓰기는 동기 경로와 워처 경로 양쪽에서 도착할 수
@@ -38,19 +66,8 @@ export function patchEditorContent(
   view: EditorView,
   markdown: string,
 ): boolean {
-  const next = markdownToProsemirror(markdown, view.state.schema);
-  const range = topLevelDiff(view.state.doc, next);
-  if (!range) return false;
-
-  const replacement: Node[] = [];
-  for (let i = range.fromIndex; i < range.toIndexNew; i++) {
-    replacement.push(next.child(i));
-  }
-
-  const tr = view.state.tr;
-  tr.replaceWith(range.fromPos, range.toPosOld, replacement);
-  // 선택은 손대지 않는다 — Transaction이 스텝을 통과시켜 알아서 옮긴다. 여기서
-  // 다시 세우면 바뀐 구간 **밖에** 있던 커서까지 근처로 끌어당긴다.
+  const tr = contentPatch(view.state, markdown);
+  if (!tr) return false;
   tr.setMeta("addToHistory", false);
   tr.setMeta(CONTENT_SYNC_META, true);
   view.dispatch(tr);

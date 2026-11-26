@@ -3,7 +3,9 @@
 // 편집 조작(체크·기한·태그)은 `line`을 바꾸지 않는다. 삭제만 바꾼다 — 지운 줄 아래의
 // 번호를 하나씩 올린다(`dropLineFromBuffer`). 그 계산은 **저장 전 표면에 대해** 맞고
 // 디스크에 대해서는 틀리다. 라우터는 조작마다 다시 판정하므로, 그 표면이 사라지는 순간
-// (탭 전환·탭 닫기) 다음 조작이 **표면 기준 번호를 들고 디스크로** 간다.
+// (탭을 닫으면) 다음 조작이 **표면 기준 번호를 들고 디스크로** 간다. §313 탭 전환으로는 사라지지
+// 않는다 — 저장하지 않은 탭의 다음 조작은 그 탭의 글로 간다(`background`, 아래 "다른 탭으로
+// 옮기면" 시험).
 //
 // 그것이 왜 조용한 데이터 손실인가: 낙관적 잠금은 `(줄 번호, 원문)` 쌍만 본다. 바이트가
 // 같은 이웃 줄이 하나라도 있으면 잠금이 **통과하고** 사용자가 방금 지운 그 줄에 날짜가
@@ -168,6 +170,7 @@ function task(over: Partial<TaskEntry> = {}): TaskEntry {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useEditorStore.getState().registerDocumentSurfaceAccess(null);
   disk = "";
   buffer = "";
   // 디스크 IPC는 실제로 디스크를 고친다 — 잘못된 줄에 찍힌 날짜를 눈으로 셀 수 있어야 한다.
@@ -215,7 +218,7 @@ describe("§312 저장 전 삭제 뒤의 디스크 라우팅", () => {
     useTaskStore.getState().setAll([task(), B1, B2]);
 
     await runTaskTriageAction("delete", B1, ctx(FAKE_EDITOR));
-    switchAway();
+    closeTab();
 
     // 살아남은 `b`는 이제 스토어에서 1번 줄이다 — 디스크에서는 2번 줄이다.
     const survivor = useTaskStore
@@ -239,7 +242,7 @@ describe("§312 저장 전 삭제 뒤의 디스크 라우팅", () => {
       ]);
 
     await runTaskTriageAction("delete", task(), ctx(FAKE_EDITOR));
-    switchAway();
+    closeTab();
 
     const survivor = useTaskStore.getState().tasks.find((x) => x.text === "c")!;
     await runTaskTriageAction("dueToday", survivor, ctx(FAKE_EDITOR));
@@ -303,7 +306,7 @@ describe("§312 저장 전 삭제 뒤의 디스크 라우팅", () => {
       .setAll([task(), task({ line: 1, raw: "- [ ] b", text: "b" })]);
 
     await runTaskTriageAction("delete", task(), ctx(FAKE_EDITOR));
-    switchAway();
+    closeTab();
 
     await runTaskTriageAction(
       "dueToday",
@@ -323,7 +326,7 @@ describe("§312 저장 전 삭제 뒤의 디스크 라우팅", () => {
       .setAll([task(), task({ line: 1, raw: "- [ ] b", text: "b" })]);
 
     await runTaskTriageAction("delete", task(), ctx(FAKE_EDITOR));
-    switchAway();
+    closeTab();
     const before = useTaskStore.getState().tasks;
 
     await runTaskTriageAction("dueToday", before[0], ctx(FAKE_EDITOR));
@@ -336,11 +339,44 @@ describe("§312 저장 전 삭제 뒤의 디스크 라우팅", () => {
     useTaskStore
       .getState()
       .setAll([task(), task({ line: 1, raw: "- [ ] b", text: "b" })]);
-    switchAway();
+    closeTab();
 
     await runTaskTriageAction("dueToday", task(), ctx(FAKE_EDITOR));
 
     expect(disk).toBe(`- [ ] a 📅${TODAY}\n- [ ] b\n`);
+  });
+
+  // §313 다른 탭으로 옮겨도 저장하지 않은 탭의 글은 그대로다 — 다음 조작은 디스크가 아니라 그 글로
+  // 가고, 그 글에서는 버퍼 기준 번호가 맞는 번호다. 예전에는 디스크로 가서 위 관문에 거절됐다.
+  it("다른 탭으로 옮기면 그 탭의 글에 쓴다 — 번호가 맞는 곳이다", async () => {
+    openDocumentTab("- [ ] a\n- [ ] b\n- [ ] b\n");
+    const B1 = task({ line: 1, raw: "- [ ] b", text: "b" });
+    useTaskStore
+      .getState()
+      .setAll([task(), B1, task({ line: 2, raw: "- [ ] b", text: "b" })]);
+
+    await runTaskTriageAction("delete", B1, ctx(FAKE_EDITOR));
+    switchAway();
+    // 실앱에서는 `useTabSwitching`이 등록한다 — 비어 있어, 그 탭의 글은 `openFiles`뿐이다.
+    useEditorStore.getState().registerDocumentSurfaceAccess({
+      editor: FAKE_EDITOR as never,
+      editorStateCache: new Map(),
+      isKeepaliveComplete: () => true,
+      keepaliveEditor: () => null,
+    });
+    const survivor = useTaskStore
+      .getState()
+      .tasks.find((x) => x.text === "b" && x.line === 1)!;
+    await runTaskTriageAction("dueToday", survivor, ctx(FAKE_EDITOR));
+
+    expect(useFileStore.getState().openFiles.get("a.md")).toBe(
+      `- [ ] a\n- [ ] b 📅${TODAY}\n`,
+    );
+    expect(disk).toBe("- [ ] a\n- [ ] b\n- [ ] b\n");
+    expect(setTaskField).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks.find((x) => x.line === 1)?.raw).toBe(
+      `- [ ] b 📅${TODAY}`,
+    );
   });
 
   // 같은 표면이 그대로 살아 있으면 번호와 그 표면이 서로 맞다 — 막을 이유가 없다.

@@ -21,7 +21,10 @@ import {
 } from "../../utils/tasks/task-triage";
 
 export interface TaskTriageOptions {
-  /** §305 라우터가 "활성 + dirty" 탭을 판정하는 데 쓴다 — 없으면 디스크로 간다. */
+  /**
+   * §305 라우터가 "활성 + dirty" 탭을 판정하는 데 쓴다 — 없으면 라이브 문서 경로를 쓰지 않는다
+   * (소스 모드 탭은 그대로 버퍼로, 그 밖의 dirty 탭은 §313 `background`로, 나머지는 디스크로).
+   */
   editor: Editor | null;
   exclude: string[];
   /**

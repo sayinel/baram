@@ -2,7 +2,8 @@
 //
 // 예전에는 타이머 하나가 "예약한 탭이 지금도 활성이면" 만 써서, 편집하고 지연 안에 다른 탭으로 옮기면
 // 그 탭은 dirty 로 남고 파일은 옛 내용 그대로였다. 앱이 묶는 대로 실제 훅(`useKeepaliveEditors` ·
-// `useSourceMode` · `useAutoSave(activeEditor)` · `useTabSwitching`)을 묶고, IPC 만 가짜로 둔다 —
+// `useAutoSave(activeEditor)` · `useSourceMode` · `useTabSwitching`)을 묶는다. 가짜는 IPC, 이벤트 구독,
+// 그리고 앱이 탭 전환 훅에 넘기는 콜백들(빈 함수, keep-alive 편집기는 `makeTestEditor`)이다 —
 // 떠난 탭의 문서는 탭 전환이 캐시에 넣고, keep-alive 편집기는 제 문서를 들고 있다가 밀려날 때 그 글을
 // `openFiles` 에 남긴다. 그 협력자들을 빼면 저장이 읽을 곳이 없거나 앱과 다른 곳을 읽는다.
 import { useRef } from "react";
@@ -81,6 +82,7 @@ function mountApp() {
   return renderHook(() => {
     const { activeEditor, keepalive, onActiveEditorChange } =
       useKeepaliveEditors(editor);
+    useAutoSave(activeEditor);
     const appendHandleRef = useRef<null | {
       handle: ProgressiveLoadHandle;
       tabId: string;
@@ -92,7 +94,6 @@ function mountApp() {
       editor: activeEditor,
       pool: keepalive,
     });
-    useAutoSave(activeEditor);
     useTabSwitching({
       appendHandleRef,
       createKeepaliveEditor: () => makeTestEditor("<p></p>"),
@@ -359,9 +360,11 @@ describe("a tab left during its auto-save debounce", { timeout: 20000 }, () => {
   });
 
   // What fails this: `saveSource` writing a cached document whose `openFiles` text says something
-  // else. A task toggled from the task panel in a file whose tab is dirty in the background goes to
-  // disk and is spliced into the text only (`syncOpenSurfacesAfterDiskWrite`); the cache still has
-  // the line from before. Writing it would take the toggle back off the disk.
+  // else. A task write that went to the disk is spliced into the text only
+  // (`syncOpenSurfacesAfterDiskWrite`); the cache still has the line from before. Writing it would
+  // take the toggle back off the disk. §313 The router sends a dirty tab's write to that tab's own
+  // document, so a dirty tab meets this splice only when it went dirty while the disk write was
+  // under way — the state played here.
   it("is not written over a task toggle that reached the disk and its text but not its cache", async () => {
     const withTask = "# NOTE\n\n- [ ] task\n";
     setText(NOTE, withTask);
@@ -371,7 +374,7 @@ describe("a tab left during its auto-save debounce", { timeout: 20000 }, () => {
     show("t3");
     await installed("t3");
 
-    // The task panel's write of a background tab: the disk, then the surfaces that show the file.
+    // A task write that went to the disk while the tab went dirty: the disk, then the surfaces.
     const toggled = "# NOTE\n\n- [x] task\n";
     disk.set(NOTE, toggled);
     act(() => {

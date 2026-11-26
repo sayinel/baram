@@ -1,8 +1,11 @@
 import type { TaskEntry } from "../../../ipc/types";
-import type { EditorTab } from "../../../stores/editor/editor";
+import type {
+  DocumentSurfaceAccess,
+  EditorTab,
+} from "../../../stores/editor/editor";
 import type { Editor } from "@tiptap/react";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../ipc/invoke", () => ({
   previewTaskFieldLine: vi.fn(),
@@ -73,6 +76,25 @@ const OPEN_TAB: EditorTab = {
   title: "note",
 };
 
+/**
+ * §313 표면 접근자 — 실앱에서는 `useTabSwitching`이 등록한다. 비어 있다(캐시도 keep-alive 편집기도
+ * 없다): 탭의 글은 `openFiles`뿐이다. 등록이 없으면 `unsavedTabText`는 그 탭의 문서가 어디 있는지
+ * 몰라 쓰지 않는다.
+ */
+function registerSurfaces(): void {
+  const access: DocumentSurfaceAccess = {
+    editor: FAKE_EDITOR as never,
+    editorStateCache: new Map(),
+    isKeepaliveComplete: () => true,
+    keepaliveEditor: () => null,
+  };
+  useEditorStore.getState().registerDocumentSurfaceAccess(access);
+}
+
+afterEach(() => {
+  useEditorStore.getState().registerDocumentSurfaceAccess(null);
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   markContentLoaded("t1");
@@ -129,19 +151,45 @@ describe("applyTaskWrite — 디스크 경로", () => {
     });
   });
 
-  it("배경 탭(비활성)이면 dirty여도 디스크로 보낸다 — 캐시된 PM 상태가 나중에 덮어쓴다", async () => {
+  // §313 What fails this: sending a dirty background tab to the disk, as the router did. The line
+  // reached the disk and the text, not the tab's document, and the tab's next save took it back off.
+  it("배경 dirty 탭은 디스크로 보내지 않는다 — 그 탭의 다음 저장이 읽는 글에 쓴다", async () => {
     useEditorStore.setState({
       activeTabId: "other",
       tabs: [OPEN_TAB],
     });
-    vi.mocked(setTaskState).mockResolvedValue("- [x] 초안");
+    registerSurfaces();
+    useFileStore.setState({
+      openFiles: new Map([["/v/note.md", "# 노트\n- [ ] 초안 📅2026-08-30\n"]]),
+    });
+    vi.mocked(previewTaskStateLine).mockResolvedValue("- [x] 초안");
     const before = useEditorStore.getState().contentRefreshKey;
+
+    expect(resolveTaskWriteTarget("/v/note.md", FAKE_EDITOR)).toEqual({
+      kind: "background",
+      tabId: "t1",
+    });
+    const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
+
+    expect(setTaskState).not.toHaveBeenCalled();
+    expect(serializeLiveDoc).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().contentRefreshKey).toBe(before);
+    expect(useFileStore.getState().openFiles.get("/v/note.md")).toBe(
+      "# 노트\n- [x] 초안\n",
+    );
+    expect(r).toEqual({ kind: "document", raw: "- [x] 초안" });
+  });
+
+  it("배경 탭이어도 clean이면 디스크로 보낸다 — 문서와 디스크가 이미 같다", async () => {
+    useEditorStore.setState({
+      activeTabId: "other",
+      tabs: [{ ...OPEN_TAB, isDirty: false }],
+    });
+    vi.mocked(setTaskState).mockResolvedValue("- [x] 초안");
 
     const r = await applyTaskWrite(TASK, TO_DONE, FAKE_EDITOR);
 
     expect(setTaskState).toHaveBeenCalled();
-    expect(serializeLiveDoc).not.toHaveBeenCalled();
-    expect(useEditorStore.getState().contentRefreshKey).toBe(before);
     expect(r).toEqual({ kind: "disk", raw: "- [x] 초안" });
   });
 
@@ -159,14 +207,20 @@ describe("applyTaskWrite — 디스크 경로", () => {
     expect(r).toEqual({ kind: "disk", raw: "- [x] 초안" });
   });
 
-  it("활성+dirty 탭이어도 editor가 없으면 디스크로 폴백한다", async () => {
+  // §313 탭의 문서는 `editor`가 아니라 `locateOpenTabSurface`가 찾는다. 여기서는 그 탭의 문서가
+  // 어느 편집기에도 캐시에도 없어 텍스트밖에 없고, 활성 탭의 텍스트는 설치 중일 수 있어 쓰지 않는다.
+  it("활성+dirty 탭에 editor가 없어도 디스크로 보내지 않는다", async () => {
     useEditorStore.setState({ activeTabId: "t1", tabs: [OPEN_TAB] });
-    vi.mocked(setTaskState).mockResolvedValue("- [x] 초안");
+    registerSurfaces();
+    useFileStore.setState({
+      openFiles: new Map([["/v/note.md", "# 노트\n- [ ] 초안 📅2026-08-30\n"]]),
+    });
 
     const r = await applyTaskWrite(TASK, TO_DONE, null);
 
-    expect(setTaskState).toHaveBeenCalled();
-    expect(r).toEqual({ kind: "disk", raw: "- [x] 초안" });
+    expect(setTaskState).not.toHaveBeenCalled();
+    expect(previewTaskStateLine).not.toHaveBeenCalled();
+    expect(r).toEqual({ kind: "stale", target: "document" });
   });
 
   it("IPC가 stale을 던지면 stale로 옮긴다", async () => {

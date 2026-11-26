@@ -264,10 +264,10 @@ describe("captureTask — 수집함이 더티 활성 탭일 때", () => {
   });
 });
 
-// §312 리뷰 Major 3 — `resolveTaskWriteTarget`은 "활성 + 더티"가 아닌 모든 탭을
-// 디스크로 보낸다. 배경 더티 탭도 그렇고, 그 탭으로 돌아오면 캐시된 EditorState가
-// 복원돼 append된 줄이 사라진다. 잃는 것이 체크 토글이 아니라 사용자의 문장이므로
-// 쓰지 않고 실패한다.
+// §312 리뷰 Major 3 — 배경 더티 탭의 파일에 디스크로 붙이면 그 탭으로 돌아올 때 캐시된
+// EditorState가 복원돼 append된 줄이 사라지고, 다음 저장이 파일에서도 지운다. 잃는 것이
+// 사용자의 문장이므로 쓰지 않고 실패한다. §313 라우터는 그런 탭에 `background`로 답하고,
+// 캡처는 그 갈래를 받지 않고 거절한다.
 describe("captureTask — 수집함이 저장하지 않은 배경 탭일 때", () => {
   function openTab(isDirty: boolean) {
     useEditorStore.setState({

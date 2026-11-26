@@ -36,6 +36,13 @@ import { isSameLine, lineAt, spliceLine } from "./line-splice";
  *
  * ‼️ dirty 탭에는 낡음 표시를 달지 않는다. 그 캐시는 아직 저장되지 않은 편집을 들고 있고,
  * 표시를 달면 탭 전환이 그것을 버린다 — 이 조작이 고치려던 것보다 나쁜 손실이다.
+ *
+ * §313 라우터는 dirty 탭의 쓰기를 디스크로 보내지 않는다(`resolveTaskWriteTarget`). 이 함수를
+ * 부르는 곳은 `applyTaskWrite`의 디스크 경로 하나라, 여기서 만나는 dirty 탭은 라우터가 디스크를
+ * 고른 뒤 IPC를 기다리는 사이 dirty가 된 탭뿐이다. 설치된 활성 탭이면 위 분기가 문서를 맞춘다.
+ * 그 밖의 탭은 문서에 이 줄이 없고 텍스트에는 있을 수 있다 — 탭 전환 캐시에 든 탭은 자동 저장이
+ * 둘이 다를 때 쓰지 않지만(`saveSource`의 `cache` 갈래), keep-alive 편집기에 든 탭에는 그 검사가
+ * 없다.
  */
 export function syncOpenSurfacesAfterDiskWrite(
   task: TaskEntry,

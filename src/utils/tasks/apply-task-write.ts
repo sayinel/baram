@@ -26,6 +26,7 @@ import { useFileStore } from "../../stores/file/file";
 import { linesDescribeUnsavedBuffer } from "../../stores/tasks/task-store";
 import { editorHoldsWholeDocument } from "../editor/programmatic-update";
 import { serializeLiveDoc } from "../editor/serialize-live-doc";
+import { unsavedTabText } from "../editor/unsaved-tab-text";
 import { isSameLine, lineAt, spliceLine } from "./line-splice";
 import { syncOpenSurfacesAfterDiskWrite } from "./sync-open-surfaces";
 
@@ -80,6 +81,8 @@ export type TaskWriteResult =
   | { kind: "stale"; target: StaleTarget };
 
 export type TaskWriteTarget =
+  /** §313 저장하지 않은 탭이 활성 편집기에 설치돼 있지 않다 — 그 탭의 다음 저장이 읽는 자리로. */
+  | { kind: "background"; tabId: string }
   | { kind: "disk" }
   | { kind: "document"; tabId: string }
   | { kind: "source"; tabId: string };
@@ -105,9 +108,8 @@ type StaleTarget = "buffer" | "disk" | "document" | "source";
  * - 그 밖의 실패(권한·디스크)는 **그대로 던진다** — 조용히 삼키면 사용자에게는
  *   원인 모를 죽은 체크박스로만 보인다(M1의 I5).
  *
- * `editor`는 활성 탭의 라이브 Tiptap Editor(없으면 `null`) — 문서 경로가
- * 유일하게 안전한 "활성 + dirty" 조건을 판정하고, 그 조건일 때 실제로 읽고
- * 쓸 라이브 문서를 얻는 데 쓴다.
+ * `editor`는 활성 탭의 라이브 Tiptap Editor(없으면 `null`) — 문서 경로의 "활성 + dirty +
+ * 설치 완료" 조건을 판정하고, 그 조건일 때 실제로 읽고 쓸 라이브 문서를 얻는 데 쓴다.
  */
 export async function applyTaskWrite(
   task: TaskEntry,
@@ -126,6 +128,9 @@ export async function applyTaskWrite(
     // `editor` 검사는 라우터가 이미 했지만 TS가 좁혀 주지 않는다 — 런타임에는
     // 거짓이 될 수 없는 조건이다.
     return await writeToDocument(task, change, editor, target.tabId);
+  } else if (target.kind === "background") {
+    // 디스크로 흘리지 않는다 — 닿을 자리가 없으면 stale이다(`writeToUnsavedTab`).
+    return await writeToUnsavedTab(task, change, target.tabId);
   }
 
   // §312 저장 전 삭제가 이 파일의 스토어 줄 번호를 그 저장 전 표면 기준으로 옮겨
@@ -245,8 +250,8 @@ export function isUnsavedWrite<R extends TaskDeleteResult | TaskWriteResult>(
  * 갖는다(tab-surface-renderers.tsx의 주석).
  * 여기서 세우는 것은 아젠다가 만든 프로그램적 쓰기 하나뿐이다.
  *
- * `markDirty`는 동등성 관문이 없어 tabs 배열을 새로 만들고 모든 구독자를 깨운다 —
- * 그래서 값이 이미 참이면 부르지 않는다.
+ * 값이 이미 참이면 부르지 않는다 — `markDirty`도 같은 값이면 상태를 그대로 돌려주므로
+ * (`editor.ts`) 이 검사는 호출 하나를 아낄 뿐이다.
  */
 export function markSourceTabDirty(tabId: string): void {
   const { markDirty, tabs } = useEditorStore.getState();
@@ -268,28 +273,36 @@ export function markSourceTabDirty(tabId: string): void {
  *   나가고, 화면의 버퍼가 그것을 다음 저장에서 되돌린다.
  * - **활성이 아니다.** 배경 탭의 버퍼도 그대로 살아 있고(`syncSourceBuffers`는 갈라진
  *   버퍼를 활성 여부와 무관하게 **보존한다**) 돌아와 저장하면 그것이 파일이 된다.
- *   문서 분기가 배경 탭을 거부하는 이유(캐시된 EditorState가 openFiles를 덮어쓴다)는
- *   버퍼에 해당하지 않는다 — 버퍼 Map 자체가 그 캐시다.
+ *   문서 분기가 배경 탭을 받지 않는 이유(넘겨받은 `editor`는 그 탭의 문서를 들지 않는다)는
+ *   버퍼에 해당하지 않는다 — 버퍼 Map은 탭마다 있다.
  * - **editor가 아니다.** 이 경로는 라이브 문서를 한 줄도 읽지 않는다.
  *
- * 문서 경로는 "활성 + dirty + 설치 완료" 탭에서만 안전하다. 그 밖의 모든 경우는 디스크로:
+ * 탭이 없거나 clean이면 디스크로:
  * - 탭이 없다(닫힌 파일) → 디스크가 유일한 진실원.
- * - 배경 탭 → openFiles에 써도 나중에 그 탭으로 돌아오면 캐시된 PM 상태가
- *   덮어쓴다(use-tab-switching.ts:466-482는 openFiles가 아니라
- *   editorStateCache를 복원한다) — 방금 만든 변경이 사라지고 탭만 거짓으로
- *   dirty가 된다.
- * - 활성이지만 clean → WYSIWYG 표면의 clean은 소스 모드와 달리 진짜다(dirty를
- *   Tiptap `update`에서 판정한다). 버퍼와 디스크가 이미 같으므로 디스크에 써도 잃는
- *   게 없다.
+ * - clean → WYSIWYG 표면의 clean은 소스 모드와 달리 진짜다(dirty를 Tiptap `update`에서
+ *   판정한다). 문서와 디스크가 이미 같으므로 디스크에 써도 잃는 게 없고, 열린 표면은 쓰기가
+ *   성공한 자리에서 맞춘다(`syncOpenSurfacesAfterDiskWrite` — 설치된 활성 탭은 그 문서를,
+ *   그 밖의 탭은 낡음 표시로).
  *
  *   §313 ‼️ 예전에는 여기에 "non-dirty 탭의 외부 변경 자동 리로드가 에디터를 알아서
  *   갱신한다"고 적혀 있었다. 그 문장이 결함이었다: 화면이 바뀌는 유일한 통로가 OS 워처
  *   왕복이었고, 그렇게 돌아온 변경은 **남의 편집**으로 도착해 토스트를 띄우고 실행 취소
  *   스택을 버렸으며, 배경 탭에서는 캐시된 PM 상태가 그것을 조용히 되돌렸다. 이제 쓰기가
  *   성공한 자리에서 열린 표면을 직접 맞춘다(`syncOpenSurfacesAfterDiskWrite`).
- * - 활성이지만 설치 전(§39) → 에디터가 든 것은 앞 탭의 문서이거나 채우는 중인 일부다. 그것을
- *   이 탭의 텍스트로 읽으면 남의 글이 이 탭의 `openFiles`로 들어간다. 배경 탭과 같이 다룬다.
- * - editor가 없다 → 문서를 읽을 방법이 없다.
+ *
+ * dirty 탭은 디스크로 보내지 않는다 — 그 탭의 다음 저장이 자기 글로 파일을 통째로 쓰므로, 그 글에
+ * 없는 변경은 그 저장이 디스크에서 다시 지운다.
+ * - "활성 + dirty + 설치 완료" → `document`. 넘겨받은 `editor`를 그 탭의 문서로 읽어도 되는
+ *   것은 그때뿐이다.
+ * - 그 밖의 dirty 탭 → `background`. 그 탭의 다음 저장이 읽는 자리(탭 전환 캐시 · keep-alive
+ *   편집기 · 아직 그 탭을 든 공유 편집기 · 텍스트)를 `unsavedTabText`가 찾아 거기에 쓴다.
+ *   - 배경 탭 → §313 예전에는 디스크로 보냈다. 변경이 디스크와 `openFiles`에는 들어가도 캐시된
+ *     문서에는 들어가지 않아, 돌아와 저장할 때 — §3.6(#1017) 뒤로는 떠난 탭의 자동 저장이 배경에서
+ *     쓸 때도 — 그 문서가 변경을 디스크에서 지웠다.
+ *   - 활성이지만 설치 전(§39) → 에디터가 든 것은 앞 탭의 문서이거나 채우는 중인 일부라 `editor`로
+ *     읽을 수 없다. 미뤄 둔 복원은 캐시를 그때 다시 읽으므로 캐시에 쓰면 되고, 텍스트에서 설치하는
+ *     중이면 `unsavedTabText`가 거절한다.
+ *   - editor가 없다 → 탭의 문서는 `editor`가 아니라 `locateOpenTabSurface`가 찾는다.
  */
 export function resolveTaskWriteTarget(
   path: string,
@@ -301,15 +314,11 @@ export function resolveTaskWriteTarget(
   // ‼️ 이 검사는 document 판정 **앞**에 있어야 한다. 소스 모드인 더티 활성 탭은
   // document 조건을 전부 만족하는 부분집합이라, 뒤로 옮기면 영원히 도달하지 못한다.
   if (sourceModeTabs.includes(tab.id)) return { kind: "source", tabId: tab.id };
-  if (
-    tab.id !== activeTabId ||
-    !tab.isDirty ||
-    !editor ||
-    !editorHoldsWholeDocument(tab.id)
-  ) {
-    return { kind: "disk" };
+  if (!tab.isDirty) return { kind: "disk" };
+  if (tab.id === activeTabId && editor && editorHoldsWholeDocument(tab.id)) {
+    return { kind: "document", tabId: tab.id };
   }
-  return { kind: "document", tabId: tab.id };
+  return { kind: "background", tabId: tab.id };
 }
 
 /** 변환 결과 줄만 Rust에서 받아온다 — 변환 로직을 TS에 재구현하지 않는다. */
@@ -419,4 +428,46 @@ async function writeToSourceBuffer(
   access.setSourceBuffer(tabId, applied.content);
   markSourceTabDirty(tabId);
   return { kind: "source", raw: applied.raw };
+}
+
+/**
+ * §313 저장하지 않은 탭이 활성 편집기에 설치돼 있지 않을 때 — 그 탭의 다음 저장이 읽는 자리에 쓴다
+ * (`unsavedTabText`). 디스크에는 쓰지 않는다: 그 저장이 탭의 편집과 함께 가져간다.
+ *
+ * `applyToContent`를 쓰지 않는 이유: 그것은 다시 읽은 글로 끼운 결과를 돌려주고, 호출자가 그것을
+ * 내려놓는 것은 그 약속이 풀린 **다음** 마이크로태스크다. 같은 파일에 쓰기 두 건이 함께 미리보기를
+ * 기다리면 둘 다 같은 글을 다시 읽고, 뒤에 내려놓는 쪽이 앞의 줄을 되돌린다 — 스토어는 앞의 쓰기를
+ * 이미 기록했다. 그래서 미리보기(`previewLine`)만 기다리고, 그 뒤 자리를 다시 찾고 줄을 확인하고
+ * 끼우고 내려놓는 데까지를 await 없이 한 번에 한다. 그 await 사이 탭이 돌아와 설치되거나, 다시
+ * 떠나거나, keep-alive 편집기를 잃었어도 내려놓는 곳은 지금 그 탭의 글이 있는 곳이다.
+ *
+ * 닿을 자리가 없으면(`null`) 또는 그 글에서 줄이 다르면 stale이다 — 저장하지 않은 편집이 줄을
+ * 밀었으면 그 탭의 글에서 그 번호는 다른 줄이다. 활성 dirty 탭의 문서 경로와 같은 회계를 탄다:
+ * `isDiskAuthoritative`가 거짓이라 디스크를 다시 읽지 않고, 단건 회계(`writeAndReconcile`)는
+ * 저장한 뒤 다시 하라고 알린다. 일괄 재예약은 stale 개수로 보고한다.
+ */
+async function writeToUnsavedTab(
+  task: TaskEntry,
+  change: TaskChange,
+  tabId: string,
+): Promise<TaskWriteResult> {
+  const before = unsavedTabText(tabId, task.path);
+  const current = before === null ? null : lineAt(before.text, task.line);
+  if (current === null || !isSameLine(current, task.raw)) {
+    return { kind: "stale", target: "document" };
+  }
+
+  const updated = await previewLine(current, change);
+
+  const now = unsavedTabText(tabId, task.path);
+  const currentNow = now === null ? null : lineAt(now.text, task.line);
+  const next =
+    now !== null && currentNow !== null && isSameLine(currentNow, task.raw)
+      ? spliceLine(now.text, task.line, updated)
+      : null;
+  // `land`이 거짓이면 그 글이 문서로 되읽히지 않는다 — 탭에 없는 줄을 스토어에 적지 않는다.
+  if (now === null || next === null || !now.land(next)) {
+    return { kind: "stale", target: "document" };
+  }
+  return { kind: "document", raw: updated };
 }
