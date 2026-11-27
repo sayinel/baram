@@ -35,6 +35,10 @@ import { registerFileWindowFile } from "../../services/file-windows";
 import { useContextStore } from "../../stores/context/context";
 import { isTabUnsaved, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
+import {
+  mergeBaseOf,
+  mergeWithoutBase,
+} from "../../utils/editor/conflict-merge";
 import { isMarkdownHref } from "../../utils/editor/local-link-nav";
 import {
   markContentLoaded,
@@ -143,8 +147,12 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const installSavedDocument = useCallback(
     (markdown: string) => {
       if (!editor) return;
-      useFileStore.getState().setFileContent(filePath, markdown);
+      // Parsed before anything is recorded: text that fails to parse is not what this window holds.
       const doc = markdownToProsemirror(markdown, editor.schema);
+      const { noteDiskText, setFileContent } = useFileStore.getState();
+      setFileContent(filePath, markdown);
+      // §3.6 What this window's text now descends from, and so what a later merge starts from.
+      noteDiskText(filePath, markdown);
       const caret = Math.min(editor.state.selection.anchor, doc.content.size);
       replaceEditorStateWithVim(
         editor.view,
@@ -257,11 +265,19 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
           } catch {
             return;
           }
-          // This window's own write coming back, or a write of what it already holds.
-          if (
-            diskContent === useFileStore.getState().openFiles.get(filePath) ||
-            diskContent === currentText(editor)
-          ) {
+          // This window's own write coming back. §3.6 Not recorded as the base here: a save or an
+          // install put this text in `openFiles` and recorded it then. `openFiles` can also hold a
+          // write this window did not take (`use-embed-sync` puts there what it writes to a block
+          // embed's file), and as the base that would make a merge read the window's lines as
+          // taking it back, and drop it unasked.
+          if (diskContent === useFileStore.getState().openFiles.get(filePath)) {
+            settleExternalChange();
+            return;
+          }
+          // A write of what this window already holds. §3.6 The file and the window's text meet
+          // here, so a later merge starts from it.
+          if (diskContent === currentText(editor)) {
+            useFileStore.getState().noteDiskText(filePath, diskContent);
             settleExternalChange();
             return;
           }
@@ -343,19 +359,27 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   }, [editor, externalChange, installSavedDocument, settleExternalChange]);
 
   const handleKeepLocal = useCallback(() => {
-    // Ignore the external change; the next save overwrites it on disk.
+    // Ignore the external change; the next save overwrites it on disk. §3.6 Until then the disk holds
+    // the other program's text, which the user chose to keep their edits over. A later merge starts
+    // from it, or it would bring back what was just declined.
+    if (externalChange !== null) {
+      useFileStore.getState().noteDiskText(filePath, externalChange);
+    }
     settleExternalChange();
-  }, [settleExternalChange]);
+  }, [externalChange, filePath, settleExternalChange]);
 
   const handleMerge = useCallback(async () => {
     if (!editor || externalChange === null) return;
     try {
-      const result = await mergeTexts(
-        useFileStore.getState().openFiles.get(filePath) ?? "",
-        currentText(editor),
-        externalChange,
+      // §3.6 Against the disk text this window's text descends from (`diskTexts`), as the main window
+      // merges. With none, or an empty one, the whole file is one question.
+      const base = mergeBaseOf(filePath);
+      const local = currentText(editor);
+      setMergeState(
+        base
+          ? (await mergeTexts(base, local, externalChange)).segments
+          : mergeWithoutBase(local, externalChange),
       );
-      setMergeState(result.segments);
     } catch (err) {
       logger.warn("[FileEditor] merge failed", err);
     }
