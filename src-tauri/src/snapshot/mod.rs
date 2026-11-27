@@ -89,8 +89,24 @@ pub struct DiffStats {
 /// §3.6 3-way merge result — a sequence of stable (auto-merged) and conflict
 /// (overlapping edits) segments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MergeResult {
+    /// Lines without their line endings. A final newline is not a line (`final_newline`).
     pub segments: Vec<MergeSegment>,
+    /// What the merge view joins the chosen lines with (`line_ending_of` in merge.rs).
+    pub line_ending: LineEnding,
+    /// Whether the merge view ends the text with `line_ending` once more: the external side's
+    /// final newline or none when it changed it from the base's, the local side's otherwise.
+    pub final_newline: bool,
+}
+
+/// A line ending, serialized as its characters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LineEnding {
+    #[serde(rename = "\n")]
+    Lf,
+    #[serde(rename = "\r\n")]
+    Crlf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

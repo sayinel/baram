@@ -5,7 +5,7 @@
 // to reload the active tab from its `openFiles` text and mark it clean: with the conflicted file in the
 // background, another tab's document was merged into the file, and the active tab lost its unsaved
 // edits without a word. Here both ends look up the tab that shows the file.
-import type { MergeSegment } from "../../ipc/types";
+import type { MergeResult } from "../../ipc/types";
 import type { Editor } from "@tiptap/core";
 
 import { readFile, writeFile } from "../../ipc/invoke";
@@ -110,26 +110,32 @@ export function mergeBaseOf(filePath: string): null | string {
 }
 
 /**
- * The segments to show when there is no base to merge against — none recorded, or an empty one. The
+ * The merge to show when there is no base to merge against — none recorded, or an empty one. The
  * 3-way merge reads an empty base as two insertions at the same place and keeps both, one after the
  * other, without asking (`merge_texts` in src-tauri/src/snapshot/merge.rs). So the whole file is one
- * question instead, unless the two sides already agree.
+ * question instead, unless the two sides already agree. Split at "\n" and joined back with it, each
+ * side's text stays as it is.
  */
-export function mergeWithoutBase(
-  local: string,
-  external: string,
-): MergeSegment[] {
+export function mergeWithoutBase(local: string, external: string): MergeResult {
   if (local === external) {
-    return [{ kind: "unchanged", lines: local.split("\n") }];
+    return {
+      finalNewline: false,
+      lineEnding: "\n",
+      segments: [{ kind: "unchanged", lines: local.split("\n") }],
+    };
   }
-  return [
-    {
-      base: [],
-      external: external.split("\n"),
-      kind: "conflict",
-      local: local.split("\n"),
-    },
-  ];
+  return {
+    finalNewline: false,
+    lineEnding: "\n",
+    segments: [
+      {
+        base: [],
+        external: external.split("\n"),
+        kind: "conflict",
+        local: local.split("\n"),
+      },
+    ],
+  };
 }
 
 /**
