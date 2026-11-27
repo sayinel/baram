@@ -288,7 +288,9 @@ export async function openFileInTab(
   // (and this app's own subsequent saves) are not mistaken for external
   // changes. Without this, a just-created/opened note's writeFile echo trips
   // the conflict/auto-reload path. (use-file-watcher.ts self-write guard.)
-  useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+  // §3.6 No disk text: the callers' `content` is what they read or wrote, but a tab opened here
+  // records it when it appears (`noteFilesShown`), and an open tab keeps what it had.
+  useFileStore.getState().updateLastSaveMtime(filePath, Date.now(), null);
 
   // §95 M2: populate the zettel id index when opening a note under the
   // zettel space, even if it was reached without activating the

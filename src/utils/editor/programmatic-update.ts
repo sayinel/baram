@@ -165,7 +165,7 @@ export function forgetLoadedTab(tabId: string): void {
   if (lastLoadedTabId === tabId) lastLoadedTabId = null;
 }
 
-/** Read the baseline doc (last saved/loaded) — used as the 3-way merge base */
+/** Read the baseline doc (last saved/loaded). §3.6 The conflict merge's base is `diskTexts`, not this. */
 export function getOriginalDoc(tabId: string): Node | undefined {
   return originalDocs.get(tabId);
 }

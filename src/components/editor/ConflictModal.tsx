@@ -69,7 +69,7 @@ export function ConflictModal({
 
 /**
  * §Phase5: Connected wrapper — reads from UIStore and supplies callbacks.
- * Mounted once in App.tsx; shows/hides based on conflictModal store state.
+ * Mounted once in AppDialogs.tsx; shows/hides based on conflictModal store state.
  */
 export function ConflictModalWrapper({
   onReload,
@@ -77,7 +77,11 @@ export function ConflictModalWrapper({
   onMerge,
 }: {
   onKeepLocal: (filePath: string) => void;
-  onMerge: (filePath: string, base: string) => void;
+  onMerge: (
+    filePath: string,
+    base: null | string,
+    externalMtime: number,
+  ) => void;
   onReload: (filePath: string, externalMtime: number) => void;
 }) {
   const { conflictModal, closeConflictModal } = useUIStore(
@@ -100,7 +104,7 @@ export function ConflictModalWrapper({
       }}
       onMerge={() => {
         closeConflictModal();
-        onMerge(filePath, base);
+        onMerge(filePath, base, externalMtime);
       }}
       onReload={() => {
         closeConflictModal();

@@ -7,6 +7,7 @@ import { dispatchSetSearchTerm } from "../../extensions/plugins/find-replace";
 import { activateEditorForDocument } from "../../extensions/plugins/vim/vim-activation";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
+import { mergeBaseOf } from "../../utils/editor/conflict-merge";
 import {
   scrollToTarget,
   takePendingScroll,
@@ -74,10 +75,12 @@ export function resumeKeepaliveTab(
           mtimeEntry.canReloadMtime,
         ).catch(() => {});
       } else {
+        // §3.6 The 3-way base: what the app last knew to be on disk, not `openFiles` — a task
+        // written into this tab while it was away put its unsaved text there (`unsavedTabText`).
         showConflictModal(
           incomingTab.filePath,
           mtimeEntry.canReloadMtime,
-          useFileStore.getState().openFiles.get(incomingTab.filePath) ?? "",
+          mergeBaseOf(incomingTab.filePath),
         );
         return;
       }

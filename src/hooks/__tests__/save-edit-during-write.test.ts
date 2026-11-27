@@ -476,7 +476,7 @@ describe("Cmd+S and Save As", () => {
     const ed = makeEditor();
     setTabs(tab("m", "/v/note.md", false));
     useFileStore.getState().setFileContent("/v/note.md", "hello\n");
-    useFileStore.getState().updateLastSaveMtime("/v/note.md", 1);
+    useFileStore.getState().updateLastSaveMtime("/v/note.md", 1, null);
     const h = ops(ed);
     let done: Promise<void> = Promise.resolve();
     act(() => {

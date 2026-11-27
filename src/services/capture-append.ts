@@ -231,7 +231,8 @@ async function appendToOne(
   // 파일은 탭이 그것을 보일 때 거기 든다. 탭이 보이지 않는 파일에는 남기지 않는다 — 어떤 닫기로도
   // 내려가지 않는 기록이 된다(§3.5, #798).
   if (useEditorStore.getState().tabs.some((t) => t.filePath === target.path)) {
-    useFileStore.getState().updateLastSaveMtime(target.path, Date.now());
+    // §3.6 디스크 글은 바로 아래 동기화가 적는다 — 그 파일의 탭이 이 글을 받을 때만(`diskTexts`).
+    useFileStore.getState().updateLastSaveMtime(target.path, Date.now(), null);
   }
   // ‼️ `requestContentRefresh`가 아니다 — 그것은 `CONTENT_SYNC_META` 보호가 없어
   // 자동 저장이 방금 디스크에 쓴 내용을 덮어쓴다(§313에서 아카이브가 그렇게 깨졌다).

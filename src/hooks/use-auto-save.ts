@@ -158,7 +158,9 @@ async function saveTab(
     if (stillShown) {
       // Phase 4: record save time so future mtime comparisons have a baseline — this
       // write is ours whatever happened to the document since.
-      useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+      useFileStore
+        .getState()
+        .updateLastSaveMtime(filePath, Date.now(), markdown);
     }
     const { baseline, cacheIsDisk, unchanged } =
       source.kind === "document"

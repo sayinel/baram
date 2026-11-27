@@ -215,7 +215,9 @@ export async function saveFromBuffer(
     await writeFile(filePath, content);
     let saved = false;
     if (tabStillShows(tabId, filePath)) {
-      useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+      useFileStore
+        .getState()
+        .updateLastSaveMtime(filePath, Date.now(), content);
       // The read takes a viewer change still pending, so that is compared too (§392 D17).
       const { cacheIsDisk, unchanged } = outcome
         ? outcome(content)

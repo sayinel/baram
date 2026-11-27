@@ -31,7 +31,7 @@ export interface SaveOutcome {
    * Whether the tab's `openFiles` entry stands for the file on disk, so the save sets it to what it
    * wrote. True while the tab's text is somewhere else that is live — its editor, or the source
    * buffer of the active tab — even if that text moved on during the write: the entry is then the
-   * disk baseline (the conflict modal's 3-way base, the auto-reload's divergence check). False for a
+   * disk baseline (the auto-reload's divergence check). False for a
    * tab left while the write ran: the tab switch copied its text into the entry on the way out
    * (`saveOutgoingTab`), and the close guard's background save writes that entry, so replacing it
    * with the older written text would lose what was typed. When false, the entry is not touched,

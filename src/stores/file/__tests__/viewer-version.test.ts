@@ -24,9 +24,9 @@ describe("§3.5 viewer versions", () => {
   it("comes with each save or reload the file store records", () => {
     useFileStore.setState({ fileMtimes: new Map() });
     const store = useFileStore.getState();
-    store.updateLastSaveMtime("/v/page.html", 1);
+    store.updateLastSaveMtime("/v/page.html", 1, null);
     const first = useFileStore.getState().fileMtimes.get("/v/page.html");
-    store.updateLastSaveMtime("/v/page.html", 1);
+    store.updateLastSaveMtime("/v/page.html", 1, null);
     const second = useFileStore.getState().fileMtimes.get("/v/page.html");
     expect(first?.viewerVersion).toBeGreaterThan(0);
     expect(second?.viewerVersion).toBeGreaterThan(first?.viewerVersion ?? 0);
