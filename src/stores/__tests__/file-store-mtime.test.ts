@@ -19,7 +19,7 @@ describe("initFileMtime", () => {
 
   it("overwrites an existing entry with zeroes", () => {
     useFileStore.getState().initFileMtime("/a/b.md");
-    useFileStore.getState().updateLastSaveMtime("/a/b.md", 1000);
+    useFileStore.getState().updateLastSaveMtime("/a/b.md", 1000, null);
     useFileStore.getState().initFileMtime("/a/b.md");
     const entry = useFileStore.getState().getFileMtime("/a/b.md");
     expect(entry).toEqual({ lastSaveMtime: 0, canReloadMtime: 0 });
@@ -36,7 +36,7 @@ describe("updateLastSaveMtime", () => {
   it("sets lastSaveMtime and preserves canReloadMtime", () => {
     useFileStore.getState().initFileMtime("/a/b.md");
     useFileStore.getState().updateCanReloadMtime("/a/b.md", 2000);
-    useFileStore.getState().updateLastSaveMtime("/a/b.md", 1500);
+    useFileStore.getState().updateLastSaveMtime("/a/b.md", 1500, null);
     const entry = useFileStore.getState().getFileMtime("/a/b.md");
     // §3.5 A recorded save comes with a new viewer version (#798, `viewer-version.ts`).
     expect(entry).toEqual({
@@ -47,7 +47,7 @@ describe("updateLastSaveMtime", () => {
   });
 
   it("creates the entry if not yet tracked", () => {
-    useFileStore.getState().updateLastSaveMtime("/new.md", 999);
+    useFileStore.getState().updateLastSaveMtime("/new.md", 999, null);
     const entry = useFileStore.getState().getFileMtime("/new.md");
     expect(entry).toEqual({
       lastSaveMtime: 999,
@@ -60,7 +60,7 @@ describe("updateLastSaveMtime", () => {
 describe("updateCanReloadMtime", () => {
   it("sets canReloadMtime and preserves lastSaveMtime", () => {
     useFileStore.getState().initFileMtime("/a/b.md");
-    useFileStore.getState().updateLastSaveMtime("/a/b.md", 1500);
+    useFileStore.getState().updateLastSaveMtime("/a/b.md", 1500, null);
     useFileStore.getState().updateCanReloadMtime("/a/b.md", 3000);
     const entry = useFileStore.getState().getFileMtime("/a/b.md");
     expect(entry).toEqual({
@@ -91,7 +91,7 @@ describe("independent paths do not interfere", () => {
   it("updating one path does not affect another", () => {
     useFileStore.getState().initFileMtime("/a.md");
     useFileStore.getState().initFileMtime("/b.md");
-    useFileStore.getState().updateLastSaveMtime("/a.md", 100);
+    useFileStore.getState().updateLastSaveMtime("/a.md", 100, null);
     useFileStore.getState().updateCanReloadMtime("/b.md", 200);
     expect(useFileStore.getState().getFileMtime("/a.md")).toEqual({
       lastSaveMtime: 100,

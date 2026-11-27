@@ -167,7 +167,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     const { getFileMtime, updateLastSaveMtime } = useFileStore.getState();
     const mtime = getFileMtime(filePath);
     if (mtime && mtime.canReloadMtime > mtime.lastSaveMtime) {
-      updateLastSaveMtime(filePath, mtime.canReloadMtime);
+      updateLastSaveMtime(filePath, mtime.canReloadMtime, null);
     }
     setExternalChange(null);
   }, [filePath]);
@@ -311,7 +311,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       await writeFile(filePath, md);
       const { setFileContent, updateLastSaveMtime } = useFileStore.getState();
       setFileContent(filePath, md);
-      updateLastSaveMtime(filePath, Date.now());
+      updateLastSaveMtime(filePath, Date.now(), md);
       // Whatever the banner was asking about, the file now says this.
       setExternalChange(null);
       // Text typed during the write is not on disk, so it stays marked.

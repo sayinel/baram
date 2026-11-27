@@ -124,7 +124,7 @@ describe("which mount a file gets (§5)", () => {
 describe("what reaches an editing mount (§6.4 · §6.5 · D10)", () => {
   it("nothing for its own save: the refresh key moves, no onUpdate", () => {
     mounted();
-    act(() => useFileStore.getState().updateLastSaveMtime(PATH, 1234));
+    act(() => useFileStore.getState().updateLastSaveMtime(PATH, 1234, null));
     expect(count(events, "onUpdate")).toBe(0);
   });
 
@@ -132,7 +132,9 @@ describe("what reaches an editing mount (§6.4 · §6.5 · D10)", () => {
     const double = viewerDouble(events, { extensions: ["png"] });
     open(double, [sketchTab(TAB, "/v/p.png")]);
     events.length = 0;
-    act(() => useFileStore.getState().updateLastSaveMtime("/v/p.png", 1234));
+    act(() =>
+      useFileStore.getState().updateLastSaveMtime("/v/p.png", 1234, null),
+    );
     expect(events).toEqual(["onUpdate"]);
     // The refresh key is the file's viewer version, which the recorded save moved on (#798).
     expect(double.contexts.at(-1)?.refreshKey).toBe(

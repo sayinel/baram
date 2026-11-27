@@ -133,6 +133,8 @@
   "common.save": "Save",
   "common.unsaved": "Unsaved changes",
   "common.warning": "Warning",
+  "conflict.mergeFailed": "Couldn't write the merge to “{name}”. Your edits are still in the tab.",
+  "conflict.mergeUnavailable": "Can't merge “{name}” right now — choose again.",
   "contextAdd.initVault": "Initialize as Vault…",
   "contextAdd.openFile": "Open File…",
   "contextAdd.openFolder": "Open Folder…",

@@ -199,7 +199,9 @@ export async function saveDirtyTab(
     // §3.5 Closed, renamed or moved while the write ran: nothing is recorded under this path, and
     // the caller does not close or quit on it (#798).
     if (!tabStillShows(tab.id, tab.filePath)) return false;
-    useFileStore.getState().updateLastSaveMtime(tab.filePath, Date.now());
+    useFileStore
+      .getState()
+      .updateLastSaveMtime(tab.filePath, Date.now(), content);
     // §3.5 What it holds may have moved on while the write ran (a block ID rename or a
     // task edit landing in a background tab). Then the file has the older text and the
     // tab is not saved: report that, so the caller keeps it open instead of closing it
@@ -237,7 +239,7 @@ export async function saveDirtyTab(
   // §3.5 Closed during the dialog or the write: the file exists, and nothing is left to record it
   // for (#798).
   if (!tabStillShows(tab.id, "")) return false;
-  useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
+  useFileStore.getState().updateLastSaveMtime(savePath, Date.now(), content);
   // §3.5 The file exists now; the tab is clean only if it still holds what was written,
   // and the caller must not close it otherwise (#798).
   const holdsNow = backgroundText(tab);

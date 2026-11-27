@@ -67,7 +67,9 @@ export function usePreviewSourceView({
           // §3.5 Closed, renamed or moved while the write ran: nothing is recorded under this
           // path (#798).
           if (!tabStillShows(tab.id, filePath)) return;
-          useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+          useFileStore
+            .getState()
+            .updateLastSaveMtime(filePath, Date.now(), content);
           // §392 spec 0071 D17 — dirty comes down only while the buffer still holds what was
           // written. The preview this toggle puts up can be an editing mount, and a change it
           // reports during the write may already have been taken by another read (a zoom tick),

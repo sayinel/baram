@@ -8,15 +8,23 @@ import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
+import { shouldDeferSave } from "../../hooks/use-auto-save";
 import { reloadAfterConflictConsent } from "../../hooks/use-file-operations";
-import { readFile, writeFile } from "../../ipc/invoke";
+import { useTranslation } from "../../i18n/useTranslation";
+import { readFile } from "../../ipc/invoke";
 import { mergeTexts } from "../../ipc/snapshot";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useSnapshotStore } from "../../stores/editor/snapshot";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
-import { serializeLiveDoc } from "../../utils/editor/serialize-live-doc";
+import {
+  applyConflictMerge,
+  conflictLocalText,
+  mergeBaseOf,
+  mergeWithoutBase,
+  noteDiskTextFromRead,
+} from "../../utils/editor/conflict-merge";
 import { logger } from "../../utils/logger";
+import { basename } from "../../utils/path-utils";
 import { SmartTemplateDialogWrapper } from "../ai/SmartTemplateDialogWrapper";
 import { UnsavedChangesModal } from "../editor/UnsavedChangesModal";
 
@@ -111,7 +119,6 @@ interface AppDialogsProps {
   handleSave: () => Promise<void>;
   handleSkillPreviewToggle: () => void;
   handleToggleSourceMode: () => void;
-  markDirty: (tabId: string, dirty: boolean) => void;
 }
 
 function SkillGeneratorDialogWrapper() {
@@ -144,6 +151,36 @@ function SkillTestDialogWrapper() {
   );
 }
 
+/**
+ * §3.6 Brings the conflict modal back for `filePath` after a merge that did not happen — it could not
+ * start, it was cancelled, or its write failed. Until the conflict is answered the file's saves stay
+ * held off (`shouldDeferSave`), and with no modal there is no way to answer it. Nothing to ask when no
+ * tab shows the file any more, or when the conflict was answered meanwhile. The modal shows one
+ * conflict: if this file's is already on screen it covers this one, and another file's is answered
+ * first, then this one is asked. The base and mtime are read now — a "Keep Local Edits" or another change in
+ * between moved them.
+ */
+function askAboutConflictAgain(filePath: string): void {
+  if (!useEditorStore.getState().tabs.some((t) => t.filePath === filePath)) {
+    return;
+  }
+  const entry = useFileStore.getState().getFileMtime(filePath);
+  if (!entry || !shouldDeferSave(entry)) return;
+  const shown = useUIStore.getState().conflictModal;
+  if (shown !== null) {
+    if (shown.filePath === filePath) return;
+    const unsubscribe = useUIStore.subscribe((state) => {
+      if (state.conflictModal !== null) return;
+      unsubscribe();
+      askAboutConflictAgain(filePath);
+    });
+    return;
+  }
+  useUIStore
+    .getState()
+    .openConflictModal(filePath, entry.canReloadMtime, mergeBaseOf(filePath));
+}
+
 /** §4.2 Dialog/overlay host — CommandPalette, every lazy modal, the conflict
  * banner, and the merge view. Rendered inside `<EditorContext>` at the same
  * tree position as before this was extracted (see App.tsx render). */
@@ -157,10 +194,11 @@ export function AppDialogs({
   handleSave,
   handleSkillPreviewToggle,
   handleToggleSourceMode,
-  markDirty,
 }: AppDialogsProps) {
-  // §39 Tab switcher state
+  const { t } = useTranslation();
+  // §3.6 The merge view's state, with what the conflict modal needs to come back if it is left.
   const [mergeState, setMergeState] = useState<null | {
+    externalMtime: number;
     filePath: string;
     segments: MergeSegment[];
   }>(null);
@@ -198,19 +236,41 @@ export function AppDialogs({
           const entry = useFileStore.getState().getFileMtime(filePath);
           useFileStore
             .getState()
-            .updateLastSaveMtime(filePath, entry?.canReloadMtime ?? 0);
+            .updateLastSaveMtime(filePath, entry?.canReloadMtime ?? 0, null);
           // If the conflicted file is the active tab, persist local edits now so
           // they aren't lost if the user doesn't edit again before quitting.
           const { activeTabId, tabs } = useEditorStore.getState();
           const activeTab = tabs.find((t) => t.id === activeTabId);
-          if (activeTab?.filePath === filePath) void handleSave();
+          // §3.6 Until that save the disk holds the other program's text, which the user chose to
+          // keep their edits over. A later merge starts from it, or it would bring back what was
+          // just declined. Read before the save, so the save's record of what it wrote comes last.
+          void (async () => {
+            await noteDiskTextFromRead(filePath, entry?.canReloadMtime ?? 0);
+            if (activeTab?.filePath === filePath) await handleSave();
+          })();
         }}
-        onMerge={async (filePath, base) => {
-          if (!activeEditor || activeEditor.isDestroyed) return;
-          const local = serializeLiveDoc(activeEditor);
-          const external = await readFile(filePath);
-          const result = await mergeTexts(base, local, external);
-          setMergeState({ filePath, segments: result.segments });
+        onMerge={async (filePath, base, externalMtime) => {
+          try {
+            // §3.6 The tab that shows the file, wherever it is — not the active editor's document.
+            const local = conflictLocalText(filePath, activeEditor);
+            if (local === null) throw new Error("no text to merge");
+            // Not recorded as the disk text here: until the merge is applied the tab's text does not
+            // descend from it, and a merge left now would leave a base its lines seem to take back.
+            const external = await readFile(filePath);
+            const segments = base
+              ? (await mergeTexts(base, local, external)).segments
+              : mergeWithoutBase(local, external);
+            setMergeState({ externalMtime, filePath, segments });
+          } catch (err) {
+            logger.warn("[conflict] the merge could not start", err);
+            useUIStore
+              .getState()
+              .showToast(
+                t("conflict.mergeUnavailable", { name: basename(filePath) }),
+                "warning",
+              );
+            askAboutConflictAgain(filePath);
+          }
         }}
         // §312 왜 force가 필요한지는 reloadAfterConflictConsent의 주석 참조.
         onReload={reloadAfterConflictConsent}
@@ -220,24 +280,39 @@ export function AppDialogs({
         <MergeView
           filePath={mergeState.filePath}
           onApply={(merged) => {
-            const fp = mergeState.filePath;
-            void (async () => {
-              try {
-                await writeFile(fp, merged);
-                useFileStore.getState().setFileContent(fp, merged);
-                useFileStore.getState().updateLastSaveMtime(fp, Date.now());
-                useEditorStore.getState().requestContentRefresh();
-                const { activeTabId: tid } = useEditorStore.getState();
-                if (tid) markDirty(tid, false);
-                // §71 A conflict-merge write is a real content change.
-                useSnapshotStore.getState().markPendingAutoSnapshot();
-              } catch (err) {
-                logger.error("[App] merge apply failed", err);
-              }
-            })();
+            const { externalMtime, filePath } = mergeState;
             setMergeState(null);
+            // §3.6 Changed again while the merge view was open: writing this merge would drop that
+            // change. Ask about the newer text instead.
+            const entry = useFileStore.getState().getFileMtime(filePath);
+            if (entry && entry.canReloadMtime > externalMtime) {
+              useUIStore
+                .getState()
+                .showToast(
+                  t("conflict.mergeUnavailable", { name: basename(filePath) }),
+                  "warning",
+                );
+              askAboutConflictAgain(filePath);
+              return;
+            }
+            // §3.6 Into the tab that shows the file; no other tab is touched.
+            applyConflictMerge(filePath, merged).catch((err) => {
+              logger.error("[App] merge apply failed", err);
+              useUIStore
+                .getState()
+                .showToast(
+                  t("conflict.mergeFailed", { name: basename(filePath) }),
+                  "error",
+                );
+              askAboutConflictAgain(filePath);
+            });
           }}
-          onCancel={() => setMergeState(null)}
+          onCancel={() => {
+            const { filePath } = mergeState;
+            setMergeState(null);
+            // §3.6 The conflict is still there: ask again rather than leave its saves held.
+            askAboutConflictAgain(filePath);
+          }}
           segments={mergeState.segments}
         />
       )}

@@ -11,6 +11,7 @@ import { useShallow } from "zustand/shallow";
 import { watchDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
+import { mergeBaseOf } from "../utils/editor/conflict-merge";
 import { logger } from "../utils/logger";
 import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 
@@ -173,10 +174,8 @@ export function useFileWatcher() {
                 logger.warn("useFileWatcher: triggerAutoReload failed", err),
               );
             } else {
-              // Capture the pre-external content (last synced) as the 3-way base.
-              const base =
-                useFileStore.getState().openFiles.get(filePath) ?? "";
-              showConflictModal(filePath, externalMtime, base);
+              // §3.6 The 3-way base: what the app last knew to be on disk, not `openFiles`.
+              showConflictModal(filePath, externalMtime, mergeBaseOf(filePath));
             }
           }),
         ]);

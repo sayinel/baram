@@ -96,12 +96,13 @@ export function reloadAfterConflictConsent(
 
 /**
  * §Phase5: Show the conflict modal for a file that changed externally while dirty.
- * The modal is driven by UIStore — ConflictModalWrapper in App.tsx renders it.
+ * The modal is driven by UIStore — ConflictModalWrapper in AppDialogs.tsx renders it.
+ * §3.6 `base` is the merge base (`mergeBaseOf`), `null` with none recorded.
  */
 export function showConflictModal(
   filePath: string,
   externalMtime: number,
-  base: string,
+  base: null | string,
 ): void {
   useUIStore.getState().openConflictModal(filePath, externalMtime, base);
 }
@@ -181,7 +182,26 @@ export async function triggerAutoReload(
       );
 
   // Sync mtime so the next auto-save doesn't see a false conflict
-  useFileStore.getState().updateLastSaveMtime(filePath, externalMtime);
+  //
+  // §3.6 And the disk text a later merge starts from (`diskTexts`) — only when every tab showing the
+  // file takes this text. A diverged source buffer kept above, or a dirty background tab left as it is
+  // below (no `force`), does not descend from it, and a merge against it would take that tab's lines
+  // back as the other side's change. The binary sentinel "" is not the file's text.
+  const { activeTabId: shownTabId, tabs: shownTabs } =
+    useEditorStore.getState();
+  const leftBehind =
+    kept > 0 ||
+    (!options.force &&
+      shownTabs.some(
+        (t) => t.filePath === filePath && t.isDirty && t.id !== shownTabId,
+      ));
+  useFileStore
+    .getState()
+    .updateLastSaveMtime(
+      filePath,
+      externalMtime,
+      isBinary || leftBehind ? null : freshContent,
+    );
 
   // §313 이 파일을 배경에 두고 있는 탭들의 캐시된 PM 상태를 무효로 만든다. 활성 탭은
   // 바로 아래 `requestContentRefresh`가 맡고, 배경 탭은 돌아올 때 캐시가 아니라 방금
@@ -348,7 +368,7 @@ export function useFileOperations({
         if (tabStillShows(saveTab.id, saveTab.filePath)) {
           useFileStore
             .getState()
-            .updateLastSaveMtime(saveTab.filePath, Date.now());
+            .updateLastSaveMtime(saveTab.filePath, Date.now(), md);
           const { cacheIsDisk, unchanged } = outcome();
           if (cacheIsDisk) setFileContent(saveTab.filePath, md);
           if (unchanged) {
@@ -404,7 +424,7 @@ export function useFileOperations({
         // §3.5 Closed during the dialog or the write: the file exists, and nothing is left to
         // record it for (#798).
         if (!tabStillShows(saveTab.id, "")) return;
-        useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
+        useFileStore.getState().updateLastSaveMtime(savePath, Date.now(), md);
         // Update tab with real path
         const fileName = savePath.split("/").pop() ?? "Unknown";
         // The file exists now whatever happened meanwhile; only an unchanged document is clean
@@ -478,7 +498,7 @@ export function useFileOperations({
       // §3.5 Closed, renamed or moved during the dialog or the write: the copy exists, and the tab
       // it would be recorded for is not the one that asked (#798).
       if (!tabStillShows(saveAsTab.id, saveAsTab.filePath)) return;
-      useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
+      useFileStore.getState().updateLastSaveMtime(savePath, Date.now(), md);
       const fileName = savePath.split("/").pop() ?? "Unknown";
       // §392 spec 0071 D17, applied to Save As (plan 0121 P10): when `md` came from the buffer,
       // the tab is marked clean only while the buffer still holds what was just written — text

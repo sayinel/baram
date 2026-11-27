@@ -1,6 +1,7 @@
 // §3.5 파일 시스템 스토어
 import { create } from "zustand";
 
+import { isBinaryViewerFile } from "../../utils/file-type";
 import { useContextStore } from "../context/context";
 import { useEditorStore } from "../editor/editor";
 import { useSettingsStore } from "../settings/store";
@@ -52,6 +53,24 @@ interface FileState {
   closeFolder: () => void;
   /** §4.5 Collapse every expanded directory in the file tree */
   collapseAllDirs: () => void;
+  /**
+   * §3.6 For each file a tab shows, the disk text that tab's text descends from — the base the conflict
+   * modal merges against (`mergeBaseOf`). It is set where the tab's text and the disk last met: when a
+   * tab began to show the file (`noteFilesShown` — every opener puts the text it just read or wrote into
+   * `openFiles` before the tab appears, but `CitationLink`, which leaves the read to the tab switch, and
+   * the §89 file window, which fills it afterwards and runs no conflict modal; those leave none), when
+   * a save wrote it or a reload or merge put it in every tab (`updateLastSaveMtime`), when an in-app disk
+   * write reached a clean tab's surfaces (`noteDiskText` in `sync-open-surfaces.ts`), and when the user
+   * kept their edits over the other program's text ("Keep Local Edits"). A disk write the tab did not
+   * take — into a dirty tab, a merge cancelled before it was applied — is not recorded: against it, a
+   * merge reads that tab's lines as taking the write back and drops them without asking. `openFiles` is
+   * no base for the same reason: a tab left with unsaved edits puts them there (`saveOutgoingTab`), and
+   * so do the in-app writes into a tab's document. A disk write that records nothing leaves the base
+   * older. That mostly makes a merge ask about more, but where the user put a line back as it was before
+   * such a write, the other side's copy of the line wins. Kept and released with `openFiles`; binary
+   * files have none.
+   */
+  diskTexts: Map<string, string>;
   expandAllDirs: () => void;
   expandDir: (path: string) => void;
 
@@ -70,6 +89,8 @@ interface FileState {
   loadError: FileTreeLoadError | null;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
+  /** §3.6 Record the disk text a tab's text now descends from (`diskTexts`) — read or just written. */
+  noteDiskText: (path: string, text: string) => void;
   /**
    * §3.5 Tabs began to show these paths, which no tab showed before (#798): each gets a new viewer
    * version, so a reopened file's viewer does not take what an earlier tab left in its caches.
@@ -103,8 +124,17 @@ interface FileState {
   toggleExpandedDir: (path: string) => void;
   /** Record the mtime reported by the most recent file:changed watcher event */
   updateCanReloadMtime: (path: string, mtime: number) => void;
-  /** Record the mtime at the time of a successful save or reload, with a new viewer version */
-  updateLastSaveMtime: (path: string, mtime: number) => void;
+  /**
+   * Record the mtime at the time of a successful save or reload, with a new viewer version. `diskText`
+   * is the text the file now holds and the tab now descends from — what the save wrote, or what the
+   * reload put in every tab showing it (`diskTexts`). `null` leaves `diskTexts` as it was: the caller
+   * does not know the text, a tab did not take it, or another writer records it.
+   */
+  updateLastSaveMtime: (
+    path: string,
+    mtime: number,
+    diskText: null | string,
+  ) => void;
 }
 
 // buildFileTree lives in ./file-tree-ops (pure tree algebra); re-exported
@@ -122,6 +152,7 @@ export { buildFileTree };
 export const useFileStore = create<FileState>((set, get) => ({
   rootPath: null,
   fileTree: [],
+  diskTexts: new Map(),
   openFiles: new Map(),
   fileMtimes: new Map(),
   loadError: null,
@@ -191,22 +222,29 @@ export const useFileStore = create<FileState>((set, get) => ({
       openFiles.delete(path);
       const fileMtimes = new Map(state.fileMtimes);
       fileMtimes.delete(path);
-      return { openFiles, fileMtimes };
+      const diskTexts = new Map(state.diskTexts);
+      diskTexts.delete(path);
+      return { diskTexts, openFiles, fileMtimes };
     }),
 
   releaseFileContents: (keys) =>
     set((state) => {
       const held = keys.filter(
-        (k) => state.openFiles.has(k) || state.fileMtimes.has(k),
+        (k) =>
+          state.openFiles.has(k) ||
+          state.fileMtimes.has(k) ||
+          state.diskTexts.has(k),
       );
       if (held.length === 0) return state;
       const openFiles = new Map(state.openFiles);
       const fileMtimes = new Map(state.fileMtimes);
+      const diskTexts = new Map(state.diskTexts);
       for (const k of held) {
         openFiles.delete(k);
         fileMtimes.delete(k);
+        diskTexts.delete(k);
       }
-      return { openFiles, fileMtimes };
+      return { diskTexts, openFiles, fileMtimes };
     }),
 
   getFileMtime: (path) => get().fileMtimes.get(path),
@@ -215,6 +253,7 @@ export const useFileStore = create<FileState>((set, get) => ({
     set((state) => {
       if (paths.length === 0) return state;
       const fileMtimes = new Map(state.fileMtimes);
+      const diskTexts = new Map(state.diskTexts);
       for (const path of paths) {
         const existing = fileMtimes.get(path) ?? {
           lastSaveMtime: 0,
@@ -224,9 +263,23 @@ export const useFileStore = create<FileState>((set, get) => ({
           ...existing,
           viewerVersion: nextViewerVersion(),
         });
+        // §3.6 The opener put the text it just read or wrote here (see `diskTexts`). An opener
+        // that fills `openFiles` only after the tab appears leaves no record, and a binary file's ""
+        // is a placeholder, not its text.
+        const opened = state.openFiles.get(path);
+        if (opened !== undefined && !isBinaryViewerFile(path)) {
+          diskTexts.set(path, opened);
+        }
       }
-      return { fileMtimes };
+      return { diskTexts, fileMtimes };
     }),
+
+  noteDiskText: (path, text) =>
+    set((state) =>
+      state.diskTexts.get(path) === text
+        ? state
+        : { diskTexts: new Map(state.diskTexts).set(path, text) },
+    ),
 
   initFileMtime: (path) =>
     set((state) => {
@@ -235,7 +288,7 @@ export const useFileStore = create<FileState>((set, get) => ({
       return { fileMtimes };
     }),
 
-  updateLastSaveMtime: (path, mtime) =>
+  updateLastSaveMtime: (path, mtime, diskText) =>
     set((state) => {
       const fileMtimes = new Map(state.fileMtimes);
       const existing = fileMtimes.get(path) ?? {
@@ -247,7 +300,11 @@ export const useFileStore = create<FileState>((set, get) => ({
         lastSaveMtime: mtime,
         viewerVersion: nextViewerVersion(),
       });
-      return { fileMtimes };
+      if (diskText === null) return { fileMtimes };
+      return {
+        diskTexts: new Map(state.diskTexts).set(path, diskText),
+        fileMtimes,
+      };
     }),
 
   updateCanReloadMtime: (path, mtime) =>
@@ -265,8 +322,9 @@ export const useFileStore = create<FileState>((set, get) => ({
     set((state) => ({
       openFiles: rekeyOpenFilesPrefix(state.openFiles, oldPath, newPath),
       // §3.5 수정 시각 기록도 원문과 같은 key 를 따른다 — 옛 key 에 남으면 닫힌 탭의 release 가
-      // 새 경로로 찾지 못해 영영 남는다(폴더를 옮기면 그 아래 파일마다, #798).
+      // 새 경로로 찾지 못해 영영 남는다(폴더를 옮기면 그 아래 파일마다, #798). §3.6 디스크 글도.
       fileMtimes: rekeyOpenFilesPrefix(state.fileMtimes, oldPath, newPath),
+      diskTexts: rekeyOpenFilesPrefix(state.diskTexts, oldPath, newPath),
       fileTree: renameInTree(state.fileTree, oldPath, newPath, newName),
     })),
 
@@ -302,8 +360,18 @@ export const useFileStore = create<FileState>((set, get) => ({
           openFiles.delete(key);
         }
       }
+      const diskTexts = new Map(state.diskTexts);
+      for (const key of diskTexts.keys()) {
+        if (key === path || key.startsWith(path + "/")) {
+          diskTexts.delete(key);
+        }
+      }
 
-      return { openFiles, fileTree: removeFromTree(state.fileTree, path) };
+      return {
+        diskTexts,
+        openFiles,
+        fileTree: removeFromTree(state.fileTree, path),
+      };
     }),
 
   moveFileEntry: (oldPath, newParentPath) =>
@@ -325,6 +393,11 @@ export const useFileStore = create<FileState>((set, get) => ({
         ),
         fileMtimes: rekeyOpenFilesPrefix(
           state.fileMtimes,
+          oldPath,
+          moved.newPath,
+        ),
+        diskTexts: rekeyOpenFilesPrefix(
+          state.diskTexts,
           oldPath,
           moved.newPath,
         ),

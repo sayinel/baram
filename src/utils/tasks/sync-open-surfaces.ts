@@ -53,6 +53,7 @@ export function syncOpenSurfacesAfterDiskWrite(
     useEditorStore.getState();
 
   patchCachedContent(task, newRaw);
+  patchDiskText(task, newRaw);
 
   for (const tab of tabs) {
     if (tab.filePath !== task.path) continue;
@@ -103,6 +104,12 @@ export function syncOpenSurfacesAfterFileRewrite(
   // open file and reload it on the next outside change.
   if (tabs.some((t) => t.filePath === path)) {
     useFileStore.getState().setFileContent(path, content);
+    // §3.6 디스크가 이 글을 들고 있고, 아래에서 그 파일의 표면이 모두 따라온다 — 충돌 병합의 기준이
+    // 된다(`diskTexts`). dirty 탭은 따라오지 않으므로(아래) 그때는 적지 않는다: 그 탭의 글은 이 글에서
+    // 이어지지 않고, 이것을 기준으로 병합하면 이 다시 쓰기를 그 탭이 되돌린 것으로 읽는다.
+    if (!tabs.some((t) => t.filePath === path && t.isDirty)) {
+      useFileStore.getState().noteDiskText(path, content);
+    }
   }
 
   for (const tab of tabs) {
@@ -129,6 +136,21 @@ function patchCachedContent(task: TaskEntry, newRaw: string): void {
   const next = spliceMatchingLine(cached, task, newRaw);
   if (next === null) return;
   useFileStore.getState().setFileContent(task.path, next);
+}
+
+/**
+ * §3.6 디스크 글 기록(`diskTexts`)의 그 줄도. 디스크가 방금 그 줄을 바꿨다 — 기록이 그 줄을 아직
+ * 우리가 본 그대로 들고 있을 때만 갈아끼우고, 아니면 둔다(기록이 더 오래될 뿐이다). 그 파일의 탭이
+ * dirty 면 두지 않는다: 그 탭의 문서는 이 줄을 받지 않았으므로(`syncOpenSurfacesAfterDiskWrite`)
+ * 기록이 그 문서의 조상이 아니게 되고, 그 기록으로 병합하면 이 줄을 그 탭이 되돌린 것으로 읽는다.
+ */
+function patchDiskText(task: TaskEntry, newRaw: string): void {
+  const { tabs } = useEditorStore.getState();
+  if (tabs.some((t) => t.filePath === task.path && t.isDirty)) return;
+  const recorded = useFileStore.getState().diskTexts.get(task.path);
+  if (recorded === undefined) return;
+  const next = spliceMatchingLine(recorded, task, newRaw);
+  if (next !== null) useFileStore.getState().noteDiskText(task.path, next);
 }
 
 /** 화면의 문서 — 자기 마크다운을 기준으로 스플라이스한 뒤 트랜잭션 하나로 맞춘다. */
@@ -186,7 +208,11 @@ export function syncCleanSurfacesAfterReferrerRewrite(
   }
   // §3.5 Only for a file a tab shows (#798), as in `syncOpenSurfacesAfterFileRewrite`. The callers
   // checked `openFiles` before reading the file, and a tab closed during that read is gone now.
-  if (tabs.length > 0) useFileStore.getState().setFileContent(path, content);
+  if (tabs.length > 0) {
+    useFileStore.getState().setFileContent(path, content);
+    // §3.6 이 탭들은 모두 clean 이고 아래에서 이 글을 받는다 — 충돌 병합의 기준(`diskTexts`).
+    useFileStore.getState().noteDiskText(path, content);
+  }
   const access = store.documentSurfaceAccess;
   for (const tab of tabs) {
     // A source-mode tab's authoritative text is its CodeMirror buffer; clean,

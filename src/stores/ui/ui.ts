@@ -32,9 +32,12 @@ export const CHROME_SURFACES = Object.keys(
 ) as ChromeSurface[];
 
 export interface ConflictModalState {
-  /** Snapshot of the common-ancestor content captured when the conflict was
-   *  detected (before reading the external change) — used as the 3-way base. */
-  base: string;
+  /**
+   * §3.6 The 3-way base, captured when the conflict was detected: the disk text the tab's text
+   * descends from (`mergeBaseOf`), or `null` with none recorded — the merge then asks about the whole
+   * file.
+   */
+  base: null | string;
   externalMtime: number;
   filePath: string;
 }
@@ -211,7 +214,7 @@ interface UIState {
   openConflictModal: (
     filePath: string,
     externalMtime: number,
-    base: string,
+    base: null | string,
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: () => void;
