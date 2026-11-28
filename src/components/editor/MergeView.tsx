@@ -3,22 +3,22 @@
 // as +/- diffs and auto-applied; conflicts offer local / external / both.
 import { useState } from "react";
 
-import type { MergeSegment } from "../../ipc/types";
+import type { MergeResult } from "../../ipc/types";
 
 type Choice = "both" | "external" | "local";
 
 interface MergeViewProps {
   filePath: string;
+  merge: MergeResult;
   onApply: (merged: string) => void;
   onCancel: () => void;
-  segments: MergeSegment[];
 }
 
 export function MergeView({
   filePath,
+  merge: { finalNewline, lineEnding, segments },
   onApply,
   onCancel,
-  segments,
 }: MergeViewProps) {
   const [choices, setChoices] = useState<Record<number, Choice>>({});
 
@@ -49,7 +49,9 @@ export function MergeView({
           break;
       }
     });
-    return lines.join("\n");
+    // A merge that keeps no line is the empty text, which has no line to end.
+    if (lines.length === 0) return "";
+    return lines.join(lineEnding) + (finalNewline ? lineEnding : "");
   };
 
   return (

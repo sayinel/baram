@@ -33,18 +33,50 @@ const failingWrites = new Set<string>();
 /** Holds the next read of a path until the test lets it go. */
 const heldReads = new Map<string, Promise<void>>();
 const listeners = new Map<string, (event: { payload: unknown }) => unknown>();
-const mergeTexts = vi.hoisted(() =>
-  vi.fn(async (base: string, local: string, external: string) => ({
-    segments: [
-      {
-        base: base.split("\n"),
-        external: external.split("\n"),
-        kind: "conflict" as const,
-        local: local.split("\n"),
-      },
-    ],
-  })),
-);
+/**
+ * The whole file as one conflict, read as `merge_texts` reads it (src-tauri/src/snapshot/merge.rs).
+ * `lines_of`: no lines for "", else a final newline taken off, with a "\r" before it, then split at
+ * "\n" and a "\r" before each taken off. The final newline is the external side's when it changed
+ * it, else the local side's; an empty side's counts as the base's. `line_ending_of`: the first text
+ * that breaks a line, in the ending most of its breaks use, LF on a tie.
+ */
+const mergeTexts = vi.hoisted(() => {
+  const read = (text: string) => {
+    if (text === "") return { ends: undefined, lines: [] };
+    const ends = text.endsWith("\n");
+    const body = ends ? text.slice(0, text.endsWith("\r\n") ? -2 : -1) : text;
+    const lines = body
+      .split("\n")
+      .map((line, i, all) =>
+        i < all.length - 1 && line.endsWith("\r") ? line.slice(0, -1) : line,
+      );
+    return { ends, lines };
+  };
+  const lineEndingOf = (texts: string[]) => {
+    const text = texts.find((t) => t.includes("\n"));
+    if (text === undefined) return "\n" as const;
+    const breaks = text.split("\n").length - 1;
+    const crlf = text.split("\r\n").length - 1;
+    return crlf > breaks - crlf ? ("\r\n" as const) : ("\n" as const);
+  };
+  return vi.fn(async (base: string, local: string, external: string) => {
+    const [b, l, e] = [read(base), read(local), read(external)];
+    const baseEnds = b.ends ?? false;
+    const [localEnds, externalEnds] = [l.ends ?? baseEnds, e.ends ?? baseEnds];
+    return {
+      finalNewline: externalEnds === baseEnds ? localEnds : externalEnds,
+      lineEnding: lineEndingOf([external, base, local]),
+      segments: [
+        {
+          base: b.lines,
+          external: e.lines,
+          kind: "conflict" as const,
+          local: l.lines,
+        },
+      ],
+    };
+  });
+});
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (name: string, handler: (event: { payload: unknown }) => unknown) => {
@@ -502,6 +534,43 @@ describe("merging from the conflict modal", { timeout: 20000 }, () => {
       useEditorStore.getState().sourceBufferAccess?.getSourceBuffer("t2"),
     ).toBe("COPY elsewhere\n");
     expect(dirty("t2")).toBe(false);
+  });
+
+  // What fails this: ending a merge that keeps no line with a line ending — the emptied note comes
+  // back as "\n". The editor's text of an empty document is "".
+  it("writes an emptied note back empty", async () => {
+    view = render(<Surface />);
+    await installed("t1");
+    act(() => {
+      editor.commands.clearContent(true);
+    });
+    await changeElsewhere(NOTE, NOTE_CHANGED);
+
+    await mergeTaking("내 것");
+
+    expect(mergeTexts.mock.calls[0][1]).toBe("");
+    expect(disk.get(NOTE)).toBe("");
+  });
+
+  // What fails this: the merge view joining the chosen lines with "\n" — the file comes back LF.
+  // The editor's text of the file is LF here; the line ending is the one the file uses on disk.
+  it("writes a CRLF file back in CRLF, with its final newline", async () => {
+    const crlf = "# NOTE\r\n\r\nnote body\r\n";
+    disk.set(NOTE, crlf);
+    const { diskTexts, openFiles } = useFileStore.getState();
+    useFileStore.setState({
+      diskTexts: new Map(diskTexts).set(NOTE, crlf),
+      openFiles: new Map(openFiles).set(NOTE, crlf),
+    });
+    view = render(<Surface />);
+    await installed("t1");
+    typeInto(editor, "x");
+    await changeElsewhere(NOTE, "# NOTE\r\n\r\nchanged elsewhere\r\n");
+
+    await mergeTaking("내 것");
+
+    expect(mergeTexts.mock.calls[0][1]).toBe("# xNOTE\n\nnote body\n");
+    expect(disk.get(NOTE)).toBe("# xNOTE\r\n\r\nnote body\r\n");
   });
 });
 

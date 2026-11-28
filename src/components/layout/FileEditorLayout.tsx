@@ -15,7 +15,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import type { MergeSegment } from "../../ipc/types";
+import type { MergeResult } from "../../ipc/types";
 
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -74,7 +74,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   );
   const isDirtyRef = useRef(false);
   const [externalChange, setExternalChange] = useState<null | string>(null);
-  const [mergeState, setMergeState] = useState<MergeSegment[] | null>(null);
+  const [mergeState, setMergeState] = useState<MergeResult | null>(null);
   const fileName = filePath.split("/").pop() ?? "Untitled";
 
   // §298 vim §12-⑪: referentially stable extensions — see App.tsx. A fresh
@@ -355,7 +355,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
         currentText(editor),
         externalChange,
       );
-      setMergeState(result.segments);
+      setMergeState(result);
     } catch (err) {
       logger.warn("[FileEditor] merge failed", err);
     }
@@ -473,9 +473,9 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       {mergeState && (
         <MergeView
           filePath={filePath}
+          merge={mergeState}
           onApply={handleApplyMerge}
           onCancel={() => setMergeState(null)}
-          segments={mergeState}
         />
       )}
       <div className="file-editor-content">
