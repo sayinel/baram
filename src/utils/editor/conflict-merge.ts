@@ -110,11 +110,10 @@ export function mergeBaseOf(filePath: string): null | string {
 }
 
 /**
- * The merge to show when there is no base to merge against — none recorded, or an empty one. The
- * 3-way merge reads an empty base as two insertions at the same place and keeps both, one after the
- * other, without asking (`merge_texts` in src-tauri/src/snapshot/merge.rs). So the whole file is one
- * question instead, unless the two sides already agree. Split at "\n" and joined back with it, each
- * side's text stays as it is.
+ * The merge to show when no base was recorded (`mergeBaseOf` gives `null`): the whole file is one
+ * question, unless the two sides already agree. Not the 3-way merge against "": that says the file
+ * was empty, and a side left empty would read as unchanged — the other side's text taken without
+ * asking. Split at "\n" and joined back with it, each side's text stays as it is.
  */
 export function mergeWithoutBase(local: string, external: string): MergeResult {
   if (local === external) {

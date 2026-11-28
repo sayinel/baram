@@ -769,9 +769,10 @@ describe("a change on disk", () => {
     expect((mergeTexts.mock.calls[0] as unknown[])[0]).toBe("on disk\n");
   });
 
-  // 이것을 실패시키는 것: 빈 base 로 3-way 병합을 부르면 양쪽 글을 같은 자리의 두 삽입으로 읽어 묻지 않고 둘 다
-  // 넣는다(`merge_texts`).
-  it("asks about the whole file when it was empty", async () => {
+  // 이것을 실패시키는 것: 빈 기록을 기록 없음처럼 다루는 것(`base ? … : mergeWithoutBase(…)`). 빈 글은 파일이
+  // 비어 있었다는 기록이다 — 3-way 병합은 양쪽 글을 빈 파일에 더한 것으로 읽어 두 글이 다르면 한 번 묻고, 아직
+  // 비어 있는 쪽은 바뀌지 않은 것이라 다른 쪽 글을 넣는다(`an_empty_base_is_a_file_that_was_empty`).
+  it("merges against the empty text it opened", async () => {
     disk.text = "";
     await open();
     await waitFor(() =>
@@ -783,20 +784,8 @@ describe("a change on disk", () => {
 
     pressButton("Merge");
 
-    await waitFor(() => expect(mergeView).toHaveBeenCalled());
-    expect(mergeTexts).not.toHaveBeenCalled();
-    expect(mergeView.mock.calls.at(-1)?.[0]).toEqual({
-      finalNewline: false,
-      lineEnding: "\n",
-      segments: [
-        {
-          base: [],
-          external: ["external", ""],
-          kind: "conflict",
-          local: local.split("\n"),
-        },
-      ],
-    });
+    await waitFor(() => expect(mergeTexts).toHaveBeenCalledOnce());
+    expect(mergeTexts).toHaveBeenCalledWith("", local, "external\n");
   });
 
   it("installs an applied merge as the file", async () => {

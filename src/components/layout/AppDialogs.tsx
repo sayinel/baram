@@ -259,9 +259,10 @@ export function AppDialogs({
             // Not recorded as the disk text here: until the merge is applied the tab's text does not
             // descend from it, and a merge left now would leave a base its lines seem to take back.
             const external = await readFile(filePath);
-            const merge = base
-              ? await mergeTexts(base, local, external)
-              : mergeWithoutBase(local, external);
+            const merge =
+              base !== null
+                ? await mergeTexts(base, local, external)
+                : mergeWithoutBase(local, external);
             setMergeState({ ...merge, externalMtime, filePath });
           } catch (err) {
             logger.warn("[conflict] the merge could not start", err);

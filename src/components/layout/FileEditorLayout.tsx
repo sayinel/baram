@@ -372,11 +372,12 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     if (!editor || externalChange === null) return;
     try {
       // §3.6 Against the disk text this window's text descends from (`diskTexts`), as the main window
-      // merges. With none, or an empty one, the whole file is one question.
+      // merges — an empty one too, which says the file was empty. With none, the whole file is one
+      // question.
       const base = mergeBaseOf(filePath);
       const local = currentText(editor);
       setMergeState(
-        base
+        base !== null
           ? await mergeTexts(base, local, externalChange)
           : mergeWithoutBase(local, externalChange),
       );

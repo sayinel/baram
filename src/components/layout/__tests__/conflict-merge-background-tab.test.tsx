@@ -614,9 +614,11 @@ describe("the base of the next merge", { timeout: 20000 }, () => {
     expect(useUIStore.getState().conflictModal?.filePath).toBe(NOTE);
   });
 
-  // What fails this: sending a recorded empty base to the 3-way merge — the same two insertions at one
-  // place, kept one after the other without asking.
-  it("is a whole-file question when the recorded text is empty", async () => {
+  // What fails this: taking a recorded empty text for none (`base ? … : mergeWithoutBase(…)`). It
+  // is the file as the disk had it, empty: the 3-way merge reads each side's text as added to it,
+  // so two different texts are one question, and a side still empty is no change — the other side's
+  // text is applied (`an_empty_base_is_a_file_that_was_empty` in src-tauri/src/snapshot/merge.rs).
+  it("merges against the recorded text when it is empty", async () => {
     act(() => {
       const diskTexts = new Map(useFileStore.getState().diskTexts);
       diskTexts.set(NOTE, "");
@@ -630,7 +632,11 @@ describe("the base of the next merge", { timeout: 20000 }, () => {
 
     await mergeTaking("외부");
 
-    expect(mergeTexts).not.toHaveBeenCalled();
+    expect(mergeTexts).toHaveBeenCalledWith(
+      "",
+      "# xNOTE\n\nnote body\n",
+      NOTE_CHANGED,
+    );
     expect(disk.get(NOTE)).toBe(NOTE_CHANGED);
   });
 
@@ -650,9 +656,9 @@ describe("the base of the next merge", { timeout: 20000 }, () => {
     });
   });
 
-  // What fails this: sending an absent base to the 3-way merge as "". It reads that as two insertions
-  // at one place and keeps both, one after the other, without asking. With nothing recorded the whole
-  // file is one question instead.
+  // What fails this: sending an absent base to the 3-way merge as "". That says the file was empty: a
+  // side left empty would read as unchanged, and the other side's text be taken without asking. With
+  // nothing recorded the whole file is one question instead.
   it("is none when nothing was recorded, and the merge asks about the whole file", async () => {
     act(() => {
       const diskTexts = new Map(useFileStore.getState().diskTexts);
