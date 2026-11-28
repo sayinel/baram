@@ -7,19 +7,23 @@
 //
 // Zoom is painted HERE, by scaling the frame (see html-preview.css) — the host
 // owns the pixels and the document is never restyled. The bridge inside the frame
-// forwards zoom INPUT and nothing else, so the level never makes a round trip to
+// forwards zoom INPUT and never a level, so the level never makes a round trip to
 // be applied: it lands in the same commit as any other zoom in the app, and it
 // still lands in a document whose bridge is gone.
 //
 // The containment cuts both ways — the host cannot read the document, and the
 // document's clicks and keystrokes never reach the host's listeners. So the
-// protocol handler injects a bridge (html-preview-shim.js) that posts out the two
-// things the preview needs:
+// protocol handler injects a bridge (html-preview-shim.js) that posts out the four
+// things the preview needs — the four `case`s of the message handler below:
 //
 //   external links  the frame must not navigate to a remote page, so http/https
 //                   anchors are handed to the system browser instead
 //   zoom input      Cmd+= / Cmd+- / Cmd+0 and Ctrl+wheel die inside the frame
 //                   once it has focus; forwarded, they drive the shared level
+//   scroll position §291 the frame's own vertical position, the one the host hands
+//                   back when the frame has lost it
+//   loaded          §291 a new document is in the frame — one of the two moments it
+//                   has lost its place (see `restore`)
 //
 // Everything arriving from the bridge is page-controlled input and is re-checked
 // here — see `externalUrlToOpen`.
@@ -79,11 +83,49 @@ export const HtmlPreview = memo(function HtmlPreview({
   // 리스너를 다시 달게 되므로 ref로 미러링한다(use-tab-scroll-memory.ts와 같은 이유).
   const onScrollYRef = useRef(onScrollY);
   onScrollYRef.current = onScrollY;
+  // getScrollY도 같은 이유로 미러링한다 — 그리고 여기서는 비용이 아니라 **동작**이다. 이걸
+  // deps로 받으면 `restore`의 정체성이 렌더마다 바뀌어 아래 "다시 보이게 될 때" effect가 앱의
+  // 아무 재렌더에나 다시 돌고, 문서가 방금 간 곳을 마지막 보고 위치로 당긴다.
+  const getScrollYRef = useRef(getScrollY);
+  getScrollYRef.current = getScrollY;
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const src = useMemo(
     () => htmlPreviewUrl(filePath, refreshKey),
     [filePath, refreshKey],
   );
+
+  // §291 프레임에 위치를 돌려준다.
+  //
+  // 프레임이 자리를 **잃은** 두 순간을 위해 있다. 그 밖의 시점에 부르면 문서가 방금 간 곳을
+  // 마지막 보고 위치로 되돌린다 — 보고는 shim이 rAF로 한 프레임 미루므로, 이동 직후에 부르면
+  // 그 값은 이동 전 위치다.
+  //
+  //   다시 보이게 될 때   마운트는 유지된 채 숨었다 나온 경우. 숨겨질 때 레이아웃 박스가
+  //                       파기되어 위치가 0으로 돌아간다(아래 effect)
+  //   새 문서가 떴을 때   상한을 넘겨 축출됐다가 다시 열렸거나, 저장으로 다시 로드된 경우.
+  //                       로드가 끝났다는 사실은 문서가 `loaded`로 알린다(아래 message 핸들러)
+  //
+  // ‼️ 둘째 경로는 그 두 경우보다 넓다. 페이지가 스스로 다른 문서로 간 경우(형제 파일로 가는
+  // `baramhtml:` 링크, `location.reload()`)도 `loaded`를 알리고, 그 문서도 이 탭의 마지막
+  // 위치를 받는다. 이 판정을 `<iframe onLoad>`가 하던 때와 같은 동작이다.
+  //
+  // ‼️ `<iframe onLoad>`로 "새 문서"를 판정하지 말 것. 요소의 `load`만으로는 새 문서와 같은
+  // 문서 안 이동을 가를 수 없다 — WKWebView는 프레임 안에서 `#fragment`로 이동할 때마다 iframe
+  // 요소에 `load`를 다시 쏜다(측정 조건은 html-preview-shim.js의 `loaded` 주석). 그걸 새 문서로
+  // 읽었을 때 문서 안 링크가 첫 번째만 동작했다 — 첫 이동은 저장값이 0이라 건너뛰고, 그 뒤
+  // 이동은 전부 첫 이동 위치로 되돌아갔다. opaque origin이라 호스트는 프레임의 URL도 읽지 못한다.
+  //
+  // 되돌릴 값이 0이면 보내지 않는다. 되돌릴 자리가 없고, `loaded`를 알린 새 문서는 자기
+  // `#fragment` 앵커로 이미 스크롤했을 수 있다 — 그때 0을 쏘면 그 스크롤을 덮어쓴다.
+  const restore = useCallback(() => {
+    const read = getScrollYRef.current;
+    const y = read ? read() : scrollYRef.current;
+    if (y <= 0) return;
+    frameRef.current?.contentWindow?.postMessage(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y },
+      "*",
+    );
+  }, []);
 
   useEffect(() => {
     // §288 규칙 1 — 보안 사안이다. 이 iframe은 sandbox="allow-scripts"라 숨어 있어도
@@ -106,6 +148,12 @@ export const HtmlPreview = memo(function HtmlPreview({
       if (payload.__baram !== BRIDGE_TAG) return;
 
       switch (payload.type) {
+        // §291 프레임에 새 문서가 떴다(경우는 `restore` 주석). 이 문서는 아무 위치도 받지
+        // 못한 채 떴다 — 축출 뒤 다시 열린 경우 마운트 때의 복원은 그 파일이 뜨기 전의 초기
+        // about:blank 문서로 갔고, 보이는 동안 저장으로 다시 로드된 경우는 보내 준 적이 없다.
+        case "loaded":
+          restore();
+          return;
         case "open-external": {
           const url = externalUrlToOpen(payload.url);
           if (!url) return;
@@ -129,28 +177,13 @@ export const HtmlPreview = memo(function HtmlPreview({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [active]);
-
-  // §291 프레임에 위치를 돌려준다.
-  //
-  // 두 시점에서 부른다: 다시 **보이게 될 때**(마운트는 유지된 채 숨었다 나온 경우)와 프레임이
-  // **로드를 마쳤을 때**(상한을 넘겨 축출됐다가 다시 열린 경우 — 그때는 문서가 새로 뜨므로
-  // 보이게 되는 시점엔 아직 받을 문서가 없다).
-  const restore = useCallback(() => {
-    const y = getScrollY ? getScrollY() : scrollYRef.current;
-    if (y <= 0) return;
-    frameRef.current?.contentWindow?.postMessage(
-      { __baram: BRIDGE_TAG, type: "restore-scroll", y },
-      "*",
-    );
-  }, [getScrollY]);
+  }, [active, restore]);
 
   // 다시 보이게 되면 프레임에 위치를 돌려준다.
   //
   // 숨겨질 때 이 문서의 레이아웃 박스가 파기되어 위치가 0으로 돌아가므로, 살아 있는 것은
-  // 우리가 받아 둔 마지막 보고뿐이다. 되돌릴 값이 0이면 보내지 않는다 — 프레임은 이미 거기
-  // 있고, 문서를 새로 연 직후에도 이 effect가 도는데 그때 0을 쏘면 문서 자신의 `#fragment`
-  // 앵커 스크롤을 덮어쓴다.
+  // 우리가 받아 둔 마지막 보고뿐이다. `restore`가 렌더마다 같은 함수이므로 이 effect는 마운트와
+  // `active`가 바뀔 때만 돈다 — 보이는 동안의 재렌더에는 돌지 않는다.
   useEffect(() => {
     if (!active) return;
     restore();
@@ -159,7 +192,6 @@ export const HtmlPreview = memo(function HtmlPreview({
   return (
     <iframe
       className="html-preview-frame"
-      onLoad={restore}
       ref={frameRef}
       sandbox="allow-scripts"
       src={src}

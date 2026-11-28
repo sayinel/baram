@@ -249,6 +249,131 @@ describe("scroll position round trip", () => {
   });
 });
 
+// ‼️ 복원은 "프레임이 자리를 잃은" 두 순간에만 간다 — 다시 보이게 될 때, 그리고 프레임에 새
+// 문서가 떴을 때. 그 밖의 시점에 가면 문서가 방금 간 곳을 마지막 보고 위치로 되돌린다.
+//
+// 실앱 결함: 문서 안 `#fragment` 링크가 첫 번째만 동작했다. WKWebView는 프레임 안에서 같은 문서
+// 안을 이동할 때마다 `<iframe>` 요소에 `load`를 다시 쏜다(앱과 같은 sandbox · 같은 scheme ·
+// 같은 shim의 WKWebView 재현기에서 클릭 6번에 `load` 6번). 그 `load`를 새 문서로 읽고 복원을
+// 보내면, 첫 클릭은 저장값이 0이라 건너뛰고 그 뒤 클릭은 전부 첫 이동 위치로 되돌아간다.
+describe("restore goes only where the frame lost its place", () => {
+  it("does not restore when the frame element fires load on its own", () => {
+    const { frame, post } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    // 첫 번째 #fragment 이동이 보고한 위치 — 그 다음 이동이 다시 쏜 `load`.
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 2844 }));
+    act(() => frame.dispatchEvent(new Event("load")));
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("restores when the document itself announces that it has loaded", () => {
+    // 위 단정의 짝 — 이 경로까지 막혔다면 위 테스트는 아무것도 증명하지 않는다.
+    const { frame, post } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 2844 }));
+    act(() => post({ __baram: BRIDGE_TAG, type: "loaded" }));
+
+    expect(send).toHaveBeenCalledWith(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y: 2844 },
+      "*",
+    );
+  });
+
+  it("ignores a loaded announcement from a window that is not its frame", () => {
+    const { frame, post } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 2844 }));
+    act(() => post({ __baram: BRIDGE_TAG, type: "loaded" }, window));
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("ignores a loaded announcement while hidden", () => {
+    // 숨은 동안 복원해도 display:none이 박스를 파기하므로 소용이 없다 — 다시 보일 때 간다.
+    const { frame, post, setActive } = renderPreview(true);
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", { value: send });
+
+    act(() => post({ __baram: BRIDGE_TAG, type: "scroll", y: 2844 }));
+    act(() => setActive(false));
+    act(() => post({ __baram: BRIDGE_TAG, type: "loaded" }));
+    expect(send).not.toHaveBeenCalled();
+
+    // 다시 보일 때 정확히 한 번 간다 — 숨은 동안의 알림을 쌓아 두었다가 다시 보내지 않는다.
+    act(() => setActive(true));
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y: 2844 },
+      "*",
+    );
+  });
+
+  // 호출부(tab-surface-renderers.tsx)는 getScrollY를 렌더마다 새로 만든다. 그 정체성 변화가
+  // 복원 effect를 다시 돌리면, 앱의 아무 재렌더나 이동 중인 문서를 마지막 보고 위치로 당긴다.
+  // 두 테스트가 그 호출부처럼 렌더마다 새 콜백을 넘긴다.
+  function renderWithInlineCallbacks() {
+    const offsets = new Map<string, number>();
+    const props = (active: boolean) => ({
+      active,
+      filePath: "/Users/me/a.html",
+      getScrollY: () => offsets.get("t1") ?? 0,
+      onScrollY: (y: number) => void offsets.set("t1", y),
+    });
+    const view = render(<HtmlPreview {...props(true)} />);
+    const frame = view.container.querySelector("iframe");
+    if (!frame) throw new Error("preview rendered no iframe");
+    const send = vi.fn();
+    Object.defineProperty(frame.contentWindow, "postMessage", {
+      value: send,
+    });
+    act(() =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { __baram: BRIDGE_TAG, type: "scroll", y: 2844 },
+          source: frame.contentWindow,
+        }),
+      ),
+    );
+    return {
+      offsets,
+      rerender: (active: boolean) =>
+        view.rerender(<HtmlPreview {...props(active)} />),
+      send,
+    };
+  }
+
+  it("does not restore when a visible preview merely re-renders", () => {
+    const { offsets, rerender, send } = renderWithInlineCallbacks();
+    // 전제: 보고가 호출부의 저장소에 들어갔다. 이게 0이면 결함이 있어도 아래 단정이 통과한다.
+    expect(offsets.get("t1")).toBe(2844);
+
+    act(() => rerender(true));
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("still restores when the same callbacks come back with the preview shown again", () => {
+    // 위 단정의 짝 — 렌더마다 새 콜백이어도 다시 보이게 되는 순간의 복원은 간다.
+    const { rerender, send } = renderWithInlineCallbacks();
+
+    act(() => rerender(false));
+    act(() => rerender(true));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith(
+      { __baram: BRIDGE_TAG, type: "restore-scroll", y: 2844 },
+      "*",
+    );
+  });
+});
+
 // §291 상한(RETENTION_CAPS.html = 2)을 넘겨 축출된 탭은 다시 열릴 때 문서를 새로 로드한다.
 // 그때도 자리는 남아야 한다 — 상한은 "재로딩을 얼마나 피할 것인가"의 문제여야지 "자리를
 // 잃느냐"의 문제여서는 안 된다.
@@ -267,8 +392,15 @@ describe("position outlives the component", () => {
     const send = vi.fn();
     Object.defineProperty(frame!.contentWindow, "postMessage", { value: send });
 
-    // 새로 열린 문서는 로드를 마쳐야 받을 준비가 된다.
-    act(() => frame!.dispatchEvent(new Event("load")));
+    // 새로 열린 문서는 로드를 마쳐야 받을 준비가 된다 — 그 사실은 문서가 알린다.
+    act(() =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { __baram: BRIDGE_TAG, type: "loaded" },
+          source: frame!.contentWindow,
+        }),
+      ),
+    );
     expect(send).toHaveBeenCalledWith(
       { __baram: BRIDGE_TAG, type: "restore-scroll", y: 640 },
       "*",
