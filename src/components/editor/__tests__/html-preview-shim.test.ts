@@ -215,6 +215,21 @@ describe("scroll position bridge", () => {
     expect(scrolledTo()).toBeNull();
   });
 
+  // A new document is one of the two moments the host hands the position back (the
+  // other is the frame being shown again), and this is how the host learns that one
+  // has finished loading. The frame element's own `load` cannot tell a new document from
+  // a jump inside it -- WKWebView fires it again on every same-document `#fragment`
+  // navigation -- and taking it as a new document snapped every jump after the first
+  // back to where the first one landed.
+  it("announces that this document has loaded, once it has", () => {
+    const { fire, posted } = mount("<p>hello</p>");
+    // Not at evaluation time: the shim runs at the top of <head>, where a restore would
+    // be clamped against a document with no body yet.
+    expect(posted).toEqual([]);
+    fire("load", {});
+    expect(posted).toEqual([{ __baram: TAG, type: "loaded" }]);
+  });
+
   it("refuses an untagged or non-numeric restore", () => {
     const { message, scrolledTo } = mount("<p>hello</p>");
     message({ type: "restore-scroll", y: 512 }, "parent");

@@ -161,6 +161,26 @@
     { capture: true, passive: true },
   );
 
+  // A NEW document is the other moment the reader's place is lost (the host hands it
+  // back when the frame is shown again, too) -- the host's tab was evicted and
+  // reopened, or the file was saved and reloaded -- and this is how the host learns
+  // that one has finished loading. The frame element's own `load` cannot tell a new
+  // document from a jump inside this one: WKWebView fires it again on every
+  // same-document `#fragment` navigation, and a host that restored on it pulled every
+  // jump after the first back to where the first one landed. Measured on macOS 26.6
+  // in a WKWebView whose WKURLSchemeHandler served the parent and a
+  // sandbox="allow-scripts" frame over `baramhtml:`, with this shim file spliced in:
+  // six jumps fired `load` on the element six times, and this listener once, at the
+  // document's own load.
+  //
+  // It fires for ANY new document in this frame, including one the page navigated to
+  // on its own (a `baramhtml:` link to a sibling file, `location.reload()`), and the
+  // host then hands that document the tab's last position -- the same as when the host
+  // restored on the element's `load`.
+  window.addEventListener("load", function () {
+    post({ type: "loaded" });
+  });
+
   // The ONLY instruction accepted from the host. The sender is checked by window
   // identity, not origin: every sandboxed frame reports its origin as the string
   // "null", so an origin check would let a nested frame inside this document drive the
