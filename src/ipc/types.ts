@@ -245,7 +245,13 @@ export interface LLMTokenPayload {
   token: string;
 }
 
+/** §3.6 A merge for the merge view — from `merge_texts` (src-tauri/src/snapshot/merge.rs), or from
+ *  `mergeWithoutBase`, whose lines are each side's text split at "\n". */
 export interface MergeResult {
+  /** Whether the merge view ends the text with `lineEnding` once more. */
+  finalNewline: boolean;
+  /** What the merge view joins the chosen lines with. */
+  lineEnding: "\n" | "\r\n";
   segments: MergeSegment[];
 }
 

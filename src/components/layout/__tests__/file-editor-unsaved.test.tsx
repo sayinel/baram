@@ -70,11 +70,8 @@ vi.mock("../../editor/UnsavedChangesModal", () => ({
 }));
 
 vi.mock("../../editor/MergeView", () => ({
-  MergeView: (props: {
-    onApply: (merged: string) => void;
-    segments: unknown;
-  }) => {
-    mergeView(props.segments);
+  MergeView: (props: { merge: unknown; onApply: (merged: string) => void }) => {
+    mergeView(props.merge);
     return (
       <button onClick={() => props.onApply("merged\n")} type="button">
         apply merge
@@ -788,14 +785,18 @@ describe("a change on disk", () => {
 
     await waitFor(() => expect(mergeView).toHaveBeenCalled());
     expect(mergeTexts).not.toHaveBeenCalled();
-    expect(mergeView.mock.calls.at(-1)?.[0]).toEqual([
-      {
-        base: [],
-        external: ["external", ""],
-        kind: "conflict",
-        local: local.split("\n"),
-      },
-    ]);
+    expect(mergeView.mock.calls.at(-1)?.[0]).toEqual({
+      finalNewline: false,
+      lineEnding: "\n",
+      segments: [
+        {
+          base: [],
+          external: ["external", ""],
+          kind: "conflict",
+          local: local.split("\n"),
+        },
+      ],
+    });
   });
 
   it("installs an applied merge as the file", async () => {

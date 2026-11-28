@@ -3,7 +3,7 @@
 // local state.
 import { lazy, Suspense, useState } from "react";
 
-import type { MergeSegment } from "../../ipc/types";
+import type { MergeResult } from "../../ipc/types";
 import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
@@ -197,11 +197,13 @@ export function AppDialogs({
 }: AppDialogsProps) {
   const { t } = useTranslation();
   // §3.6 The merge view's state, with what the conflict modal needs to come back if it is left.
-  const [mergeState, setMergeState] = useState<null | {
-    externalMtime: number;
-    filePath: string;
-    segments: MergeSegment[];
-  }>(null);
+  const [mergeState, setMergeState] = useState<
+    | (MergeResult & {
+        externalMtime: number;
+        filePath: string;
+      })
+    | null
+  >(null);
 
   return (
     <Suspense fallback={null}>
@@ -257,10 +259,10 @@ export function AppDialogs({
             // Not recorded as the disk text here: until the merge is applied the tab's text does not
             // descend from it, and a merge left now would leave a base its lines seem to take back.
             const external = await readFile(filePath);
-            const segments = base
-              ? (await mergeTexts(base, local, external)).segments
+            const merge = base
+              ? await mergeTexts(base, local, external)
               : mergeWithoutBase(local, external);
-            setMergeState({ externalMtime, filePath, segments });
+            setMergeState({ ...merge, externalMtime, filePath });
           } catch (err) {
             logger.warn("[conflict] the merge could not start", err);
             useUIStore
@@ -279,6 +281,7 @@ export function AppDialogs({
       {mergeState && (
         <MergeView
           filePath={mergeState.filePath}
+          merge={mergeState}
           onApply={(merged) => {
             const { externalMtime, filePath } = mergeState;
             setMergeState(null);
@@ -313,7 +316,6 @@ export function AppDialogs({
             // §3.6 The conflict is still there: ask again rather than leave its saves held.
             askAboutConflictAgain(filePath);
           }}
-          segments={mergeState.segments}
         />
       )}
     </Suspense>
