@@ -54,21 +54,26 @@ interface FileState {
   /** §4.5 Collapse every expanded directory in the file tree */
   collapseAllDirs: () => void;
   /**
-   * §3.6 For each file a tab shows, the disk text that tab's text descends from — the base the conflict
-   * modal merges against (`mergeBaseOf`). It is set where the tab's text and the disk last met: when a
-   * tab began to show the file (`noteFilesShown` — every opener puts the text it just read or wrote into
-   * `openFiles` before the tab appears, but `CitationLink`, which leaves the read to the tab switch, and
-   * the §89 file window, which fills it afterwards and runs no conflict modal; those leave none), when
-   * a save wrote it or a reload or merge put it in every tab (`updateLastSaveMtime`), when an in-app disk
-   * write reached a clean tab's surfaces (`noteDiskText` in `sync-open-surfaces.ts`), and when the user
-   * kept their edits over the other program's text ("Keep Local Edits"). A disk write the tab did not
-   * take — into a dirty tab, a merge cancelled before it was applied — is not recorded: against it, a
-   * merge reads that tab's lines as taking the write back and drops them without asking. `openFiles` is
-   * no base for the same reason: a tab left with unsaved edits puts them there (`saveOutgoingTab`), and
-   * so do the in-app writes into a tab's document. A disk write that records nothing leaves the base
-   * older. That mostly makes a merge ask about more, but where the user put a line back as it was before
-   * such a write, the other side's copy of the line wins. Kept and released with `openFiles`; binary
-   * files have none.
+   * §3.6 For each file a tab shows, the disk text that tab's text descends from — the base a conflict
+   * merge starts from (`mergeBaseOf`). It is set where the tab's text and the disk last met: when a tab
+   * began to show the file (`noteFilesShown` — every opener in the main window puts the text it just
+   * read or wrote into `openFiles` before the tab appears, but `CitationLink`, which leaves the read to
+   * the tab switch, leaves none), when a save wrote it or a reload or merge put it in every tab
+   * (`updateLastSaveMtime`), when an in-app disk write reached a clean tab's surfaces (`noteDiskText` in
+   * `sync-open-surfaces.ts`), and when the user kept their edits over the other program's text ("Keep
+   * Local Edits"). A disk write the tab did not take — into a dirty tab, a merge cancelled before it was
+   * applied — is not recorded: against it, a merge reads that tab's lines as taking the write back and
+   * drops them without asking. `openFiles` is no base for the same reason: a tab left with unsaved edits
+   * puts them there (`saveOutgoingTab`), and so do the in-app writes into a tab's document. A disk write
+   * that records nothing leaves the base older. That mostly makes a merge ask about more, but where the
+   * user put a line back as it was before such a write, the other side's copy of the line wins. Kept and
+   * released with `openFiles`; binary files have none.
+   *
+   * The §89 file window never runs `noteFilesShown`: `useAppStartup` starts `startClosedTabRelease`,
+   * which calls it, and only `App` runs `useAppStartup`. Its saves record as a tab's do
+   * (`updateLastSaveMtime`). The rest it records in `FileEditorLayout.tsx`: the text it installs as the
+   * file, the disk text when its watcher finds the window's text there, and the text it keeps its edits
+   * over (Keep Local).
    */
   diskTexts: Map<string, string>;
   expandAllDirs: () => void;

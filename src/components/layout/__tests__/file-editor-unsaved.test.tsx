@@ -22,6 +22,8 @@ const writeFile = vi.hoisted(() =>
 const guard = vi.hoisted(() => vi.fn());
 const menu = vi.hoisted(() => vi.fn());
 const mergeTexts = vi.hoisted(() => vi.fn(async () => ({ segments: [] })));
+// What the merge view was handed to show.
+const mergeView = vi.hoisted(() => vi.fn());
 const parse = vi.hoisted(() => ({ fails: false }));
 
 vi.mock("../../../pipeline/md-to-pm", async (importOriginal) => {
@@ -68,11 +70,14 @@ vi.mock("../../editor/UnsavedChangesModal", () => ({
 }));
 
 vi.mock("../../editor/MergeView", () => ({
-  MergeView: ({ onApply }: { onApply: (merged: string) => void }) => (
-    <button onClick={() => onApply("merged\n")} type="button">
-      apply merge
-    </button>
-  ),
+  MergeView: (props: { merge: unknown; onApply: (merged: string) => void }) => {
+    mergeView(props.merge);
+    return (
+      <button onClick={() => props.onApply("merged\n")} type="button">
+        apply merge
+      </button>
+    );
+  },
 }));
 
 vi.mock("../../editor/SourceCodeEditor", () => ({
@@ -163,11 +168,16 @@ beforeEach(() => {
   guard.mockClear();
   menu.mockClear();
   mergeTexts.mockClear();
+  mergeView.mockClear();
   vi.mocked(listen).mockClear();
   disk.gate = Promise.resolve();
   disk.text = "on disk\n";
   parse.fails = false;
-  useFileStore.setState({ fileMtimes: new Map(), openFiles: new Map() });
+  useFileStore.setState({
+    diskTexts: new Map(),
+    fileMtimes: new Map(),
+    openFiles: new Map(),
+  });
   useEditorStore.setState({
     activeTabId: null,
     mruOrder: [],
@@ -685,6 +695,108 @@ describe("a change on disk", () => {
 
     await waitFor(() => expect(mergeTexts).toHaveBeenCalledOnce());
     expect((mergeTexts.mock.calls[0] as unknown[])[0]).toBe(written);
+  });
+
+  // 이것을 실패시키는 것: Keep 이 base 를 옮기지 않으면, 다음 병합이 방금 거절한 줄을 상대의 새 변경으로 읽어
+  // 묻지 않고 들인다. Keep 때 디스크를 다시 읽으면, 아직 보고되지 않은 새 글이 base 가 되어 그 변경을 묻지
+  // 않고 버린다.
+  it("merges a later change against the text kept over", async () => {
+    await open();
+    await typeSomething();
+    await changeOnDisk("external\n");
+    // Changed again before Keep, and that change has not been reported yet.
+    disk.text = "external\nagain\n";
+    pressButton("Keep Local");
+    await changeOnDisk("external\nagain\n");
+
+    pressButton("Merge");
+
+    await waitFor(() => expect(mergeTexts).toHaveBeenCalledOnce());
+    expect((mergeTexts.mock.calls[0] as unknown[])[0]).toBe("external\n");
+  });
+
+  // 이것을 실패시키는 것: 파일이 이 창의 글과 같아진 것을 남기지 않으면 base 가 그 전 글에 머물러, 상대가 그 뒤
+  // 되돌린 줄을 이 창이 바꾼 줄로 읽고 묻지 않고 이 창 쪽으로 둔다.
+  it("merges against the text the file and this window last both held", async () => {
+    await open();
+    await typeSomething();
+    const held = serializeLiveDoc(liveEditor());
+    await changeOnDisk(held);
+    act(() => {
+      liveEditor().commands.insertContent("more ");
+    });
+    await changeOnDisk("external\n");
+
+    pressButton("Merge");
+
+    await waitFor(() => expect(mergeTexts).toHaveBeenCalledOnce());
+    expect((mergeTexts.mock.calls[0] as unknown[])[0]).toBe(held);
+  });
+
+  // 이것을 실패시키는 것: 메아리 갈래에서도 기록하면, 이 창이 받지 않은 쓰기(`openFiles` 에만 들어간 글)가
+  // base 가 되어 병합이 이 창의 줄을 그 쓰기를 되돌린 것으로 읽고 묻지 않고 지운다.
+  it("does not merge from a write this window did not take", async () => {
+    await open();
+    await typeSomething();
+    // An in-app write to the file that left the editor as it was, as `use-embed-sync` does.
+    act(() => {
+      useFileStore.getState().setFileContent(PATH, "embedded\n");
+    });
+    await changeOnDisk("embedded\n");
+    expect(screen.queryByRole("alert")).toBeNull();
+    await changeOnDisk("external\n");
+
+    pressButton("Merge");
+
+    await waitFor(() => expect(mergeTexts).toHaveBeenCalledOnce());
+    expect((mergeTexts.mock.calls[0] as unknown[])[0]).toBe("on disk\n");
+  });
+
+  // 이것을 실패시키는 것: 파싱 전에 기록하면, 보이지 못한 글이 base 가 되어 병합이 그 글의 줄을 이 창이 되돌린
+  // 것으로 읽는다.
+  it("does not merge from text it could not show", async () => {
+    await open();
+    parse.fails = true;
+    await expect(changeOnDisk("unparsable\n")).rejects.toThrow();
+    parse.fails = false;
+    expect(shown()).toContain("on disk");
+    await typeSomething();
+    await changeOnDisk("external\n");
+
+    pressButton("Merge");
+
+    await waitFor(() => expect(mergeTexts).toHaveBeenCalledOnce());
+    expect((mergeTexts.mock.calls[0] as unknown[])[0]).toBe("on disk\n");
+  });
+
+  // 이것을 실패시키는 것: 빈 base 로 3-way 병합을 부르면 양쪽 글을 같은 자리의 두 삽입으로 읽어 묻지 않고 둘 다
+  // 넣는다(`merge_texts`).
+  it("asks about the whole file when it was empty", async () => {
+    disk.text = "";
+    await open();
+    await waitFor(() =>
+      expect(document.querySelector(".tiptap")).not.toBeNull(),
+    );
+    await typeSomething();
+    const local = serializeLiveDoc(liveEditor());
+    await changeOnDisk("external\n");
+
+    pressButton("Merge");
+
+    await waitFor(() => expect(mergeView).toHaveBeenCalled());
+    expect(mergeTexts).not.toHaveBeenCalled();
+    expect(mergeView.mock.calls.at(-1)?.[0]).toEqual({
+      finalNewline: false,
+      lineEnding: "\n",
+      segments: [
+        {
+          base: [],
+          external: ["external", ""],
+          kind: "conflict",
+          local: local.split("\n"),
+        },
+      ],
+    });
   });
 
   it("installs an applied merge as the file", async () => {
